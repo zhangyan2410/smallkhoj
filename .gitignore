@@ -12,4 +12,15 @@ agent/daemon/aaa-daemon/dist/
 
 # IDE
 .idea/
-.vscode/
+
+# Build caches
+*.tsbuildinfo
+toremove/
+
+# Keep VS Code and agent configs
+!.vscode/
+!.codex/
+!.cursor/
+!.claude/
+!.trellis/
+!.agents/

@@ -1,0 +1,46 @@
+{
+    // Python 解释器指向 backend 的虚拟环境
+    "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+
+    // Pylance 额外模块搜索路径，让 backend 目录下的相对导入能被解析
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/backend"
+    ],
+
+    // Python 代码分析包含 backend 目录
+    "python.analysis.include": [
+        "backend/**/*.py"
+    ],
+
+    // 自动补全和类型检查
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.typeCheckingMode": "basic",
+
+    // 格式化工具（如已安装）
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true
+    },
+
+    // 前端 TypeScript/React 配置
+    "[typescript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
+    },
+    "[typescriptreact]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
+    },
+
+    // TypeScript 多项目工作区配置
+    "typescript.tsdk": "frontend/node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true,
+
+    // 文件排除，减少索引噪音
+    "files.exclude": {
+        "**/.venv": true,
+        "**/.next": true,
+        "**/node_modules": true,
+        "**/__pycache__": true
+    }
+}

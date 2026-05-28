@@ -4,7 +4,6 @@
       "Read(//d/ai/khoj/smallkhoj/**)",
       "Write(//d/ai/khoj/smallkhoj/**)",
       "Edit(//d/ai/khoj/smallkhoj/**)",
-
       "Bash(dir:*)",
       "Bash(cd:*)",
       "Bash(cp:*)",
@@ -15,25 +14,24 @@
       "Bash(curl:*)",
       "Bash(pwd:*)",
       "Bash(head:*)",
-
       "Bash(node --version)",
       "Bash(bun --version)",
       "Bash(python --version)",
       "Bash(uv --version)",
-
       "Bash(uv:*)",
       "Bash(bun:*)",
       "Bash(npx:*)",
-
       "Bash(git:*)",
-
       "Bash(python:*)",
       "Bash(.venv/Scripts/python.exe:*)",
       "Bash(.venv/Scripts/python:*)",
       "Bash(.venv/bin/python:*)",
-
       "Bash(docker compose:*)",
-      "Bash(docker:*)"
+      "Bash(docker:*)",
+      "Bash(tasklist)",
+      "Bash(echo \"Current process PID: $$\")",
+      "Bash(npm list *)",
+      "Read(//c/Users/zhangyan.ean/AppData/**)"
     ]
   }
 }
