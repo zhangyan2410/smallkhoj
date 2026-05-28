@@ -1,146 +1,99 @@
-# aaa-daemon
+# aaa-daemon v0.2.0
 
-Minimal Slock Daemon prototype - 基于对 Slock Daemon v0.54.0 架构分析的最小化复现。
+Minimal Slock Agent Daemon — architecture based on [opencan-daemon](https://github.com/botiverse/opencan/tree/master/opencan-daemon).
 
-## 架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    aaa-daemon v0.1.0                         │
-│                                                             │
-│  CLI入口(index.ts)  ─┬─  3个CLI命令 (commander)              │
-│                      │                                       │
-│  DaemonCore         ───  管理模块生命周期                     │
-│                      │   - WebSocket 连接                     │
-│                      │   - 消息 inbox 管理 & 去重             │
-│                      │   - 进程信号处理                        │
-│                      │                                       │
-│  Agent Proxy        ───  HTTP 代理服务器 (动态端口)           │
-│                      │   - 嵌入 agent token 转发请求           │
-│                      │   - freshness check (消息同步检测)      │
-│                      │                                       │
-│  Chat Bridge        ───  MCP stdio 服务器                    │
-│                      │   - 工具调用处理                        │
-│                      │   - JSON-RPC 2.0 协议                 │
-│                                                             │
-│  WebSocket Manager  ───  WebSocket 客户端                    │
-│                      │   - 自动重连                           │
-│                      │   - 心跳保持                           │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 文件结构
+## Architecture
 
 ```
-aaa-daemon/
-├── src/
-│   ├── index.ts          # CLI 入口
-│   ├── daemon.ts         # DaemonCore - 主控制器
-│   ├── websocket.ts      # WebSocket 连接管理
-│   ├── mcp-bridge.ts     # MCP stdio 桥接
-│   ├── proxy.ts          # HTTP 代理 + token 注入
-│   └── types.ts          # 共享类型定义
-├── package.json
-├── tsconfig.json
-└── README.md
+cmd/main.ts              CLI entry (commander): start / attach / status / stop / version
+    |
+daemon/
+├── daemon.ts            DaemonCore — orchestrator, PID file, signal handling, log buffer
+├── client-handler.ts    Per-connection JSON-RPC 2.0 handler, method routing
+└── session-manager.ts   Session tracking (create / list / filter / remove)
+
+proxy/
+├── agent-proxy.ts       HTTP proxy — token injection, path rewrite, freshness check
+├── state.ts             State machine (Starting→Idle→Prompting→Draining→Completed→Dead)
+└── event-buffer.ts      Ring buffer for notifications (100k capacity, clone-on-evict)
+
+protocol/
+├── jsonrpc.ts           JSON-RPC 2.0 types, parse/serialize, builders, error codes
+└── methods.ts           Centralized method constants (daemon + ACP methods)
+
+attach/
+└── attach.ts            Client bridge: stdin/stdout ↔ daemon proxy, auto-start
+
+websocket.ts             WebSocket manager — connect, reconnect, message dispatch
+mcp-bridge.ts            MCP stdio bridge for Claude Code integration
+types.ts                 Shared types: Credential, Config, Message, Task, Session
 ```
 
-## 安装
+## Design Patterns (from opencan-daemon)
+
+| Pattern | opencan (Go) | aaa-daemon (TypeScript) |
+|---------|-------------|------------------------|
+| State machine | 7 states with guarded transitions | Same, `StateMachine` class |
+| Event buffer | Ring buffer with clone-on-evict | `EventBuffer` with capacity + eviction |
+| Per-connection handler | `ClientHandler` per goroutine | `ClientHandler` with async routing |
+| JSON-RPC framing | `\n`-delimited, no Content-Length | Same |
+| ID rewriting | `map[internalID]→(originalID, proxy)` | Promise-based pending request tracking |
+| Daemonization | `go-daemon` Reborn() | `child_process.spawn` with `--foreground` |
+| PID locking | `lockfile` package | Simple PID file read/write |
+| Log ring buffer | 2000 entries, BufferingHandler | Array with size cap, `log()` method |
+
+## Quick Start
 
 ```bash
 npm install
 npm run build
-```
 
-## 使用
-
-### 启动 Daemon
-
-```bash
-# 基本启动
+# Start daemon in background
 npm run daemon
 
-# 自定义配置
-npm run daemon -- --server https://api.slock.io --ws wss://ws.slock.io --proxy-port 3456
+# Or foreground (with MCP bridge for Claude Code)
+npm start -- --mcp
 
-# 指定 credential
-npm run daemon -- --credential ./my-credential.json
+# Check status
+npm run status
+
+# Attach client
+npm run attach
+
+# Stop
+npm run stop
 ```
 
-### CLI 命令
+## Commands
 
-| 命令 | 说明 |
-|------|------|
-| `daemon` | 启动守护程序 |
-| `send` | 发送消息（演示） |
-| `status` | 检查状态 |
+| Command | Description |
+|---------|-------------|
+| `start` | Start the daemon (daemonizes by default, use `--foreground` to stay in front) |
+| `attach` | Bridge stdin/stdout to running daemon |
+| `status` | Check if daemon is running |
+| `stop` | Stop the daemon via SIGTERM |
+| `version` | Print version |
 
-## 已实现的关键机制
+## Protocol
 
-1. **WebSocket 连接管理**
-   - 自动重连（5秒间隔）
-   - Token 认证头注入
-   - 消息事件分发
+The daemon exposes a JSON-RPC 2.0 API over the HTTP proxy:
 
-2. **HTTP 代理**
-   - 动态端口监听
-   - Agent Token 自动注入
-   - Freshness check 头管理
-   - 双向数据流转发
+- `daemon/hello` — Health check
+- `daemon/message.send` — Send message to channel/DM
+- `daemon/message.check` — Poll for new messages
+- `daemon/message.read` — Read message history
+- `daemon/server.info` — Get server/channel info
+- `daemon/session.list` — List conversations
+- `daemon/conversation.create` — Create new session
+- `daemon/logs` — Retrieve log buffer
+- ... and more (tasks, channels, reminders)
 
-3. **MCP stdio 桥接**
-   - JSON-RPC 2.0 协议
-   - 工具调用处理（send_message, check_messages, read_history）
-   - 异步请求/响应匹配
+## Environment Variables
 
-4. **Inbox 管理**
-   - 消息去重（基于 message id）
-   - 未读消息追踪
-   - 序列号递增
-
-## 与原版对比
-
-| 特性 | Slock Daemon v0.54.0 | aaa-daemon (prototype) |
-|------|----------------------|------------------------|
-| CLI 命令 | 34 个 | 3 个 (demo) |
-| WebSocket | 完整实现 | 基础实现 |
-| MCP Bridge | 完整实现 | 基础实现 |
-| HTTP Proxy | 完整实现 | 基础实现 |
-| Agent 进程管理 | spawn/kill | 未实现 |
-| machineLock | 有 | 未实现 |
-| 多 Agent 支持 | 有 | 未实现 |
-
-## 环境变量
-
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `SLOCK_AGENT_ID` | Agent ID | prototype-agent |
-| `SLOCK_SERVER_URL` | 服务器地址 | https://api.slock.io |
-| `SLOCK_WS_URL` | WebSocket 地址 | wss://ws.slock.io |
-
-## 协议参考
-
-### 消息格式 (RFC 5424 风格)
-```
-[target=#channel msg=shortid time=iso8601 type=agent] @sender: content
-```
-
-### MCP 请求格式
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "send_message",
-  "params": {
-    "target": "#all",
-    "content": "hello"
-  }
-}
-```
-
-### Freshness Check
-代理自动在请求头中添加 `X-Freshness-Seq`，服务端返回 `X-Freshness-Hold` 时触发同步等待。
-
-## 许可证
-
-MIT
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SLOCK_AGENT_ID` | Agent ID | — |
+| `SLOCK_SERVER_ID` | Server ID | — |
+| `SLOCK_SERVER_URL` | Slock server URL | `https://api.slock.ai` |
+| `SLOCK_AGENT_TOKEN` | Agent API token | — |
+| `AAA_DAEMON_MCP` | Enable MCP bridge (`1`) | — |
