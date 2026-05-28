@@ -56,3 +56,33 @@ test('writeSlockWrapper writes wrappers and proxy token', () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('writeSlockWrapper shell-quotes bash wrapper values', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-wrapper-quote-'));
+  try {
+    const workspace = join(root, "work'space");
+    const tokenHome = join(root, "tok'ens");
+    const result = writeSlockWrapper({
+      workspacePath: workspace,
+      tokenHome,
+      launchId: 'pid-test',
+      proxyUrl: 'http://127.0.0.1:3456',
+      proxyToken: 'sap_test_token',
+      activeCapabilities: 'send,read',
+      cliPath: "/repo/o'clock/dist/slock-cli.js",
+      credential: {
+        agentId: 'agent-123',
+        serverId: 'server-123',
+        token: 'sk_machine_secret',
+        serverUrl: 'https://api.slock.ai',
+      },
+    });
+
+    const wrapper = readFileSync(result.bashWrapper, 'utf-8');
+    assert.match(wrapper, /SLOCK_AGENT_PROXY_TOKEN_FILE='.*'\\''.*'/);
+    assert.match(wrapper, /SLOCK_CURRENT_WORKSPACE_PATH='.*'\\''.*'/);
+    assert.match(wrapper, /exec '.*node' '\/repo\/o'\\''clock\/dist\/slock-cli\.js' "\$@"/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

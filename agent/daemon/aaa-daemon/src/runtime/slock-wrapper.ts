@@ -26,6 +26,10 @@ function quotePowerShell(value: string): string {
   return value.replace(/'/g, "''");
 }
 
+function quotePosix(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 export function defaultSlockCliPath(): string {
   return resolve(process.argv[1], '..', '..', 'slock-cli.js');
 }
@@ -54,13 +58,13 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
   const bashWrapper = join(wrapperDir, 'slock');
   writeFileSync(bashWrapper, [
     '#!/usr/bin/env bash',
-    `export SLOCK_AGENT_PROXY_URL='${commonEnv.SLOCK_AGENT_PROXY_URL}'`,
-    `export SLOCK_AGENT_PROXY_TOKEN_FILE='${commonEnv.SLOCK_AGENT_PROXY_TOKEN_FILE}'`,
-    `export SLOCK_AGENT_ACTIVE_CAPABILITIES='${commonEnv.SLOCK_AGENT_ACTIVE_CAPABILITIES}'`,
-    `export SLOCK_AGENT_ID='${commonEnv.SLOCK_AGENT_ID}'`,
-    `export SLOCK_SERVER_URL='${commonEnv.SLOCK_SERVER_URL}'`,
-    `export SLOCK_CURRENT_WORKSPACE_PATH='${commonEnv.SLOCK_CURRENT_WORKSPACE_PATH}'`,
-    `exec "${process.execPath}" "${cliPath}" "$@"`,
+    `export SLOCK_AGENT_PROXY_URL=${quotePosix(commonEnv.SLOCK_AGENT_PROXY_URL)}`,
+    `export SLOCK_AGENT_PROXY_TOKEN_FILE=${quotePosix(commonEnv.SLOCK_AGENT_PROXY_TOKEN_FILE)}`,
+    `export SLOCK_AGENT_ACTIVE_CAPABILITIES=${quotePosix(commonEnv.SLOCK_AGENT_ACTIVE_CAPABILITIES)}`,
+    `export SLOCK_AGENT_ID=${quotePosix(commonEnv.SLOCK_AGENT_ID)}`,
+    `export SLOCK_SERVER_URL=${quotePosix(commonEnv.SLOCK_SERVER_URL)}`,
+    `export SLOCK_CURRENT_WORKSPACE_PATH=${quotePosix(commonEnv.SLOCK_CURRENT_WORKSPACE_PATH)}`,
+    `exec ${quotePosix(process.execPath)} ${quotePosix(cliPath)} "$@"`,
     '',
   ].join('\n'), 'utf-8');
   chmodSync(bashWrapper, 0o755);

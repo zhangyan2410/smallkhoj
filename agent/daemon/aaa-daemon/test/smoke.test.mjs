@@ -62,6 +62,14 @@ function writeManagedProxyWrapper(runtimeDir, proxyUrl, tokenFile) {
   ].join('\r\n'), 'utf-8');
 }
 
+function writeManagedProxyBashWrapper(runtimeDir, proxyUrl, tokenFile) {
+  writeFileSync(join(runtimeDir, 'slock'), [
+    '#!/usr/bin/env bash',
+    `SLOCK_AGENT_PROXY_URL='${proxyUrl}' SLOCK_AGENT_PROXY_TOKEN_FILE='${tokenFile}' SLOCK_AGENT_ACTIVE_CAPABILITIES='send,read,mentions,tasks,reactions,server,channels' exec 'node' 'slock-cli.js' "$@"`,
+    '',
+  ].join('\n'), 'utf-8');
+}
+
 test('importSlockRuntime reads agent/server/token from claude mcp config', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-import-runtime-'));
   try {
@@ -91,6 +99,74 @@ test('importSlockRuntime prefers managed local proxy credentials when wrapper ex
     assert.equal(imported.credential.agentId, 'agent-real');
     assert.equal(imported.credential.serverUrl, 'http://127.0.0.1:50001');
     assert.equal(imported.credential.token, 'sap_original_proxy_token');
+    assert.equal(imported.mcpCredential.serverUrl, 'https://api.slock.ai');
+    assert.equal(imported.mcpCredential.token, 'sk_machine_real');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('importSlockRuntime can import Windows managed proxy wrapper without claude mcp config', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-import-windows-runtime-'));
+  try {
+    const agentId = 'agent-win';
+    const runtimeDir = join(root, 'agents', agentId, '.slock');
+    mkdirSync(runtimeDir, { recursive: true });
+    const tokenDir = join(root, 'agent-proxy-tokens', agentId);
+    mkdirSync(tokenDir, { recursive: true });
+    const tokenFile = join(tokenDir, 'pid-test.token');
+    writeFileSync(tokenFile, 'sap_windows_proxy_token', 'utf-8');
+    writeManagedProxyWrapper(runtimeDir, 'http://127.0.0.1:50004', tokenFile);
+
+    const imported = importSlockRuntime(runtimeDir);
+    assert.equal(imported.source, 'managed-proxy');
+    assert.equal(imported.credential.agentId, agentId);
+    assert.equal(imported.credential.serverUrl, 'http://127.0.0.1:50004');
+    assert.equal(imported.credential.token, 'sap_windows_proxy_token');
+    assert.deepEqual(imported.chatBridgeArgs, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('importSlockRuntime can import macOS managed proxy wrapper without claude mcp config', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-import-macos-runtime-'));
+  try {
+    const agentId = 'agent-mac';
+    const runtimeDir = join(root, 'agents', agentId, '.slock');
+    mkdirSync(runtimeDir, { recursive: true });
+    const tokenDir = join(root, 'agent-proxy-tokens', agentId);
+    mkdirSync(tokenDir, { recursive: true });
+    const tokenFile = join(tokenDir, 'pid-test.token');
+    writeFileSync(tokenFile, 'sap_macos_proxy_token', 'utf-8');
+    writeManagedProxyBashWrapper(runtimeDir, 'http://127.0.0.1:50002', tokenFile);
+
+    const imported = importSlockRuntime(runtimeDir);
+    assert.equal(imported.source, 'managed-proxy');
+    assert.equal(imported.credential.agentId, agentId);
+    assert.equal(imported.credential.serverUrl, 'http://127.0.0.1:50002');
+    assert.equal(imported.credential.token, 'sap_macos_proxy_token');
+    assert.deepEqual(imported.chatBridgeArgs, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('importSlockRuntime prefers macOS managed proxy wrapper over mcp config token', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-import-macos-managed-runtime-'));
+  try {
+    writeRuntimeConfig(root, 'https://api.slock.ai');
+    const tokenDir = join(root, 'tokens');
+    mkdirSync(tokenDir, { recursive: true });
+    const tokenFile = join(tokenDir, 'pid-test.token');
+    writeFileSync(tokenFile, 'sap_macos_proxy_token', 'utf-8');
+    writeManagedProxyBashWrapper(root, 'http://127.0.0.1:50003', tokenFile);
+
+    const imported = importSlockRuntime(root);
+    assert.equal(imported.source, 'managed-proxy');
+    assert.equal(imported.credential.agentId, 'agent-real');
+    assert.equal(imported.credential.serverUrl, 'http://127.0.0.1:50003');
+    assert.equal(imported.credential.token, 'sap_macos_proxy_token');
     assert.equal(imported.mcpCredential.serverUrl, 'https://api.slock.ai');
     assert.equal(imported.mcpCredential.token, 'sk_machine_real');
   } finally {
