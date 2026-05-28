@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+import { rewriteAgentPath } from '../dist/proxy/agent-proxy.js';
+import { prependPathEnv, writeSlockWrapper } from '../dist/runtime/slock-wrapper.js';
+
+test('rewriteAgentPath preserves query strings and normalizes receive', () => {
+  const agentId = 'agent 1';
+
+  assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/history', '?channel=%23general&limit=20', agentId),
+    '/internal/agent-api/history?channel=%23general&limit=20',
+  );
+
+  assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/receive', '?limit=10', agentId),
+    '/internal/agent-api/events?limit=10&since=latest',
+  );
+
+  assert.equal(
+    rewriteAgentPath('/api/attachments/file-1/download', '?inline=1', agentId),
+    '/internal/agent-api/attachments/file-1/download?inline=1',
+  );
+});
+
+test('writeSlockWrapper writes wrappers and proxy token', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-wrapper-'));
+  try {
+    const workspace = join(root, 'workspace');
+    const tokenHome = join(root, 'tokens');
+    const result = writeSlockWrapper({
+      workspacePath: workspace,
+      tokenHome,
+      launchId: 'pid-test',
+      proxyUrl: 'http://127.0.0.1:3456',
+      proxyToken: 'sap_test_token',
+      activeCapabilities: 'send,read',
+      cliPath: 'D:/repo/dist/slock-cli.js',
+      credential: {
+        agentId: 'agent-123',
+        serverId: 'server-123',
+        token: 'sk_machine_secret',
+        serverUrl: 'https://api.slock.ai',
+      },
+    });
+
+    assert.equal(readFileSync(result.tokenFile, 'utf-8'), 'sap_test_token');
+    assert.match(readFileSync(result.bashWrapper, 'utf-8'), /SLOCK_AGENT_PROXY_URL='http:\/\/127\.0\.0\.1:3456'/);
+    assert.match(readFileSync(result.cmdWrapper, 'utf-8'), /set "SLOCK_AGENT_ID=agent-123"/);
+    assert.match(readFileSync(result.psWrapper, 'utf-8'), /\$env:SLOCK_SERVER_URL='https:\/\/api\.slock\.ai'/);
+    assert.equal(prependPathEnv(result.wrapperDir, 'BASE'), `${result.wrapperDir}${process.platform === 'win32' ? ';' : ':'}BASE`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

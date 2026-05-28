@@ -4,11 +4,15 @@
   "description": "Minimal Slock Agent Daemon — architecture based on opencan-daemon",
   "main": "dist/cmd/main.js",
   "bin": {
-    "aaa-daemon": "dist/cmd/main.js"
+    "aaa-daemon": "dist/cmd/main.js",
+    "slock": "dist/slock-cli.js",
+    "aaa-chat-bridge": "dist/chat-bridge.js"
   },
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:claude-e2e": "npm run build && node test/claude-spawn-e2e.mjs",
     "dev": "tsc --watch",
     "start": "node dist/cmd/main.js start --foreground",
     "daemon": "node dist/cmd/main.js start",
@@ -17,6 +21,7 @@
     "stop": "node dist/cmd/main.js stop"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^12.0.0",
     "ws": "^8.16.0"
   },

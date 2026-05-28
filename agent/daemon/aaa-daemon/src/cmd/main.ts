@@ -16,8 +16,14 @@ import { DaemonCore } from '../daemon/daemon.js';
 import { attach, isDaemonRunning, startDaemon } from '../attach/attach.js';
 import type { DaemonConfig } from '../types.js';
 import { readFileSync, existsSync } from 'fs';
+import { runReadOnlySmoke } from './smoke.js';
 
 const program = new Command();
+
+function collect(value: string, previous: string[]): string[] {
+  previous.push(value);
+  return previous;
+}
 
 program
   .name('aaa-daemon')
@@ -35,8 +41,14 @@ program
   .option('-s, --server <url>', 'Slock server URL', 'https://api.slock.ai')
   .option('-w, --ws <url>', 'WebSocket URL', 'wss://ws.slock.ai')
   .option('--agent-id <id>', 'Agent ID')
+  .option('--import-slock-runtime <path>', 'Import an existing Slock .slock runtime directory')
   .option('--pid-file <path>', 'PID file path', './aaa-daemon.pid')
   .option('--log-file <path>', 'Log file path')
+  .option('--workspace <path>', 'Workspace path for managed runtime files', process.cwd())
+  .option('--runtime <runtime>', 'Runtime driver to start (none|claude)', 'none')
+  .option('--runtime-command <command>', 'Runtime executable command')
+  .option('--runtime-command-arg <arg>', 'Runtime executable argument (repeatable)', collect, [])
+  .option('--runtime-model <model>', 'Claude runtime model')
   .option('--mcp', 'Enable MCP stdio bridge')
   .option('-v, --verbose', 'Verbose logging')
   .action(async (options) => {
@@ -70,7 +82,13 @@ program
       proxyPort: parseInt(options.proxyPort, 10),
       logLevel: options.verbose ? 'debug' : 'info',
       pidFile: options.pidFile,
+      importSlockRuntime: options.importSlockRuntime,
       logFile: options.logFile,
+      workspacePath: options.workspace,
+      runtime: options.runtime === 'claude' ? 'claude' : 'none',
+      runtimeCommand: options.runtimeCommand,
+      runtimeCommandArgs: options.runtimeCommandArg,
+      runtimeModel: options.runtimeModel,
     };
 
     const daemon = new DaemonCore(config);
@@ -106,6 +124,19 @@ program
   });
 
 // ── status ───────────────────────────────────────────────────
+
+program
+  .command('smoke')
+  .description('Run a read-only Slock smoke test through the local proxy')
+  .requiredOption('--import-slock-runtime <path>', 'Path to an existing Slock .slock runtime directory')
+  .option('--workspace <path>', 'Workspace path for temporary wrapper files')
+  .action(async (options) => {
+    const code = await runReadOnlySmoke({
+      importSlockRuntime: options.importSlockRuntime,
+      workspace: options.workspace,
+    });
+    process.exit(code);
+  });
 
 program
   .command('status')

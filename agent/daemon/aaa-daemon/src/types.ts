@@ -25,8 +25,20 @@ export interface DaemonConfig {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   /** Path to PID file */
   pidFile?: string;
+  /** Existing Slock .slock runtime directory to import credentials/proxy from */
+  importSlockRuntime?: string;
   /** Path to log file */
   logFile?: string;
+  /** Workspace where managed runtime files such as .slock wrappers are written */
+  workspacePath?: string;
+  /** Runtime driver to start after daemon setup */
+  runtime?: 'none' | 'claude';
+  /** Runtime executable; defaults to claude for Claude runtime */
+  runtimeCommand?: string;
+  /** Extra runtime executable args before daemon-managed args */
+  runtimeCommandArgs?: string[];
+  /** Optional model alias/name for Claude runtime */
+  runtimeModel?: string;
   /** Unix socket path (unused on Windows; falls back to TCP) */
   socketPath?: string;
 }

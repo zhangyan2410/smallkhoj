@@ -20,15 +20,15 @@ import { EventBuffer } from './event-buffer.js';
 
 // ── Path rewrite ─────────────────────────────────────────────
 
-function rewritePath(pathname: string, agentId: string): string {
+export function rewriteAgentPath(pathname: string, search: string, agentId: string): string {
   // Attachment download
   const attachMatch = /^\/api\/attachments\/([^/?]+)(.*)$/.exec(pathname);
   if (attachMatch) {
-    return `/internal/agent-api/attachments/${attachMatch[1]}${attachMatch[2] ?? ''}`;
+    return `/internal/agent-api/attachments/${attachMatch[1]}${attachMatch[2] ?? ''}${search}`;
   }
 
   const prefix = `/internal/agent/${encodeURIComponent(agentId)}`;
-  if (!pathname.startsWith(prefix)) return pathname;
+  if (!pathname.startsWith(prefix)) return `${pathname}${search}`;
 
   const suffix = pathname.slice(prefix.length);
 
@@ -38,31 +38,36 @@ function rewritePath(pathname: string, agentId: string): string {
   };
 
   // Simple exact matches
-  if (rewrites[suffix]) return rewrites[suffix];
+  if (rewrites[suffix]) return `${rewrites[suffix]}${search}`;
 
   // Prefix-based rewrites
-  if (suffix.startsWith('/history')) return `/internal/agent-api/history${suffix.slice('/history'.length)}`;
-  if (suffix.startsWith('/search')) return `/internal/agent-api/search${suffix.slice('/search'.length)}`;
-  if (suffix.startsWith('/channel-members')) return `/internal/agent-api/channel-members${suffix.slice('/channel-members'.length)}`;
-  if (suffix.startsWith('/profile')) return `/internal/agent-api${suffix}`;
-  if (suffix.startsWith('/integrations')) return `/internal/agent-api${suffix}`;
-  if (suffix.startsWith('/tasks')) return `/internal/agent-api${suffix}`;
-  if (suffix.startsWith('/reminders')) return `/internal/agent-api${suffix}`;
+  if (suffix.startsWith('/history')) return `/internal/agent-api/history${suffix.slice('/history'.length)}${search}`;
+  if (suffix.startsWith('/search')) return `/internal/agent-api/search${suffix.slice('/search'.length)}${search}`;
+  if (suffix.startsWith('/channel-members')) return `/internal/agent-api/channel-members${suffix.slice('/channel-members'.length)}${search}`;
+  if (suffix.startsWith('/profile')) return `/internal/agent-api${suffix}${search}`;
+  if (suffix.startsWith('/integrations')) return `/internal/agent-api${suffix}${search}`;
+  if (suffix.startsWith('/tasks')) return `/internal/agent-api${suffix}${search}`;
+  if (suffix.startsWith('/reminders')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/messages/') && suffix.endsWith('/reactions')) {
-    return `/internal/agent-api${suffix}`;
+    return `/internal/agent-api${suffix}${search}`;
   }
   if (suffix.startsWith('/channels/')) {
     const channelMatch = /^\/channels\/([^/]+)\/(join|leave)$/.exec(suffix);
-    if (channelMatch) return `/internal/agent-api/channels/${channelMatch[1]}/${channelMatch[2]}`;
+    if (channelMatch) return `/internal/agent-api/channels/${channelMatch[1]}/${channelMatch[2]}${search}`;
   }
 
-  if (suffix === '/upload') return '/internal/agent-api/upload';
-  if (suffix === '/resolve-channel') return '/internal/agent-api/resolve-channel';
-  if (suffix === '/threads/unfollow') return '/internal/agent-api/threads/unfollow';
-  if (suffix === '/prepare-action') return '/internal/agent-api/prepare-action';
-  if (suffix === '/receive' || suffix.startsWith('/receive?')) return '/internal/agent-api/events?since=latest';
+  if (suffix === '/upload') return `/internal/agent-api/upload${search}`;
+  if (suffix === '/resolve-channel') return `/internal/agent-api/resolve-channel${search}`;
+  if (suffix === '/threads/unfollow') return `/internal/agent-api/threads/unfollow${search}`;
+  if (suffix === '/prepare-action') return `/internal/agent-api/prepare-action${search}`;
+  if (suffix === '/receive') {
+    const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+    if (!params.has('since')) params.set('since', 'latest');
+    const query = params.toString();
+    return `/internal/agent-api/events${query ? `?${query}` : ''}`;
+  }
 
-  return pathname;
+  return `${pathname}${search}`;
 }
 
 // ── Response buffer targets ──────────────────────────────────
@@ -173,7 +178,7 @@ export class AgentProxy extends EventEmitter {
     const target = new URL(req.url ?? '/', reg.credential.serverUrl);
 
     // Rewrite path
-    const rewritten = rewritePath(target.pathname, reg.credential.agentId);
+    const rewritten = rewriteAgentPath(target.pathname, target.search, reg.credential.agentId);
     const upstreamUrl = new URL(rewritten, reg.credential.serverUrl);
 
     // Build upstream headers
@@ -189,6 +194,7 @@ export class AgentProxy extends EventEmitter {
     for (const [name, value] of Object.entries(req.headers)) {
       const lower = name.toLowerCase();
       if (lower === 'host' || lower === 'authorization' || lower === 'content-length') continue;
+      if (lower === 'x-agent-id' || lower === 'x-slock-client' || lower === 'x-slock-agent-active-capabilities') continue;
       if (typeof value === 'string') {
         upstreamHeaders[name] = value;
       }
@@ -209,9 +215,10 @@ export class AgentProxy extends EventEmitter {
       });
 
       // For buffered paths, read full response to consume into inbox
-      if (BUFFER_PATHS.has(rewritten) && upstreamRes.headers.get('content-type')?.includes('json')) {
+      const rewrittenPathname = new URL(rewritten, reg.credential.serverUrl).pathname;
+      if (BUFFER_PATHS.has(rewrittenPathname) && upstreamRes.headers.get('content-type')?.includes('json')) {
         const text = await upstreamRes.text();
-        this.consumeResponse(rewritten, target, text);
+        this.consumeResponse(rewrittenPathname, target, text);
 
         // Forward response headers (minus decoded ones)
         const resHeaders: Record<string, string> = {};

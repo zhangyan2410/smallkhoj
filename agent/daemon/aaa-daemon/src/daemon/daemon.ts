@@ -18,6 +18,9 @@ import { WebSocketManager } from '../websocket.js';
 import { MCPBridge } from '../mcp-bridge.js';
 import { ClientHandler } from './client-handler.js';
 import { SessionManager } from './session-manager.js';
+import { writeSlockWrapper } from '../runtime/slock-wrapper.js';
+import { ClaudeRuntimeDriver } from '../runtime/claude-runtime.js';
+import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
 
 interface LogEntry {
   timestamp: string;
@@ -31,6 +34,7 @@ export class DaemonCore extends EventEmitter {
   private proxy: AgentProxy;
   private wsManager: WebSocketManager | null = null;
   private mcpBridge: MCPBridge | null = null;
+  private runtimeDriver: ClaudeRuntimeDriver | null = null;
   private clientHandler: ClientHandler;
   private sessionManager = new SessionManager();
   private logBuffer: LogEntry[] = [];
@@ -90,6 +94,46 @@ export class DaemonCore extends EventEmitter {
     });
     this.log(`Proxy token registered: ${this.proxyToken.slice(0, 12)}...`, 'info');
 
+    const wrapper = writeSlockWrapper({
+      workspacePath: this.config.workspacePath ?? process.cwd(),
+      proxyUrl: this.proxy.getProxyUrl(),
+      proxyToken: this.proxyToken,
+      credential: this.credential,
+      activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+    });
+    this.log(`slock wrapper generated in ${wrapper.wrapperDir}`, 'info');
+
+    if (this.config.runtime === 'claude') {
+      this.runtimeDriver = new ClaudeRuntimeDriver({
+        credential: this.credential,
+        workspacePath: this.config.workspacePath ?? process.cwd(),
+        wrapperDir: wrapper.wrapperDir,
+        model: this.config.runtimeModel,
+        command: this.config.runtimeCommand,
+        commandArgs: this.config.runtimeCommandArgs,
+      });
+      this.runtimeDriver.on('line', (event) => {
+        this.log(`Claude runtime ${event.stream}: ${event.line}`, 'debug');
+        if (event.stream === 'stderr') {
+          console.error(`[Daemon] Claude runtime stderr: ${event.line}`);
+        }
+        this.emit('runtime_line', event);
+      });
+      this.runtimeDriver.on('exit', (event) => {
+        this.log(`Claude runtime exited: code=${event.code} signal=${event.signal}`, 'warn');
+        console.error(`[Daemon] Claude runtime exited: code=${event.code} signal=${event.signal}`);
+        this.emit('runtime_exit', event);
+      });
+      this.runtimeDriver.on('error', (err) => {
+        this.log(`Claude runtime error: ${(err as Error).message}`, 'error');
+        console.error('[Daemon] Claude runtime error:', (err as Error).message);
+        this.emit('runtime_error', err);
+      });
+      this.runtimeDriver.start();
+      this.log(`Claude runtime started: pid=${this.runtimeDriver.pid ?? 'unknown'}`, 'info');
+      console.error(`[Daemon] Claude runtime started: pid=${this.runtimeDriver.pid ?? 'unknown'}`);
+    }
+
     // 5. Start WebSocket
     this.wsManager = new WebSocketManager(this.credential);
     this.wsManager.on('event', (event) => {
@@ -102,20 +146,7 @@ export class DaemonCore extends EventEmitter {
     // Only in --mcp mode
     if (process.env.AAA_DAEMON_MCP === '1') {
       this.mcpBridge = new MCPBridge();
-      this.mcpBridge.on('tool_call', (call) => {
-        this.log(`MCP tool call: ${call.method}`, 'debug');
-        void this.clientHandler.handleMessage({
-          jsonrpc: '2.0',
-          id: call.id,
-          method: call.method,
-          params: call.params,
-        }).then((response) => {
-          if (response) {
-            process.stdout.write(JSON.stringify(response) + '\n');
-          }
-        });
-      });
-      this.mcpBridge.start();
+      await this.mcpBridge.start();
       this.log('MCP bridge started', 'info');
     }
 
@@ -140,7 +171,8 @@ export class DaemonCore extends EventEmitter {
     this.isRunning = false;
 
     this.wsManager?.disconnect();
-    this.mcpBridge?.stop();
+    this.runtimeDriver?.stop();
+    void this.mcpBridge?.stop();
     this.proxy.stop();
     this.removePidFile();
 
@@ -153,6 +185,12 @@ export class DaemonCore extends EventEmitter {
   // ── Credential ─────────────────────────────────────────────
 
   private loadCredential(): Credential | null {
+    if (this.config.importSlockRuntime) {
+      const imported = importSlockRuntime(this.config.importSlockRuntime);
+      this.log(`Imported Slock runtime credentials from ${imported.source}`, 'info');
+      return imported.credential;
+    }
+
     const credPath = this.config.credentialPath;
 
     if (existsSync(credPath)) {
