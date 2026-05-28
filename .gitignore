@@ -8,6 +8,7 @@ __pycache__/
 # Node
 node_modules/
 .next/
+agent/daemon/aaa-daemon/dist/
 
 # IDE
 .idea/

@@ -6,6 +6,7 @@
 
 import http from 'http';
 import https from 'https';
+import type { OutgoingHttpHeaders } from 'http';
 import { URL } from 'url';
 import { EventEmitter } from 'events';
 import type { Credential } from './types.js';
@@ -33,21 +34,20 @@ export class AgentProxy extends EventEmitter {
 
   private handleRequest(clientReq: http.IncomingMessage, clientRes: http.ServerResponse): void {
     const targetUrl = new URL(this.credential.serverUrl);
+    const headers: OutgoingHttpHeaders = {
+      ...clientReq.headers,
+      'Authorization': `Bearer ${this.credential.token}`,
+      'X-Agent-ID': this.credential.agentId,
+      'X-Client-Version': 'aaa-daemon/0.1.0',
+      'X-Freshness-Seq': String(this.lastSeq),
+    };
     const options: https.RequestOptions = {
       hostname: targetUrl.hostname,
       port: targetUrl.port || (targetUrl.protocol === 'https:' ? 443 : 80),
       path: clientReq.url,
       method: clientReq.method,
-      headers: {
-        ...clientReq.headers,
-        'Authorization': `Bearer ${this.credential.token}`,
-        'X-Agent-ID': this.credential.agentId,
-        'X-Client-Version': 'aaa-daemon/0.1.0',
-      },
+      headers,
     };
-
-    // Freshness check header
-    options.headers!['X-Freshness-Seq'] = String(this.lastSeq);
 
     const proxyReq = (targetUrl.protocol === 'https:' ? https : http).request(options, (proxyRes) => {
       // Check for freshness hold

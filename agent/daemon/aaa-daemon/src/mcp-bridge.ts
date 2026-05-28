@@ -55,10 +55,10 @@ export class MCPBridge extends EventEmitter {
 
     if ('method' in mcpMsg) {
       // Request or notification from client
-      this.handleRequest(mcpMsg as MCPRequest);
+      this.handleRequest(mcpMsg as unknown as MCPRequest);
     } else if ('id' in mcpMsg && ('result' in mcpMsg || 'error' in mcpMsg)) {
       // Response from client
-      const response = mcpMsg as MCPResponse;
+      const response = mcpMsg as unknown as MCPResponse;
       const resolver = this.pendingRequests.get(response.id);
       if (resolver) {
         resolver(response);
