@@ -150,6 +150,7 @@ Implemented:
 - The suite includes Windows `slock.cmd` managed-proxy import with and without `claude-mcp-config.json`.
 - The suite includes macOS/Linux `slock` managed-proxy import with and without `claude-mcp-config.json`.
 - The real Claude E2E script exists but is not part of default tests because it may call the real Claude CLI/model.
+- On macOS, the real Claude E2E script succeeded after marking the temporary fake `slock` bash wrapper executable. Claude called `slock message check --limit 1` from the injected PATH.
 - The CLI suite covers write-gated task, channel, reaction, profile, integration, reminder, and attachment commands against a fake local Slock API through `AgentProxy`.
 
 ## Open Risks

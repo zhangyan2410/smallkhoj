@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
@@ -46,6 +46,7 @@ writeFileSync(join(wrapperDir, 'slock'), [
   'printf \'{"events":[],"source":"fake-slock"}\\n\'',
   '',
 ].join('\n'), 'utf-8');
+chmodSync(join(wrapperDir, 'slock'), 0o755);
 
 const env = {
   ...process.env,
