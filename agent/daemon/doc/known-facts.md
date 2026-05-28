@@ -63,6 +63,27 @@ Observed non-sensitive result shape:
 
 The smoke command calls only `server info` and does not send a chat message.
 
+On macOS, the read-only smoke command succeeded against the existing local Claude Slock runtime:
+
+```bash
+node dist/cmd/main.js smoke --import-slock-runtime "/Users/<you>/.slock/agents/<agent-id>/.slock"
+```
+
+Observed non-sensitive result shape:
+
+```json
+{
+  "ok": true,
+  "source": "managed-proxy",
+  "serverUrl": "https://api.slock.ai",
+  "channels": 2,
+  "agents": 6,
+  "humans": 1
+}
+```
+
+The macOS smoke command also calls only `server info` and does not send a chat message.
+
 ## Implemented aaa-daemon Facts
 
 - `aaa-daemon start` defaults to `--runtime none`.
