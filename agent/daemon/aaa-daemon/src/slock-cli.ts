@@ -18,7 +18,8 @@ interface CliRequest {
   safety?: SafetyCheck;
   multipartUpload?: {
     filePath: string;
-    channelTarget: string;
+    channelTarget?: string;
+    fieldName: string;
     mimeType?: string;
   };
   rawOutputFile?: string;
@@ -367,14 +368,29 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
   }
 
   if (group === 'profile' && command === 'update') {
+    const avatarFile = getOption(rest, '--avatar-file');
+    if (avatarFile) {
+      return {
+        method: 'POST',
+        path: `${agentPrefix}/profile/avatar`,
+        multipartUpload: {
+          filePath: avatarFile,
+          fieldName: 'avatar',
+          mimeType: getOption(rest, '--mime-type') ?? getOption(rest, '--content-type'),
+        },
+        safety: writeSafety('profile'),
+      };
+    }
+
     const body = compactBody({
       displayName: getOption(rest, '--display-name'),
-      bio: getOption(rest, '--bio'),
+      description: getOption(rest, '--description') ?? getOption(rest, '--bio'),
+      avatarUrl: getOption(rest, '--avatar-url'),
       status: getOption(rest, '--status'),
       data: parseJsonOption(rest, '--json'),
     });
     if (Object.keys(body).length === 0) throw Object.assign(new Error('Missing profile update fields'), { code: 'MISSING_UPDATE_FIELDS' });
-    return { method: 'PATCH', path: `${agentPrefix}/profile`, body, safety: writeSafety('profile') };
+    return { method: 'POST', path: `${agentPrefix}/profile`, body, safety: writeSafety('profile') };
   }
 
   if (group === 'integration' && command === 'list') {
@@ -382,13 +398,21 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
   }
 
   if (group === 'integration' && command === 'login') {
-    const provider = getOption(rest, '--provider') ?? positionalArgs(rest)[0];
-    if (!provider) throw Object.assign(new Error('Missing --provider'), { code: 'MISSING_PROVIDER' });
+    const service = getOption(rest, '--service') ?? getOption(rest, '--provider') ?? positionalArgs(rest)[0];
+    if (!service) throw Object.assign(new Error('Missing --service'), { code: 'MISSING_PROVIDER' });
+    const scopes = getOptions(rest, '--scope')
+      .flatMap((value) => value.split(','))
+      .map((value) => value.trim())
+      .filter(Boolean);
     return {
       method: 'POST',
-      path: `${agentPrefix}/integrations/${encodeURIComponent(provider)}/login`,
-      body: compactBody({ provider, redirectUrl: getOption(rest, '--redirect-url') }),
-      safety: writeSafety(`integration:${provider}`),
+      path: `${agentPrefix}/integrations/login`,
+      body: compactBody({
+        service,
+        scopes: scopes.length > 0 ? scopes : undefined,
+        redirectUrl: getOption(rest, '--redirect-url'),
+      }),
+      safety: writeSafety(`integration:${service}`),
     };
   }
 
@@ -470,6 +494,7 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
       multipartUpload: {
         filePath: path,
         channelTarget: target,
+        fieldName: 'file',
         mimeType: getOption(rest, '--mime-type') ?? getOption(rest, '--content-type'),
       },
       safety: writeSafety(target),
@@ -506,30 +531,31 @@ export async function runSlockCli(argv: string[], io: {
         throw Object.assign(new Error('Refusing to upload a 0-byte attachment'), { code: 'INVALID_FILE' });
       }
 
-      const resolved = await fetch(new URL(`/internal/agent/${encodeURIComponent(requireEnv(cliEnv, 'SLOCK_AGENT_ID'))}/resolve-channel`, proxyUrl), {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-Agent-Id': requireEnv(cliEnv, 'SLOCK_AGENT_ID'),
-        },
-        body: JSON.stringify({ target: upload.channelTarget }),
-      });
-      const resolvedText = await resolved.text();
-      if (!resolved.ok) {
-        err.write(resolvedText || JSON.stringify({ ok: false, code: `HTTP_${resolved.status}` }) + '\n');
-        return 1;
-      }
-      const channelId = (JSON.parse(resolvedText) as { channelId?: string }).channelId;
-      if (!channelId) {
-        throw Object.assign(new Error(`Could not resolve channel: ${upload.channelTarget}`), { code: 'RESOLVE_FAILED' });
-      }
-
       const buffer = readFileSync(upload.filePath);
       const filename = basename(upload.filePath);
       const form = new FormData();
-      form.append('file', new Blob([buffer], { type: inferMimeType(filename, buffer, upload.mimeType) }), filename);
-      form.append('channelId', channelId);
+      form.append(upload.fieldName, new Blob([buffer], { type: inferMimeType(filename, buffer, upload.mimeType) }), filename);
+      if (upload.channelTarget) {
+        const resolved = await fetch(new URL(`/internal/agent/${encodeURIComponent(requireEnv(cliEnv, 'SLOCK_AGENT_ID'))}/resolve-channel`, proxyUrl), {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Agent-Id': requireEnv(cliEnv, 'SLOCK_AGENT_ID'),
+          },
+          body: JSON.stringify({ target: upload.channelTarget }),
+        });
+        const resolvedText = await resolved.text();
+        if (!resolved.ok) {
+          err.write(resolvedText || JSON.stringify({ ok: false, code: `HTTP_${resolved.status}` }) + '\n');
+          return 1;
+        }
+        const channelId = (JSON.parse(resolvedText) as { channelId?: string }).channelId;
+        if (!channelId) {
+          throw Object.assign(new Error(`Could not resolve channel: ${upload.channelTarget}`), { code: 'RESOLVE_FAILED' });
+        }
+        form.append('channelId', channelId);
+      }
       if (upload.mimeType) form.append('mimeType', upload.mimeType);
       const response = await fetch(new URL(request.path, proxyUrl), {
         method: request.method,

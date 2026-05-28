@@ -233,11 +233,15 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
       res.end(JSON.stringify({ profile: JSON.parse(body) }));
       return;
     }
+    if (url.pathname === '/internal/agent-api/profile/avatar') {
+      res.end(JSON.stringify({ avatar: req.headers['content-type']?.startsWith('multipart/form-data') ?? false }));
+      return;
+    }
     if (url.pathname === '/internal/agent-api/integrations') {
       res.end(JSON.stringify({ integrations: [] }));
       return;
     }
-    if (url.pathname === '/internal/agent-api/integrations/github/login') {
+    if (url.pathname === '/internal/agent-api/integrations/login') {
       res.end(JSON.stringify({ login: 'github', body: JSON.parse(body) }));
       return;
     }
@@ -368,9 +372,13 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(updateProfile.code, 0, updateProfile.stderr);
     assert.deepEqual(JSON.parse(updateProfile.stdout), { profile: { status: 'busy' } });
 
-    const integrationLogin = await runCli(['integration', 'login', '--provider', 'github'], env);
+    const avatarProfile = await runCli(['profile', 'update', '--avatar-file', uploadFile], env);
+    assert.equal(avatarProfile.code, 0, avatarProfile.stderr);
+    assert.deepEqual(JSON.parse(avatarProfile.stdout), { avatar: true });
+
+    const integrationLogin = await runCli(['integration', 'login', '--service', 'github', '--scope', 'repo,read:user'], env);
     assert.equal(integrationLogin.code, 0, integrationLogin.stderr);
-    assert.deepEqual(JSON.parse(integrationLogin.stdout), { login: 'github', body: { provider: 'github' } });
+    assert.deepEqual(JSON.parse(integrationLogin.stdout), { login: 'github', body: { service: 'github', scopes: ['repo', 'read:user'] } });
 
     const createReminder = await runCli(['reminder', 'schedule', '--channel', '#general', '--fire-at', '2030-01-01T00:00:00Z', '--title', 'standup'], env);
     assert.equal(createReminder.code, 0, createReminder.stderr);
@@ -533,7 +541,7 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
         body: JSON.stringify({ reaction: '+1' }),
       },
       {
-        method: 'PATCH',
+        method: 'POST',
         url: '/internal/agent-api/profile',
         auth: 'Bearer sk_machine_real',
         agent: 'agent-1',
@@ -542,11 +550,19 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
       },
       {
         method: 'POST',
-        url: '/internal/agent-api/integrations/github/login',
+        url: '/internal/agent-api/profile/avatar',
         auth: 'Bearer sk_machine_real',
         agent: 'agent-1',
         capabilities: 'send,read,mentions,tasks,reactions,server,channels',
-        body: JSON.stringify({ provider: 'github' }),
+        body: upstreamRequests[upstreamRequests.findIndex((item) => item.url === '/internal/agent-api/profile/avatar')].body,
+      },
+      {
+        method: 'POST',
+        url: '/internal/agent-api/integrations/login',
+        auth: 'Bearer sk_machine_real',
+        agent: 'agent-1',
+        capabilities: 'send,read,mentions,tasks,reactions,server,channels',
+        body: JSON.stringify({ service: 'github', scopes: ['repo', 'read:user'] }),
       },
       {
         method: 'POST',

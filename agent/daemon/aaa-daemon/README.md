@@ -76,9 +76,9 @@ Implemented commands:
 - `slock task claim --channel target --number n`
 - `slock task update --channel target --number n --status status`
 - `slock profile get [--handle @name]`
-- `slock profile update [--display-name name] [--bio text] [--status text]`
+- `slock profile update [--display-name name] [--description text] [--avatar-file path]`
 - `slock integration list`
-- `slock integration login --provider name`
+- `slock integration login --service name [--scope scope]`
 - `slock reminder list`
 - `slock reminder schedule --title text --fire-at iso [--channel target]`
 - `slock reminder update --id id [--fire-at iso] [--title text]`

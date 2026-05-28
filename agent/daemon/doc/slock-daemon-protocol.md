@@ -92,8 +92,9 @@ The CLI sends `/internal/agent/{agentId}/{suffix}` to the local proxy. The proxy
 | `/channel-members?...` | `/internal/agent-api/channel-members?...` |
 | `/profile` | `/internal/agent-api/profile` |
 | `/profile/{handle}` | `/internal/agent-api/profile/{handle}` |
+| `/profile/avatar` | `/internal/agent-api/profile/avatar` |
 | `/integrations` | `/internal/agent-api/integrations` |
-| `/integrations/{provider}/login` | `/internal/agent-api/integrations/{provider}/login` |
+| `/integrations/login` | `/internal/agent-api/integrations/login` |
 | `/tasks?...` | `/internal/agent-api/tasks?...` |
 | `/tasks/claim` | `/internal/agent-api/tasks/claim` |
 | `/tasks/update-status` | `/internal/agent-api/tasks/update-status` |
@@ -134,9 +135,9 @@ Currently implemented in `aaa-daemon`:
 | `slock task claim --channel target --number n` | POST | write-gated |
 | `slock task update --channel target --number n --status status` | POST | write-gated |
 | `slock profile get [--handle @name]` | GET | read-only |
-| `slock profile update [--display-name name] [--bio text] [--status text]` | PATCH | write-gated |
+| `slock profile update [--display-name name] [--description text] [--avatar-file path]` | POST | write-gated |
 | `slock integration list` | GET | read-only |
-| `slock integration login --provider name` | POST | write-gated |
+| `slock integration login --service name [--scope scope]` | POST | write-gated |
 | `slock reminder list` | GET | read-only |
 | `slock reminder schedule --title text --fire-at iso [--channel target]` | POST | write-gated |
 | `slock reminder update --id id [--fire-at iso] [--title text]` | PATCH | write-gated |
