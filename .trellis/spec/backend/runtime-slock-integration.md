@@ -35,7 +35,7 @@ Future environment support must validate:
 
 ### 2. Signatures
 
-- CLI entry: `slock message check|send|read|search`, `slock channel members`, `slock server info`, `slock task list`, `slock profile get`, `slock integration list`, `slock reminder list`
+- CLI entry: `slock message check|send|read|search|react`, `slock channel members|join|leave`, `slock server info`, `slock task list|create|claim|update`, `slock profile get|update`, `slock integration list|login`, `slock reminder list|create|update|delete`, `slock attachment download|upload`
 - Daemon runtime flags:
   - `aaa-daemon start --runtime none` (default)
   - `aaa-daemon start --runtime claude`
@@ -85,6 +85,10 @@ Future environment support must validate:
   - `profile get [--handle <handle>]` -> `/profile` or `/profile/{handle}`
   - `integration list` -> `/integrations`
   - `reminder list` -> `/reminders`
+- Write-capable CLI commands must require explicit opt-in before making local proxy requests:
+  - `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`
+  - optional target guard: `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`
+- Attachment upload currently forwards metadata (`path`, `name`, `contentType`, `size`) to `/attachments`; real binary/multipart upload still needs upstream validation before large-file use.
 
 ### 4. Validation & Error Matrix
 
@@ -95,6 +99,8 @@ Future environment support must validate:
 - Missing send content -> CLI exits non-zero with JSON error code `MISSING_CONTENT`.
 - Missing `--query` for `slock message search` -> CLI exits non-zero with JSON error code `MISSING_QUERY`.
 - Missing `--channel` for `slock channel members` -> CLI exits non-zero with JSON error code `MISSING_CHANNEL`.
+- Missing write opt-in for write-capable commands -> CLI exits non-zero with JSON error code `WRITES_NOT_ALLOWED`.
+- Target rejected by write allowlist -> CLI exits non-zero with JSON error code `WRITE_TARGET_NOT_ALLOWED`.
 - Invalid local proxy token -> proxy returns HTTP 401 JSON error `invalid_agent_proxy_token`.
 - Imported MCP `--auth-token` used as direct agent-api bearer token -> upstream may return `invalid_principal`; fix by importing managed proxy credentials or minting a self-managed `sk_agent_*` profile.
 - MCP `tools/list` must list only `runtime_profile_migration_done` for the compatibility bridge.

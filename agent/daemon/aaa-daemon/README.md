@@ -67,13 +67,28 @@ Implemented commands:
 - `slock message read [--channel target] [--limit n]`
 - `slock message search --query text [--channel target] [--limit n]`
 - `slock message send --target target [content]`
+- `slock message react --message-id id --reaction value [--remove]`
 - `slock channel members --channel target`
+- `slock channel join --channel target`
+- `slock channel leave --channel target`
 - `slock task list [--channel target]`
+- `slock task create --channel target --title title`
+- `slock task claim --id id [--assignee handle]`
+- `slock task update --id id [--status status] [--title title]`
 - `slock profile get [--handle @name]`
+- `slock profile update [--display-name name] [--bio text] [--status text]`
 - `slock integration list`
+- `slock integration login --provider name`
 - `slock reminder list`
+- `slock reminder create --at time --text text [--channel target]`
+- `slock reminder update --id id [--at time] [--text text] [--done]`
+- `slock reminder delete --id id`
+- `slock attachment download --id id [--inline]`
+- `slock attachment upload --target target --file path [--name name]`
 
-Write-capable operations other than `message send` are intentionally not implemented yet. That includes task claim/update, channel join/leave, reactions, profile update, reminder create/update/delete, and attachment upload.
+Write-capable operations require `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`. They can also be constrained with `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`.
+
+Attachment upload currently sends file metadata through the local proxy. Validate upstream binary/multipart behavior before relying on it for large files.
 
 ## Runtime Import
 
