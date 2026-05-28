@@ -158,4 +158,4 @@ Implemented:
 - Real write-capable commands against Slock should remain behind explicit opt-in and a target allowlist.
 - Real write-capable commands other than attachment upload still need carefully targeted manual validation with `SLOCK_ALLOW_WRITES=1` and an allowlist.
 - WSL path conversion has not been validated.
-- Real Claude Code end-to-end behavior beyond controlled fake Claude tests still needs explicit manual validation.
+- Real Claude Code end-to-end behavior with live Slock write targets beyond the validated attachment upload path still needs carefully targeted manual validation.
