@@ -14,13 +14,14 @@ interface CliRequest {
   method: string;
   path: string;
   body?: unknown;
+  safety?: SafetyCheck;
 }
 
 function printUsage(): never {
   stderr.write(JSON.stringify({
     ok: false,
     code: 'USAGE',
-    message: 'Usage: slock message check|send|read|search, slock channel members, slock server info, slock task list, slock profile get, slock integration list, slock reminder list',
+    message: 'Usage: slock message check|send|read|search|react, slock channel members|join|leave, slock server info, slock task list|claim|update|create, slock profile get|update, slock integration list|login, slock reminder list|create|update|delete, slock attachment download|upload',
   }) + '\n');
   exit(2);
 }
@@ -59,6 +60,10 @@ function getOption(args: string[], name: string): string | undefined {
   return args[index + 1];
 }
 
+function hasFlag(args: string[], name: string): boolean {
+  return args.includes(name);
+}
+
 function positionalArgs(args: string[]): string[] {
   const positions: string[] = [];
   for (let i = 0; i < args.length; i += 1) {
@@ -70,6 +75,67 @@ function positionalArgs(args: string[]): string[] {
     positions.push(arg);
   }
   return positions;
+}
+
+function parseJsonOption(args: string[], name: string): unknown | undefined {
+  const value = getOption(args, name);
+  if (!value) return undefined;
+  try {
+    return JSON.parse(value);
+  } catch (err) {
+    throw Object.assign(new Error(`Invalid ${name} JSON: ${(err as Error).message}`), {
+      code: 'INVALID_JSON',
+    });
+  }
+}
+
+function maybeNumber(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    throw Object.assign(new Error(`Expected numeric value, got ${value}`), {
+      code: 'INVALID_NUMBER',
+    });
+  }
+  return num;
+}
+
+function compactBody(values: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
+}
+
+interface SafetyCheck {
+  kind: 'write';
+  resources: string[];
+}
+
+function writeSafety(...resources: Array<string | undefined>): SafetyCheck {
+  return { kind: 'write', resources: resources.filter((value): value is string => !!value) };
+}
+
+function assertWriteAllowed(request: CliRequest, source: NodeJS.ProcessEnv): void {
+  if (!request.safety) return;
+
+  if (source.SLOCK_ALLOW_WRITES !== '1' && source.AAA_DAEMON_ALLOW_WRITES !== '1') {
+    throw Object.assign(new Error('Write-capable slock commands require SLOCK_ALLOW_WRITES=1'), {
+      code: 'WRITES_NOT_ALLOWED',
+    });
+  }
+
+  const allowlist = source.SLOCK_WRITE_TARGET_ALLOWLIST ?? source.AAA_DAEMON_WRITE_TARGET_ALLOWLIST;
+  if (!allowlist) return;
+
+  const allowed = allowlist.split(',').map((item) => item.trim()).filter(Boolean);
+  if (allowed.length === 0) return;
+
+  const denied = request.safety.resources.filter((resource) => (
+    !allowed.some((entry) => resource === entry || resource.startsWith(entry))
+  ));
+  if (denied.length > 0) {
+    throw Object.assign(new Error(`Write target is not allowlisted: ${denied.join(', ')}`), {
+      code: 'WRITE_TARGET_NOT_ALLOWED',
+    });
+  }
 }
 
 async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<CliRequest> {
@@ -91,7 +157,21 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     const inline = positionalArgs(rest).join(' ').trim();
     const content = inline || await readStdinText();
     if (!content) throw Object.assign(new Error('Missing message content'), { code: 'MISSING_CONTENT' });
-    return { method: 'POST', path: `${agentPrefix}/send`, body: { target, content } };
+    return { method: 'POST', path: `${agentPrefix}/send`, body: { target, content }, safety: writeSafety(target) };
+  }
+
+  if (group === 'message' && command === 'react') {
+    const messageId = getOption(rest, '--message-id') ?? getOption(rest, '--message') ?? getOption(rest, '-m') ?? positionalArgs(rest)[0];
+    const reaction = getOption(rest, '--reaction') ?? getOption(rest, '--emoji') ?? getOption(rest, '-r') ?? positionalArgs(rest)[1];
+    if (!messageId) throw Object.assign(new Error('Missing --message-id'), { code: 'MISSING_MESSAGE_ID' });
+    if (!reaction) throw Object.assign(new Error('Missing --reaction'), { code: 'MISSING_REACTION' });
+    const remove = hasFlag(rest, '--remove') || hasFlag(rest, '--delete');
+    return {
+      method: remove ? 'DELETE' : 'POST',
+      path: `${agentPrefix}/messages/${encodeURIComponent(messageId)}/reactions`,
+      body: remove ? { reaction } : { reaction },
+      safety: writeSafety(messageId),
+    };
   }
 
   if (group === 'message' && command === 'read') {
@@ -123,6 +203,16 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     return { method: 'GET', path: `${agentPrefix}/channel-members?${query}` };
   }
 
+  if (group === 'channel' && (command === 'join' || command === 'leave')) {
+    const channel = getOption(rest, '--channel') ?? getOption(rest, '--target') ?? getOption(rest, '-c') ?? positionalArgs(rest)[0];
+    if (!channel) throw Object.assign(new Error('Missing --channel'), { code: 'MISSING_CHANNEL' });
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/channels/${encodeURIComponent(channel)}/${command}`,
+      safety: writeSafety(channel),
+    };
+  }
+
   if (group === 'server' && command === 'info') {
     return { method: 'GET', path: `${agentPrefix}/server` };
   }
@@ -135,17 +225,161 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     return { method: 'GET', path: `${agentPrefix}/tasks${suffix ? `?${suffix}` : ''}` };
   }
 
+  if (group === 'task' && command === 'claim') {
+    const taskId = getOption(rest, '--id') ?? getOption(rest, '--task-id') ?? positionalArgs(rest)[0];
+    const assignee = getOption(rest, '--assignee') ?? getOption(rest, '-a');
+    if (!taskId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_TASK_ID' });
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/tasks/${encodeURIComponent(taskId)}/claim`,
+      body: compactBody({ assignee }),
+      safety: writeSafety(taskId),
+    };
+  }
+
+  if (group === 'task' && command === 'update') {
+    const taskId = getOption(rest, '--id') ?? getOption(rest, '--task-id') ?? positionalArgs(rest)[0];
+    if (!taskId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_TASK_ID' });
+    const title = getOption(rest, '--title');
+    const status = getOption(rest, '--status');
+    const assignee = getOption(rest, '--assignee') ?? getOption(rest, '-a');
+    const channel = getOption(rest, '--channel');
+    const body = compactBody({
+      title,
+      status,
+      assignee,
+      channel,
+      data: parseJsonOption(rest, '--json'),
+    });
+    if (Object.keys(body).length === 0) throw Object.assign(new Error('Missing task update fields'), { code: 'MISSING_UPDATE_FIELDS' });
+    return {
+      method: 'PATCH',
+      path: `${agentPrefix}/tasks/${encodeURIComponent(taskId)}`,
+      body,
+      safety: writeSafety(taskId, channel),
+    };
+  }
+
+  if (group === 'task' && command === 'create') {
+    const title = getOption(rest, '--title') ?? positionalArgs(rest).join(' ').trim();
+    const channel = getOption(rest, '--channel');
+    if (!title) throw Object.assign(new Error('Missing --title'), { code: 'MISSING_TITLE' });
+    if (!channel) throw Object.assign(new Error('Missing --channel'), { code: 'MISSING_CHANNEL' });
+    const body = compactBody({
+      title,
+      channel,
+      assignee: getOption(rest, '--assignee') ?? getOption(rest, '-a'),
+      status: getOption(rest, '--status'),
+      messageId: getOption(rest, '--message-id'),
+      data: parseJsonOption(rest, '--json'),
+    });
+    return { method: 'POST', path: `${agentPrefix}/tasks`, body, safety: writeSafety(channel) };
+  }
+
   if (group === 'profile' && command === 'get') {
     const handle = getOption(rest, '--handle') ?? getOption(rest, '-h') ?? positionalArgs(rest)[0];
     return { method: 'GET', path: `${agentPrefix}/profile${handle ? `/${encodeURIComponent(handle)}` : ''}` };
+  }
+
+  if (group === 'profile' && command === 'update') {
+    const body = compactBody({
+      displayName: getOption(rest, '--display-name'),
+      bio: getOption(rest, '--bio'),
+      status: getOption(rest, '--status'),
+      data: parseJsonOption(rest, '--json'),
+    });
+    if (Object.keys(body).length === 0) throw Object.assign(new Error('Missing profile update fields'), { code: 'MISSING_UPDATE_FIELDS' });
+    return { method: 'PATCH', path: `${agentPrefix}/profile`, body, safety: writeSafety('profile') };
   }
 
   if (group === 'integration' && command === 'list') {
     return { method: 'GET', path: `${agentPrefix}/integrations` };
   }
 
+  if (group === 'integration' && command === 'login') {
+    const provider = getOption(rest, '--provider') ?? positionalArgs(rest)[0];
+    if (!provider) throw Object.assign(new Error('Missing --provider'), { code: 'MISSING_PROVIDER' });
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/integrations/${encodeURIComponent(provider)}/login`,
+      body: compactBody({ provider, redirectUrl: getOption(rest, '--redirect-url') }),
+      safety: writeSafety(`integration:${provider}`),
+    };
+  }
+
   if (group === 'reminder' && command === 'list') {
     return { method: 'GET', path: `${agentPrefix}/reminders` };
+  }
+
+  if (group === 'reminder' && command === 'create') {
+    const text = getOption(rest, '--text') ?? getOption(rest, '--message') ?? positionalArgs(rest).join(' ').trim();
+    const at = getOption(rest, '--at');
+    const channel = getOption(rest, '--channel');
+    if (!text) throw Object.assign(new Error('Missing --text'), { code: 'MISSING_TEXT' });
+    if (!at) throw Object.assign(new Error('Missing --at'), { code: 'MISSING_AT' });
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/reminders`,
+      body: compactBody({ text, at, channel, data: parseJsonOption(rest, '--json') }),
+      safety: writeSafety(channel ?? 'reminder'),
+    };
+  }
+
+  if (group === 'reminder' && command === 'update') {
+    const reminderId = getOption(rest, '--id') ?? getOption(rest, '--reminder-id') ?? positionalArgs(rest)[0];
+    if (!reminderId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_REMINDER_ID' });
+    const body = compactBody({
+      text: getOption(rest, '--text') ?? getOption(rest, '--message'),
+      at: getOption(rest, '--at'),
+      channel: getOption(rest, '--channel'),
+      done: hasFlag(rest, '--done') ? true : undefined,
+      data: parseJsonOption(rest, '--json'),
+    });
+    if (Object.keys(body).length === 0) throw Object.assign(new Error('Missing reminder update fields'), { code: 'MISSING_UPDATE_FIELDS' });
+    return {
+      method: 'PATCH',
+      path: `${agentPrefix}/reminders/${encodeURIComponent(reminderId)}`,
+      body,
+      safety: writeSafety(reminderId),
+    };
+  }
+
+  if (group === 'reminder' && (command === 'delete' || command === 'remove')) {
+    const reminderId = getOption(rest, '--id') ?? getOption(rest, '--reminder-id') ?? positionalArgs(rest)[0];
+    if (!reminderId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_REMINDER_ID' });
+    return {
+      method: 'DELETE',
+      path: `${agentPrefix}/reminders/${encodeURIComponent(reminderId)}`,
+      safety: writeSafety(reminderId),
+    };
+  }
+
+  if (group === 'attachment' && command === 'download') {
+    const attachmentId = getOption(rest, '--id') ?? getOption(rest, '--attachment-id') ?? positionalArgs(rest)[0];
+    if (!attachmentId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_ATTACHMENT_ID' });
+    const query = new URLSearchParams();
+    if (hasFlag(rest, '--inline')) query.set('inline', '1');
+    const suffix = query.toString();
+    return { method: 'GET', path: `/api/attachments/${encodeURIComponent(attachmentId)}/download${suffix ? `?${suffix}` : ''}` };
+  }
+
+  if (group === 'attachment' && command === 'upload') {
+    const target = getOption(rest, '--target') ?? getOption(rest, '-t');
+    const path = getOption(rest, '--file') ?? getOption(rest, '--path') ?? positionalArgs(rest)[0];
+    if (!target) throw Object.assign(new Error('Missing --target'), { code: 'MISSING_TARGET' });
+    if (!path) throw Object.assign(new Error('Missing --file'), { code: 'MISSING_FILE' });
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/attachments`,
+      body: compactBody({
+        target,
+        path,
+        name: getOption(rest, '--name'),
+        contentType: getOption(rest, '--content-type'),
+        size: maybeNumber(getOption(rest, '--size')),
+      }),
+      safety: writeSafety(target),
+    };
   }
 
   printUsage();
@@ -163,6 +397,7 @@ export async function runSlockCli(argv: string[], io: {
     const proxyUrl = requireEnv(cliEnv, 'SLOCK_AGENT_PROXY_URL');
     const token = readProxyToken(cliEnv);
     const request = await parseRequest(argv, cliEnv);
+    assertWriteAllowed(request, cliEnv);
     const response = await fetch(new URL(request.path, proxyUrl), {
       method: request.method,
       headers: {

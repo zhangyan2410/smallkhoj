@@ -24,6 +24,26 @@ test('rewriteAgentPath preserves query strings and normalizes receive', () => {
     rewriteAgentPath('/api/attachments/file-1/download', '?inline=1', agentId),
     '/internal/agent-api/attachments/file-1/download?inline=1',
   );
+
+  assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/attachments', '', agentId),
+    '/internal/agent-api/attachments',
+  );
+
+  assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/tasks/task-1/claim', '', agentId),
+    '/internal/agent-api/tasks/task-1/claim',
+  );
+
+  assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/messages/msg-1/reactions', '', agentId),
+    '/internal/agent-api/messages/msg-1/reactions',
+  );
+
+  assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/channels/%23general/join', '', agentId),
+    '/internal/agent-api/channels/%23general/join',
+  );
 });
 
 test('writeSlockWrapper writes wrappers and proxy token', () => {

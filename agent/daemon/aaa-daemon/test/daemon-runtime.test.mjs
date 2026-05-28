@@ -125,7 +125,7 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
     '--runtime-command-arg', fakeClaude,
   ], {
     cwd: resolve('.'),
-    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real' },
+    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real', SLOCK_ALLOW_WRITES: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });

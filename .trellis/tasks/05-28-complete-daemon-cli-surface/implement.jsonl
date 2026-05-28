@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/runtime-slock-integration.md","reason":"Defines aaa-daemon runtime, slock CLI, proxy, MCP, safety, and validation contracts."}
+{"file":"agent/daemon/doc/slock-daemon-protocol.md","reason":"Authoritative doc for implemented and missing CLI surface plus path rewrite rules."}
+{"file":"agent/daemon/doc/known-facts.md","reason":"Current real-runtime facts, smoke results, implemented commands, and open risks."}

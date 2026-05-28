@@ -48,6 +48,7 @@ export function rewriteAgentPath(pathname: string, search: string, agentId: stri
   if (suffix.startsWith('/integrations')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/tasks')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/reminders')) return `/internal/agent-api${suffix}${search}`;
+  if (suffix.startsWith('/attachments')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/messages/') && suffix.endsWith('/reactions')) {
     return `/internal/agent-api${suffix}${search}`;
   }

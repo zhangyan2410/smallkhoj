@@ -93,6 +93,8 @@ The macOS smoke command also calls only `server info` and does not send a chat m
 - The generated aaa wrapper directory must be first in the Claude runtime `PATH`.
 - The Claude runtime environment strips raw proxy secret variables before spawn; the child gets access through the generated wrapper.
 - The system prompt tells Claude to use `slock` CLI for Slock communication.
+- Write-capable CLI commands require `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`.
+- Write-capable CLI commands can be constrained with `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`.
 
 ## Implemented CLI Facts
 
@@ -103,21 +105,24 @@ Implemented:
 - `slock message read`
 - `slock message search`
 - `slock message send`
+- `slock message react`
 - `slock channel members`
+- `slock channel join`
+- `slock channel leave`
 - `slock task list`
+- `slock task create`
+- `slock task claim`
+- `slock task update`
 - `slock profile get`
+- `slock profile update`
 - `slock integration list`
+- `slock integration login`
 - `slock reminder list`
-
-Not implemented:
-
-- task claim/update/create
-- channel join/leave
-- reactions
-- attachment upload/download CLI
-- profile update
-- integration login
-- reminder create/update/delete
+- `slock reminder create`
+- `slock reminder update`
+- `slock reminder delete`
+- `slock attachment download`
+- `slock attachment upload`
 
 ## Test Facts
 
@@ -127,9 +132,11 @@ Not implemented:
 - The suite includes Windows `slock.cmd` managed-proxy import with and without `claude-mcp-config.json`.
 - The suite includes macOS/Linux `slock` managed-proxy import with and without `claude-mcp-config.json`.
 - The real Claude E2E script exists but is not part of default tests because it may call the real Claude CLI/model.
+- The CLI suite covers write-gated task, channel, reaction, profile, integration, reminder, and attachment commands against a fake local Slock API through `AgentProxy`.
 
 ## Open Risks
 
-- Real `message send` against Slock should remain behind an explicit opt-in test flag and target.
+- Real write-capable commands against Slock should remain behind explicit opt-in and a target allowlist.
+- Attachment upload currently forwards metadata to the local proxy; real binary/multipart upload behavior still needs upstream validation.
 - WSL path conversion has not been validated.
 - Real Claude Code end-to-end behavior beyond controlled fake Claude tests still needs explicit manual validation.
