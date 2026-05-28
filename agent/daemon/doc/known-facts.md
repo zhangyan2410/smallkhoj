@@ -84,6 +84,21 @@ Observed non-sensitive result shape:
 
 The macOS smoke command also calls only `server info` and does not send a chat message.
 
+The macOS aaa-wrapper path was validated against the existing local Claude Slock runtime by starting `aaa-daemon start --import-slock-runtime ... --runtime none`, then calling the generated `.slock/slock server info`. The request went through:
+
+```text
+aaa wrapper -> aaa local proxy -> imported managed Slock proxy -> Slock API
+```
+
+A real attachment upload/download validation succeeded through the generated aaa wrapper with explicit write safety enabled and target allowlisted to `#all`:
+
+```bash
+SLOCK_ALLOW_WRITES=1 SLOCK_WRITE_TARGET_ALLOWLIST=#all .slock/slock attachment upload --channel '#all' --path <small text file>
+.slock/slock attachment view --id <returned id> --output <download path>
+```
+
+The downloaded file matched the uploaded file byte-for-byte. No chat message was sent as part of this validation.
+
 ## Implemented aaa-daemon Facts
 
 - `aaa-daemon start` defaults to `--runtime none`.
@@ -120,8 +135,8 @@ Implemented:
 - `slock reminder list`
 - `slock reminder create`
 - `slock reminder update`
-- `slock reminder delete`
-- `slock attachment download`
+- `slock reminder cancel`
+- `slock attachment view`
 - `slock attachment upload`
 
 ## Test Facts
@@ -137,6 +152,6 @@ Implemented:
 ## Open Risks
 
 - Real write-capable commands against Slock should remain behind explicit opt-in and a target allowlist.
-- Attachment upload currently forwards metadata to the local proxy; real binary/multipart upload behavior still needs upstream validation.
+- Real write-capable commands other than attachment upload still need carefully targeted manual validation with `SLOCK_ALLOW_WRITES=1` and an allowlist.
 - WSL path conversion has not been validated.
 - Real Claude Code end-to-end behavior beyond controlled fake Claude tests still needs explicit manual validation.

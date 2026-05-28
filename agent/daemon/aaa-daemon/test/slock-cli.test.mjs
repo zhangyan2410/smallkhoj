@@ -189,6 +189,14 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
       res.end(JSON.stringify({ tasks: [], channel: url.searchParams.get('channel') }));
       return;
     }
+    if (url.pathname === '/internal/agent-api/tasks/claim') {
+      res.end(JSON.stringify({ claimed: true, body: JSON.parse(body) }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/tasks/update-status') {
+      res.end(JSON.stringify({ updated: true, body: JSON.parse(body) }));
+      return;
+    }
     if (url.pathname === '/internal/agent-api/tasks/task-1/claim') {
       res.end(JSON.stringify({ claimed: true, body: body ? JSON.parse(body) : {} }));
       return;
@@ -245,12 +253,21 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
       res.end(JSON.stringify({ reminderId: 'rem-1', method: req.method, body: body ? JSON.parse(body) : null }));
       return;
     }
-    if (url.pathname === '/internal/agent-api/attachments') {
-      res.end(JSON.stringify({ attachment: JSON.parse(body) }));
+    if (url.pathname === '/internal/agent-api/resolve-channel') {
+      res.end(JSON.stringify({ channelId: 'chan-general' }));
       return;
     }
-    if (url.pathname === '/internal/agent-api/attachments/file-1/download') {
-      res.end(JSON.stringify({ file: 'file-1', inline: url.searchParams.get('inline') }));
+    if (url.pathname === '/internal/agent-api/upload') {
+      res.end(JSON.stringify({
+        attachment: {
+          multipart: req.headers['content-type']?.startsWith('multipart/form-data') ?? false,
+          size: body.length,
+        },
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/attachments/file-1') {
+      res.end(JSON.stringify({ file: 'file-1' }));
       return;
     }
 
@@ -273,7 +290,9 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     });
 
     const tokenFile = join(root, 'token.txt');
+    const uploadFile = join(root, 'report.txt');
     writeFileSync(tokenFile, 'sap_proxy_token', 'utf-8');
+    writeFileSync(uploadFile, 'attachment body', 'utf-8');
     const env = {
       SLOCK_AGENT_PROXY_URL: proxy.getProxyUrl(),
       SLOCK_AGENT_PROXY_TOKEN_FILE: tokenFile,
@@ -323,15 +342,15 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
 
     const createTask = await runCli(['task', 'create', '--channel', '#general', '--title', 'Ship CLI'], env);
     assert.equal(createTask.code, 0, createTask.stderr);
-    assert.deepEqual(JSON.parse(createTask.stdout), { task: { title: 'Ship CLI', channel: '#general' } });
+    assert.deepEqual(JSON.parse(createTask.stdout), { task: { channel: '#general', tasks: [{ title: 'Ship CLI' }] } });
 
-    const claimTask = await runCli(['task', 'claim', '--id', 'task-1', '--assignee', '@alice'], env);
+    const claimTask = await runCli(['task', 'claim', '--channel', '#general', '--number', '1'], env);
     assert.equal(claimTask.code, 0, claimTask.stderr);
-    assert.deepEqual(JSON.parse(claimTask.stdout), { claimed: true, body: { assignee: '@alice' } });
+    assert.deepEqual(JSON.parse(claimTask.stdout), { claimed: true, body: { channel: '#general', task_numbers: [1] } });
 
-    const updateTask = await runCli(['task', 'update', '--id', 'task-1', '--status', 'done'], env);
+    const updateTask = await runCli(['task', 'update', '--channel', '#general', '--number', '1', '--status', 'done'], env);
     assert.equal(updateTask.code, 0, updateTask.stderr);
-    assert.deepEqual(JSON.parse(updateTask.stdout), { updated: true, body: { status: 'done' } });
+    assert.deepEqual(JSON.parse(updateTask.stdout), { updated: true, body: { channel: '#general', task_number: 1, status: 'done' } });
 
     const joinChannel = await runCli(['channel', 'join', '--channel', '#general'], env);
     assert.equal(joinChannel.code, 0, joinChannel.stderr);
@@ -353,25 +372,27 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(integrationLogin.code, 0, integrationLogin.stderr);
     assert.deepEqual(JSON.parse(integrationLogin.stdout), { login: 'github', body: { provider: 'github' } });
 
-    const createReminder = await runCli(['reminder', 'create', '--channel', '#general', '--at', '2030-01-01T00:00:00Z', '--text', 'standup'], env);
+    const createReminder = await runCli(['reminder', 'schedule', '--channel', '#general', '--fire-at', '2030-01-01T00:00:00Z', '--title', 'standup'], env);
     assert.equal(createReminder.code, 0, createReminder.stderr);
-    assert.deepEqual(JSON.parse(createReminder.stdout), { reminder: { text: 'standup', at: '2030-01-01T00:00:00Z', channel: '#general' } });
+    assert.deepEqual(JSON.parse(createReminder.stdout), { reminder: { title: 'standup', fireAt: '2030-01-01T00:00:00Z', channel: '#general' } });
 
-    const updateReminder = await runCli(['reminder', 'update', '--id', 'rem-1', '--done'], env);
+    const updateReminder = await runCli(['reminder', 'update', '--id', 'rem-1', '--title', 'new title'], env);
     assert.equal(updateReminder.code, 0, updateReminder.stderr);
-    assert.deepEqual(JSON.parse(updateReminder.stdout), { reminderId: 'rem-1', method: 'PATCH', body: { done: true } });
+    assert.deepEqual(JSON.parse(updateReminder.stdout), { reminderId: 'rem-1', method: 'PATCH', body: { title: 'new title' } });
 
-    const deleteReminder = await runCli(['reminder', 'delete', '--id', 'rem-1'], env);
+    const deleteReminder = await runCli(['reminder', 'cancel', '--id', 'rem-1'], env);
     assert.equal(deleteReminder.code, 0, deleteReminder.stderr);
     assert.deepEqual(JSON.parse(deleteReminder.stdout), { reminderId: 'rem-1', method: 'DELETE', body: null });
 
-    const uploadAttachment = await runCli(['attachment', 'upload', '--target', '#general', '--file', '/tmp/report.txt', '--name', 'report.txt'], env);
+    const uploadAttachment = await runCli(['attachment', 'upload', '--channel', '#general', '--path', uploadFile], env);
     assert.equal(uploadAttachment.code, 0, uploadAttachment.stderr);
-    assert.deepEqual(JSON.parse(uploadAttachment.stdout), { attachment: { target: '#general', path: '/tmp/report.txt', name: 'report.txt' } });
+    const uploadData = JSON.parse(uploadAttachment.stdout);
+    assert.equal(uploadData.attachment.multipart, true);
+    assert.ok(uploadData.attachment.size > 0);
 
-    const downloadAttachment = await runCli(['attachment', 'download', '--id', 'file-1', '--inline'], env);
+    const downloadAttachment = await runCli(['attachment', 'view', '--id', 'file-1'], env);
     assert.equal(downloadAttachment.code, 0, downloadAttachment.stderr);
-    assert.deepEqual(JSON.parse(downloadAttachment.stdout), { file: 'file-1', inline: '1' });
+    assert.deepEqual(JSON.parse(downloadAttachment.stdout), { file: 'file-1' });
 
     const upstreamRequests = upstream.requests.map(({ req, body }) => ({
       method: req.method,
@@ -469,23 +490,23 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
         auth: 'Bearer sk_machine_real',
         agent: 'agent-1',
         capabilities: 'send,read,mentions,tasks,reactions,server,channels',
-        body: JSON.stringify({ title: 'Ship CLI', channel: '#general' }),
+        body: JSON.stringify({ channel: '#general', tasks: [{ title: 'Ship CLI' }] }),
       },
       {
         method: 'POST',
-        url: '/internal/agent-api/tasks/task-1/claim',
+        url: '/internal/agent-api/tasks/claim',
         auth: 'Bearer sk_machine_real',
         agent: 'agent-1',
         capabilities: 'send,read,mentions,tasks,reactions,server,channels',
-        body: JSON.stringify({ assignee: '@alice' }),
+        body: JSON.stringify({ channel: '#general', task_numbers: [1] }),
       },
       {
-        method: 'PATCH',
-        url: '/internal/agent-api/tasks/task-1',
+        method: 'POST',
+        url: '/internal/agent-api/tasks/update-status',
         auth: 'Bearer sk_machine_real',
         agent: 'agent-1',
         capabilities: 'send,read,mentions,tasks,reactions,server,channels',
-        body: JSON.stringify({ status: 'done' }),
+        body: JSON.stringify({ channel: '#general', task_number: 1, status: 'done' }),
       },
       {
         method: 'POST',
@@ -533,7 +554,7 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
         auth: 'Bearer sk_machine_real',
         agent: 'agent-1',
         capabilities: 'send,read,mentions,tasks,reactions,server,channels',
-        body: JSON.stringify({ text: 'standup', at: '2030-01-01T00:00:00Z', channel: '#general' }),
+        body: JSON.stringify({ title: 'standup', fireAt: '2030-01-01T00:00:00Z', channel: '#general' }),
       },
       {
         method: 'PATCH',
@@ -541,7 +562,7 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
         auth: 'Bearer sk_machine_real',
         agent: 'agent-1',
         capabilities: 'send,read,mentions,tasks,reactions,server,channels',
-        body: JSON.stringify({ done: true }),
+        body: JSON.stringify({ title: 'new title' }),
       },
       {
         method: 'DELETE',
@@ -553,15 +574,23 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
       },
       {
         method: 'POST',
-        url: '/internal/agent-api/attachments',
+        url: '/internal/agent-api/resolve-channel',
         auth: 'Bearer sk_machine_real',
         agent: 'agent-1',
         capabilities: 'send,read,mentions,tasks,reactions,server,channels',
-        body: JSON.stringify({ target: '#general', path: '/tmp/report.txt', name: 'report.txt' }),
+        body: JSON.stringify({ target: '#general' }),
+      },
+      {
+        method: 'POST',
+        url: '/internal/agent-api/upload',
+        auth: 'Bearer sk_machine_real',
+        agent: 'agent-1',
+        capabilities: 'send,read,mentions,tasks,reactions,server,channels',
+        body: upstreamRequests[upstreamRequests.length - 2].body,
       },
       {
         method: 'GET',
-        url: '/internal/agent-api/attachments/file-1/download?inline=1',
+        url: '/internal/agent-api/attachments/file-1',
         auth: 'Bearer sk_machine_real',
         agent: 'agent-1',
         capabilities: 'send,read,mentions,tasks,reactions,server,channels',

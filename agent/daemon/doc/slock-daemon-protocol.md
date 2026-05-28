@@ -95,6 +95,8 @@ The CLI sends `/internal/agent/{agentId}/{suffix}` to the local proxy. The proxy
 | `/integrations` | `/internal/agent-api/integrations` |
 | `/integrations/{provider}/login` | `/internal/agent-api/integrations/{provider}/login` |
 | `/tasks?...` | `/internal/agent-api/tasks?...` |
+| `/tasks/claim` | `/internal/agent-api/tasks/claim` |
+| `/tasks/update-status` | `/internal/agent-api/tasks/update-status` |
 | `/tasks/{id}` | `/internal/agent-api/tasks/{id}` |
 | `/tasks/{id}/claim` | `/internal/agent-api/tasks/{id}/claim` |
 | `/reminders` | `/internal/agent-api/reminders` |
@@ -103,7 +105,8 @@ The CLI sends `/internal/agent/{agentId}/{suffix}` to the local proxy. The proxy
 | `/messages/{id}/reactions` | `/internal/agent-api/messages/{id}/reactions` |
 | `/channels/{id}/join` | `/internal/agent-api/channels/{id}/join` |
 | `/channels/{id}/leave` | `/internal/agent-api/channels/{id}/leave` |
-| `/attachments` | `/internal/agent-api/attachments` |
+| `/upload` | `/internal/agent-api/upload` |
+| `/resolve-channel` | `/internal/agent-api/resolve-channel` |
 
 Attachment download has a special path:
 
@@ -128,25 +131,25 @@ Currently implemented in `aaa-daemon`:
 | `slock channel leave --channel target` | POST | write-gated |
 | `slock task list [--channel target]` | GET | read-only |
 | `slock task create --channel target --title title` | POST | write-gated |
-| `slock task claim --id id [--assignee handle]` | POST | write-gated |
-| `slock task update --id id [--status status] [--title title]` | PATCH | write-gated |
+| `slock task claim --channel target --number n` | POST | write-gated |
+| `slock task update --channel target --number n --status status` | POST | write-gated |
 | `slock profile get [--handle @name]` | GET | read-only |
 | `slock profile update [--display-name name] [--bio text] [--status text]` | PATCH | write-gated |
 | `slock integration list` | GET | read-only |
 | `slock integration login --provider name` | POST | write-gated |
 | `slock reminder list` | GET | read-only |
-| `slock reminder create --at time --text text [--channel target]` | POST | write-gated |
-| `slock reminder update --id id [--at time] [--text text] [--done]` | PATCH | write-gated |
-| `slock reminder delete --id id` | DELETE | write-gated |
-| `slock attachment download --id id [--inline]` | GET | read-only |
-| `slock attachment upload --target target --file path [--name name]` | POST | write-gated metadata upload request |
+| `slock reminder schedule --title text --fire-at iso [--channel target]` | POST | write-gated |
+| `slock reminder update --id id [--fire-at iso] [--title text]` | PATCH | write-gated |
+| `slock reminder cancel --id id` | DELETE | write-gated |
+| `slock attachment view --id id [--output path]` | GET | read-only |
+| `slock attachment upload --channel target --path path [--mime-type type]` | POST | write-gated multipart upload |
 
 Write-capable commands require explicit opt-in:
 
 - `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`
 - optional `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`, comma-separated
 
-The attachment upload command currently forwards file metadata (`path`, `name`, `contentType`, `size`) to the proxy endpoint. Real multipart/binary upload behavior must be validated against upstream Slock before relying on it for large files.
+Attachment upload resolves the target channel through `/resolve-channel`, then posts multipart form data to `/upload`.
 
 ## MCP Chat Bridge
 

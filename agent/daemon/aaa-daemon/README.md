@@ -73,22 +73,22 @@ Implemented commands:
 - `slock channel leave --channel target`
 - `slock task list [--channel target]`
 - `slock task create --channel target --title title`
-- `slock task claim --id id [--assignee handle]`
-- `slock task update --id id [--status status] [--title title]`
+- `slock task claim --channel target --number n`
+- `slock task update --channel target --number n --status status`
 - `slock profile get [--handle @name]`
 - `slock profile update [--display-name name] [--bio text] [--status text]`
 - `slock integration list`
 - `slock integration login --provider name`
 - `slock reminder list`
-- `slock reminder create --at time --text text [--channel target]`
-- `slock reminder update --id id [--at time] [--text text] [--done]`
-- `slock reminder delete --id id`
-- `slock attachment download --id id [--inline]`
-- `slock attachment upload --target target --file path [--name name]`
+- `slock reminder schedule --title text --fire-at iso [--channel target]`
+- `slock reminder update --id id [--fire-at iso] [--title text]`
+- `slock reminder cancel --id id`
+- `slock attachment view --id id [--output path]`
+- `slock attachment upload --channel target --path path [--mime-type type]`
 
 Write-capable operations require `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`. They can also be constrained with `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`.
 
-Attachment upload currently sends file metadata through the local proxy. Validate upstream binary/multipart behavior before relying on it for large files.
+Attachment upload sends multipart form data through the local proxy after resolving the target channel. Real writes still require the safety gate above.
 
 ## Runtime Import
 

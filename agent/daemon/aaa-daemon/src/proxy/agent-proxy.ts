@@ -188,7 +188,6 @@ export class AgentProxy extends EventEmitter {
       'X-Agent-Id': reg.credential.agentId,
       'X-Slock-Client': 'cli',
       'X-Slock-Agent-Active-Capabilities': reg.activeCapabilities,
-      'Content-Type': 'application/json',
     };
 
     // Forward non-sensitive client headers
@@ -200,10 +199,13 @@ export class AgentProxy extends EventEmitter {
         upstreamHeaders[name] = value;
       }
     }
+    if (method !== 'GET' && method !== 'HEAD' && !hasHeader(upstreamHeaders, 'content-type')) {
+      upstreamHeaders['Content-Type'] = 'application/json';
+    }
 
     try {
       // Determine body
-      let body: string | undefined;
+      let body: Uint8Array | undefined;
       if (method !== 'GET' && method !== 'HEAD') {
         body = await readBody(req);
       }
@@ -212,7 +214,7 @@ export class AgentProxy extends EventEmitter {
       const upstreamRes = await fetch(upstreamUrl.toString(), {
         method,
         headers: upstreamHeaders,
-        body,
+        body: body as unknown as BodyInit,
       });
 
       // For buffered paths, read full response to consume into inbox
@@ -310,14 +312,19 @@ export class AgentProxy extends EventEmitter {
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function readBody(req: http.IncomingMessage): Promise<string> {
+function readBody(req: http.IncomingMessage): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    let body = '';
-    req.setEncoding('utf8');
-    req.on('data', (chunk: string) => { body += chunk; });
-    req.on('end', () => resolve(body));
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    req.on('end', () => resolve(new Uint8Array(Buffer.concat(chunks))));
     req.on('error', reject);
   });
+}
+
+function hasHeader(headers: Record<string, string>, lowerName: string): boolean {
+  return Object.keys(headers).some((name) => name.toLowerCase() === lowerName);
 }
 
 /** Generate a random proxy token (matching sap_ prefix convention) */

@@ -88,7 +88,7 @@ Future environment support must validate:
 - Write-capable CLI commands must require explicit opt-in before making local proxy requests:
   - `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`
   - optional target guard: `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`
-- Attachment upload currently forwards metadata (`path`, `name`, `contentType`, `size`) to `/attachments`; real binary/multipart upload still needs upstream validation before large-file use.
+- Attachment upload resolves `--channel` through `/resolve-channel`, then forwards multipart form data (`file`, `channelId`, optional `mimeType`) to `/upload`.
 
 ### 4. Validation & Error Matrix
 

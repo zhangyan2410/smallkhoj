@@ -6,7 +6,8 @@
  * supplies SLOCK_AGENT_PROXY_URL and SLOCK_AGENT_PROXY_TOKEN_FILE.
  */
 
-import { readFileSync } from 'fs';
+import { basename } from 'path';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { stdin, stdout, stderr, env, exit } from 'process';
 import { fileURLToPath } from 'url';
 
@@ -15,6 +16,12 @@ interface CliRequest {
   path: string;
   body?: unknown;
   safety?: SafetyCheck;
+  multipartUpload?: {
+    filePath: string;
+    channelTarget: string;
+    mimeType?: string;
+  };
+  rawOutputFile?: string;
 }
 
 function printUsage(): never {
@@ -60,6 +67,17 @@ function getOption(args: string[], name: string): string | undefined {
   return args[index + 1];
 }
 
+function getOptions(args: string[], name: string): string[] {
+  const values: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === name && args[i + 1] !== undefined) {
+      values.push(args[i + 1]);
+      i += 1;
+    }
+  }
+  return values;
+}
+
 function hasFlag(args: string[], name: string): boolean {
   return args.includes(name);
 }
@@ -102,6 +120,35 @@ function maybeNumber(value: string | undefined): number | undefined {
 
 function compactBody(values: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
+}
+
+function requirePositiveInteger(raw: string, name: string): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+    throw Object.assign(new Error(`${name} must be a positive integer; got ${raw}`), {
+      code: 'INVALID_NUMBER',
+    });
+  }
+  return value;
+}
+
+function inferMimeType(filename: string, buffer: Buffer, explicit?: string): string {
+  if (explicit) return explicit;
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    return 'image/png';
+  }
+  if (buffer.length >= 3 && buffer.subarray(0, 3).equals(Buffer.from([255, 216, 255]))) {
+    return 'image/jpeg';
+  }
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.md')) return 'text/markdown';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  if (lower.endsWith('.json')) return 'application/json';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  return 'application/octet-stream';
 }
 
 interface SafetyCheck {
@@ -157,7 +204,13 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     const inline = positionalArgs(rest).join(' ').trim();
     const content = inline || await readStdinText();
     if (!content) throw Object.assign(new Error('Missing message content'), { code: 'MISSING_CONTENT' });
-    return { method: 'POST', path: `${agentPrefix}/send`, body: { target, content }, safety: writeSafety(target) };
+    const attachmentIds = getOptions(rest, '--attachment-id');
+    const body = compactBody({
+      target,
+      content,
+      attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
+    });
+    return { method: 'POST', path: `${agentPrefix}/send`, body, safety: writeSafety(target) };
   }
 
   if (group === 'message' && command === 'react') {
@@ -204,11 +257,12 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
   }
 
   if (group === 'channel' && (command === 'join' || command === 'leave')) {
-    const channel = getOption(rest, '--channel') ?? getOption(rest, '--target') ?? getOption(rest, '-c') ?? positionalArgs(rest)[0];
+    const channel = getOption(rest, '--target') ?? getOption(rest, '--channel') ?? getOption(rest, '-c') ?? positionalArgs(rest)[0];
     if (!channel) throw Object.assign(new Error('Missing --channel'), { code: 'MISSING_CHANNEL' });
+    const channelId = getOption(rest, '--channel-id');
     return {
       method: 'POST',
-      path: `${agentPrefix}/channels/${encodeURIComponent(channel)}/${command}`,
+      path: `${agentPrefix}/channels/${encodeURIComponent(channelId ?? channel)}/${command}`,
       safety: writeSafety(channel),
     };
   }
@@ -221,14 +275,32 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     const channel = getOption(rest, '--channel');
     const query = new URLSearchParams();
     if (channel) query.set('channel', channel);
+    const status = getOption(rest, '--status');
+    if (status) query.set('status', status);
     const suffix = query.toString();
     return { method: 'GET', path: `${agentPrefix}/tasks${suffix ? `?${suffix}` : ''}` };
   }
 
   if (group === 'task' && command === 'claim') {
+    const channel = getOption(rest, '--channel');
+    const numbers = getOptions(rest, '--number').map((raw) => requirePositiveInteger(raw, '--number'));
+    const messageIds = getOptions(rest, '--message-id');
+    if (channel && (numbers.length > 0 || messageIds.length > 0)) {
+      return {
+        method: 'POST',
+        path: `${agentPrefix}/tasks/claim`,
+        body: compactBody({
+          channel,
+          task_numbers: numbers.length > 0 ? numbers : undefined,
+          message_ids: messageIds.length > 0 ? messageIds : undefined,
+        }),
+        safety: writeSafety(channel),
+      };
+    }
+
     const taskId = getOption(rest, '--id') ?? getOption(rest, '--task-id') ?? positionalArgs(rest)[0];
     const assignee = getOption(rest, '--assignee') ?? getOption(rest, '-a');
-    if (!taskId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_TASK_ID' });
+    if (!taskId) throw Object.assign(new Error('Missing --id or --channel with --number/--message-id'), { code: 'MISSING_TASK_ID' });
     return {
       method: 'POST',
       path: `${agentPrefix}/tasks/${encodeURIComponent(taskId)}/claim`,
@@ -238,12 +310,22 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
   }
 
   if (group === 'task' && command === 'update') {
+    const channel = getOption(rest, '--channel');
+    const number = getOption(rest, '--number');
+    const status = getOption(rest, '--status');
+    if (channel && number && status && !getOption(rest, '--id') && !getOption(rest, '--task-id')) {
+      return {
+        method: 'POST',
+        path: `${agentPrefix}/tasks/update-status`,
+        body: { channel, task_number: requirePositiveInteger(number, '--number'), status },
+        safety: writeSafety(channel),
+      };
+    }
+
     const taskId = getOption(rest, '--id') ?? getOption(rest, '--task-id') ?? positionalArgs(rest)[0];
     if (!taskId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_TASK_ID' });
     const title = getOption(rest, '--title');
-    const status = getOption(rest, '--status');
     const assignee = getOption(rest, '--assignee') ?? getOption(rest, '-a');
-    const channel = getOption(rest, '--channel');
     const body = compactBody({
       title,
       status,
@@ -261,18 +343,21 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
   }
 
   if (group === 'task' && command === 'create') {
-    const title = getOption(rest, '--title') ?? positionalArgs(rest).join(' ').trim();
+    const titles = getOptions(rest, '--title');
+    const title = titles[0] ?? positionalArgs(rest).join(' ').trim();
     const channel = getOption(rest, '--channel');
     if (!title) throw Object.assign(new Error('Missing --title'), { code: 'MISSING_TITLE' });
     if (!channel) throw Object.assign(new Error('Missing --channel'), { code: 'MISSING_CHANNEL' });
-    const body = compactBody({
-      title,
-      channel,
-      assignee: getOption(rest, '--assignee') ?? getOption(rest, '-a'),
-      status: getOption(rest, '--status'),
-      messageId: getOption(rest, '--message-id'),
-      data: parseJsonOption(rest, '--json'),
-    });
+    const body = titles.length > 0
+      ? { channel, tasks: titles.map((item) => ({ title: item })) }
+      : compactBody({
+        title,
+        channel,
+        assignee: getOption(rest, '--assignee') ?? getOption(rest, '-a'),
+        status: getOption(rest, '--status'),
+        messageId: getOption(rest, '--message-id'),
+        data: parseJsonOption(rest, '--json'),
+      });
     return { method: 'POST', path: `${agentPrefix}/tasks`, body, safety: writeSafety(channel) };
   }
 
@@ -311,16 +396,26 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     return { method: 'GET', path: `${agentPrefix}/reminders` };
   }
 
-  if (group === 'reminder' && command === 'create') {
-    const text = getOption(rest, '--text') ?? getOption(rest, '--message') ?? positionalArgs(rest).join(' ').trim();
-    const at = getOption(rest, '--at');
+  if (group === 'reminder' && (command === 'create' || command === 'schedule')) {
+    const title = getOption(rest, '--title') ?? getOption(rest, '--text') ?? getOption(rest, '--message') ?? positionalArgs(rest).join(' ').trim();
+    const at = getOption(rest, '--fire-at') ?? getOption(rest, '--at');
+    const delaySeconds = getOption(rest, '--delay-seconds');
     const channel = getOption(rest, '--channel');
-    if (!text) throw Object.assign(new Error('Missing --text'), { code: 'MISSING_TEXT' });
-    if (!at) throw Object.assign(new Error('Missing --at'), { code: 'MISSING_AT' });
+    const msgId = getOption(rest, '--msg-id');
+    if (!title) throw Object.assign(new Error('Missing --title'), { code: 'MISSING_TEXT' });
+    if (!at && !delaySeconds) throw Object.assign(new Error('Missing --fire-at or --delay-seconds'), { code: 'MISSING_AT' });
     return {
       method: 'POST',
       path: `${agentPrefix}/reminders`,
-      body: compactBody({ text, at, channel, data: parseJsonOption(rest, '--json') }),
+      body: compactBody({
+        title,
+        fireAt: at,
+        delaySeconds: maybeNumber(delaySeconds),
+        repeat: getOption(rest, '--repeat'),
+        channel,
+        msgId,
+        data: parseJsonOption(rest, '--json'),
+      }),
       safety: writeSafety(channel ?? 'reminder'),
     };
   }
@@ -329,8 +424,10 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     const reminderId = getOption(rest, '--id') ?? getOption(rest, '--reminder-id') ?? positionalArgs(rest)[0];
     if (!reminderId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_REMINDER_ID' });
     const body = compactBody({
-      text: getOption(rest, '--text') ?? getOption(rest, '--message'),
-      at: getOption(rest, '--at'),
+      title: getOption(rest, '--title') ?? getOption(rest, '--text') ?? getOption(rest, '--message'),
+      fireAt: getOption(rest, '--fire-at') ?? getOption(rest, '--at'),
+      delaySeconds: maybeNumber(getOption(rest, '--in') ?? getOption(rest, '--delay-seconds')),
+      repeat: getOption(rest, '--cadence') ?? getOption(rest, '--repeat'),
       channel: getOption(rest, '--channel'),
       done: hasFlag(rest, '--done') ? true : undefined,
       data: parseJsonOption(rest, '--json'),
@@ -344,7 +441,7 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     };
   }
 
-  if (group === 'reminder' && (command === 'delete' || command === 'remove')) {
+  if (group === 'reminder' && (command === 'delete' || command === 'remove' || command === 'cancel')) {
     const reminderId = getOption(rest, '--id') ?? getOption(rest, '--reminder-id') ?? positionalArgs(rest)[0];
     if (!reminderId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_REMINDER_ID' });
     return {
@@ -354,30 +451,27 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     };
   }
 
-  if (group === 'attachment' && command === 'download') {
+  if (group === 'attachment' && (command === 'download' || command === 'view')) {
     const attachmentId = getOption(rest, '--id') ?? getOption(rest, '--attachment-id') ?? positionalArgs(rest)[0];
     if (!attachmentId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_ATTACHMENT_ID' });
-    const query = new URLSearchParams();
-    if (hasFlag(rest, '--inline')) query.set('inline', '1');
-    const suffix = query.toString();
-    return { method: 'GET', path: `/api/attachments/${encodeURIComponent(attachmentId)}/download${suffix ? `?${suffix}` : ''}` };
+    const output = getOption(rest, '--output');
+    const suffix = command === 'download' ? '/download' : '';
+    return { method: 'GET', path: `/api/attachments/${encodeURIComponent(attachmentId)}${suffix}`, rawOutputFile: output };
   }
 
   if (group === 'attachment' && command === 'upload') {
-    const target = getOption(rest, '--target') ?? getOption(rest, '-t');
+    const target = getOption(rest, '--channel') ?? getOption(rest, '--target') ?? getOption(rest, '-t');
     const path = getOption(rest, '--file') ?? getOption(rest, '--path') ?? positionalArgs(rest)[0];
     if (!target) throw Object.assign(new Error('Missing --target'), { code: 'MISSING_TARGET' });
     if (!path) throw Object.assign(new Error('Missing --file'), { code: 'MISSING_FILE' });
     return {
       method: 'POST',
-      path: `${agentPrefix}/attachments`,
-      body: compactBody({
-        target,
-        path,
-        name: getOption(rest, '--name'),
-        contentType: getOption(rest, '--content-type'),
-        size: maybeNumber(getOption(rest, '--size')),
-      }),
+      path: `${agentPrefix}/upload`,
+      multipartUpload: {
+        filePath: path,
+        channelTarget: target,
+        mimeType: getOption(rest, '--mime-type') ?? getOption(rest, '--content-type'),
+      },
       safety: writeSafety(target),
     };
   }
@@ -398,6 +492,62 @@ export async function runSlockCli(argv: string[], io: {
     const token = readProxyToken(cliEnv);
     const request = await parseRequest(argv, cliEnv);
     assertWriteAllowed(request, cliEnv);
+
+    if (request.multipartUpload) {
+      const upload = request.multipartUpload;
+      if (!existsSync(upload.filePath)) {
+        throw Object.assign(new Error(`File does not exist: ${upload.filePath}`), { code: 'MISSING_FILE' });
+      }
+      const stat = statSync(upload.filePath);
+      if (!stat.isFile()) {
+        throw Object.assign(new Error(`Not a regular file: ${upload.filePath}`), { code: 'INVALID_FILE' });
+      }
+      if (stat.size <= 0) {
+        throw Object.assign(new Error('Refusing to upload a 0-byte attachment'), { code: 'INVALID_FILE' });
+      }
+
+      const resolved = await fetch(new URL(`/internal/agent/${encodeURIComponent(requireEnv(cliEnv, 'SLOCK_AGENT_ID'))}/resolve-channel`, proxyUrl), {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-Agent-Id': requireEnv(cliEnv, 'SLOCK_AGENT_ID'),
+        },
+        body: JSON.stringify({ target: upload.channelTarget }),
+      });
+      const resolvedText = await resolved.text();
+      if (!resolved.ok) {
+        err.write(resolvedText || JSON.stringify({ ok: false, code: `HTTP_${resolved.status}` }) + '\n');
+        return 1;
+      }
+      const channelId = (JSON.parse(resolvedText) as { channelId?: string }).channelId;
+      if (!channelId) {
+        throw Object.assign(new Error(`Could not resolve channel: ${upload.channelTarget}`), { code: 'RESOLVE_FAILED' });
+      }
+
+      const buffer = readFileSync(upload.filePath);
+      const filename = basename(upload.filePath);
+      const form = new FormData();
+      form.append('file', new Blob([buffer], { type: inferMimeType(filename, buffer, upload.mimeType) }), filename);
+      form.append('channelId', channelId);
+      if (upload.mimeType) form.append('mimeType', upload.mimeType);
+      const response = await fetch(new URL(request.path, proxyUrl), {
+        method: request.method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-Agent-Id': requireEnv(cliEnv, 'SLOCK_AGENT_ID'),
+        },
+        body: form,
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        err.write(text || JSON.stringify({ ok: false, code: `HTTP_${response.status}` }) + '\n');
+        return 1;
+      }
+      out.write(text.endsWith('\n') ? text : `${text}\n`);
+      return 0;
+    }
+
     const response = await fetch(new URL(request.path, proxyUrl), {
       method: request.method,
       headers: {
@@ -407,6 +557,13 @@ export async function runSlockCli(argv: string[], io: {
       },
       body: request.body === undefined ? undefined : JSON.stringify(request.body),
     });
+
+    if (request.rawOutputFile && response.ok) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      writeFileSync(request.rawOutputFile, buffer);
+      out.write(JSON.stringify({ ok: true, output: request.rawOutputFile }) + '\n');
+      return 0;
+    }
 
     const text = await response.text();
     if (!response.ok) {
