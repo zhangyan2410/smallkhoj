@@ -29,7 +29,7 @@ function printUsage(): never {
   stderr.write(JSON.stringify({
     ok: false,
     code: 'USAGE',
-    message: 'Usage: slock message check|send|read|search|react, slock channel members|join|leave, slock server info, slock task list|claim|update|create, slock profile get|update, slock integration list|login, slock reminder list|create|update|delete, slock attachment download|upload',
+    message: 'Usage: slock message check|send|read|search|react, slock channel members|join|leave, slock server info, slock task list|claim|update|create, slock profile get|update, slock integration list|login, slock reminder list|schedule|create|update|cancel|delete, slock attachment view|download|upload',
   }) + '\n');
   exit(2);
 }

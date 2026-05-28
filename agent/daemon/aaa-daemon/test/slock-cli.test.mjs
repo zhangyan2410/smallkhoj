@@ -159,6 +159,55 @@ test('slock message check maps to receive endpoint with limit', async () => {
   }
 });
 
+test('slock reminder and attachment aliases route to canonical endpoints', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-cli-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+
+  try {
+    const tokenFile = join(root, 'token.txt');
+    writeFileSync(tokenFile, 'sap_cli_token', 'utf-8');
+    const env = {
+      SLOCK_AGENT_PROXY_URL: server.url,
+      SLOCK_AGENT_PROXY_TOKEN_FILE: tokenFile,
+      SLOCK_AGENT_ID: 'agent-1',
+      SLOCK_ALLOW_WRITES: '1',
+    };
+
+    const createReminder = await runCli(['reminder', 'create', '--title', 'alias', '--fire-at', '2030-01-01T00:00:00Z'], env);
+    assert.equal(createReminder.code, 0, createReminder.stderr);
+
+    const deleteReminder = await runCli(['reminder', 'delete', '--id', 'rem-1'], env);
+    assert.equal(deleteReminder.code, 0, deleteReminder.stderr);
+
+    const downloadAttachment = await runCli(['attachment', 'download', '--id', 'file-1'], env);
+    assert.equal(downloadAttachment.code, 0, downloadAttachment.stderr);
+
+    assert.deepEqual(server.requests.map(({ req, body }) => ({ method: req.method, url: req.url, body })), [
+      {
+        method: 'POST',
+        url: '/internal/agent/agent-1/reminders',
+        body: JSON.stringify({ title: 'alias', fireAt: '2030-01-01T00:00:00Z' }),
+      },
+      {
+        method: 'DELETE',
+        url: '/internal/agent/agent-1/reminders/rem-1',
+        body: '',
+      },
+      {
+        method: 'GET',
+        url: '/api/attachments/file-1/download',
+        body: '',
+      },
+    ]);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('slock CLI reaches fake Slock API through AgentProxy', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-e2e-'));
   const upstream = await startServer((req, res, body) => {

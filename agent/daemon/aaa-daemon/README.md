@@ -80,10 +80,10 @@ Implemented commands:
 - `slock integration list`
 - `slock integration login --service name [--scope scope]`
 - `slock reminder list`
-- `slock reminder schedule --title text --fire-at iso [--channel target]`
+- `slock reminder schedule --title text --fire-at iso [--channel target]` (alias: `create`)
 - `slock reminder update --id id [--fire-at iso] [--title text]`
-- `slock reminder cancel --id id`
-- `slock attachment view --id id [--output path]`
+- `slock reminder cancel --id id` (aliases: `delete`, `remove`)
+- `slock attachment view --id id [--output path]` (alias: `download`)
 - `slock attachment upload --channel target --path path [--mime-type type]`
 
 Write-capable operations require `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`. They can also be constrained with `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`.

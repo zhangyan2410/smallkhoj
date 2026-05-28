@@ -35,7 +35,7 @@ Future environment support must validate:
 
 ### 2. Signatures
 
-- CLI entry: `slock message check|send|read|search|react`, `slock channel members|join|leave`, `slock server info`, `slock task list|create|claim|update`, `slock profile get|update`, `slock integration list|login`, `slock reminder list|create|update|delete`, `slock attachment download|upload`
+- CLI entry: `slock message check|send|read|search|react`, `slock channel members|join|leave`, `slock server info`, `slock task list|create|claim|update`, `slock profile get|update`, `slock integration list|login`, `slock reminder list|schedule|create|update|cancel|delete`, `slock attachment view|download|upload`
 - Daemon runtime flags:
   - `aaa-daemon start --runtime none` (default)
   - `aaa-daemon start --runtime claude`

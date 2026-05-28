@@ -139,10 +139,10 @@ Currently implemented in `aaa-daemon`:
 | `slock integration list` | GET | read-only |
 | `slock integration login --service name [--scope scope]` | POST | write-gated |
 | `slock reminder list` | GET | read-only |
-| `slock reminder schedule --title text --fire-at iso [--channel target]` | POST | write-gated |
+| `slock reminder schedule --title text --fire-at iso [--channel target]` | POST | write-gated; alias: `create` |
 | `slock reminder update --id id [--fire-at iso] [--title text]` | PATCH | write-gated |
-| `slock reminder cancel --id id` | DELETE | write-gated |
-| `slock attachment view --id id [--output path]` | GET | read-only |
+| `slock reminder cancel --id id` | DELETE | write-gated; aliases: `delete`, `remove` |
+| `slock attachment view --id id [--output path]` | GET | read-only; alias: `download` |
 | `slock attachment upload --channel target --path path [--mime-type type]` | POST | write-gated multipart upload |
 
 Write-capable commands require explicit opt-in:

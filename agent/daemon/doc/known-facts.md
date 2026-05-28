@@ -4,7 +4,7 @@ This file records facts discovered while implementing and validating `aaa-daemon
 
 ## Current Date Of These Notes
 
-2026-05-28.
+2026-05-29.
 
 ## Validated Environments
 
@@ -133,10 +133,13 @@ Implemented:
 - `slock integration list`
 - `slock integration login`
 - `slock reminder list`
-- `slock reminder create`
+- `slock reminder schedule`
+- `slock reminder create` (alias)
 - `slock reminder update`
 - `slock reminder cancel`
+- `slock reminder delete` (alias)
 - `slock attachment view`
+- `slock attachment download` (alias)
 - `slock attachment upload`
 
 ## Test Facts

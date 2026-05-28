@@ -46,7 +46,10 @@ test('claude args and prompt force slock CLI communication', () => {
   assert.match(prompt, /Supported commands in this daemon build/);
   assert.match(prompt, /slock message check/);
   assert.match(prompt, /slock server info/);
-  assert.match(prompt, /Do not use unavailable slock commands yet/);
+  assert.match(prompt, /slock task list\|create\|claim\|update/);
+  assert.match(prompt, /slock attachment view\|download\|upload/);
+  assert.match(prompt, /WRITES_NOT_ALLOWED/);
+  assert.doesNotMatch(prompt, /not yet implemented/);
   assert.match(prompt, /Message Targets/);
   assert.match(prompt, /Agent ID: agent-123/);
 });
