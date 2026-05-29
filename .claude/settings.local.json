@@ -31,7 +31,9 @@
       "Bash(tasklist)",
       "Bash(echo \"Current process PID: $$\")",
       "Bash(npm list *)",
-      "Read(//c/Users/zhangyan.ean/AppData/**)"
+      "Read(//c/Users/zhangyan.ean/AppData/**)",
+      "Bash(node test/claude-spawn-e2e.mjs)",
+      "Skill(trellis-brainstorm)"
     ]
   }
 }

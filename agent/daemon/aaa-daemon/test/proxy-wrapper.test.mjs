@@ -101,7 +101,7 @@ test('writeSlockWrapper shell-quotes bash wrapper values', () => {
     const wrapper = readFileSync(result.bashWrapper, 'utf-8');
     assert.match(wrapper, /SLOCK_AGENT_PROXY_TOKEN_FILE='.*'\\''.*'/);
     assert.match(wrapper, /SLOCK_CURRENT_WORKSPACE_PATH='.*'\\''.*'/);
-    assert.match(wrapper, /exec '.*node' '\/repo\/o'\\''clock\/dist\/slock-cli\.js' "\$@"/);
+    assert.match(wrapper, /exec '.*node(\.exe)?' '\/repo\/o'\\''clock\/dist\/slock-cli\.js' "\$@"/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

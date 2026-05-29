@@ -155,6 +155,7 @@ function inferMimeType(filename: string, buffer: Buffer, explicit?: string): str
 interface SafetyCheck {
   kind: 'write';
   resources: string[];
+  warnings?: string[];
 }
 
 function writeSafety(...resources: Array<string | undefined>): SafetyCheck {
@@ -186,6 +187,27 @@ function assertWriteAllowed(request: CliRequest, source: NodeJS.ProcessEnv): voi
   }
 }
 
+function dmTargetHint(target: string): string | undefined {
+  if (target === 'dm:@deepseek') {
+    return 'Hint: in the verified DeepSeek DM, the CLI runs as the DeepSeek agent. Use the human peer target dm:@zy-ean, not dm:@deepseek.';
+  }
+  return undefined;
+}
+
+function enrichProxyFailure(text: string, status: number): string {
+  const lower = text.toLowerCase();
+  if (lower.includes('machine api key required') || lower.includes('machine api key')) {
+    const suffix = text.endsWith('\n') ? '' : '\n';
+    return `${text}${suffix}${JSON.stringify({
+      ok: false,
+      code: 'MACHINE_API_KEY_REQUIRED_HINT',
+      hint: 'Real aaa-daemon/Slock tests should import a local Slock runtime and route through this project AgentProxy; do not point the test CLI directly at the official/running daemon proxy.',
+    })}\n`;
+  }
+  if (!text) return JSON.stringify({ ok: false, code: `HTTP_${status}` }) + '\n';
+  return text;
+}
+
 async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<CliRequest> {
   const [group, command, ...rest] = args;
   const agentId = requireEnv(source, 'SLOCK_AGENT_ID');
@@ -211,7 +233,13 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
       content,
       attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
     });
-    return { method: 'POST', path: `${agentPrefix}/send`, body, safety: writeSafety(target) };
+    const request: CliRequest = { method: 'POST', path: `${agentPrefix}/send`, body, safety: writeSafety(target) };
+    const hint = dmTargetHint(target);
+    if (hint) {
+      const safety = request.safety ?? writeSafety(target);
+      request.safety = { kind: safety.kind, resources: safety.resources, warnings: [...(safety.warnings ?? []), hint] };
+    }
+    return request;
   }
 
   if (group === 'message' && command === 'react') {
@@ -547,7 +575,7 @@ export async function runSlockCli(argv: string[], io: {
         });
         const resolvedText = await resolved.text();
         if (!resolved.ok) {
-          err.write(resolvedText || JSON.stringify({ ok: false, code: `HTTP_${resolved.status}` }) + '\n');
+          err.write(enrichProxyFailure(resolvedText, resolved.status));
           return 1;
         }
         const channelId = (JSON.parse(resolvedText) as { channelId?: string }).channelId;
@@ -567,7 +595,7 @@ export async function runSlockCli(argv: string[], io: {
       });
       const text = await response.text();
       if (!response.ok) {
-        err.write(text || JSON.stringify({ ok: false, code: `HTTP_${response.status}` }) + '\n');
+        err.write(enrichProxyFailure(text, response.status));
         return 1;
       }
       out.write(text.endsWith('\n') ? text : `${text}\n`);

@@ -13,6 +13,7 @@
     "build": "tsc",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:claude-e2e": "npm run build && node test/claude-spawn-e2e.mjs",
+    "test:slock-real-e2e": "npm run build && node test/slock-real-e2e.mjs",
     "dev": "tsc --watch",
     "start": "node dist/cmd/main.js start --foreground",
     "daemon": "node dist/cmd/main.js start",
