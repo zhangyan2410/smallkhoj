@@ -15,6 +15,8 @@ export interface SlockWrapperOptions {
 }
 
 export interface SlockWrapperResult {
+  slockHome: string;
+  launchId: string;
   wrapperDir: string;
   tokenFile: string;
   bashWrapper: string;
@@ -94,7 +96,7 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
     '',
   ].join('\n'), 'utf-8');
 
-  return { wrapperDir, tokenFile, bashWrapper, cmdWrapper, psWrapper };
+  return { slockHome: wrapperDir, launchId, wrapperDir, tokenFile, bashWrapper, cmdWrapper, psWrapper };
 }
 
 export function prependPathEnv(wrapperDir: string, basePath = process.env.PATH ?? ''): string {

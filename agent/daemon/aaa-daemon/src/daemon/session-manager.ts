@@ -28,6 +28,16 @@ export class SessionManager {
     return sessionId;
   }
 
+  upsert(session: SessionInfo): void {
+    const existing = this.sessions.get(session.sessionId);
+    this.sessions.set(session.sessionId, {
+      ...existing,
+      ...session,
+      createdAt: existing?.createdAt ?? session.createdAt,
+      updatedAt: Date.now(),
+    });
+  }
+
   get(sessionId: string): SessionInfo | undefined {
     return this.sessions.get(sessionId);
   }

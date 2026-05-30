@@ -9,9 +9,10 @@
  * Auto-starts the daemon if not running.
  */
 
-import { spawn, execSync } from 'child_process';
+import { spawn } from 'child_process';
 import * as readline from 'readline';
 import { existsSync, readFileSync } from 'fs';
+import { buildError, ErrorCode, parseLine, serialize } from '../protocol/jsonrpc.js';
 
 export interface AttachOptions {
   target?: string;
@@ -75,31 +76,41 @@ export async function attach(options: AttachOptions = {}): Promise<void> {
     }
   }
 
-  console.log(`[Attach] Connected to ${target}`);
-  console.log(`[Attach] Bridging stdin/stdout...`);
+  console.error(`[Attach] Connected to ${target}`);
+  console.error('[Attach] Bridging stdin/stdout...');
 
-  // Read from stdin, send to daemon proxy
+  // Read JSON-RPC lines from stdin and forward them to the daemon RPC endpoint.
   const rl = readline.createInterface({ input: process.stdin });
   rl.on('line', async (line: string) => {
     try {
-      const msg = JSON.parse(line);
-      const res = await fetch(target, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(msg),
-      });
+      const msg = parseLine(line);
+      if (!msg) {
+        process.stdout.write(serialize(buildError(null, ErrorCode.ParseError, 'Parse error')));
+        return;
+      }
+
+      const res = await postDaemonRpc(target, msg);
+      if (res.status === 204) return;
+
       const data = await res.json();
-      process.stdout.write(JSON.stringify(data) + '\n');
+      process.stdout.write(serialize(data));
     } catch (err) {
-      // Forward non-JSON as-is (like opencan's passthrough)
-      console.error('[Attach] Error:', (err as Error).message);
+      process.stdout.write(serialize(buildError(null, ErrorCode.InternalError, (err as Error).message)));
     }
   });
 
   // Emit attached notification
-  process.stdout.write(JSON.stringify({
+  process.stdout.write(serialize({
     jsonrpc: '2.0',
     method: 'daemon/attached',
     params: {},
-  }) + '\n');
+  }));
+}
+
+export async function postDaemonRpc(target: string, msg: unknown): Promise<Response> {
+  return fetch(new URL('/internal/daemon/jsonrpc', target), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(msg),
+  });
 }

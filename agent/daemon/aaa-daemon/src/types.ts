@@ -39,6 +39,12 @@ export interface DaemonConfig {
   runtimeCommandArgs?: string[];
   /** Optional model alias/name for Claude runtime */
   runtimeModel?: string;
+  /** Resume an existing Claude Code session id */
+  runtimeResumeSessionId?: string;
+  /** Restart Claude runtime once after an unexpected exit */
+  runtimeRestartOnCrash?: boolean;
+  /** Busy runtime inactivity threshold before stall recovery; disabled when unset/0 */
+  runtimeStallTimeoutMs?: number;
   /** Unix socket path (unused on Windows; falls back to TCP) */
   socketPath?: string;
 }

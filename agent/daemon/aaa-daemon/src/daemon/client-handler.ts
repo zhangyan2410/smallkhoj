@@ -10,8 +10,6 @@
 
 import { EventEmitter } from 'events';
 import {
-  parseLine,
-  serialize,
   isRequest,
   isResponse,
   isDaemonMethod,
@@ -21,7 +19,6 @@ import {
 } from '../protocol/jsonrpc.js';
 import type { JSONRPCMessage } from '../protocol/jsonrpc.js';
 import { DaemonMethods } from '../protocol/methods.js';
-import type { AgentProxy } from '../proxy/agent-proxy.js';
 import type { DaemonCore } from './daemon.js';
 
 export class ClientHandler extends EventEmitter {
@@ -90,6 +87,84 @@ export class ClientHandler extends EventEmitter {
       case DaemonMethods.MessageRead:
         return this.handleMessageRead(id, params);
 
+      case DaemonMethods.MessageSearch:
+        return this.forwardToProxy(id, 'message.search', params);
+
+      case DaemonMethods.MessageReact:
+        return this.forwardToProxy(id, 'message.react', params);
+
+      case DaemonMethods.TaskList:
+        return this.forwardToProxy(id, 'task.list', params);
+
+      case DaemonMethods.TaskCreate:
+        return this.forwardToProxy(id, 'task.create', params);
+
+      case DaemonMethods.TaskClaim:
+        return this.forwardToProxy(id, 'task.claim', params);
+
+      case DaemonMethods.TaskUpdate:
+        return this.forwardToProxy(id, 'task.update', params);
+
+      case DaemonMethods.ChannelMembers:
+        return this.forwardToProxy(id, 'channel.members', params);
+
+      case DaemonMethods.ChannelJoin:
+        return this.forwardToProxy(id, 'channel.join', params);
+
+      case DaemonMethods.ChannelLeave:
+        return this.forwardToProxy(id, 'channel.leave', params);
+
+      case DaemonMethods.ThreadUnfollow:
+        return this.forwardToProxy(id, 'thread.unfollow', params);
+
+      case DaemonMethods.ProfileGet:
+        return this.forwardToProxy(id, 'profile.get', params);
+
+      case DaemonMethods.ProfileUpdate:
+        return this.forwardToProxy(id, 'profile.update', params);
+
+      case DaemonMethods.IntegrationList:
+        return this.forwardToProxy(id, 'integration.list', params);
+
+      case DaemonMethods.IntegrationLogin:
+        return this.forwardToProxy(id, 'integration.login', params);
+
+      case DaemonMethods.ReminderList:
+        return this.forwardToProxy(id, 'reminder.list', params);
+
+      case DaemonMethods.ReminderCreate:
+        return this.forwardToProxy(id, 'reminder.create', params);
+
+      case DaemonMethods.ReminderSchedule:
+        return this.forwardToProxy(id, 'reminder.schedule', params);
+
+      case DaemonMethods.ReminderUpdate:
+        return this.forwardToProxy(id, 'reminder.update', params);
+
+      case DaemonMethods.ReminderCancel:
+        return this.forwardToProxy(id, 'reminder.cancel', params);
+
+      case DaemonMethods.ReminderDelete:
+        return this.forwardToProxy(id, 'reminder.delete', params);
+
+      case DaemonMethods.AttachmentView:
+        return this.forwardToProxy(id, 'attachment.view', params);
+
+      case DaemonMethods.AttachmentDownload:
+        return this.forwardToProxy(id, 'attachment.download', params);
+
+      case DaemonMethods.AttachmentUpload:
+        return this.forwardToProxy(id, 'attachment.upload', params);
+
+      case DaemonMethods.KnowledgeList:
+        return this.forwardToProxy(id, 'knowledge.list', params);
+
+      case DaemonMethods.KnowledgeGet:
+        return this.forwardToProxy(id, 'knowledge.get', params);
+
+      case DaemonMethods.KnowledgeSearch:
+        return this.forwardToProxy(id, 'knowledge.search', params);
+
       case DaemonMethods.SessionList:
         return buildResponse(id, {
           sessions: this.daemon.getSessionManager().list(),
@@ -120,8 +195,6 @@ export class ClientHandler extends EventEmitter {
     method: string,
     params: unknown
   ): Promise<JSONRPCMessage> {
-    const proxy = this.daemon.getProxy();
-    const proxyUrl = proxy.getProxyUrl();
     const credential = this.daemon.getCredential();
 
     if (!credential) {
@@ -129,32 +202,146 @@ export class ClientHandler extends EventEmitter {
     }
 
     try {
+      const p = isRecord(params) ? params : {};
       const agentPath = `/internal/agent/${encodeURIComponent(credential.agentId)}`;
       let apiPath: string;
+      let httpMethod = 'GET';
+      let body: unknown = undefined;
 
       switch (method) {
-        case 'message.send': apiPath = `${agentPath}/send`; break;
-        case 'message.check': apiPath = `${agentPath}/receive`; break;
-        case 'message.read': apiPath = `${agentPath}/history`; break;
-        case 'message.search': apiPath = `${agentPath}/search`; break;
-        case 'task.list': apiPath = `${agentPath}/tasks`; break;
-        case 'task.claim': apiPath = `${agentPath}/tasks/claim`; break;
-        case 'task.update': apiPath = `${agentPath}/tasks/update-status`; break;
-        case 'server.info': apiPath = `${agentPath}/server`; break;
-        case 'channel.members': apiPath = `${agentPath}/channel-members`; break;
-        case 'channel.join': apiPath = `${agentPath}/channels/${(params as any)?.channelId}/join`; break;
-        case 'channel.leave': apiPath = `${agentPath}/channels/${(params as any)?.channelId}/leave`; break;
+        case 'message.send':
+          apiPath = `${agentPath}/send`;
+          httpMethod = 'POST';
+          body = params;
+          break;
+        case 'message.check':
+          apiPath = `${agentPath}/receive${queryString(p, ['limit', 'since'])}`;
+          break;
+        case 'message.read':
+          apiPath = `${agentPath}/history${queryString(p, ['channel', 'limit', 'before', 'after'])}`;
+          break;
+        case 'message.search':
+          apiPath = `${agentPath}/search${queryString(p, ['q', 'query', 'channel', 'target', 'limit'])}`;
+          break;
+        case 'message.react':
+          apiPath = `${agentPath}/messages/${encodeURIComponent(String(p.messageId ?? p.message_id ?? p.id ?? ''))}/reactions`;
+          httpMethod = p.remove === true ? 'DELETE' : 'POST';
+          body = { reaction: p.reaction };
+          break;
+        case 'task.list':
+          apiPath = `${agentPath}/tasks${queryString(p, ['channel', 'status'])}`;
+          break;
+        case 'task.create':
+          apiPath = `${agentPath}/tasks`;
+          httpMethod = 'POST';
+          body = params;
+          break;
+        case 'task.claim':
+          if (p.taskId || p.id) {
+            apiPath = `${agentPath}/tasks/${encodeURIComponent(String(p.taskId ?? p.id))}/claim`;
+            body = compactBody({ assignee: p.assignee });
+          } else {
+            apiPath = `${agentPath}/tasks/claim`;
+            body = params;
+          }
+          httpMethod = 'POST';
+          break;
+        case 'task.update':
+          if (p.channel && p.task_number && p.status && !p.taskId && !p.id) {
+            apiPath = `${agentPath}/tasks/update-status`;
+            httpMethod = 'POST';
+            body = params;
+          } else {
+            apiPath = `${agentPath}/tasks/${encodeURIComponent(String(p.taskId ?? p.id ?? ''))}`;
+            httpMethod = 'PATCH';
+            body = withoutKeys(p, ['taskId', 'id']);
+          }
+          break;
+        case 'server.info':
+          apiPath = `${agentPath}/server`;
+          break;
+        case 'channel.members':
+          apiPath = `${agentPath}/channel-members${queryString(p, ['channel', 'target'])}`;
+          break;
+        case 'channel.join':
+          apiPath = `${agentPath}/channels/${encodeURIComponent(String(p.channelId ?? p.channel ?? p.target ?? ''))}/join`;
+          httpMethod = 'POST';
+          break;
+        case 'channel.leave':
+          apiPath = `${agentPath}/channels/${encodeURIComponent(String(p.channelId ?? p.channel ?? p.target ?? ''))}/leave`;
+          httpMethod = 'POST';
+          break;
+        case 'thread.unfollow':
+          apiPath = `${agentPath}/threads/unfollow`;
+          httpMethod = 'POST';
+          body = params;
+          break;
+        case 'profile.get':
+          apiPath = `${agentPath}/profile${p.handle ? `/${encodeURIComponent(String(p.handle))}` : ''}`;
+          break;
+        case 'profile.update':
+          apiPath = `${agentPath}/profile`;
+          httpMethod = 'POST';
+          body = params;
+          break;
+        case 'integration.list':
+          apiPath = `${agentPath}/integrations`;
+          break;
+        case 'integration.login':
+          apiPath = `${agentPath}/integrations/login`;
+          httpMethod = 'POST';
+          body = params;
+          break;
+        case 'reminder.list':
+          apiPath = `${agentPath}/reminders`;
+          break;
+        case 'reminder.create':
+        case 'reminder.schedule':
+          apiPath = `${agentPath}/reminders`;
+          httpMethod = 'POST';
+          body = params;
+          break;
+        case 'reminder.update':
+          apiPath = `${agentPath}/reminders/${encodeURIComponent(String(p.reminderId ?? p.id ?? ''))}`;
+          httpMethod = 'PATCH';
+          body = withoutKeys(p, ['reminderId', 'id']);
+          break;
+        case 'reminder.cancel':
+        case 'reminder.delete':
+          apiPath = `${agentPath}/reminders/${encodeURIComponent(String(p.reminderId ?? p.id ?? ''))}`;
+          httpMethod = 'DELETE';
+          break;
+        case 'attachment.view':
+          apiPath = `/api/attachments/${encodeURIComponent(String(p.attachmentId ?? p.id ?? ''))}`;
+          break;
+        case 'attachment.download':
+          apiPath = `/api/attachments/${encodeURIComponent(String(p.attachmentId ?? p.id ?? ''))}/download`;
+          break;
+        case 'attachment.upload':
+          apiPath = `${agentPath}/upload`;
+          httpMethod = 'POST';
+          body = params;
+          break;
+        case 'knowledge.list':
+          apiPath = `${agentPath}/knowledge${queryString(p, ['channel', 'target', 'limit'])}`;
+          break;
+        case 'knowledge.get':
+          apiPath = `${agentPath}/knowledge/${encodeURIComponent(String(p.knowledgeId ?? p.id ?? ''))}`;
+          break;
+        case 'knowledge.search':
+          apiPath = `${agentPath}/knowledge/search${queryString(p, ['q', 'query', 'channel', 'target', 'limit'])}`;
+          break;
         default:
           return buildError(id, ErrorCode.MethodNotFound, `Unknown method for proxy: ${method}`);
       }
 
-      const res = await fetch(`${proxyUrl}${apiPath}`, {
-        method: method === 'message.send' || method === 'task.claim' || method === 'task.update' ? 'POST' : 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${proxy.getProxyUrl()}`,
-        },
-        body: params ? JSON.stringify(params) : undefined,
+      if (apiPath.endsWith('//reactions') || apiPath.endsWith('/tasks/') || apiPath.endsWith('/channels//join') || apiPath.endsWith('/channels//leave') || apiPath.endsWith('/reminders/') || apiPath.endsWith('/attachments/') || apiPath.endsWith('/knowledge/')) {
+        return buildError(id, ErrorCode.InvalidParams, `Missing required identifier for ${method}`);
+      }
+
+      const res = await this.callLocalProxy(apiPath, {
+        method: httpMethod,
+        body,
       });
 
       const data = await res.json();
@@ -171,11 +358,10 @@ export class ClientHandler extends EventEmitter {
 
   private async handleServerInfo(id: string | number): Promise<JSONRPCMessage> {
     try {
-      const proxy = this.daemon.getProxy();
       const credential = this.daemon.getCredential();
       if (!credential) throw new Error('No credential');
 
-      const res = await fetch(`${proxy.getProxyUrl()}/internal/agent/${encodeURIComponent(credential.agentId)}/server`);
+      const res = await this.callLocalProxy(`/internal/agent/${encodeURIComponent(credential.agentId)}/server`);
       const data = await res.json();
       return buildResponse(id, data);
     } catch (err) {
@@ -184,9 +370,18 @@ export class ClientHandler extends EventEmitter {
   }
 
   private async handleMessageCheck(id: string | number): Promise<JSONRPCMessage> {
-    const events = this.daemon.getProxy().eventBuffer.since(
-      this.daemon.getProxy().getLastSeenSeq()
-    );
+    const events = this.daemon.getProxy().eventBuffer.snapshot();
+    let maxSeq = this.daemon.getProxy().getReadUpToSeq();
+    for (const event of events) {
+      const params = event.params;
+      if (isRecord(params) && typeof params.seq === 'number' && params.seq > maxSeq) {
+        maxSeq = params.seq;
+      }
+      if (event.seq > maxSeq) {
+        maxSeq = event.seq;
+      }
+    }
+    this.daemon.getProxy().markReadUpTo(maxSeq);
     return buildResponse(id, { events, count: events.length });
   }
 
@@ -203,16 +398,12 @@ export class ClientHandler extends EventEmitter {
       const body = {
         target: p?.target ?? '',
         content: p?.content ?? '',
-        seenUpToSeq: proxy.getLastSeenSeq(),
+        seenUpToSeq: proxy.getReadUpToSeq(),
       };
 
-      const res = await fetch(
-        `${proxy.getProxyUrl()}/internal/agent/${encodeURIComponent(credential.agentId)}/send`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }
+      const res = await this.callLocalProxy(
+        `/internal/agent/${encodeURIComponent(credential.agentId)}/send`,
+        { method: 'POST', body },
       );
 
       const data = await res.json();
@@ -244,8 +435,8 @@ export class ClientHandler extends EventEmitter {
       if (p?.before) query.set('before', String(p.before));
       if (p?.after) query.set('after', String(p.after));
 
-      const res = await fetch(
-        `${proxy.getProxyUrl()}/internal/agent/${encodeURIComponent(credential.agentId)}/history?${query}`
+      const res = await this.callLocalProxy(
+        `/internal/agent/${encodeURIComponent(credential.agentId)}/history?${query}`,
       );
       const data = await res.json();
       return buildResponse(id, data);
@@ -263,4 +454,56 @@ export class ClientHandler extends EventEmitter {
     const sessionId = this.daemon.getSessionManager().create(command);
     return buildResponse(id, { sessionId, command });
   }
+
+  private async callLocalProxy(path: string, options: { method?: string; body?: unknown } = {}): Promise<Response> {
+    const token = this.daemon.getProxyToken();
+    if (!token) throw new Error('No proxy token available');
+
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+    };
+    let body: string | undefined;
+    if (options.body !== undefined && options.body !== null) {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(options.body);
+    }
+
+    return fetch(`${this.daemon.getProxy().getProxyUrl()}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      body,
+    });
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function compactBody(values: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
+}
+
+function withoutKeys(values: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  const blocked = new Set(keys);
+  return Object.fromEntries(Object.entries(values).filter(([key, value]) => !blocked.has(key) && value !== undefined));
+}
+
+function queryString(values: Record<string, unknown>, keys: string[]): string {
+  const query = new URLSearchParams();
+  for (const key of keys) {
+    const value = values[key];
+    if (value === undefined || value === null || value === '') continue;
+    if (key === 'query') {
+      query.set('q', String(value));
+      continue;
+    }
+    if (key === 'target') {
+      query.set('channel', String(value));
+      continue;
+    }
+    query.set(key, String(value));
+  }
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : '';
 }

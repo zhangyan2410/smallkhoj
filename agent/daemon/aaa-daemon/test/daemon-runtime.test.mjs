@@ -75,7 +75,11 @@ const result = {
   serverStdout: (serverInfo.stdout || '').trim(),
   serverStderr: (serverInfo.stderr || '').trim(),
   pathHead: (process.env.PATH || '').split(process.platform === 'win32' ? ';' : ':')[0],
+  slockHome: process.env.SLOCK_HOME,
+  launchId: process.env.SLOCK_AGENT_LAUNCH_ID,
 };
+const promptFlagIndex = result.argv.indexOf('--append-system-prompt-file');
+result.systemPromptFile = promptFlagIndex >= 0 ? result.argv[promptFlagIndex + 1] : null;
 if (${includeSend ? 'true' : 'false'}) {
   const send = spawnSync(slockCommand, ['message', 'send', '--target', '#general', 'hello from runtime'], {
     encoding: 'utf-8',
@@ -146,6 +150,11 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
     assert.equal(runtime.sendStatus, 0, runtime.sendStderr);
     assert.match(runtime.sendStdout, /"sent"/);
     assert.equal(runtime.pathHead, join(root, '.slock'));
+    assert.equal(runtime.slockHome, join(root, '.slock'));
+    assert.match(runtime.launchId, /^pid-/);
+    assert.equal(runtime.systemPromptFile, join(root, '.slock', 'claude-system-prompt.md'));
+    assert.match(readFileSync(runtime.systemPromptFile, 'utf-8'), /slock CLI ONLY/);
+    assert.equal(runtime.argv.includes('--system-prompt'), false);
 
     await waitFor(() => upstream.requests.length >= 2);
     assert.equal(upstream.requests[0].req.url, '/internal/agent-api/server');
@@ -252,6 +261,11 @@ test('daemon start imports existing Slock runtime and Claude can call slock serv
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
     assert.match(runtime.serverStdout, /"server-imported"/);
     assert.equal(runtime.pathHead, join(root, '.slock'));
+    assert.equal(runtime.slockHome, join(root, '.slock'));
+    assert.match(runtime.launchId, /^pid-/);
+    assert.equal(runtime.systemPromptFile, join(root, '.slock', 'claude-system-prompt.md'));
+    assert.match(readFileSync(runtime.systemPromptFile, 'utf-8'), /Agent ID: agent-imported/);
+    assert.equal(runtime.argv.includes('--system-prompt'), false);
 
     await waitFor(() => upstream.requests.length >= 1);
     assert.equal(upstream.requests.length, 1);

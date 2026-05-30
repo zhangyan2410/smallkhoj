@@ -49,6 +49,7 @@ export function rewriteAgentPath(pathname: string, search: string, agentId: stri
   if (suffix.startsWith('/tasks')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/reminders')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/attachments')) return `/internal/agent-api${suffix}${search}`;
+  if (suffix.startsWith('/knowledge')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/messages/') && suffix.endsWith('/reactions')) {
     return `/internal/agent-api${suffix}${search}`;
   }
@@ -85,15 +86,19 @@ export interface ProxyRegistration {
   activeCapabilities: string;
 }
 
+export type DaemonRpcHandler = (message: unknown) => Promise<unknown>;
+
 export class AgentProxy extends EventEmitter {
   private server: http.Server | null = null;
   private port = 0;
   private host = '127.0.0.1';
   private registrations = new Map<string, ProxyRegistration>();
+  private daemonRpcHandler: DaemonRpcHandler | null = null;
   readonly state: StateMachine;
   readonly eventBuffer: EventBuffer;
 
   private lastSeenSeq = 0;
+  private readUpToSeq = 0;
 
   constructor() {
     super();
@@ -109,6 +114,10 @@ export class AgentProxy extends EventEmitter {
 
   unregister(token: string): boolean {
     return this.registrations.delete(token);
+  }
+
+  setDaemonRpcHandler(handler: DaemonRpcHandler | null): void {
+    this.daemonRpcHandler = handler;
   }
 
   // ── Start / Stop ───────────────────────────────────────────
@@ -161,9 +170,34 @@ export class AgentProxy extends EventEmitter {
     return this.lastSeenSeq;
   }
 
+  getReadUpToSeq(): number {
+    return this.readUpToSeq;
+  }
+
+  markReadUpTo(seq: number): void {
+    if (seq > this.readUpToSeq) {
+      this.readUpToSeq = seq;
+    }
+  }
+
+  recordIncomingMessage(event: Record<string, unknown>, emitEvent = true): void {
+    const seq = typeof event.seq === 'number' ? event.seq : undefined;
+    if (seq && seq > 0) this.updateSeq(seq);
+    this.eventBuffer.append('message_received', event);
+    if (emitEvent) {
+      this.emit('message_received', event);
+    }
+  }
+
   // ── Request handler ────────────────────────────────────────
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const localTarget = new URL(req.url ?? '/', 'http://local.daemon');
+    if (localTarget.pathname === '/internal/daemon/jsonrpc') {
+      await this.handleDaemonRpc(req, res);
+      return;
+    }
+
     // Auth
     const auth = req.headers.authorization ?? '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -210,6 +244,17 @@ export class AgentProxy extends EventEmitter {
         body = await readBody(req);
       }
 
+      const rewrittenPathname = new URL(rewritten, reg.credential.serverUrl).pathname;
+      if (method === 'POST' && rewrittenPathname === '/internal/agent-api/send') {
+        const hold = this.buildFreshnessHold(body);
+        if (hold) {
+          this.emit('freshness_hold', hold);
+          res.writeHead(409, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(hold));
+          return;
+        }
+      }
+
       // Make upstream request
       const upstreamRes = await fetch(upstreamUrl.toString(), {
         method,
@@ -218,8 +263,8 @@ export class AgentProxy extends EventEmitter {
       });
 
       // For buffered paths, read full response to consume into inbox
-      const rewrittenPathname = new URL(rewritten, reg.credential.serverUrl).pathname;
-      if (BUFFER_PATHS.has(rewrittenPathname) && upstreamRes.headers.get('content-type')?.includes('json')) {
+      const upstreamContentType = upstreamRes.headers.get('content-type') ?? '';
+      if (BUFFER_PATHS.has(rewrittenPathname) && upstreamContentType.includes('json')) {
         const text = await upstreamRes.text();
         this.consumeResponse(rewrittenPathname, target, text);
 
@@ -244,12 +289,19 @@ export class AgentProxy extends EventEmitter {
         res.writeHead(upstreamRes.status, resHeaders);
         if (upstreamRes.body) {
           const reader = upstreamRes.body.getReader();
+          const sseParser = rewrittenPathname === '/internal/agent-api/events' && upstreamContentType.includes('text/event-stream')
+            ? new SseEventParser((event) => this.recordIncomingMessage(event))
+            : null;
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
+              if (sseParser) {
+                sseParser.push(Buffer.from(value).toString('utf-8'));
+              }
               res.write(Buffer.from(value));
             }
+            sseParser?.flush();
           } finally {
             reader.releaseLock();
           }
@@ -293,21 +345,181 @@ export class AgentProxy extends EventEmitter {
 
     // events response — buffer messages
     if (pathname === '/internal/agent-api/events' && Array.isArray(data.events)) {
+      let maxSeq = this.readUpToSeq;
       for (const event of data.events as Record<string, unknown>[]) {
         const seq = typeof event.seq === 'number' ? event.seq : undefined;
-        if (seq && seq > 0) this.updateSeq(seq);
-        this.eventBuffer.append('message_received', event);
+        if (seq && seq > maxSeq) maxSeq = seq;
+        this.recordIncomingMessage(event);
       }
+      this.markReadUpTo(Math.max(maxSeq, this.lastSeenSeq));
     }
 
     // history response — track seq
     if (pathname === '/internal/agent-api/history' && Array.isArray(data.messages)) {
+      let maxSeq = this.readUpToSeq;
       for (const msg of data.messages as Record<string, unknown>[]) {
         const seq = typeof msg.seq === 'number' ? msg.seq : undefined;
         if (seq && seq > this.lastSeenSeq) this.updateSeq(seq);
+        if (seq && seq > maxSeq) maxSeq = seq;
       }
+      this.markReadUpTo(Math.max(maxSeq, this.lastSeenSeq));
     }
   }
+
+  private buildFreshnessHold(body: Uint8Array | undefined): Record<string, unknown> | null {
+    let seenUpToSeq = this.readUpToSeq;
+    if (!body || body.byteLength === 0) return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(Buffer.from(body).toString('utf-8'));
+    } catch {
+      return null;
+    }
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const seen = (parsed as Record<string, unknown>).seenUpToSeq;
+    if (typeof seen === 'number' && Number.isFinite(seen)) {
+      seenUpToSeq = Math.floor(seen);
+    }
+
+    const pending = this.pendingEventsSince(seenUpToSeq);
+    if (pending.length === 0) return null;
+
+    return {
+      state: 'held',
+      reason: 'pending_messages',
+      seenUpToSeq,
+      pendingCount: pending.length,
+      pending,
+    };
+  }
+
+  private pendingEventsSince(seenUpToSeq: number): ReturnType<EventBuffer['snapshot']> {
+    return this.eventBuffer.snapshot().filter((event) => {
+      const params = event.params;
+      if (isRecord(params) && typeof params.seq === 'number') {
+        return params.seq > seenUpToSeq;
+      }
+      return event.seq > seenUpToSeq;
+    });
+  }
+
+  private async handleDaemonRpc(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'method not allowed', code: 'method_not_allowed' }));
+      return;
+    }
+    if (!this.daemonRpcHandler) {
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'daemon rpc unavailable', code: 'daemon_rpc_unavailable' }));
+      return;
+    }
+
+    try {
+      const rawBody = await readBody(req);
+      const text = Buffer.from(rawBody).toString('utf-8').trim();
+      const message = text ? JSON.parse(text) : null;
+      const response = await this.daemonRpcHandler(message);
+      if (response === null || response === undefined) {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(response));
+    } catch (err) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        id: null,
+        error: {
+          code: -32700,
+          message: 'Parse error',
+          data: (err as Error).message,
+        },
+      }));
+    }
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+class SseEventParser {
+  private buffer = '';
+
+  constructor(private readonly onEvent: (event: Record<string, unknown>) => void) {}
+
+  push(chunk: string): void {
+    this.buffer += chunk;
+    this.drainCompleteFrames();
+  }
+
+  flush(): void {
+    if (!this.buffer.trim()) return;
+    this.consumeFrame(this.buffer);
+    this.buffer = '';
+  }
+
+  private drainCompleteFrames(): void {
+    let boundary = findSseBoundary(this.buffer);
+    while (boundary) {
+      const frame = this.buffer.slice(0, boundary.index);
+      this.buffer = this.buffer.slice(boundary.end);
+      this.consumeFrame(frame);
+      boundary = findSseBoundary(this.buffer);
+    }
+  }
+
+  private consumeFrame(frame: string): void {
+    const dataLines = frame
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice('data:'.length).trimStart());
+
+    if (dataLines.length === 0) return;
+    const data = dataLines.join('\n').trim();
+    if (!data || data === '[DONE]') return;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return;
+    }
+
+    for (const event of extractEventRecords(parsed)) {
+      this.onEvent(event);
+    }
+  }
+}
+
+function findSseBoundary(text: string): { index: number; end: number } | null {
+  const lf = text.indexOf('\n\n');
+  const crlf = text.indexOf('\r\n\r\n');
+  if (lf < 0 && crlf < 0) return null;
+  if (lf >= 0 && (crlf < 0 || lf < crlf)) return { index: lf, end: lf + 2 };
+  return { index: crlf, end: crlf + 4 };
+}
+
+function extractEventRecords(parsed: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(parsed)) {
+    return parsed.filter(isRecord);
+  }
+  if (!isRecord(parsed)) return [];
+  if (Array.isArray(parsed.events)) {
+    return parsed.events.filter(isRecord);
+  }
+  if (isRecord(parsed.message)) {
+    return [parsed.message];
+  }
+  if (isRecord(parsed.event)) {
+    return [parsed.event];
+  }
+  return [parsed];
 }
 
 // ── Helpers ──────────────────────────────────────────────────

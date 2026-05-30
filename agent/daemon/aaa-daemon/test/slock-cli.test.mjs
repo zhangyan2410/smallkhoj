@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 
+import { postDaemonRpc } from '../dist/attach/attach.js';
+import { ClientHandler } from '../dist/daemon/client-handler.js';
 import { AgentProxy } from '../dist/proxy/agent-proxy.js';
 
 function startServer(handler) {
@@ -156,6 +158,312 @@ test('slock message check maps to receive endpoint with limit', async () => {
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('AgentProxy holds sends until pending messages are read', async () => {
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/events') {
+      res.end(JSON.stringify({ events: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const proxy = new AgentProxy();
+
+  try {
+    await proxy.start(0);
+    proxy.register({
+      token: 'sap_proxy_token',
+      activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+      credential: {
+        agentId: 'agent-1',
+        serverId: 'server-1',
+        token: 'sk_machine_real',
+        serverUrl: upstream.url,
+      },
+    });
+    proxy.recordIncomingMessage({ seq: 9, id: 'msg-9', target: '#general', content: 'new context' }, false);
+
+    const held = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/send`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer sap_proxy_token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ target: '#general', content: 'stale reply' }),
+    });
+    const heldBody = await held.json();
+
+    assert.equal(held.status, 409);
+    assert.equal(heldBody.state, 'held');
+    assert.equal(heldBody.reason, 'pending_messages');
+    assert.equal(heldBody.pendingCount, 1);
+    assert.equal(upstream.requests.length, 0);
+
+    const check = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/receive?limit=10`, {
+      headers: { authorization: 'Bearer sap_proxy_token' },
+    });
+    assert.equal(check.status, 200);
+
+    const sent = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/send`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer sap_proxy_token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ target: '#general', content: 'fresh reply' }),
+    });
+    const sentBody = await sent.json();
+
+    assert.equal(sent.status, 200);
+    assert.equal(sentBody.state, 'sent');
+    assert.equal(upstream.requests.at(-1).req.url, '/internal/agent-api/send');
+  } finally {
+    proxy.stop();
+    await upstream.close();
+  }
+});
+
+test('AgentProxy consumes SSE event stream messages into inbox', async () => {
+  const upstream = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end([
+      'event: message',
+      'data: {"seq":12,"id":"msg-12","target":"#general","content":"from sse"}',
+      '',
+      '',
+    ].join('\n'));
+  });
+  const proxy = new AgentProxy();
+  const received = [];
+
+  try {
+    await proxy.start(0);
+    proxy.on('message_received', (event) => {
+      received.push(event);
+    });
+    proxy.register({
+      token: 'sap_proxy_token',
+      activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+      credential: {
+        agentId: 'agent-1',
+        serverId: 'server-1',
+        token: 'sk_machine_real',
+        serverUrl: upstream.url,
+      },
+    });
+
+    const response = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/receive`, {
+      headers: { authorization: 'Bearer sap_proxy_token' },
+    });
+    const text = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(text, /from sse/);
+    assert.equal(received.length, 1);
+    assert.deepEqual(received[0], {
+      seq: 12,
+      id: 'msg-12',
+      target: '#general',
+      content: 'from sse',
+    });
+    assert.equal(proxy.eventBuffer.snapshot().length, 1);
+    assert.equal(proxy.getLastSeenSeq(), 12);
+  } finally {
+    proxy.stop();
+    await upstream.close();
+  }
+});
+
+test('postDaemonRpc forwards JSON-RPC to daemon endpoint', async () => {
+  const proxy = new AgentProxy();
+
+  try {
+    await proxy.start(0);
+    proxy.setDaemonRpcHandler(async (message) => ({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: { method: message.method },
+    }));
+
+    const response = await postDaemonRpc(proxy.getProxyUrl(), {
+      jsonrpc: '2.0',
+      id: 99,
+      method: 'daemon/hello',
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body, {
+      jsonrpc: '2.0',
+      id: 99,
+      result: { method: 'daemon/hello' },
+    });
+  } finally {
+    proxy.stop();
+  }
+});
+
+test('ClientHandler forwards extended daemon methods through local proxy bearer auth', async () => {
+  const upstream = await startServer((req, res) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/profile/%40alice') {
+      res.end(JSON.stringify({ handle: '@alice' }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/knowledge/search') {
+      res.end(JSON.stringify({ results: [{ id: 'k-1', q: url.searchParams.get('q') }] }));
+      return;
+    }
+    res.end(JSON.stringify({ path: url.pathname }));
+  });
+  const proxy = new AgentProxy();
+
+  try {
+    await proxy.start(0);
+    proxy.register({
+      token: 'sap_proxy_token',
+      activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+      credential: {
+        agentId: 'agent-1',
+        serverId: 'server-1',
+        token: 'sk_machine_real',
+        serverUrl: upstream.url,
+      },
+    });
+
+    const handler = new ClientHandler({
+      getCredential: () => ({
+        agentId: 'agent-1',
+        serverId: 'server-1',
+        token: 'sk_machine_real',
+        serverUrl: upstream.url,
+      }),
+      getProxy: () => proxy,
+      getProxyToken: () => 'sap_proxy_token',
+      getConfig: () => ({ agentId: 'agent-1' }),
+      getSessionManager: () => ({ list: () => [], create: () => 'session-test' }),
+      getLogBuffer: () => [],
+    });
+
+    const response = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'daemon/profile.get',
+      params: { handle: '@alice' },
+    });
+
+    assert.deepEqual(response, {
+      jsonrpc: '2.0',
+      id: 1,
+      result: { handle: '@alice' },
+    });
+    assert.equal(upstream.requests.length, 1);
+    assert.equal(upstream.requests[0].req.url, '/internal/agent-api/profile/%40alice');
+    assert.equal(upstream.requests[0].req.headers.authorization, 'Bearer sk_machine_real');
+
+    const knowledge = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'daemon/knowledge.search',
+      params: { query: 'runtime' },
+    });
+
+    assert.deepEqual(knowledge, {
+      jsonrpc: '2.0',
+      id: 2,
+      result: { results: [{ id: 'k-1', q: 'runtime' }] },
+    });
+    assert.equal(upstream.requests.length, 2);
+    assert.equal(upstream.requests[1].req.url, '/internal/agent-api/knowledge/search?q=runtime');
+  } finally {
+    proxy.stop();
+    await upstream.close();
+  }
+});
+
+test('ClientHandler marks checked messages read before sending through freshness hold', async () => {
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/send') {
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+  const proxy = new AgentProxy();
+
+  try {
+    await proxy.start(0);
+    proxy.register({
+      token: 'sap_proxy_token',
+      activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+      credential: {
+        agentId: 'agent-1',
+        serverId: 'server-1',
+        token: 'sk_machine_real',
+        serverUrl: upstream.url,
+      },
+    });
+    proxy.recordIncomingMessage({ seq: 9, id: 'msg-9', target: '#general', content: 'new context' }, false);
+
+    const handler = new ClientHandler({
+      getCredential: () => ({
+        agentId: 'agent-1',
+        serverId: 'server-1',
+        token: 'sk_machine_real',
+        serverUrl: upstream.url,
+      }),
+      getProxy: () => proxy,
+      getProxyToken: () => 'sap_proxy_token',
+      getConfig: () => ({ agentId: 'agent-1' }),
+      getSessionManager: () => ({ list: () => [], create: () => 'session-test' }),
+      getLogBuffer: () => [],
+    });
+
+    const held = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'daemon/message.send',
+      params: { target: '#general', content: 'stale reply' },
+    });
+    assert.equal(held.result.state, 'held');
+    assert.equal(upstream.requests.length, 0);
+
+    const checked = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'daemon/message.check',
+    });
+    assert.equal(checked.result.count, 1);
+    assert.equal(proxy.getReadUpToSeq(), 9);
+
+    const sent = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'daemon/message.send',
+      params: { target: '#general', content: 'fresh reply' },
+    });
+
+    assert.equal(sent.result.state, 'sent');
+    assert.deepEqual(sent.result.body, {
+      target: '#general',
+      content: 'fresh reply',
+      seenUpToSeq: 9,
+    });
+    assert.equal(upstream.requests.length, 1);
+  } finally {
+    proxy.stop();
+    await upstream.close();
   }
 });
 

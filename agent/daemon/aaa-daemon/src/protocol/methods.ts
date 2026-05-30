@@ -71,6 +71,25 @@ export const DaemonMethods = {
   ChannelJoin: 'daemon/channel.join',
   ChannelLeave: 'daemon/channel.leave',
   ThreadUnfollow: 'daemon/thread.unfollow',
+
+  // ── Profile / integration / reminder / attachment operations ─
+
+  ProfileGet: 'daemon/profile.get',
+  ProfileUpdate: 'daemon/profile.update',
+  IntegrationList: 'daemon/integration.list',
+  IntegrationLogin: 'daemon/integration.login',
+  ReminderList: 'daemon/reminder.list',
+  ReminderCreate: 'daemon/reminder.create',
+  ReminderSchedule: 'daemon/reminder.schedule',
+  ReminderUpdate: 'daemon/reminder.update',
+  ReminderCancel: 'daemon/reminder.cancel',
+  ReminderDelete: 'daemon/reminder.delete',
+  AttachmentView: 'daemon/attachment.view',
+  AttachmentDownload: 'daemon/attachment.download',
+  AttachmentUpload: 'daemon/attachment.upload',
+  KnowledgeList: 'daemon/knowledge.list',
+  KnowledgeGet: 'daemon/knowledge.get',
+  KnowledgeSearch: 'daemon/knowledge.search',
 } as const;
 
 // ── ACP methods (internal, forwarded to agent process) ────────

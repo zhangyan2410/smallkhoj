@@ -1,5 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
+import { mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import type { Credential } from '../types.js';
 import { prependPathEnv } from './slock-wrapper.js';
 
@@ -7,6 +9,9 @@ export interface ClaudeRuntimeOptions {
   credential: Credential;
   workspacePath: string;
   wrapperDir: string;
+  slockHome?: string;
+  launchId?: string;
+  resumeSessionId?: string;
   model?: string;
   command?: string;
   commandArgs?: string[];
@@ -16,6 +21,29 @@ export interface ClaudeRuntimeOptions {
 export interface ClaudeRuntimeEvent {
   stream: 'stdout' | 'stderr';
   line: string;
+}
+
+export interface ClaudeRuntimeExitEvent {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  intentional: boolean;
+  sessionId?: string;
+}
+
+export type ClaudeStreamEvent = Record<string, unknown> & {
+  type?: string;
+  subtype?: string;
+  session_id?: string;
+  sessionId?: string;
+};
+
+export interface ClaudeUserMessagePayload {
+  type: 'user';
+  message: {
+    role: 'user';
+    content: Array<{ type: 'text'; text: string }>;
+  };
+  session_id?: string;
 }
 
 export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath'>): string {
@@ -115,10 +143,22 @@ export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'cred
   ].join('\n');
 }
 
+export function writeSlockSystemPromptFile(options: Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>): string {
+  mkdirSync(options.wrapperDir, { recursive: true });
+  const promptFile = join(options.wrapperDir, 'claude-system-prompt.md');
+  writeFileSync(promptFile, buildSlockSystemPrompt({
+    credential: options.credential,
+    workspacePath: options.workspacePath,
+  }), 'utf-8');
+  return promptFile;
+}
+
 export function buildClaudeRuntimeEnv(options: ClaudeRuntimeOptions, baseEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...baseEnv };
   env.FORCE_COLOR = '0';
+  env.SLOCK_HOME = options.slockHome ?? options.wrapperDir;
   env.SLOCK_AGENT_ID = options.credential.agentId;
+  env.SLOCK_AGENT_LAUNCH_ID = options.launchId ?? `pid-${process.pid}`;
   env.SLOCK_SERVER_URL = options.credential.serverUrl;
   env.SLOCK_CURRENT_WORKSPACE_PATH = options.workspacePath;
   env.PATH = prependPathEnv(options.wrapperDir, baseEnv.PATH ?? '');
@@ -132,7 +172,7 @@ export function buildClaudeRuntimeEnv(options: ClaudeRuntimeOptions, baseEnv = p
   return env;
 }
 
-export function buildClaudeArgs(options: Pick<ClaudeRuntimeOptions, 'model'>): string[] {
+export function buildClaudeArgs(options: Pick<ClaudeRuntimeOptions, 'model' | 'resumeSessionId'> & { systemPromptFile?: string }): string[] {
   const args = [
     '--allow-dangerously-skip-permissions',
     '--dangerously-skip-permissions',
@@ -150,6 +190,14 @@ export function buildClaudeArgs(options: Pick<ClaudeRuntimeOptions, 'model'>): s
     ].join(','),
   ];
 
+  if (options.systemPromptFile) {
+    args.push('--append-system-prompt-file', options.systemPromptFile);
+  }
+
+  if (options.resumeSessionId) {
+    args.push('--resume', options.resumeSessionId);
+  }
+
   if (options.model) {
     args.push('--model', options.model);
   }
@@ -157,26 +205,76 @@ export function buildClaudeArgs(options: Pick<ClaudeRuntimeOptions, 'model'>): s
   return args;
 }
 
+export function buildClaudeUserMessage(text: string, sessionId?: string): ClaudeUserMessagePayload {
+  const payload: ClaudeUserMessagePayload = {
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [{ type: 'text', text }],
+    },
+  };
+
+  if (sessionId) {
+    payload.session_id = sessionId;
+  }
+
+  return payload;
+}
+
+export function parseClaudeStreamLine(line: string): ClaudeStreamEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  const parsed = JSON.parse(trimmed) as unknown;
+  return isRecord(parsed) ? parsed : null;
+}
+
+export function extractClaudeSessionId(event: ClaudeStreamEvent): string | undefined {
+  if (typeof event.session_id === 'string' && event.session_id) return event.session_id;
+  if (typeof event.sessionId === 'string' && event.sessionId) return event.sessionId;
+
+  const message = event.message;
+  if (isRecord(message)) {
+    const nested = message.session_id ?? message.sessionId;
+    if (typeof nested === 'string' && nested) return nested;
+  }
+
+  return undefined;
+}
+
 export class ClaudeRuntimeDriver extends EventEmitter {
   private readonly options: ClaudeRuntimeOptions;
   private child: ChildProcessWithoutNullStreams | null = null;
+  private stdoutRemainder = '';
+  private readonly pendingUserMessages: string[] = [];
+  private readonly outstandingToolUses = new Set<string>();
+  private awaitingTurnResult = false;
+  private compacting = false;
+  private currentSessionId: string | undefined;
+  private stopping = false;
 
   constructor(options: ClaudeRuntimeOptions) {
     super();
     this.options = options;
+    this.currentSessionId = options.resumeSessionId;
   }
 
   start(): void {
     if (this.child) return;
+    this.stopping = false;
 
     const command = this.options.command ?? 'claude';
+    const systemPromptFile = writeSlockSystemPromptFile({
+      credential: this.options.credential,
+      workspacePath: this.options.workspacePath,
+      wrapperDir: this.options.wrapperDir,
+    });
     const args = [
       ...(this.options.commandArgs ?? []),
-      ...buildClaudeArgs({ model: this.options.model }),
-      '--system-prompt',
-      buildSlockSystemPrompt({
-        credential: this.options.credential,
-        workspacePath: this.options.workspacePath,
+      ...buildClaudeArgs({
+        model: this.options.model,
+        resumeSessionId: this.options.resumeSessionId,
+        systemPromptFile,
       }),
     ];
 
@@ -194,24 +292,186 @@ export class ClaudeRuntimeDriver extends EventEmitter {
     child.stderr.on('data', (chunk: string) => this.emitLines('stderr', chunk));
     child.on('error', (err) => this.emit('error', err));
     child.on('exit', (code, signal) => {
-      this.emit('exit', { code, signal });
+      const event: ClaudeRuntimeExitEvent = {
+        code,
+        signal,
+        intentional: this.stopping,
+        sessionId: this.currentSessionId,
+      };
       this.child = null;
+      this.awaitingTurnResult = false;
+      this.compacting = false;
+      this.outstandingToolUses.clear();
+      this.emit('exit', event);
     });
+    this.flushQueuedMessages();
   }
 
   stop(): void {
-    if (!this.child) return;
-    this.child.kill('SIGTERM');
+    this.terminate(true);
+  }
+
+  killUnresponsive(): void {
+    this.terminate(false);
   }
 
   get pid(): number | undefined {
     return this.child?.pid;
   }
 
+  get sessionId(): string | undefined {
+    return this.currentSessionId;
+  }
+
+  get queuedMessageCount(): number {
+    return this.pendingUserMessages.length;
+  }
+
+  get busy(): boolean {
+    return this.isBusy();
+  }
+
+  sendUserMessage(text: string): boolean {
+    if (!this.getWritableChild() || this.isBusy()) {
+      this.pendingUserMessages.push(text);
+      return false;
+    }
+
+    this.writeUserMessage(text);
+    return true;
+  }
+
   private emitLines(stream: 'stdout' | 'stderr', chunk: string): void {
-    for (const line of chunk.split(/\r?\n/)) {
+    const text = stream === 'stdout' ? this.stdoutRemainder + chunk : chunk;
+    const lines = text.split(/\r?\n/);
+    if (stream === 'stdout') {
+      this.stdoutRemainder = lines.pop() ?? '';
+    }
+
+    for (const line of lines) {
       if (!line) continue;
       this.emit('line', { stream, line } satisfies ClaudeRuntimeEvent);
+      if (stream === 'stdout') {
+        this.consumeStdoutLine(line);
+      }
+    }
+
+    if (stream === 'stderr') {
+      const trailing = lines.length === 0 ? text : '';
+      if (trailing) {
+        this.emit('line', { stream, line: trailing } satisfies ClaudeRuntimeEvent);
+      }
     }
   }
+
+  private consumeStdoutLine(line: string): void {
+    let event: ClaudeStreamEvent | null;
+    try {
+      event = parseClaudeStreamLine(line);
+    } catch (err) {
+      this.emit('parse_error', { line, error: err });
+      return;
+    }
+
+    if (!event) return;
+    this.consumeStreamEvent(event);
+  }
+
+  private consumeStreamEvent(event: ClaudeStreamEvent): void {
+    const sessionId = extractClaudeSessionId(event);
+    if (sessionId && sessionId !== this.currentSessionId) {
+      this.currentSessionId = sessionId;
+      this.emit('session', { sessionId });
+    }
+
+    const type = typeof event.type === 'string' ? event.type : '';
+    if (type === 'system') {
+      this.updateCompactingState(event);
+    }
+
+    if (type === 'assistant') {
+      this.awaitingTurnResult = true;
+      for (const block of getContentBlocks(event)) {
+        if (block.type === 'tool_use' && typeof block.id === 'string') {
+          this.outstandingToolUses.add(block.id);
+        }
+      }
+    }
+
+    if (type === 'user') {
+      for (const block of getContentBlocks(event)) {
+        if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+          this.outstandingToolUses.delete(block.tool_use_id);
+        }
+      }
+    }
+
+    if (type === 'result') {
+      this.awaitingTurnResult = false;
+      this.compacting = false;
+      this.outstandingToolUses.clear();
+    }
+
+    this.emit('stream_event', event);
+    this.flushQueuedMessages();
+  }
+
+  private updateCompactingState(event: ClaudeStreamEvent): void {
+    const subtype = typeof event.subtype === 'string' ? event.subtype : '';
+    if (subtype === 'compacting') {
+      this.compacting = true;
+      return;
+    }
+    if (subtype === 'compact_complete' || subtype === 'compacted' || subtype === 'session_init') {
+      this.compacting = false;
+    }
+  }
+
+  private flushQueuedMessages(): void {
+    if (!this.getWritableChild() || this.isBusy()) return;
+
+    const next = this.pendingUserMessages.shift();
+    if (next === undefined) return;
+    this.writeUserMessage(next);
+  }
+
+  private writeUserMessage(text: string): void {
+    const child = this.getWritableChild();
+    if (!child) {
+      this.pendingUserMessages.unshift(text);
+      return;
+    }
+
+    const payload = buildClaudeUserMessage(text, this.currentSessionId);
+    child.stdin.write(`${JSON.stringify(payload)}\n`);
+    this.awaitingTurnResult = true;
+    this.emit('message_sent', payload);
+  }
+
+  private getWritableChild(): ChildProcessWithoutNullStreams | null {
+    if (!this.child || !this.child.stdin.writable) return null;
+    return this.child;
+  }
+
+  private isBusy(): boolean {
+    return this.awaitingTurnResult || this.compacting || this.outstandingToolUses.size > 0;
+  }
+
+  private terminate(intentional: boolean): void {
+    if (!this.child) return;
+    this.stopping = intentional;
+    this.child.kill('SIGTERM');
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getContentBlocks(event: ClaudeStreamEvent): Array<Record<string, unknown>> {
+  const message = event.message;
+  if (!isRecord(message)) return [];
+  const content = message.content;
+  if (!Array.isArray(content)) return [];
+  return content.filter(isRecord);
 }

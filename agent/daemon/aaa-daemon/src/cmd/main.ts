@@ -49,6 +49,9 @@ program
   .option('--runtime-command <command>', 'Runtime executable command')
   .option('--runtime-command-arg <arg>', 'Runtime executable argument (repeatable)', collect, [])
   .option('--runtime-model <model>', 'Claude runtime model')
+  .option('--runtime-resume-session-id <id>', 'Resume an existing Claude Code session id')
+  .option('--runtime-restart-on-crash', 'Restart Claude runtime once after an unexpected exit')
+  .option('--runtime-stall-timeout-ms <ms>', 'Busy runtime inactivity timeout before stall recovery')
   .option('--mcp', 'Enable MCP stdio bridge')
   .option('-v, --verbose', 'Verbose logging')
   .action(async (options) => {
@@ -89,6 +92,9 @@ program
       runtimeCommand: options.runtimeCommand,
       runtimeCommandArgs: options.runtimeCommandArg,
       runtimeModel: options.runtimeModel,
+      runtimeResumeSessionId: options.runtimeResumeSessionId,
+      runtimeRestartOnCrash: options.runtimeRestartOnCrash === true,
+      runtimeStallTimeoutMs: options.runtimeStallTimeoutMs ? parseInt(options.runtimeStallTimeoutMs, 10) : undefined,
     };
 
     const daemon = new DaemonCore(config);
