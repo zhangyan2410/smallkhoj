@@ -47,6 +47,26 @@ export interface Task {
   createdAt: string
 }
 
+// Use globalThis to survive Next.js dev HMR module reloads
+const GLOBAL_KEY = "__daemon_store_singleton__"
+const CURSOR_KEY = "__daemon_cursor_singleton__"
+
+function getGlobalStore(): DaemonStore | undefined {
+  return (globalThis as unknown as Record<string, unknown>)[GLOBAL_KEY] as DaemonStore
+}
+
+function setGlobalStore(store: DaemonStore): void {
+  (globalThis as unknown as Record<string, unknown>)[GLOBAL_KEY] = store
+}
+
+function getGlobalCursors(): Map<string, number> | undefined {
+  return (globalThis as unknown as Record<string, unknown>)[CURSOR_KEY] as Map<string, number>
+}
+
+function setGlobalCursors(cursors: Map<string, number>): void {
+  (globalThis as unknown as Record<string, unknown>)[CURSOR_KEY] = cursors
+}
+
 // In-memory store
 class DaemonStore {
   agents: Map<string, Agent> = new Map()
@@ -251,15 +271,31 @@ export function getStatusLabel(status: string): string {
 }
 
 // Per-agent consumed cursor tracking
-const agentCursors = new Map<string, number>()
+function getCursors(): Map<string, number> {
+  let cursors = getGlobalCursors()
+  if (!cursors) {
+    cursors = new Map<string, number>()
+    setGlobalCursors(cursors)
+  }
+  return cursors
+}
 
-export function getAgentCursor(agentId: string): number {
-  return agentCursors.get(agentId) || 0
+export function getAgentCursor(agentId: string): number | undefined {
+  return getCursors().get(agentId)
 }
 
 export function setAgentCursor(agentId: string, cursor: number): void {
-  agentCursors.set(agentId, cursor)
+  getCursors().set(agentId, cursor)
 }
 
-// Singleton instance
-export const store = new DaemonStore()
+export function hasAgentCursor(agentId: string): boolean {
+  return getCursors().has(agentId)
+}
+
+// Singleton instance — survives HMR via globalThis
+let storeInstance = getGlobalStore()
+if (!storeInstance) {
+  storeInstance = new DaemonStore()
+  setGlobalStore(storeInstance)
+}
+export const store = storeInstance

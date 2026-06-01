@@ -26,11 +26,14 @@ export async function GET(request: NextRequest) {
 
   let since = 0
   if (sinceParam === "latest") {
-    // Use agent's last consumed cursor; if never checked, initialize to current max seq
-    since = getAgentCursor(agentId)
-    if (since === 0 && store.events.length > 0) {
-      since = store.events[store.events.length - 1].seq
+    const cursor = getAgentCursor(agentId)
+    if (cursor === undefined) {
+      // First time: initialize to current max seq, return empty
+      since = store.events.length > 0 ? store.events[store.events.length - 1].seq : 0
       setAgentCursor(agentId, since)
+    } else {
+      // Already initialized: use stored cursor
+      since = cursor
     }
   } else {
     since = parseInt(sinceParam, 10) || 0
@@ -39,7 +42,8 @@ export async function GET(request: NextRequest) {
   const { events, nextCursor } = store.getEvents(since)
 
   // Advance cursor for this agent
-  if (nextCursor > getAgentCursor(agentId)) {
+  const currentCursor = getAgentCursor(agentId) ?? 0
+  if (nextCursor > currentCursor) {
     setAgentCursor(agentId, nextCursor)
   }
 
