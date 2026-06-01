@@ -16,6 +16,11 @@ if defined TWD_TOKEN (
   set "TWD_TOKEN=%TWD_TOKEN%"
 )
 
+:: Forward TWD_PORT if set (default 18765, Slock Bridge uses 28765)
+if defined TWD_PORT (
+  set "TWD_PORT=%TWD_PORT%"
+)
+
 where py >NUL 2>NUL
 if not errorlevel 1 (
   py -3 "%TWD%" %*

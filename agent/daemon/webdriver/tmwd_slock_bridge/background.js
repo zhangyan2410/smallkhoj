@@ -1,11 +1,12 @@
-// background.js - Cookie + CDP Bridge
+// background.js - Slock Bridge (port 28765)
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('CDP Bridge installed');
+  console.log('Slock Bridge installed (port 28765)');
+  connectWS();
   // Strip CSP headers to allow eval/inline scripts
   chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [9999],
+    removeRuleIds: [8765],
     addRules: [{
-      id: 9999, priority: 1,
+      id: 8765, priority: 1,
       action: { type: 'modifyHeaders', responseHeaders: [
         { header: 'content-security-policy', operation: 'remove' },
         { header: 'content-security-policy-report-only', operation: 'remove' }
@@ -19,6 +20,7 @@ async function handleExtMessage(msg, sender) {
   if (msg.cmd === 'cookies') return await handleCookies(msg, sender);
   if (msg.cmd === 'cdp') return await handleCDP(msg, sender);
   if (msg.cmd === 'batch') return await handleBatch(msg, sender);
+  if (msg.cmd === 'groups') return await handleGroups(msg);
   if (msg.cmd === 'tabs') {
     try {
       if (msg.method === 'create') {
@@ -152,6 +154,81 @@ async function handleCDP(msg, sender) {
 // Filter out chrome:// and other internal tabs that can't be scripted
 const isScriptable = url => url && /^https?:/.test(url);
 
+// --- tabGroups (Chrome 113+ / MV3) ---
+// APIs: chrome.tabs.group() / chrome.tabs.ungroup() / chrome.tabGroups.update() / chrome.tabGroups.query()
+async function handleGroups(msg) {
+  const m = msg.method;
+  try {
+    if (m === 'list') {
+      const groups = await chrome.tabGroups.query({});
+      const out = [];
+      for (const g of groups) {
+        const tabs = await chrome.tabs.query({groupId: g.id});
+        out.push({id: g.id, title: g.title, color: g.color, collapsed: g.collapsed, windowId: g.windowId, tabIds: tabs.map(t => t.id)});
+      }
+      return {ok: true, data: out};
+    }
+    if (m === 'create') {
+      const title = String(msg.title || '').trim();
+      const color = msg.color || 'blue';
+      const tabIds = Array.isArray(msg.tabs) ? msg.tabs.map(Number).filter(Number.isFinite) : [];
+      if (!title) return {ok: false, error: 'title required'};
+      if (!tabIds.length) return {ok: false, error: 'tabs required'};
+
+      // Reuse existing group with same title
+      const existing = (await chrome.tabGroups.query({title}))[0];
+      let groupId;
+      if (existing) {
+        // Append new tabs to existing group
+        const inGroup = (await chrome.tabs.query({groupId: existing.id})).map(t => t.id);
+        const toAdd = tabIds.filter(id => !inGroup.includes(id));
+        if (toAdd.length) await chrome.tabs.group({tabIds: toAdd, groupId: existing.id});
+        groupId = existing.id;
+      } else {
+        // Create new group
+        groupId = await chrome.tabs.group({tabIds});
+        await chrome.tabGroups.update(groupId, {title, color});
+      }
+      const finalTabs = (await chrome.tabs.query({groupId})).map(t => t.id);
+      return {ok: true, data: {id: groupId, title, color, tabIds: finalTabs, reused: !!existing}};
+    }
+    if (m === 'add') {
+      const groupId = Number(msg.groupId);
+      const tabIds = Array.isArray(msg.tabs) ? msg.tabs.map(Number).filter(Number.isFinite) : [];
+      if (!groupId) return {ok: false, error: 'groupId required'};
+      if (!tabIds.length) return {ok: false, error: 'tabs required'};
+      const inGroup = (await chrome.tabs.query({groupId})).map(t => t.id);
+      const toAdd = tabIds.filter(id => !inGroup.includes(id));
+      if (toAdd.length) await chrome.tabs.group({tabIds: toAdd, groupId});
+      const finalTabs = (await chrome.tabs.query({groupId})).map(t => t.id);
+      return {ok: true, data: {id: groupId, tabIds: finalTabs}};
+    }
+    if (m === 'remove') {
+      const groupId = Number(msg.groupId);
+      if (!groupId) return {ok: false, error: 'groupId required'};
+      const ids = Array.isArray(msg.tabs) && msg.tabs.length
+        ? msg.tabs.map(Number).filter(Number.isFinite)
+        : (await chrome.tabs.query({groupId})).map(t => t.id);
+      if (ids.length) await chrome.tabs.ungroup(ids);
+      const stillThere = await chrome.tabGroups.get(groupId).catch(() => null);
+      return {ok: true, data: {groupId, removed: ids, emptyGroup: !stillThere}};
+    }
+    if (m === 'update') {
+      const groupId = Number(msg.groupId);
+      if (!groupId) return {ok: false, error: 'groupId required'};
+      const upd = {};
+      if (msg.title !== undefined) upd.title = String(msg.title);
+      if (msg.color !== undefined) upd.color = msg.color;
+      if (msg.collapsed !== undefined) upd.collapsed = !!msg.collapsed;
+      const g = await chrome.tabGroups.update(groupId, upd);
+      return {ok: true, data: {id: g.id, title: g.title, color: g.color, collapsed: g.collapsed}};
+    }
+    return {ok: false, error: 'Unknown method: ' + m};
+  } catch (e) {
+    return {ok: false, error: e.message};
+  }
+}
+
 // --- Shared page/CDP script builder core ---
 function buildExecScript(code, errorHandler) {
   return `(async () => {
@@ -211,7 +288,7 @@ function buildCdpScript(code) {
 
 // --- WebSocket Client for TMWebDriver ---
 let ws = null;
-const WS_URL = 'ws://127.0.0.1:18765';
+const WS_URL = 'ws://127.0.0.1:28765';
 
 function scheduleProbe() {
   // Use chrome.alarms to survive MV3 service worker suspension
@@ -227,7 +304,7 @@ async function isServerAlive() {
   try {
     const ctrl = new AbortController();
     setTimeout(() => ctrl.abort(), 2000);
-    await fetch('http://127.0.0.1:18765', { signal: ctrl.signal });
+    await fetch('http://127.0.0.1:28765', { signal: ctrl.signal });
     return true; // Got HTTP response → port is listening
   } catch (e) {
     return false; // Network error (connection refused) or timeout → server not alive

@@ -7,7 +7,8 @@
 
 - `twd.py`：CLI 入口。
 - `tmwebdriver_core.py`：从 GA 拆出的 TMWebDriver 核心。
-- `tmwd_cdp_bridge/`：Chrome 扩展源码，负责连接本机 `127.0.0.1:18765`。
+- `tmwd_cdp_bridge/`：Chrome 扩展源码（GA 共享版，端口 18765）。
+- `tmwd_slock_bridge/`：Chrome 扩展源码（smallkhoj 独立版，端口 28765，支持 tabGroups）。
 - `requirements.txt`：Python 依赖。
 
 ## 安装依赖
@@ -179,4 +180,69 @@ JS 中 await 必须显式 return。
 
 ## 设计取舍
 
-当前版本故意保持简单：CLI + JSON 输出，方便 Claude/Codex 用 shell 调用。后续如果要给别人用，再加 MCP/HTTP API、权限隔离、日志审计、CDP 坐标点击等。 
+当前版本故意保持简单：CLI + JSON 输出，方便 Claude/Codex 用 shell 调用。后续如果要给别人用，再加 MCP/HTTP API、权限隔离、日志审计、CDP 坐标点击等。
+
+## 多实例：TWD_PORT
+
+默认端口 `18765`。设 `TWD_PORT` 环境变量切到独立实例：
+
+```powershell
+# Slock Bridge 独立版（端口 28765）
+$env:TWD_PORT = "28765"
+python twd.py serve
+python twd.py tabs
+```
+
+```bash
+# Linux/Mac
+export TWD_PORT=28765
+python twd.py serve
+```
+
+## Tab Groups（Chrome 113+）
+
+需要 `tmwd_slock_bridge` 扩展（含 `tabGroups` 权限）。
+
+```powershell
+# 列出所有分组
+python twd.py groups list
+
+# 创建分组（绿色 "slock"，包含 tab 123 和 456）
+python twd.py groups create --title slock --color green --tabs 123,456
+
+# 往已有分组加 tab
+python twd.py groups add --group-id 1878492781 --tabs 789
+
+# 从分组移除 tab
+python twd.py groups remove --group-id 1878492781 --tabs 789
+
+# 更新分组（改名/改色/折叠）
+python twd.py groups update --group-id 1878492781 --title newslock --color purple --collapsed true
+
+# 折叠/展开（collapsed 接受 true/false）
+python twd.py groups update --group-id 1878492781 --collapsed false
+```
+
+颜色可选：`grey | blue | cyan | red | yellow | green | pink | purple | orange`
+
+## 给 Claude Code / Codex 的完整提示词
+
+```text
+浏览器自动化可用 CLI：python twd.py
+默认读 TWD_PORT 环境变量，不设则用 18765。
+
+常用命令：
+- python twd.py tabs                                    # 列出已连接 tab
+- python twd.py eval --url-match <domain> "return ..."  # 执行 JS
+- python twd.py scan --text --url-match <domain>        # 读取页面文本
+- python twd.py input --url-match <domain> "textarea" "内容" --contains "关键字"
+- python twd.py click --url-match <domain> "button" --contains "按钮文字"
+- python twd.py act --url-match <domain> "JS动作"       # 执行动作并自动 diff
+- python twd.py groups list                             # 列出 tab 分组
+- python twd.py groups create --title 名字 --color green --tabs id1,id2  # 创建分组
+
+输出都是 JSON；失败看 ok=false/code/message。
+--compact 单行输出，--compact 放子命令前。
+JS 中 await 必须显式 return。
+先确保有常驻：python twd.py serve
+```

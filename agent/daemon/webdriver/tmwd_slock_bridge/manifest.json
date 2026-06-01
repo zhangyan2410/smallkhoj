@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "TMWD CDP Bridge",
-  "version": "2.0",
-  "description": "Cookie viewer + CDP bridge",
+  "name": "TMWD Slock Bridge",
+  "version": "1.0",
+  "description": "smallkhoj browser bridge (port 28765)",
   "permissions": [
     "cookies",
     "tabs",
@@ -12,7 +12,8 @@
     "alarms",
     "declarativeNetRequest",
     "management",
-    "contentSettings"
+    "contentSettings",
+    "tabGroups"
   ],
   "host_permissions": ["<all_urls>"],
   "background": {
@@ -35,6 +36,6 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "TMWD CDP Bridge"
+    "default_title": "TMWD Slock Bridge"
   }
 }

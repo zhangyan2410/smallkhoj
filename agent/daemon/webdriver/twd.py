@@ -45,7 +45,7 @@ except Exception:  # pragma: no cover
     _snap_js = _start_monitor_js = _drain_monitor_js = None  # type: ignore
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 18765
+DEFAULT_PORT = int(os.environ.get("TWD_PORT", "18765"))
 
 
 def jdump(obj: Any, pretty: bool = True) -> str:
@@ -515,6 +515,61 @@ def cmd_act(args: argparse.Namespace) -> int:
     return 0 if action_error is None else 5
 
 
+# ------------------------------------------------------------------ groups
+VALID_COLORS = ("grey", "blue", "cyan", "red", "yellow", "green", "pink", "purple", "orange")
+
+
+def cmd_groups(args: argparse.Namespace) -> int:
+    driver = make_driver(args)
+    sid = choose_session(driver, args)
+    if not sid:
+        print_json(err("NO_TAB", "No browser tab connected."))
+        return 2
+    method = args.groups_method
+    payload: dict[str, Any] = {"cmd": "groups", "method": method}
+    if method == "create":
+        if not args.title:
+            print_json(err("USAGE", "groups create requires --title"))
+            return 2
+        tabs = [int(x) for x in args.tabs.split(",") if x.strip()] if args.tabs else []
+        if not tabs:
+            print_json(err("USAGE", "groups create requires --tabs id1,id2"))
+            return 2
+        payload["title"] = args.title
+        payload["color"] = args.color if args.color and args.color in VALID_COLORS else "blue"
+        payload["tabs"] = tabs
+    elif method == "add":
+        if not args.group_id or not args.tabs:
+            print_json(err("USAGE", "groups add requires --group-id and --tabs"))
+            return 2
+        payload["groupId"] = args.group_id
+        payload["tabs"] = [int(x) for x in args.tabs.split(",") if x.strip()]
+    elif method == "remove":
+        if not args.group_id:
+            print_json(err("USAGE", "groups remove requires --group-id"))
+            return 2
+        payload["groupId"] = args.group_id
+        if args.tabs:
+            payload["tabs"] = [int(x) for x in args.tabs.split(",") if x.strip()]
+    elif method == "update":
+        if not args.group_id:
+            print_json(err("USAGE", "groups update requires --group-id"))
+            return 2
+        payload["groupId"] = args.group_id
+        if args.title:
+            payload["title"] = args.title
+        if args.color and args.color in VALID_COLORS:
+            payload["color"] = args.color
+        if args.collapsed is not None:
+            payload["collapsed"] = args.collapsed
+    # list needs no extra args
+    r = unwrap_exec_result(
+        driver.execute_js(json.dumps(payload, ensure_ascii=False), timeout=args.timeout, session_id=sid)
+    )
+    print_json(ok(tabId=sid, method=method, result=r), pretty=not args.compact)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="twd", description="TMWebDriver lightweight CLI for local agents")
     p.add_argument("--host", default=DEFAULT_HOST)
@@ -605,6 +660,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--save-before", help="write before snapshot to this file")
     sp.add_argument("--cleanup-after", help="CSS selector to remove after action (DOM hygiene)")
     sp.set_defaults(func=cmd_act)
+
+    sp = sub.add_parser("groups", help="Chrome tabGroups: list/create/add/remove/update")
+    common(sp)
+    sp.add_argument("groups_method", choices=["list", "create", "add", "remove", "update"])
+    sp.add_argument("--group-id", type=int, help="tabGroup id")
+    sp.add_argument("--title", help="group title (create/update)")
+    sp.add_argument("--color", help="group color: " + "|".join(VALID_COLORS))
+    sp.add_argument("--tabs", help="comma-separated tab ids (e.g. 123,456)")
+    sp.add_argument("--collapsed", type=bool, default=None, help="true/false (update)")
+    sp.set_defaults(func=cmd_groups)
     return p
 
 
