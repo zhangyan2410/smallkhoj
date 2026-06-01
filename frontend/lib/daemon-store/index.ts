@@ -47,9 +47,13 @@ export interface Task {
   createdAt: string
 }
 
+// Event subscriber type
+type EventSubscriber = (event: Event) => void
+
 // Use globalThis to survive Next.js dev HMR module reloads
 const GLOBAL_KEY = "__daemon_store_singleton__"
 const CURSOR_KEY = "__daemon_cursor_singleton__"
+const SUBS_KEY = "__daemon_subs_singleton__"
 
 function getGlobalStore(): DaemonStore | undefined {
   return (globalThis as unknown as Record<string, unknown>)[GLOBAL_KEY] as DaemonStore
@@ -65,6 +69,14 @@ function getGlobalCursors(): Map<string, number> | undefined {
 
 function setGlobalCursors(cursors: Map<string, number>): void {
   (globalThis as unknown as Record<string, unknown>)[CURSOR_KEY] = cursors
+}
+
+function getGlobalSubs(): Set<EventSubscriber> | undefined {
+  return (globalThis as unknown as Record<string, unknown>)[SUBS_KEY] as Set<EventSubscriber>
+}
+
+function setGlobalSubs(subs: Set<EventSubscriber>): void {
+  (globalThis as unknown as Record<string, unknown>)[SUBS_KEY] = subs
 }
 
 // In-memory store
@@ -144,6 +156,19 @@ class DaemonStore {
     })
   }
 
+  subscribers: Set<EventSubscriber> = getGlobalSubs() || new Set()
+
+  subscribe(fn: EventSubscriber): () => void {
+    this.subscribers.add(fn)
+    return () => this.subscribers.delete(fn)
+  }
+
+  private emit(event: Event): void {
+    for (const fn of this.subscribers) {
+      try { fn(event) } catch { /* ignore subscriber errors */ }
+    }
+  }
+
   nextSeq(): number {
     return ++this.seqCounter
   }
@@ -157,13 +182,15 @@ class DaemonStore {
     this.messages.push(message)
 
     // Also create an event
-    this.events.push({
+    const event: Event = {
       id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       type: "message",
       payload: { message },
       timestamp: message.timestamp,
       seq: this.nextSeq(),
-    })
+    }
+    this.events.push(event)
+    this.emit(event)
 
     return message
   }
@@ -208,13 +235,15 @@ class DaemonStore {
     task.status = "in_progress"
     task.assignee = agentId
 
-    this.events.push({
+    const event: Event = {
       id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       type: "task_claimed",
       payload: { taskId: taskNumber, assignee: agentId, channel },
       timestamp: new Date().toISOString(),
       seq: this.nextSeq(),
-    })
+    }
+    this.events.push(event)
+    this.emit(event)
 
     return task
   }
@@ -225,13 +254,15 @@ class DaemonStore {
     if (task.assignee !== agentId) return null
     task.status = status
 
-    this.events.push({
+    const event: Event = {
       id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       type: "task_updated",
       payload: { taskId, status, assignee: agentId },
       timestamp: new Date().toISOString(),
       seq: this.nextSeq(),
-    })
+    }
+    this.events.push(event)
+    this.emit(event)
 
     return task
   }
@@ -299,3 +330,11 @@ if (!storeInstance) {
   setGlobalStore(storeInstance)
 }
 export const store = storeInstance
+
+// Ensure subscribers survive HMR
+let globalSubs = getGlobalSubs()
+if (!globalSubs) {
+  globalSubs = new Set<EventSubscriber>()
+  setGlobalSubs(globalSubs)
+}
+storeInstance.subscribers = globalSubs
