@@ -4,7 +4,8 @@ import { store } from "@/lib/daemon-store"
 
 /**
  * POST /internal/agent-api/tasks/update-status
- * Body: { taskId, status }
+ * Body: { channel, task_number, status }
+ * Compatible with real slock CLI shape.
  */
 export async function POST(request: NextRequest) {
   const auth = validateAuth(
@@ -15,17 +16,19 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json(
       { ok: false, code: auth.code || "UNAUTHORIZED", message: auth.error },
-      { status: 401 }
+      { status: auth.code === "FORBIDDEN" ? 403 : 401 }
     )
   }
 
   try {
     const body = await request.json()
-    const { taskId, status } = body
+    // Support both real CLI shape { channel, task_number } and MVP shape { taskId }
+    const taskNumber = body.task_number || body.taskId
+    const status = body.status
 
-    if (!taskId || !status) {
+    if (!taskNumber || !status) {
       return NextResponse.json(
-        { ok: false, code: "MISSING_PARAMS", message: "taskId and status are required" },
+        { ok: false, code: "MISSING_PARAMS", message: "task_number (or taskId) and status are required" },
         { status: 400 }
       )
     }
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const task = store.updateTaskStatus(Number(taskId), status, auth.agentId!)
+    const task = store.updateTaskStatus(Number(taskNumber), status, auth.agentId!)
 
     if (!task) {
       return NextResponse.json(
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ ok: true, task })
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       { ok: false, code: "PARSE_ERROR", message: "Invalid JSON body" },
       { status: 400 }

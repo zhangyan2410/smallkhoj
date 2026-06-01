@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json(
       { ok: false, code: auth.code || "UNAUTHORIZED", message: auth.error },
-      { status: 401 }
+      { status: auth.code === "FORBIDDEN" ? 403 : 401 }
     )
   }
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ ok: true, message })
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       { ok: false, code: "PARSE_ERROR", message: "Invalid JSON body" },
       { status: 400 }

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json(
       { ok: false, code: auth.code || "UNAUTHORIZED", message: auth.error },
-      { status: 401 }
+      { status: auth.code === "FORBIDDEN" ? 403 : 401 }
     )
   }
 

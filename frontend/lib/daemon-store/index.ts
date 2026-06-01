@@ -179,6 +179,26 @@ class DaemonStore {
     return task
   }
 
+  claimTaskByNumber(taskNumber: number, channel: string, agentId: string): Task | null {
+    // Find task by number (id) and optional channel filter
+    const task = this.tasks.get(taskNumber)
+    if (!task) return null
+    if (channel && task.channel !== channel) return null
+    if (task.assignee) return null
+    task.status = "in_progress"
+    task.assignee = agentId
+
+    this.events.push({
+      id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      type: "task_claimed",
+      payload: { taskId: taskNumber, assignee: agentId, channel },
+      timestamp: new Date().toISOString(),
+      seq: this.nextSeq(),
+    })
+
+    return task
+  }
+
   updateTaskStatus(taskId: number, status: Task["status"], agentId: string): Task | null {
     const task = this.tasks.get(taskId)
     if (!task) return null
@@ -205,6 +225,40 @@ class DaemonStore {
       humans: [{ id: "zy-ean", name: "zy-ean" }],
     }
   }
+}
+
+export function getStatusColor(status: string): string {
+  switch (status) {
+    case "online": return "bg-green-500"
+    case "idle": return "bg-yellow-500"
+    case "offline": return "bg-gray-400"
+    case "todo": return "bg-slate-400"
+    case "in_progress": return "bg-blue-500"
+    case "in_review": return "bg-amber-500"
+    case "done": return "bg-green-500"
+    default: return "bg-gray-400"
+  }
+}
+
+export function getStatusLabel(status: string): string {
+  switch (status) {
+    case "todo": return "待办"
+    case "in_progress": return "进行中"
+    case "in_review": return "审核中"
+    case "done": return "已完成"
+    default: return status
+  }
+}
+
+// Per-agent consumed cursor tracking
+const agentCursors = new Map<string, number>()
+
+export function getAgentCursor(agentId: string): number {
+  return agentCursors.get(agentId) || 0
+}
+
+export function setAgentCursor(agentId: string, cursor: number): void {
+  agentCursors.set(agentId, cursor)
 }
 
 // Singleton instance

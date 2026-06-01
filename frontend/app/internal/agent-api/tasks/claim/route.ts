@@ -4,7 +4,8 @@ import { store } from "@/lib/daemon-store"
 
 /**
  * POST /internal/agent-api/tasks/claim
- * Body: { taskId } or { messageId }
+ * Body: { channel, task_numbers?: number[], message_ids?: string[] }
+ * Compatible with real slock CLI shape.
  */
 export async function POST(request: NextRequest) {
   const auth = validateAuth(
@@ -15,32 +16,43 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json(
       { ok: false, code: auth.code || "UNAUTHORIZED", message: auth.error },
-      { status: 401 }
+      { status: auth.code === "FORBIDDEN" ? 403 : 401 }
     )
   }
 
   try {
     const body = await request.json()
-    const { taskId } = body
+    // Support both real CLI shape { channel, task_numbers } and MVP shape { taskId }
+    const taskNumbers: number[] = body.task_numbers || (body.taskId ? [body.taskId] : [])
+    const channel = body.channel || "#window"
 
-    if (!taskId) {
+    if (!taskNumbers.length) {
       return NextResponse.json(
-        { ok: false, code: "MISSING_PARAMS", message: "taskId is required" },
+        { ok: false, code: "MISSING_PARAMS", message: "task_numbers or taskId is required" },
         { status: 400 }
       )
     }
 
-    const task = store.claimTask(Number(taskId), auth.agentId!)
+    const results = []
+    for (const num of taskNumbers) {
+      const task = store.claimTaskByNumber(num, channel, auth.agentId!)
+      results.push({
+        taskId: num,
+        claimed: !!task,
+        task: task || undefined,
+      })
+    }
 
-    if (!task) {
+    const allFailed = results.every((r) => !r.claimed)
+    if (allFailed && results.length === 1) {
       return NextResponse.json(
         { ok: false, code: "CLAIM_FAILED", message: "Task not found or already claimed" },
         { status: 409 }
       )
     }
 
-    return NextResponse.json({ ok: true, task })
-  } catch (e) {
+    return NextResponse.json({ ok: true, results })
+  } catch {
     return NextResponse.json(
       { ok: false, code: "PARSE_ERROR", message: "Invalid JSON body" },
       { status: 400 }
