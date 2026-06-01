@@ -1,6 +1,6 @@
 /**
  * Custom Next.js server with integrated WebSocket support
- * Runs both HTTP (Next.js) and WS on the same port + 1
+ * Runs both HTTP (Next.js) and WS on the same HTTP server (same port)
  */
 
 import { createServer } from "http"
@@ -27,13 +27,15 @@ const clients = new Map<WebSocket, WSClient>()
 
 // Subscribe to store events and broadcast to WS clients
 store.subscribe((event: Event) => {
+  console.log(`[WS] Broadcasting event seq=${event.seq} type=${event.type} to ${clients.size} clients`)
   for (const client of clients.values()) {
     if (event.seq > client.cursor) {
       try {
         client.ws.send(JSON.stringify(event))
         client.cursor = event.seq
-      } catch {
-        // Client disconnected
+        console.log(`[WS] Sent to ${client.agentId}`)
+      } catch (err) {
+        console.error(`[WS] Send failed for ${client.agentId}:`, (err as Error).message)
       }
     }
   }
@@ -49,10 +51,28 @@ app.prepare().then(() => {
       res.statusCode = 500
       res.end("Internal Server Error")
     }
+    // Next.js dev mode lazily adds an upgrade listener after the first HTTP
+    // request that conflicts with our WebSocket server. Remove it.
+    for (const listener of server.listeners("upgrade")) {
+      if (listener !== handleUpgrade) {
+        server.removeListener("upgrade", listener as any)
+      }
+    }
   })
 
   // Attach WebSocket server to the same HTTP server
-  const wss = new WebSocketServer({ server })
+  const wss = new WebSocketServer({ noServer: true })
+
+  function handleUpgrade(request: any, socket: any, head: any) {
+    const { pathname } = parse(request.url || "/", true)
+    if (pathname === "/ws" || pathname === "/") {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request)
+      })
+    }
+  }
+
+  server.on("upgrade", handleUpgrade)
 
   wss.on("connection", (ws: WebSocket, req) => {
     // Auth via query params
@@ -90,13 +110,17 @@ app.prepare().then(() => {
       }
     })
 
-    ws.on("close", () => {
+    ws.on("close", (code, reason) => {
       clients.delete(ws)
-      console.log(`[WS] Client disconnected: ${auth.agentId}, remaining=${clients.size}`)
+      console.log(`[WS] Client disconnected: ${auth.agentId}, code=${code}, reason=${reason?.toString() || 'none'}, remaining=${clients.size}`)
     })
 
     ws.on("error", (err) => {
       console.error(`[WS] Error for ${auth.agentId}:`, (err as Error).message)
+    })
+
+    ws.on("ping", () => {
+      console.log(`[WS] Ping from ${auth.agentId}`)
     })
   })
 

@@ -215,13 +215,15 @@ class DaemonStore {
     task.status = "in_progress"
     task.assignee = agentId
 
-    this.events.push({
+    const event: Event = {
       id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       type: "task_claimed",
       payload: { taskId, assignee: agentId },
       timestamp: new Date().toISOString(),
       seq: this.nextSeq(),
-    })
+    }
+    this.events.push(event)
+    this.emit(event)
 
     return task
   }
