@@ -13,7 +13,7 @@ export default function Home() {
           <p className="text-muted-foreground">基于 Khoj 架构的轻量 AI 聊天框架</p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader>
               <CardTitle>Chat</CardTitle>
@@ -34,6 +34,18 @@ export default function Home() {
             <CardContent>
               <Link href="/settings">
                 <Button variant="outline" className="w-full">打开设置</Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Daemon</CardTitle>
+              <CardDescription>Slock Daemon 仪表盘</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/daemon">
+                <Button className="w-full bg-primary">打开仪表盘</Button>
               </Link>
             </CardContent>
           </Card>
