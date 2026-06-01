@@ -55,7 +55,7 @@ app.prepare().then(() => {
     // request that conflicts with our WebSocket server. Remove it.
     for (const listener of server.listeners("upgrade")) {
       if (listener !== handleUpgrade) {
-        server.removeListener("upgrade", listener as any)
+        server.removeListener("upgrade", listener as (...args: unknown[]) => void)
       }
     }
   })
@@ -63,7 +63,7 @@ app.prepare().then(() => {
   // Attach WebSocket server to the same HTTP server
   const wss = new WebSocketServer({ noServer: true })
 
-  function handleUpgrade(request: any, socket: any, head: any) {
+  function handleUpgrade(request: Parameters<typeof wss.handleUpgrade>[0], socket: Parameters<typeof wss.handleUpgrade>[1], head: Parameters<typeof wss.handleUpgrade>[2]) {
     const { pathname } = parse(request.url || "/", true)
     if (pathname === "/ws" || pathname === "/") {
       wss.handleUpgrade(request, socket, head, (ws) => {
