@@ -164,7 +164,7 @@ class DaemonStore {
   claimTask(taskId: number, agentId: string): Task | null {
     const task = this.tasks.get(taskId)
     if (!task) return null
-    if (task.assignee && task.assignee !== agentId) return null
+    if (task.assignee) return null  // Already claimed by anyone
     task.status = "in_progress"
     task.assignee = agentId
 
