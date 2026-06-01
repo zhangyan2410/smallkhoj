@@ -29,6 +29,25 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Daemon MVP API + WebSocket
+
+This project includes a daemon protocol MVP with in-memory store and real-time WebSocket push.
+
+### Startup Modes
+
+| Command | HTTP | WebSocket | Notes |
+|---|---|---|---|
+| `npm run dev` | ✅ | ❌ | Standard Next.js dev server; **no WebSocket** |
+| `npm run start` | ✅ | ❌ | Standard Next.js production server; **no WebSocket** |
+| `npm run server:dev` | ✅ | ✅ | Custom server (Next.js + WS); use for **Phase 3 dev** |
+| `npm run server` | ✅ | ✅ | Custom server (Next.js + WS); use for **Phase 3 production** |
+
+> ⚠️ **Important**: Phase 3 WebSocket requires the custom server (`server.ts`). `npm run dev` / `npm run start` will NOT enable WebSocket connections because they use the standard Next.js server without the `ws` upgrade handler.
+
+### Why a Custom Server?
+
+The daemon MVP API routes (`/internal/agent-api/*`) share an in-memory store. WebSocket connections must be on the same HTTP server to access this store. A separate WS process cannot share memory with Next.js API routes, so `server.ts` integrates both on the same port.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
