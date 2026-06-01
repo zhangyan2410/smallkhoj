@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# tmwebdriver CLI launcher (macOS / Linux)
+# Resolves a Python 3 interpreter and exec's twd.py with all args.
+set -e
+HERE="$(cd "$(dirname "$0")" && pwd)"
+
+PY=""
+for cand in "py -3" python3 python; do
+  if command -v ${cand%% *} >/dev/null 2>&1; then
+    PY="$cand"
+    break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "twd: no python3 found in PATH" >&2
+  exit 127
+fi
+
+export PYTHONIOENCODING=utf-8
+export PYTHONUTF8=1
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+
+# Forward TWD_TOKEN if set
+if [ -n "${TWD_TOKEN:-}" ]; then
+  export TWD_TOKEN
+fi
+
+exec $PY "$HERE/twd.py" "$@"

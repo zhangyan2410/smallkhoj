@@ -65,7 +65,8 @@ def err(code: str, message: str, **kw: Any) -> dict[str, Any]:
 
 
 def make_driver(args: argparse.Namespace) -> TMWebDriver:
-    return TMWebDriver(host=getattr(args, "host", DEFAULT_HOST), port=getattr(args, "port", DEFAULT_PORT))
+    token = getattr(args, "token", None) or os.environ.get("TWD_TOKEN")
+    return TMWebDriver(host=getattr(args, "host", DEFAULT_HOST), port=getattr(args, "port", DEFAULT_PORT), token=token)
 
 
 def wait_sessions(driver: TMWebDriver, timeout: float = 8.0) -> list[dict[str, Any]]:
@@ -123,7 +124,7 @@ def parse_jsonish(s: str) -> Any:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     driver = make_driver(args)
-    print_json(ok(message="TMWebDriver master running", host=args.host, ws_port=args.port, http_port=args.port + 1))
+    print_json(ok(message="TMWebDriver master running", host=args.host, ws_port=args.port, http_port=args.port + 1, token_protected=bool(driver.token)))
     print("Press Ctrl+C to stop.", file=sys.stderr)
     try:
         while True:
@@ -518,6 +519,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="twd", description="TMWebDriver lightweight CLI for local agents")
     p.add_argument("--host", default=DEFAULT_HOST)
     p.add_argument("--port", type=int, default=DEFAULT_PORT, help="WS port; HTTP control uses port+1")
+    p.add_argument("--token", help="Auth token for HTTP API (also reads TWD_TOKEN env var)")
     p.add_argument("--compact", action="store_true", help="single-line JSON output")
     sub = p.add_subparsers(dest="cmd", required=True)
 

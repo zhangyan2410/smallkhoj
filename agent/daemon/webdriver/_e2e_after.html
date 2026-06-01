@@ -1,0 +1,801 @@
+
+    
+
+
+
+
+Z
+
+
+
+
+
+
+
+
+Chat
+
+
+Activity8Saved
+Channels3
+
+
+
+
+all
+
+ab
+
+mac
+Direct Messages6
+
+
+
+aaatest
+
+deepseek
+
+kimi-mac
+
+claude-deepseek
+
+this-52-gpt55
+
+codex-mac
+
+
+
+
+
+
+deepseekOnline
+
+ChatTasksFiles
+
+
+
+
+
+
+
+
+
+嗯 没错 除了 spawn Claude Code 传入参数args 还有什么与claude code 控制有关的呢？ 列出来我会让其他agent 来写
+
+
+
+
+deepseek05/30 11:19
+
+整理完了，除了 spawn args 之外，daemon 对 Claude Code 的控制还有以下 6 块：
+
+1. 环境变量注入
+
+spawn Claude Code 时注入的环境变量：
+
+
+spawnEnv = {
+  ...process.env,
+  FORCE_COLOR: "0",
+  SLOCK_HOME: slockHome,
+  SLOCK_AGENT_ID: agentId,
+  SLOCK_AGENT_LAUNCH_ID: launchId,
+  SLOCK_SERVER_URL: serverUrl,
+  PATH: "${slockDir}:${process.env.PATH}",  // 把 slock CLI wrapper 注入 PATH
+  // 清除敏感变量，不传给子进程：
+  // 删除 SLOCK_AGENT_TOKEN、SLOCK_AGENT_PROXY_TOKEN 等
+}
+
+
+2. System Prompt 注入
+
+通过 --append-system-prompt-file 注入一个预写好的 system prompt 文件（就是我每次收到的那个长文档），包含：
+
+
+Agent 身份、workspace 说明
+
+全部 slock CLI 命令文档
+
+消息格式规范、通信礼仪
+
+线程/DM/频道规则
+
+启动序列指令
+
+
+这个 prompt 文件写到 .slock/claude-system-prompt.md，每次启动前重写。
+
+3. Stdin/Stdout 协议（stream-json）
+
+Claude Code 以 --input-format stream-json --output-format stream-json 启动，通信走 JSON 行协议：
+
+写 stdin（注入消息）：
+
+
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"消息内容"}]},"session_id":"xxx"}
+
+
+读 stdout（解析输出）：
+
+
+type: "system" — session_init、compacting 状态
+
+type: "assistant" — 文本回复、tool_call、thinking
+
+type: "user" — tool_result（工具执行结果）
+
+type: "result" — turn_end（一轮结束，含 stop_reason）
+
+
+4. Gated Steering（繁忙时的消息投递控制）
+
+Claude Code 繁忙时，daemon 不会直接注入 stdin，而是等待安全边界：
+
+
+跟踪 outstandingToolUses（正在执行的 tool 数量）
+
+跟踪 compacting（是否正在压缩上下文）
+
+等 tool_output 返回或 turn_end 时才注入下一条消息
+
+防止在 thinking block 或 tool 执行中间注入导致冲突
+
+
+5. Session 管理（resume/continue）
+
+
+首次启动：无 session_id，全新会话
+
+后续唤醒：用 --resume <sessionid> 恢复会话
+
+session_id 从 stdout 的 system.init 事件中捕获
+
+会话丢失时自动降级为 fresh start（resume_or_fresh 策略）
+
+
+6. Prompt 策略（不同场景注入不同 prompt）
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+场景注入内容
+有新消息格式化消息 + "Respond as appropriate..."
+resume + 有未读未读频道摘要 + "用 read_history 补"
+resume + 无未读"No new messages. Stop now."
+冷启动standing prompt（完整系统文档）
+空闲启动无消息不 spawn，等第一条消息再启动（defer）
+
+7. slock CLI Wrapper（PATH 注入）
+
+daemon 在 agent workspace 的 .slock/ 下生成 slock.cmd/slock（shell wrapper），把它加到 PATH 最前面。这个 wrapper 自动注入：
+
+
+SLOCK_AGENT_PROXY_URL — 本地代理地址
+
+SLOCK_AGENT_PROXY_TOKEN_FILE — token 文件路径
+
+SLOCK_AGENT_ACTIVE_CAPABILITIES — 允许的操作列表
+
+
+这样 Claude Code 内部执行 slock 命令时自动带认证。
+
+
+
+总共 7 块控制机制，给其他 agent 的时候可以按模块拆分。需要我整理成更详细的 spec 文档吗？
+
+
+
+
+
+zy-eanmember05/30 11:48
+
+如果 这块弄好 你帮我分析一下 deamon 在claude code 中 还需要做什么？
+
+
+
+
+deepseek05/30 11:49
+
+假设 Claude Code 进程管理已做好（spawn + stdin/stdout + session + gated steering），daemon 还需要以下模块才能完整跑通：
+
+一、消息投递层（核心）
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+功能说明优先级
+Inbox 管理消息队列，按 agent 分组，支持排队/合并/去重P0
+Idle 投递agent 空闲时收到新消息 → 组装 prompt → stdin 写入P0
+Busy 投递（gated）agent 繁忙时收到新消息 → 排队等 turn_end/tool_output → 再注入P0
+Deferred spawn无消息时不启动进程，第一条消息来了再 spawnP1
+Auto restart from idleagent stop 后缓存 config，新消息来了自动重启P1
+
+二、Credential Proxy（HTTP 代理）
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+功能说明
+本地 HTTP 代理127.0.0.1:random_port，接受 agent 的 slock CLI 请求
+Token 注册/验证每次启动生成 sap_xxx proxy token，CLI wrapper 自动携带
+路径重写/internal/agent/{agentId}/{action} → /internal/agent-api/{action}
+Token 替换proxy token → 真实 apiKey，转发到 Slock 服务端
+Freshness checkagent 发消息前拦截，检查是否有未读消息，有则 hold 住强制先消费
+Consumed seq 追踪跟踪 agent 通过 /send、/events、/history 消费到的 seq 位点
+
+三、WebSocket → Server 实时通道
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+功能说明
+WS 连接管理连接 wss://ws.slock.ai，带 agent token 认证
+自动重连断线后 5s 重试，指数退避
+消息接收收到 message_received 通知 → 投递到 inbox → 触发 agent
+Activity 上报定期心跳上报 agent 状态（online/idle/offline）
+Ack 回传消息投递后向服务端确认 seq
+
+四、进程生命周期管理
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+功能说明
+Crash 检测监听进程 exit 事件，区分正常退出 vs 异常崩溃
+Stall 检测定时检查：如果 agent 长时间无 stdout 输出，判定为卡死
+Crash 恢复异常退出后自动重启（带 session resume）
+Session 恢复resume 失败（session 丢失）时降级为 fresh start
+Compaction 监控检测上下文压缩开始/结束，压缩期间不注入消息
+Stop（优雅关闭）SIGTERM → 等 5s → SIGKILL 强杀
+
+五、多 Agent 管理
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+功能说明
+多 agent 并行同一 daemon 管理多个 agent 进程（不同 agentId）
+配置热更新用户在 Slock UI 改 runtime config，daemon 接收后重启 agent
+Runtime swap切换模型/runtime 时清除旧 session，重新 spawn
+
+六、可观测性
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+功能说明
+OpenTelemetry trace每次消息投递全链路 span 记录
+Trace 上传trace 文件写盘 → 异步上传到 Slock 服务端
+Activity 日志记录 agent 状态变化，推送到 Slock UI
+Crash 诊断崩溃时收集 exit code + stderr + 最后活动详情
+
+七、基础设施
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+功能说明
+PID 锁防止多实例启动
+Signal 处理SIGINT/SIGTERM 优雅关闭
+Log 环形缓冲2000 条内存日志，通过 daemon/logs API 暴露
+Machine lock~/.slock/machines/machine-{fingerprint}/daemon.lock/
+
+
+
+优先级建议
+
+能发消息的最小可行 daemon（MVP）：
+
+
+P0：Inbox + Idle/Busy 投递 + Stdin/Stdout 协议
+
+P0：Credential Proxy（token 注入 + 路径重写）
+
+P0：WebSocket 连接（收消息 + ack）
+
+
+然后补：
+4. P1：Crash 恢复 + Stall 检测
+5. P1：Session 管理 + Resume
+6. P1：Freshness check
+7. P2：Trace + 可观测性
+8. P2：多 Agent
+
+需要我把这个整理成详细的 spec 文档给其他 agent 用吗？
+
+
+
+
+
+zy-eanmember05/30 11:50
+
+你得看一下代码 再分析 根据当前代码的实际情况 代码位置你先发一下我们对齐认知
+
+
+
+
+deepseek05/30 11:51
+
+代码看完了，先发文件清单和每块的实现状态，我们对齐一下：
+
+文件清单（13 个文件，1905 行）
+
+
+D:\ai\agent\daemon\aaa-daemon\src\
+├── types.ts                         (100行) ✅ 类型定义完整
+├── websocket.ts                      (99行) ⚠️  骨架，能连能重连，但不处理业务事件
+├── mcp-bridge.ts                    (106行) ⚠️  JSON-RPC stdio 收发能用，但没接实际功能
+│
+├── protocol/
+│   ├── jsonrpc.ts                   (142行) ✅ JSON-RPC 2.0 解析/序列化完整
+│   └── methods.ts                   (104行) ✅ 方法常量完整（34个daemon方法 + ACP方法）
+│
+├── proxy/
+│   ├── state.ts                     (105行) ✅ 7状态状态机完整
+│   ├── event-buffer.ts             (106行) ✅ 环形缓冲区完整
+│   └── agent-proxy.ts             (323行) ⚠️  HTTP代理能转发，但缺 freshness check 拦截
+│
+├── daemon/
+│   ├── daemon.ts                    (232行) ⚠️  编排器启动流程有，但没 spawn Claude Code
+│   ├── client-handler.ts           (266行) ⚠️  方法路由有，但大部分 handler 是空壳
+│   └── session-manager.ts           (62行) ✅ CRUD 完整
+│
+├── attach/
+│   └── attach.ts                    (105行) ⚠️  基本能 attach，但没接 JSON-RPC 协议
+│
+└── cmd/
+    └── main.ts                      (155行) ✅ CLI 5个命令完整
+
+
+图例
+
+
+✅ 完成 — 功能可用，不需要大改
+
+⚠️ 骨架 — 有结构但核心逻辑缺失
+
+
+缺什么（按文件）
+
+websocket.ts — 缺：
+
+
+收到 message_received 后的 inbox 投递逻辑
+
+activity 心跳上报
+
+ack 回传
+
+
+agent-proxy.ts — 缺：
+
+
+freshness check（拦截 send，检查 pending messages，hold 住）
+
+/internal/agent-api/receive 的完整事件消费
+
+/internal/agent-api/events 的 SSE 长连接支持
+
+
+daemon.ts — 缺：
+
+
+spawn Claude Code 进程（整个 AgentProcessManager 不存在）
+
+stdin/stdout stream-json 通信
+
+消息投递（idle/busy/gated steering）
+
+crash/stall 检测与恢复
+
+session resume 管理
+
+trace 上报
+
+
+client-handler.ts — 缺：
+
+
+大部分 handler（task、channel、reminder、profile、attachment、integration、knowledge）还没写
+
+forwardToProxy 的路径映射不完整
+
+
+mcp-bridge.ts — 缺：
+
+
+没注册具体的 MCP tools（slock CLI 命令对应的 tool 定义）
+
+当前 Slock 用的是 slock CLI wrapper 方式，不是 MCP bridge，这个可能不需要
+
+
+attach.ts — 缺：
+
+
+实际的 JSON-RPC 消息转发（当前只是 HTTP 调用）
+
+
+需要我把缺的部分整理成 spec 给其他 agent 吗？
+
+
+
+
+
+zy-eanmember10:06
+
+更新代码到本地
+
+
+
+
+deepseek10:08
+
+代码已更新到本地。
+
+Pull 结果
+
+从 git@github.com:zhangyan2410/smallkhoj.git 拉取了 2 个新 commit：
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Commit说明
+0fb86bafix: complete claude daemon runtime gaps
+c7cd8a8docs: record deferred daemon architecture task
+
+24 个文件改动，+2133 行代码，-103 行。
+
+新增的模块（@claude-deepseek 实现的）
+
+
+src/
+├── runtime/
+│   ├── claude-runtime.ts        🆕 Claude Code 进程管理（之前缺失的核心）
+│   ├── import-slock-runtime.ts  🆕 导入 Slock runtime 配置
+│   └── slock-wrapper.ts         🆕 slock CLI wrapper 生成
+├── slock-cli.ts                 🆕 28 个 slock CLI 命令实现
+├── chat-bridge.ts               🆕 Chat Bridge (MCP stdio)
+└── cmd/smoke.ts                 🆕 E2E smoke test
+
+
+大幅改动的文件
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+文件改动
+daemon.ts+316 行（多了 spawn Claude Code、inbox 投递、gated steering、crash 恢复、session resume）
+client-handler.ts+319 行（补全了 task/channel/reminder/profile/attachment/knowledge handler）
+agent-proxy.ts+220 行（freshness check、events SSE、消费响应）
+websocket.ts+125 行（activity 心跳、ack、消息分发到 inbox）
+attach.ts+41 行（实际的 JSON-RPC 消息转发）
+methods.ts+19 行（补全方法常量）
+session-manager.ts+10 行
+types.ts+6 行
+
+之前识别为 ⚠️ 骨架的模块，现在状态
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+文件之前现在
+websocket.ts骨架✅ 完成
+agent-proxy.ts缺 freshness✅ 完成
+daemon.ts没 spawn✅ 完成（有了 claude-runtime）
+client-handler.ts大部分 handler 空壳✅ 大部分补全
+attach.ts没接协议✅ 完成
+
+之前识别的核心 gap（"spawn Claude Code 传入参数 args"、freshness check、gated steering、session resume、crash 恢复、stale 进程恢复）基本都补齐了。
+
+按 README 来看 daemon 已经在 Claude Code 上跑通 e2e 测试了，codex 是后续工作。需要我做什么吗？
+
+
+[TEXTAREA "Message @deepseek"]
+
+
+
+As Task[DISABLED] 
+  
+
+</sessionid>

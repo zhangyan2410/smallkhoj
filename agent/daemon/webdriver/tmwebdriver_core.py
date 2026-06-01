@@ -34,8 +34,9 @@ class Session:
 
 
 class TMWebDriver:  
-    def __init__(self, host: str = '127.0.0.1', port: int = 18765):  
+    def __init__(self, host: str = '127.0.0.1', port: int = 18765, token: str | None = None):  
         self.host, self.port = host, port
+        self.token = token
         self.sessions, self.results, self.acks = {}, {}, {}
         self.default_session_id = None  
         self.latest_session_id = None  
@@ -46,11 +47,29 @@ class TMWebDriver:
         else:
             self.remote = f'http://{self.host}:{self.port+1}/link'
 
+    def _check_token(self):
+        """Validate token from Authorization header or X-TWD-Token header."""
+        if not self.token:
+            return True
+        auth = request.headers.get('Authorization', '')
+        if auth.startswith('Bearer ') and auth[7:] == self.token:
+            return True
+        if request.headers.get('X-TWD-Token') == self.token:
+            return True
+        return False
+
+    def _token_error(self):
+        bottle.response.status = 401
+        return json.dumps({'ok': False, 'code': 'UNAUTHORIZED', 'message': 'Invalid or missing token'})
+
+
     def start_http_server(self):
         self.app = app = bottle.Bottle()
 
         @app.route('/api/longpoll', method=['GET', 'POST'])
         def long_poll():
+            if not self._check_token():
+                return self._token_error()
             data = request.json
             session_id = data.get('sessionId')  
             session_info = {'url': data.get('url'), 'title': data.get('title', ''), 'type': 'http'}  
@@ -75,6 +94,8 @@ class TMWebDriver:
 
         @app.route('/api/result', method=['GET','POST'])
         def result():
+            if not self._check_token():
+                return self._token_error()
             data = request.json
             if data.get('type') == 'result':  
                 self.results[data.get('id')] = {'success': True, 'data': data.get('result'), 'newTabs': data.get('newTabs', [])}  
@@ -84,6 +105,8 @@ class TMWebDriver:
 
         @app.route('/link', method=['GET','POST'])
         def link():
+            if not self._check_token():
+                return self._token_error()
             data = request.json
             if data.get('cmd') == 'get_all_sessions': return json.dumps({'r': self.get_all_sessions()}, ensure_ascii=False)  
             if data.get('cmd') == 'find_session': 
@@ -242,7 +265,10 @@ class TMWebDriver:
         return rr
     
     def _remote_cmd(self, cmd):
-        try: return requests.post(self.remote, headers={"Content-Type": "application/json"}, json=cmd, timeout=30).json()
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        try: return requests.post(self.remote, headers=headers, json=cmd, timeout=30).json()
         except (ConnectionError, requests.exceptions.ConnectionError):
             raise ConnectionError("TMWebDriver master未运行，看tmwebdriver_sop启动master")
 
