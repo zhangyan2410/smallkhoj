@@ -1,21 +1,17 @@
-"use client"
-
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  MOCK_AGENTS,
-  MOCK_CHANNELS,
-  MOCK_TASKS,
-  MOCK_MESSAGES,
-  getStatusColor,
-  getStatusLabel,
-} from "@/lib/daemon-mock"
+import { store, getStatusColor, getStatusLabel } from "@/lib/daemon-store"
 import { Bot, MessageSquare, CheckSquare, Radio, ArrowLeft, Wifi } from "lucide-react"
 
+// Server Component — reads from store directly
 export default function DaemonPage() {
+  const agents = Array.from(store.agents.values())
+  const channels = Array.from(store.channels.values())
+  const tasks = Array.from(store.tasks.values())
+  const messages = store.messages.slice(-10).reverse()
+
   return (
     <main className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -48,9 +44,9 @@ export default function DaemonPage() {
             <CardHeader className="pb-2">
               <CardDescription>在线 Agent</CardDescription>
               <CardTitle className="text-3xl">
-                {MOCK_AGENTS.filter((a) => a.status === "online").length}
+                {agents.filter((a) => a.status === "online").length}
                 <span className="text-lg text-muted-foreground font-normal">
-                  /{MOCK_AGENTS.length}
+                  /{agents.length}
                 </span>
               </CardTitle>
             </CardHeader>
@@ -58,23 +54,21 @@ export default function DaemonPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>活跃频道</CardDescription>
-              <CardTitle className="text-3xl">{MOCK_CHANNELS.length}</CardTitle>
+              <CardTitle className="text-3xl">{channels.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>进行中的任务</CardDescription>
               <CardTitle className="text-3xl">
-                {MOCK_TASKS.filter((t) => t.status === "in_progress").length}
+                {tasks.filter((t) => t.status === "in_progress").length}
               </CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>未读消息</CardDescription>
-              <CardTitle className="text-3xl">
-                {MOCK_CHANNELS.reduce((sum, c) => sum + c.unreadCount, 0)}
-              </CardTitle>
+              <CardDescription>消息数</CardDescription>
+              <CardTitle className="text-3xl">{store.messages.length}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -92,7 +86,7 @@ export default function DaemonPage() {
             <CardContent>
               <ScrollArea className="h-[300px]">
                 <div className="space-y-3">
-                  {MOCK_AGENTS.map((agent) => (
+                  {agents.map((agent) => (
                     <div
                       key={agent.id}
                       className="flex items-center justify-between p-3 rounded-lg border bg-card"
@@ -136,7 +130,7 @@ export default function DaemonPage() {
             <CardContent>
               <ScrollArea className="h-[300px]">
                 <div className="space-y-3">
-                  {MOCK_CHANNELS.map((channel) => (
+                  {channels.map((channel) => (
                     <div
                       key={channel.id}
                       className="flex items-center justify-between p-3 rounded-lg border bg-card"
@@ -147,11 +141,9 @@ export default function DaemonPage() {
                           {channel.description}
                         </div>
                       </div>
-                      {channel.unreadCount > 0 && (
-                        <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded-full">
-                          {channel.unreadCount}
-                        </span>
-                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {channel.joined.length} members
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -171,7 +163,7 @@ export default function DaemonPage() {
             <CardContent>
               <ScrollArea className="h-[300px]">
                 <div className="space-y-3">
-                  {MOCK_TASKS.map((task) => (
+                  {tasks.map((task) => (
                     <div
                       key={task.id}
                       className="flex items-start gap-3 p-3 rounded-lg border bg-card"
@@ -218,7 +210,7 @@ export default function DaemonPage() {
           <CardContent>
             <ScrollArea className="h-[200px]">
               <div className="space-y-3">
-                {MOCK_MESSAGES.map((msg) => (
+                {messages.map((msg) => (
                   <div key={msg.id} className="flex items-start gap-3 p-3 rounded-lg border bg-card">
                     <div
                       className={`w-2 h-2 mt-2 rounded-full ${
@@ -243,6 +235,9 @@ export default function DaemonPage() {
                     </div>
                   </div>
                 ))}
+                {messages.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-8">暂无消息</p>
+                )}
               </div>
             </ScrollArea>
           </CardContent>
@@ -251,33 +246,37 @@ export default function DaemonPage() {
         {/* API Status */}
         <Card className="bg-muted/50">
           <CardHeader>
-            <CardTitle className="text-sm">后端状态</CardTitle>
+            <CardTitle className="text-sm">API 端点状态</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 text-sm">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-500" />
-                <span>send — mock</span>
+                <span>GET /server — 已就绪</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-500" />
-                <span>events — mock</span>
+                <span>POST /send — 已就绪</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-500" />
-                <span>history — mock</span>
+                <span>GET /events — 已就绪</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span>GET /history — 已就绪</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span>POST /tasks/claim — 已就绪</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span>POST /tasks/update-status — 已就绪</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                <span>tasks/claim — 待接入</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                <span>tasks/update-status — 待接入</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                <span>WebSocket — 待接入</span>
+                <span>WebSocket — Phase 3 预留</span>
               </div>
             </div>
           </CardContent>
