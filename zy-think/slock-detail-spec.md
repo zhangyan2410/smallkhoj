@@ -1930,21 +1930,21 @@ export const DEFAULT_AGENT_PERMISSIONS: AgentPermissions = {
 
 ## 附录：MVP 代码对照索引
 
-| 新规范模块 | MVP 文件 | 关键类型/函数 |
-|-----------|---------|-------------|
-| Server | `daemon-store/index.ts` | `DaemonStore.getServerInfo()` |
-| Computer | _(无)_ | CLI `--api-key sk_machine_*` |
-| Member/Agent | `daemon-store/index.ts` | `Agent` interface |
-| AgentProfile/Skills | `slock-cli.ts` | `parseRequest()` profile 命令 |
-| AgentPermissions | _(无)_ | CLI `SLOCK_ALLOW_WRITES` / `assertWriteAllowed()` |
-| Channel | `daemon-store/index.ts` | `Channel` interface |
-| Message | `types.ts`, `daemon-store/index.ts` | `SlockMessage` / `Message` |
-| Thread | `types.ts` | `SlockMessage.threadId` |
-| Task | `types.ts`, `daemon-store/index.ts` | `Task` / `TaskStatus` |
-| File | `slock-cli.ts` | `attachment upload/download/view` 命令 |
-| ActivityLog | `websocket.ts` | `WebSocketActivityPayload` |
-| Reminder | `slock-cli.ts` | `reminder list/create/update/cancel` 命令 |
-| Event | `types.ts`, `daemon-store/index.ts` | `DaemonEvent` / `Event` |
-| WebSocket | `websocket.ts` | `WebSocketManager` |
-| SSE | `stream/route.ts` | `GET /internal/agent-api/stream` |
-| CLI | `slock-cli.ts` | `runSlockCli()` |
+| 新规范模块               | MVP 文件                              | 关键类型/函数                                           |
+| ------------------- | ----------------------------------- | ------------------------------------------------- |
+| Server              | `daemon-store/index.ts`             | `DaemonStore.getServerInfo()`                     |
+| Computer            | _(无)_                               | CLI `--api-key sk_machine_*`                      |
+| Member/Agent        | `daemon-store/index.ts`             | `Agent` interface                                 |
+| AgentProfile/Skills | `slock-cli.ts`                      | `parseRequest()` profile 命令                       |
+| AgentPermissions    | _(无)_                               | CLI `SLOCK_ALLOW_WRITES` / `assertWriteAllowed()` |
+| Channel             | `daemon-store/index.ts`             | `Channel` interface                               |
+| Message             | `types.ts`, `daemon-store/index.ts` | `SlockMessage` / `Message`                        |
+| Thread              | `types.ts`                          | `SlockMessage.threadId`                           |
+| Task                | `types.ts`, `daemon-store/index.ts` | `Task` / `TaskStatus`                             |
+| File                | `slock-cli.ts`                      | `attachment upload/download/view` 命令              |
+| ActivityLog         | `websocket.ts`                      | `WebSocketActivityPayload`                        |
+| Reminder            | `slock-cli.ts`                      | `reminder list/create/update/cancel` 命令           |
+| Event               | `types.ts`, `daemon-store/index.ts` | `DaemonEvent` / `Event`                           |
+| WebSocket           | `websocket.ts`                      | `WebSocketManager`                                |
+| SSE                 | `stream/route.ts`                   | `GET /internal/agent-api/stream`                  |
+| CLI                 | `slock-cli.ts`                      | `runSlockCli()`                                   |
