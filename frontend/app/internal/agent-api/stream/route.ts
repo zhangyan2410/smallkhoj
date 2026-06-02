@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { validateAuth } from "@/lib/daemon-auth"
-import { store, Event } from "@/lib/daemon-store"
+import { store, ServerEvent } from "@/lib/daemon-store"
 
 /**
  * GET /internal/agent-api/stream
@@ -42,19 +42,18 @@ export async function GET(request: NextRequest) {
       }
 
       // Subscribe to new events
-      unsubscribe = store.subscribe((event: Event) => {
+      unsubscribe = store.subscribe((event: ServerEvent) => {
         if (event.seq > cursor) {
           sendEvent(controller, event)
         }
       })
 
       // Send connected ack
-      const connectedEvent = {
-        id: `conn_${Date.now()}`,
-        type: "connected" as const,
-        payload: { agentId, clients: 1 },
-        timestamp: new Date().toISOString(),
+      const connectedEvent: ServerEvent = {
+        type: "connected",
+        payload: { agentId, computerId: undefined, reason: undefined },
         seq: 0,
+        timestamp: new Date().toISOString(),
       }
       controller.enqueue(
         encoder.encode(`id: 0\nevent: connected\ndata: ${JSON.stringify(connectedEvent)}\n\n`)
@@ -74,7 +73,7 @@ export async function GET(request: NextRequest) {
   })
 }
 
-function sendEvent(controller: ReadableStreamDefaultController, event: Event) {
+function sendEvent(controller: ReadableStreamDefaultController, event: ServerEvent) {
   const encoder = new TextEncoder()
   const data = JSON.stringify(event)
   controller.enqueue(

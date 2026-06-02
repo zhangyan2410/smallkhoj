@@ -10,7 +10,7 @@ export default function DaemonPage() {
   const agents = Array.from(store.agents.values())
   const channels = Array.from(store.channels.values())
   const tasks = Array.from(store.tasks.values())
-  const messages = store.messages.slice(-10).reverse()
+  const messages = Array.from(store.messages.values()).sort((a, b) => a.seq - b.seq).slice(-10).reverse()
 
   return (
     <main className="min-h-screen bg-background p-6">
@@ -68,7 +68,7 @@ export default function DaemonPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>消息数</CardDescription>
-              <CardTitle className="text-3xl">{store.messages.length}</CardTitle>
+              <CardTitle className="text-3xl">{store.messages.size}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -142,7 +142,7 @@ export default function DaemonPage() {
                         </div>
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        {channel.joined.length} members
+                        {channel.members.length} members
                       </span>
                     </div>
                   ))}
@@ -173,7 +173,7 @@ export default function DaemonPage() {
                         <div className="text-sm font-medium truncate">{task.title}</div>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-xs text-muted-foreground">
-                            #{task.id} · @{task.assignee}
+                            #{task.number} · @{task.assigneeId || "unassigned"}
                           </span>
                           <span
                             className={`text-xs px-1.5 py-0.5 rounded ${
@@ -214,9 +214,9 @@ export default function DaemonPage() {
                   <div key={msg.id} className="flex items-start gap-3 p-3 rounded-lg border bg-card">
                     <div
                       className={`w-2 h-2 mt-2 rounded-full ${
-                        msg.type === "human"
+                        msg.senderType === "human"
                           ? "bg-blue-500"
-                          : msg.type === "agent"
+                          : msg.senderType === "agent"
                             ? "bg-purple-500"
                             : "bg-gray-400"
                       }`}
@@ -226,7 +226,7 @@ export default function DaemonPage() {
                         <span className="font-medium text-sm">@{msg.sender}</span>
                         <span className="text-xs text-muted-foreground">{msg.target}</span>
                         <span className="text-xs text-muted-foreground ml-auto">
-                          {new Date(msg.timestamp).toLocaleTimeString()}
+                          {new Date(msg.createdAt).toLocaleTimeString()}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground mt-1 line-clamp-2">

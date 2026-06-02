@@ -8,7 +8,7 @@ import { parse } from "url"
 import next from "next"
 import { WebSocketServer, WebSocket } from "ws"
 import { validateAuth } from "./lib/daemon-auth"
-import { store, Event } from "./lib/daemon-store"
+import { store, ServerEvent } from "./lib/daemon-store"
 
 const dev = process.env.NODE_ENV !== "production"
 const hostname = "localhost"
@@ -26,7 +26,7 @@ interface WSClient {
 const clients = new Map<WebSocket, WSClient>()
 
 // Subscribe to store events and broadcast to WS clients
-store.subscribe((event: Event) => {
+store.subscribe((event: ServerEvent) => {
   console.log(`[WS] Broadcasting event seq=${event.seq} type=${event.type} to ${clients.size} clients`)
   for (const client of clients.values()) {
     if (event.seq > client.cursor) {

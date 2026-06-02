@@ -88,7 +88,7 @@ program
       importSlockRuntime: options.importSlockRuntime,
       logFile: options.logFile,
       workspacePath: options.workspace,
-      runtime: options.runtime === 'claude' ? 'claude' : 'none',
+      runtime: options.runtime === 'claude' ? 'claude_code' : undefined,
       runtimeCommand: options.runtimeCommand,
       runtimeCommandArgs: options.runtimeCommandArg,
       runtimeModel: options.runtimeModel,

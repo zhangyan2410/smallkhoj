@@ -30,11 +30,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Resolve channelId from target (e.g. "#all" -> "ch_all")
+    const channelId = target.startsWith("dm:") ? target : target.replace(/^#/, "ch_")
     const message = store.addMessage({
       target,
       sender: auth.agentId!,
       content,
-      type,
+      contentType: "text",
+      senderType: type === "human" ? "human" : type === "system" ? "system" : "agent",
+      channelId,
     })
 
     return NextResponse.json({ ok: true, message })

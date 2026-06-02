@@ -146,7 +146,7 @@ export class DaemonCore extends EventEmitter {
     });
     this.log(`slock wrapper generated in ${this.wrapper.wrapperDir}`, 'info');
 
-    if (this.config.runtime === 'claude') {
+    if (this.config.runtime === 'claude_code') {
       this.startClaudeRuntime();
     }
 
@@ -402,7 +402,7 @@ export class DaemonCore extends EventEmitter {
   }
 
   private scheduleRuntimeRestart(sessionId?: string): void {
-    if (this.stopping || this.config.runtime !== 'claude' || !this.config.runtimeRestartOnCrash) return;
+    if (this.stopping || this.config.runtime !== 'claude_code' || !this.config.runtimeRestartOnCrash) return;
     if (this.runtimeRestartAttempts >= 1 || this.runtimeRestartTimer) return;
 
     this.runtimeRestartAttempts += 1;
@@ -411,7 +411,7 @@ export class DaemonCore extends EventEmitter {
     this.emitRuntimeTrace({ type: 'restart_scheduled', resumeSessionId });
     this.runtimeRestartTimer = setTimeout(() => {
       this.runtimeRestartTimer = null;
-      if (this.stopping || this.config.runtime !== 'claude') return;
+      if (this.stopping || this.config.runtime !== 'claude_code') return;
       try {
         this.startClaudeRuntime(resumeSessionId ?? undefined);
       } catch (err) {

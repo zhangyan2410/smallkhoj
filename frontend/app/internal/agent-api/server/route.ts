@@ -22,9 +22,10 @@ export async function GET(request: NextRequest) {
   const info = store.getServerInfo()
 
   // Mark requesting agent as online
-  const agent = store.agents.get(auth.agentId!)
+  const agent = store.members.get(auth.agentId!)
   if (agent) {
     agent.status = "online"
+    agent.updatedAt = new Date().toISOString()
   }
 
   return NextResponse.json({ ok: true, ...info })
