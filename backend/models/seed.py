@@ -42,7 +42,7 @@ async def seed():
             status="active",
         )
         aaa = Member(
-            id=uuid.UUID("aaa-0000-0000-0000-000000000001"),
+            id=uuid.UUID("aaaa0000-0000-0000-0000-000000000001"),
             server_id=server_id,
             kind="agent",
             display_name="aaa",

@@ -140,8 +140,8 @@ async def send_message(
         if not channel:
             raise HTTPException(404, f"Channel #{channel_name} not found")
 
-    # Get next seq
-    seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)).where(Message.channel_id == channel.id))
+    # Get next seq (global)
+    seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
     last_seq = seq_result.scalar() or 0
 
     # Generate short_id
