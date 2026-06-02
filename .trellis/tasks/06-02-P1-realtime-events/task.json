@@ -1,0 +1,28 @@
+{
+  "id": "P1-realtime-events",
+  "name": "P1-realtime-events",
+  "title": "P1: 实时事件系统（WebSocket/SSE）",
+  "description": "从轮询升级到 WebSocket/SSE 实时推送，减少延迟",
+  "status": "todo",
+  "dev_type": "backend",
+  "scope": "backend",
+  "package": "backend",
+  "priority": "P1",
+  "creator": "deepseek",
+  "assignee": null,
+  "createdAt": "2026-06-02",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "zy-think/slock-detail-spec.md"
+  ],
+  "notes": "",
+  "meta": {}
+}

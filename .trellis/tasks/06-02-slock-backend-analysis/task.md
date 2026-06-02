@@ -19,4 +19,4 @@
   5. 与现有 daemon 代码的对接点
 
 ## 状态
-- [ ] 待完成
+- [x] 已完成 — 文档已输出到 `zy-think/slock-backend-architecture.md`

@@ -22,4 +22,4 @@
   7. Daemon 注册和心跳协议
 
 ## 状态
-- [ ] 待完成
+- [x] 已完成 — 文档已输出到 `zy-think/slock-detail-spec.md`

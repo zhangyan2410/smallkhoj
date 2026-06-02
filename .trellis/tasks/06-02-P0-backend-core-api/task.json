@@ -1,0 +1,31 @@
+{
+  "id": "P0-backend-core-api",
+  "name": "P0-backend-core-api",
+  "title": "P0: FastAPI 后端核心 API（替代内存 store）",
+  "description": "实现 FastAPI + PostgreSQL 后端的核心端点，替代 mvp-prototype/ 中的内存 DaemonStore",
+  "status": "todo",
+  "dev_type": "backend",
+  "scope": "backend",
+  "package": "backend",
+  "priority": "P0",
+  "creator": "deepseek",
+  "assignee": null,
+  "createdAt": "2026-06-02",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "zy-think/slock-backend-architecture.md",
+    "zy-think/slock-detail-spec.md",
+    "mvp-prototype/daemon-store/index.ts",
+    "mvp-prototype/internal/agent-api/"
+  ],
+  "notes": "",
+  "meta": {}
+}

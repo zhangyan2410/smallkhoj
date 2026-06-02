@@ -1,0 +1,28 @@
+{
+  "id": "P1-computer-member-model",
+  "name": "P1-computer-member-model",
+  "title": "P1: Computer 实体 + 统一 Member 模型",
+  "description": "实现 Computer 注册流程和统一 Member（human+agent）模型，支撑权限系统",
+  "status": "todo",
+  "dev_type": "fullstack",
+  "scope": "backend+frontend",
+  "package": null,
+  "priority": "P1",
+  "creator": "deepseek",
+  "assignee": null,
+  "createdAt": "2026-06-02",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "zy-think/slock-detail-spec.md"
+  ],
+  "notes": "",
+  "meta": {}
+}
