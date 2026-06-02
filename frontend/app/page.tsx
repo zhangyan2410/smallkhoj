@@ -1,63 +1,78 @@
-"use client"
-
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-export default function Home() {
+async function getChannels() {
+  try {
+    const res = await fetch("http://localhost:8000/api/v1/channels", { cache: "no-store" })
+    return res.json()
+  } catch {
+    return { channels: [] }
+  }
+}
+
+async function getMembers() {
+  try {
+    const res = await fetch("http://localhost:8000/api/v1/members", { cache: "no-store" })
+    return res.json()
+  } catch {
+    return { members: [] }
+  }
+}
+
+export default async function Home() {
+  const [{ channels }, { members }] = await Promise.all([getChannels(), getMembers()])
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
+    <main className="flex min-h-screen flex-col items-center p-8">
       <div className="max-w-2xl w-full space-y-8">
         <div className="text-center space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight">SmallKhoj</h1>
-          <p className="text-muted-foreground">基于 Khoj 架构的轻量 AI 聊天框架</p>
+          <h1 className="text-4xl font-bold tracking-tight">Slock</h1>
+          <p className="text-muted-foreground">Human-AI collaboration platform</p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle>Chat</CardTitle>
-              <CardDescription>WebSocket 实时聊天</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/chat">
-                <Button className="w-full">开始聊天</Button>
-              </Link>
-            </CardContent>
-          </Card>
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Channels</h2>
+          <ul className="space-y-2">
+            {channels.map((ch: any) => (
+              <li key={ch.id} className="border rounded p-3 hover:bg-accent">
+                <Link href={`/chat/${ch.name.replace("#", "")}`}>
+                  <span className="font-mono font-semibold">{ch.name}</span>
+                  <span className="text-muted-foreground ml-2">({ch.type})</span>
+                  {ch.description && (
+                    <span className="text-muted-foreground ml-2">— {ch.description}</span>
+                  )}
+                </Link>
+              </li>
+            ))}
+            {channels.length === 0 && (
+              <li className="text-muted-foreground">No channels — is the backend running?</li>
+            )}
+          </ul>
+        </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Settings</CardTitle>
-              <CardDescription>框架配置</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/settings">
-                <Button variant="outline" className="w-full">打开设置</Button>
-              </Link>
-            </CardContent>
-          </Card>
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Members</h2>
+          <ul className="space-y-1">
+            {members.map((m: any) => (
+              <li key={m.id} className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${m.status === "online" || m.status === "active" ? "bg-green-500" : "bg-gray-400"}`} />
+                <strong>{m.name}</strong>
+                <span className="text-muted-foreground">[{m.kind}]</span>
+                <span className="text-muted-foreground">{m.status}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Daemon</CardTitle>
-              <CardDescription>Slock Daemon 仪表盘</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/daemon">
-                <Button className="w-full bg-primary">打开仪表盘</Button>
-              </Link>
-            </CardContent>
-          </Card>
+        <div>
+          <Link href="/tasks" className="text-xl font-semibold hover:underline">
+            Tasks →
+          </Link>
         </div>
 
         <div className="text-center text-sm text-muted-foreground">
-          <p>后端: FastAPI + SQLAlchemy | 前端: Next.js + shadcn/ui</p>
-          <p>
-            <a href="http://localhost:8000/docs" className="underline" target="_blank">
-              API 文档 (Swagger)
-            </a>
-          </p>
+          <a href="http://localhost:8000/docs" className="underline" target="_blank">
+            API Docs (Swagger)
+          </a>
         </div>
       </div>
     </main>

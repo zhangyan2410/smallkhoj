@@ -5,25 +5,28 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from routers import health, chat
+from routers import health, chat, agent_api, public_api
+from models.seed import create_tables, seed
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：启动/关闭时的操作。后续可在此加入 APScheduler、DB 初始化等。"""
+    """应用生命周期：创建表并初始化种子数据。"""
+    await create_tables()
+    await seed()
     yield
 
 
 app = FastAPI(
     title="SmallKhoj",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
-# CORS：开发时允许前端 localhost:3000
+# CORS：开发时允许前端 localhost:3000 和 daemon proxy
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,6 +34,8 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(chat.router)
+app.include_router(agent_api.router)
+app.include_router(public_api.router)
 
 
 if __name__ == "__main__":
