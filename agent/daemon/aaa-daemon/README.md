@@ -44,6 +44,30 @@ Start Claude Code through aaa-daemon:
 node dist/cmd/main.js start --foreground --runtime claude
 ```
 
+Start the daemon against the local smallkhoj FastAPI backend without the official Slock websocket:
+
+```powershell
+node dist/cmd/main.js start --foreground --runtime none --server http://127.0.0.1:8000 --ws none --agent-id aaaa0000-0000-0000-0000-000000000001 --proxy-port 3457
+```
+
+This generates a local `.slock/slock` wrapper. Read calls work directly:
+
+```powershell
+.slock/slock server info
+.slock/slock message check
+.slock/slock task list --channel "#all"
+```
+
+Write calls require the normal safety gate:
+
+```powershell
+$env:SLOCK_ALLOW_WRITES = "1"
+.slock/slock message send --target "#all" "hello from local daemon"
+.slock/slock task create --channel "#all" --title "example task"
+.slock/slock task claim --channel "#all" --number 2
+.slock/slock task update --channel "#all" --number 2 --status done
+```
+
 Import an existing Slock runtime and start Claude Code through aaa-daemon:
 
 ```powershell
@@ -121,6 +145,26 @@ Current local validation:
 
 ```powershell
 npm test
+```
+
+For the local smallkhoj backend mode, the validated path is:
+
+```text
+worker runtime -> .slock/slock wrapper -> aaa local proxy -> smallkhoj FastAPI /internal/agent-api/*
+```
+
+The backend must receive `X-Agent-Id` from the proxy and a valid bearer token. The local seed creates `sk_agent_aaa_local`, `sk_agent_deepseek_local`, and `sk_machine_local`; local backend runs can set `SLOCK_AGENT_TOKEN=sk_machine_local` or the matching agent token. Add `--register-daemon` when the daemon should register its computer/workspace lifecycle with `/internal/agent-api/daemon/register` and `/internal/agent-api/daemon/heartbeat`. `slock message check` maps to `/internal/agent-api/events?since=latest`; the first call advances the cursor without replaying old messages, then later calls return new messages.
+
+Example local backend run:
+
+```bash
+SLOCK_AGENT_TOKEN=sk_machine_local \
+node dist/cmd/main.js start --foreground \
+  --runtime none \
+  --server http://127.0.0.1:8000 \
+  --ws none \
+  --agent-id aaaa0000-0000-0000-0000-000000000001 \
+  --register-daemon
 ```
 
 The test suite covers:

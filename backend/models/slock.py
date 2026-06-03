@@ -29,6 +29,10 @@ class Server(Base):
 
     members = relationship("Member", back_populates="server", lazy="selectin")
     channels = relationship("Channel", back_populates="server", lazy="selectin")
+    computers = relationship("Computer", back_populates="server", lazy="selectin")
+    activity_logs = relationship("ActivityLog", back_populates="server", lazy="selectin")
+    files = relationship("FileEntry", back_populates="server", lazy="selectin")
+    reminders = relationship("Reminder", back_populates="server", lazy="selectin")
     api_keys = relationship("ApiKey", back_populates="server", lazy="selectin")
 
 
@@ -53,6 +57,57 @@ class Member(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
     server = relationship("Server", back_populates="members")
+    workspaces = relationship("AgentWorkspace", back_populates="agent", lazy="selectin")
+
+
+# ── Computers / Workspaces ───────────────────────────────────
+
+class Computer(Base):
+    __tablename__ = "computers"
+    __table_args__ = (
+        Index("idx_computers_server", "server_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    os: Mapped[str] = mapped_column(String(80), nullable=False)
+    daemon_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    api_key_prefix: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="offline")
+    detected_runtimes: Mapped[list] = mapped_column(JSONB, default=list)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server", back_populates="computers")
+    workspaces = relationship("AgentWorkspace", back_populates="computer", lazy="selectin")
+
+
+class AgentWorkspace(Base):
+    __tablename__ = "agent_workspaces"
+    __table_args__ = (
+        Index("idx_agent_workspaces_computer", "computer_id"),
+        Index("idx_agent_workspaces_agent", "agent_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    computer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("computers.id", ondelete="CASCADE"), nullable=False)
+    agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    runtime: Mapped[str] = mapped_column(String(40), nullable=False, default="claude_code")
+    runtime_command: Mapped[str | None] = mapped_column(Text, nullable=True)
+    runtime_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="stopped")
+    session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cwd: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    computer = relationship("Computer", back_populates="workspaces")
+    agent = relationship("Member", back_populates="workspaces")
 
 
 # ── Channels ─────────────────────────────────────────────────
@@ -142,6 +197,144 @@ class Task(Base):
     assignee = relationship("Member", foreign_keys=[assignee_id])
 
 
+# ── Activity Logs ────────────────────────────────────────────
+
+class ActivityLog(Base):
+    __tablename__ = "activity_logs"
+    __table_args__ = (
+        Index("idx_activity_server", "server_id", "occurred_at"),
+        Index("idx_activity_agent", "agent_id", "occurred_at"),
+        Index("idx_activity_task", "task_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column("type", String(40), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    details: Mapped[dict] = mapped_column(JSONB, default=dict)
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+    server = relationship("Server", back_populates="activity_logs")
+    agent = relationship("Member")
+    channel = relationship("Channel")
+    task = relationship("Task")
+
+
+# ── Append-only Events ───────────────────────────────────────
+
+class EventRecord(Base):
+    __tablename__ = "event_records"
+    __table_args__ = (
+        Index("idx_event_records_server_seq", "server_id", "seq"),
+        Index("idx_event_records_channel_seq", "channel_id", "seq"),
+        Index("idx_event_records_actor_seq", "actor_id", "seq"),
+        Index("idx_event_records_type_seq", "event_type", "seq"),
+    )
+
+    seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, unique=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    activity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("activity_logs.id", ondelete="SET NULL"), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+    server = relationship("Server")
+    actor = relationship("Member")
+    channel = relationship("Channel")
+    task = relationship("Task")
+    message = relationship("Message")
+    activity = relationship("ActivityLog")
+
+
+# ── Files / Attachments ──────────────────────────────────────
+
+class FileEntry(Base):
+    __tablename__ = "files"
+    __table_args__ = (
+        Index("idx_files_server", "server_id", "created_at"),
+        Index("idx_files_channel", "channel_id", "created_at"),
+        Index("idx_files_message", "message_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False, default="application/octet-stream")
+    size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+    server = relationship("Server", back_populates="files")
+    channel = relationship("Channel")
+    message = relationship("Message")
+    uploader = relationship("Member")
+
+
+# ── Message Reactions ────────────────────────────────────────
+
+class MessageReaction(Base):
+    __tablename__ = "message_reactions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "member_id", "reaction"),
+        Index("idx_message_reactions_message", "message_id"),
+        Index("idx_message_reactions_member", "member_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    reaction: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+    message = relationship("Message")
+    member = relationship("Member")
+
+
+# ── Reminders ────────────────────────────────────────────────
+
+class Reminder(Base):
+    __tablename__ = "reminders"
+    __table_args__ = (
+        Index("idx_reminders_server", "server_id", "status", "fire_at"),
+        Index("idx_reminders_agent", "agent_id", "status", "fire_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fire_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    repeat: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+    fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    server = relationship("Server", back_populates="reminders")
+    agent = relationship("Member")
+    channel = relationship("Channel")
+    message = relationship("Message")
+    task = relationship("Task")
+
+
 # ── API Keys ─────────────────────────────────────────────────
 
 class ApiKey(Base):
@@ -152,6 +345,7 @@ class ApiKey(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     key_prefix: Mapped[str] = mapped_column(String(20), nullable=False)
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     resource_type: Mapped[str] = mapped_column(String(20), nullable=False)  # 'computer' | 'agent'
     resource_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id"), nullable=False)

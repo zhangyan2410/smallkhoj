@@ -1,20 +1,36 @@
 import Link from "next/link"
 
+type Channel = {
+  id: string
+  name: string
+  type: string
+  description?: string
+}
+
+type Member = {
+  id: string
+  name: string
+  kind: string
+  status: string
+}
+
 async function getChannels() {
   try {
     const res = await fetch("http://localhost:8000/api/v1/channels", { cache: "no-store" })
-    return res.json()
+    if (!res.ok) return { channels: [] as Channel[] }
+    return res.json() as Promise<{ channels: Channel[] }>
   } catch {
-    return { channels: [] }
+    return { channels: [] as Channel[] }
   }
 }
 
 async function getMembers() {
   try {
     const res = await fetch("http://localhost:8000/api/v1/members", { cache: "no-store" })
-    return res.json()
+    if (!res.ok) return { members: [] as Member[] }
+    return res.json() as Promise<{ members: Member[] }>
   } catch {
-    return { members: [] }
+    return { members: [] as Member[] }
   }
 }
 
@@ -32,7 +48,7 @@ export default async function Home() {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">Channels</h2>
           <ul className="space-y-2">
-            {channels.map((ch: any) => (
+            {channels.map((ch) => (
               <li key={ch.id} className="border rounded p-3 hover:bg-accent">
                 <Link href={`/chat/${ch.name.replace("#", "")}`}>
                   <span className="font-mono font-semibold">{ch.name}</span>
@@ -52,7 +68,7 @@ export default async function Home() {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">Members</h2>
           <ul className="space-y-1">
-            {members.map((m: any) => (
+            {members.map((m) => (
               <li key={m.id} className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${m.status === "online" || m.status === "active" ? "bg-green-500" : "bg-gray-400"}`} />
                 <strong>{m.name}</strong>

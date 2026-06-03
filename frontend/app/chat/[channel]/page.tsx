@@ -1,11 +1,23 @@
+import Link from "next/link"
+
+type ChannelMessage = {
+  id: string
+  seq: number
+  sender: string
+  senderType: string
+  content: string
+  time: string
+}
+
 async function getMessages(channel: string) {
   try {
     const res = await fetch(`http://localhost:8000/api/v1/channels/${channel}/messages?limit=50`, {
       cache: "no-store",
     })
-    return res.json()
+    if (!res.ok) return { messages: [] as ChannelMessage[] }
+    return res.json() as Promise<{ messages: ChannelMessage[] }>
   } catch {
-    return { messages: [] }
+    return { messages: [] as ChannelMessage[] }
   }
 }
 
@@ -17,12 +29,12 @@ export default async function ChannelPage({ params }: { params: Promise<{ channe
     <main className="flex min-h-screen flex-col p-4">
       <div className="max-w-2xl w-full mx-auto">
         <div className="flex items-center gap-2 mb-4">
-          <a href="/" className="text-muted-foreground hover:underline">← Back</a>
+          <Link href="/" className="text-muted-foreground hover:underline">← Back</Link>
           <h1 className="text-xl font-bold">#{channel}</h1>
         </div>
 
         <div className="space-y-2">
-          {messages.map((msg: any) => (
+          {messages.map((msg) => (
             <div key={msg.id} className="border-b pb-2">
               <div className="flex items-center gap-2 text-sm">
                 <span className={`font-semibold ${msg.senderType === "agent" ? "text-blue-600" : "text-green-600"}`}>

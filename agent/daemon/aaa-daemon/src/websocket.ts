@@ -40,14 +40,15 @@ export class WebSocketManager extends EventEmitter {
 
   connect(): void {
     if (this.isShuttingDown) return;
-    if (!this.credential.wsUrl) {
+    const wsUrl = this.credential.wsUrl?.trim();
+    if (!wsUrl || ['none', 'off', 'disabled'].includes(wsUrl.toLowerCase())) {
       console.log('[WS] No wsUrl configured, skipping WebSocket');
       return;
     }
 
-    console.log(`[WS] Connecting to ${this.credential.wsUrl}...`);
+    console.log(`[WS] Connecting to ${wsUrl}...`);
 
-    this.ws = new WebSocket(this.credential.wsUrl, {
+    this.ws = new WebSocket(wsUrl, {
       headers: {
         'Authorization': `Bearer ${this.credential.token}`,
         'X-Agent-Id': this.credential.agentId,

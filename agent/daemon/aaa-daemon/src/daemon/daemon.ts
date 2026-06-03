@@ -12,6 +12,7 @@
 
 import { EventEmitter } from 'events';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { arch, hostname, platform, release } from 'os';
 import type { Credential, DaemonConfig } from '../types.js';
 import { AgentProxy, generateProxyToken } from '../proxy/agent-proxy.js';
 import { WebSocketManager } from '../websocket.js';
@@ -29,10 +30,18 @@ interface LogEntry {
 }
 
 export interface RuntimeIncomingMessage {
+  eventType?: string;
+  eventSeq?: string;
   target?: string;
+  channelId?: string;
   messageId?: string;
+  taskId?: string;
+  taskNumber?: string;
+  status?: string;
+  title?: string;
   timestamp?: string;
   sender?: string;
+  actor?: string;
   senderType?: string;
   content: string;
 }
@@ -54,9 +63,11 @@ export class DaemonCore extends EventEmitter {
   private runtimeRestartAttempts = 0;
   private runtimeRestartTimer: ReturnType<typeof setTimeout> | null = null;
   private runtimeStallTimer: ReturnType<typeof setInterval> | null = null;
+  private daemonHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private runtimeLastProgressAt = 0;
   private wrapper: SlockWrapperResult | null = null;
   private stopping = false;
+  private daemonRegistrationEnabled = false;
 
   constructor(config: DaemonConfig) {
     super();
@@ -68,6 +79,14 @@ export class DaemonCore extends EventEmitter {
     // Forward proxy events
     this.proxy.on('freshness_hold', (data) => this.emit('freshness_hold', data));
     this.proxy.on('message_received', (data) => {
+      this.deliverRuntimeMessage(data, 'proxy');
+    });
+    this.proxy.on('event_received', (data) => {
+      if (!isRecord(data)) return;
+      const eventType = firstString(data.type, data.eventType) ?? '';
+      // Only deliver task events and message events to runtime; skip heartbeats/member updates
+      if (eventType === 'message_received') return; // already handled above
+      if (!eventType.startsWith('task_')) return;
       this.deliverRuntimeMessage(data, 'proxy');
     });
   }
@@ -96,7 +115,7 @@ export class DaemonCore extends EventEmitter {
     const delivered = this.runtimeDriver.sendUserMessage(formatRuntimeIncomingMessage(message));
     this.log(
       `Runtime message ${delivered ? 'delivered' : 'queued'} from ${source}: target=${message.target ?? 'unknown'}`,
-      'debug',
+      delivered ? 'info' : 'debug',
     );
     this.emit('runtime_delivery', { source, delivered, message });
     return delivered;
@@ -145,6 +164,11 @@ export class DaemonCore extends EventEmitter {
       activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
     });
     this.log(`slock wrapper generated in ${this.wrapper.wrapperDir}`, 'info');
+    this.daemonRegistrationEnabled = this.shouldRegisterDaemonLifecycle();
+    if (this.daemonRegistrationEnabled) {
+      await this.registerDaemonLifecycle('register');
+      this.startDaemonHeartbeat();
+    }
 
     if (this.config.runtime === 'claude_code') {
       this.startClaudeRuntime();
@@ -163,6 +187,11 @@ export class DaemonCore extends EventEmitter {
       }
     });
     this.wsManager.connect();
+
+    // 5b. Inbox polling fallback when no WS
+    if (this.config.wsUrl === 'none' || !this.config.wsUrl) {
+      this.startInboxPolling();
+    }
 
     // 6. Start MCP bridge (if in foreground / CLI mode)
     // Only in --mcp mode
@@ -198,6 +227,8 @@ export class DaemonCore extends EventEmitter {
       this.runtimeRestartTimer = null;
     }
     this.stopRuntimeStallWatchdog();
+    this.stopDaemonHeartbeat();
+    this.stopInboxPolling();
     this.wsManager?.disconnect();
     this.runtimeDriver?.stop();
     void this.mcpBridge?.stop();
@@ -323,6 +354,7 @@ export class DaemonCore extends EventEmitter {
       });
       this.emitRuntimeTrace({ type: 'session', sessionId });
       this.emit('runtime_session', { sessionId });
+      void this.registerDaemonLifecycle('heartbeat');
     });
     driver.on('message_sent', (payload) => {
       this.markRuntimeProgress();
@@ -340,6 +372,7 @@ export class DaemonCore extends EventEmitter {
       }
       this.emit('runtime_exit', event);
       this.emitRuntimeTrace({ type: 'exit', ...event });
+      void this.registerDaemonLifecycle('heartbeat');
 
       if (this.runtimeDriver === driver) {
         this.runtimeDriver = null;
@@ -395,6 +428,129 @@ export class DaemonCore extends EventEmitter {
     if (!this.runtimeStallTimer) return;
     clearInterval(this.runtimeStallTimer);
     this.runtimeStallTimer = null;
+  }
+
+  private startDaemonHeartbeat(): void {
+    this.stopDaemonHeartbeat();
+    this.daemonHeartbeatTimer = setInterval(() => {
+      void this.registerDaemonLifecycle('heartbeat');
+    }, 30_000);
+  }
+
+  private stopDaemonHeartbeat(): void {
+    if (!this.daemonHeartbeatTimer) return;
+    clearInterval(this.daemonHeartbeatTimer);
+    this.daemonHeartbeatTimer = null;
+  }
+
+  // ── Inbox polling fallback (no WS) ─────────────────────────
+
+  private inboxPollTimer: ReturnType<typeof setInterval> | null = null;
+
+  private startInboxPolling(): void {
+    this.stopInboxPolling();
+    const intervalMs = 3000;
+    this.log(`Inbox polling started (no WS, interval=${intervalMs}ms)`, 'info');
+    this.inboxPollTimer = setInterval(() => {
+      void this.pollInbox();
+    }, intervalMs);
+    setTimeout(() => void this.pollInbox(), 500);
+  }
+
+  private stopInboxPolling(): void {
+    if (this.inboxPollTimer) {
+      clearInterval(this.inboxPollTimer);
+      this.inboxPollTimer = null;
+    }
+  }
+
+  private async pollInbox(): Promise<void> {
+    if (this.stopping) return;
+    const credential = this.credential;
+    if (!credential) return;
+    try {
+      const serverUrl = credential.serverUrl || this.config.serverUrl;
+      // Use since=latest so backend manages the cursor via member.config
+      const url = new URL('/internal/agent-api/events?since=latest', serverUrl);
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${credential.token}`,
+          'X-Agent-Id': credential.agentId,
+        },
+      });
+      if (!res.ok) return;
+      const text = await res.text();
+      const data = JSON.parse(text) as { count?: number; eventLogCursor?: string };
+      if (data.count && data.count > 0) {
+        this.log(`Inbox poll got ${data.count} events`, 'debug');
+      }
+      // Feed through proxy's consumeResponse to trigger event buffering + emit
+      this.proxy.consumeResponseExternal('/internal/agent-api/events', serverUrl, text);
+    } catch (err) {
+      this.log(`Inbox poll error: ${err}`, 'warn');
+    }
+  }
+
+  private shouldRegisterDaemonLifecycle(): boolean {
+    if (this.config.daemonRegister) return true;
+    const override = process.env.AAA_DAEMON_REGISTER ?? process.env.SLOCK_DAEMON_REGISTER;
+    if (override === '1' || override === 'true') return true;
+    if (override === '0' || override === 'false') return false;
+    return false;
+  }
+
+  private async registerDaemonLifecycle(kind: 'register' | 'heartbeat'): Promise<void> {
+    if (!this.credential || !this.daemonRegistrationEnabled) return;
+    const serverUrl = this.credential.serverUrl || this.config.serverUrl;
+    const endpoint = kind === 'register' ? '/internal/agent-api/daemon/register' : '/internal/agent-api/daemon/heartbeat';
+    const workspacePath = this.config.workspacePath ?? process.cwd();
+    const runtimeStatus = this.runtimeDriver ? (this.runtimeDriver.busy ? 'running' : 'idle') : 'idle';
+    const runtimeCommand = this.config.runtimeCommand ?? (this.config.runtime === 'claude_code' ? 'claude' : undefined);
+    const body = {
+      name: hostname(),
+      os: `${platform()} ${release()} ${arch()}`,
+      daemonVersion: '0.2.0',
+      status: 'online',
+      detectedRuntimes: [
+        {
+          type: this.config.runtime ?? 'daemon',
+          status: this.config.runtime === 'claude_code' ? 'available' : 'idle',
+          command: runtimeCommand,
+        },
+      ],
+      workspaces: [
+        {
+          agentId: this.credential.agentId,
+          runtime: this.config.runtime ?? 'daemon',
+          runtimeCommand,
+          runtimeModel: this.config.runtimeModel,
+          status: runtimeStatus,
+          sessionId: this.runtimeSessionId,
+          cwd: workspacePath,
+          pid: this.runtimeDriver?.pid,
+          backend: this.config.runtime === 'claude_code' ? 'Claude' : undefined,
+        },
+      ],
+    };
+
+    try {
+      const response = await fetch(new URL(endpoint, serverUrl), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.credential.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        this.log(`Daemon ${kind} failed: ${response.status} ${text.slice(0, 200)}`, 'warn');
+        return;
+      }
+      this.log(`Daemon ${kind} synced to ${serverUrl}`, 'debug');
+    } catch (err) {
+      this.log(`Daemon ${kind} failed: ${(err as Error).message}`, 'warn');
+    }
   }
 
   private markRuntimeProgress(): void {
@@ -463,30 +619,47 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
   const value = unwrapMessagePayload(input);
   if (!isRecord(value)) return null;
 
+  const eventType = firstString(value.type, value.eventType);
   const content = firstString(
     value.content,
     value.text,
     value.body,
     value.message,
-  );
+  ) ?? summarizeRuntimeEvent(value, eventType);
   if (!content) return null;
 
-  return {
-    target: firstString(value.target, value.channel, value.channelName),
-    messageId: firstString(value.msg, value.messageId, value.message_id, value.id, value.shortId),
-    timestamp: firstString(value.time, value.timestamp, value.createdAt),
-    sender: firstString(value.sender, value.author, value.user, value.username),
-    senderType: firstString(value.senderType, value.sender_type, value.type),
-    content,
-  };
+  const message: RuntimeIncomingMessage = { content };
+  assignIfPresent(message, 'target', firstString(value.target, value.channel, value.channelName));
+  assignIfPresent(message, 'messageId', firstString(value.msg, value.messageId, value.message_id, value.id, value.shortId));
+  assignIfPresent(message, 'eventSeq', firstString(value.eventSeq, value.eventLogCursor, value.eventCursor));
+  assignIfPresent(message, 'channelId', firstString(value.channelId, value.channel_id));
+  assignIfPresent(message, 'taskId', firstString(value.taskId, value.task_id));
+  assignIfPresent(message, 'taskNumber', firstString(value.taskNumber, value.task_number, value.number));
+  assignIfPresent(message, 'status', firstString(value.status, value.taskStatus));
+  assignIfPresent(message, 'title', firstString(value.title, value.taskTitle));
+  assignIfPresent(message, 'timestamp', firstString(value.time, value.timestamp, value.createdAt));
+  assignIfPresent(message, 'sender', firstString(value.sender, value.author, value.user, value.username));
+  assignIfPresent(message, 'actor', firstString(value.actor, value.actorId, value.actor_id, value.memberId, value.agentId));
+  assignIfPresent(message, 'senderType', firstString(value.senderType, value.sender_type, value.type));
+  if (eventType && eventType !== 'message_received') {
+    message.eventType = eventType;
+  }
+  return message;
 }
 
 export function formatRuntimeIncomingMessage(message: RuntimeIncomingMessage): string {
   const header = [
+    message.eventType ? `event=${message.eventType}` : undefined,
+    message.eventSeq ? `eventSeq=${message.eventSeq}` : undefined,
     message.target ? `target=${message.target}` : undefined,
+    message.channelId ? `channel=${message.channelId}` : undefined,
     message.messageId ? `msg=${message.messageId}` : undefined,
+    message.taskNumber ? `task=#${message.taskNumber}` : undefined,
+    !message.taskNumber && message.taskId ? `task=${message.taskId}` : undefined,
+    message.status ? `status=${message.status}` : undefined,
     message.timestamp ? `time=${message.timestamp}` : undefined,
     message.sender ? `sender=${message.sender}` : undefined,
+    message.actor ? `actor=${message.actor}` : undefined,
     message.senderType ? `type=${message.senderType}` : undefined,
   ].filter(Boolean).join(' ');
 
@@ -517,6 +690,42 @@ function firstString(...values: unknown[]): string | undefined {
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   }
   return undefined;
+}
+
+function assignIfPresent<K extends keyof RuntimeIncomingMessage>(
+  message: RuntimeIncomingMessage,
+  key: K,
+  value: RuntimeIncomingMessage[K] | undefined,
+): void {
+  if (value !== undefined) {
+    message[key] = value;
+  }
+}
+
+function summarizeRuntimeEvent(value: Record<string, unknown>, eventType?: string): string | undefined {
+  if (!eventType || eventType === 'message_received') return undefined;
+
+  const title = firstString(value.title, value.taskTitle);
+  const status = firstString(value.status, value.taskStatus);
+  const reaction = firstString(value.reaction, value.emoji);
+  const description = firstString(value.description, value.summary, value.name);
+  const fields = [
+    title ? `title=${title}` : undefined,
+    status ? `status=${status}` : undefined,
+    reaction ? `reaction=${reaction}` : undefined,
+    description ? `description=${description}` : undefined,
+  ].filter(Boolean);
+
+  const details = isRecord(value.details) ? value.details : isRecord(value.payload) ? value.payload : null;
+  if (details) {
+    for (const [key, raw] of Object.entries(details)) {
+      if (fields.length >= 8) break;
+      if (raw === null || raw === undefined || typeof raw === 'object') continue;
+      fields.push(`${key}=${String(raw)}`);
+    }
+  }
+
+  return fields.length ? fields.join('\n') : `Received Slock event: ${eventType}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

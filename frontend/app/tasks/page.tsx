@@ -1,9 +1,19 @@
+import Link from "next/link"
+
+type Task = {
+  number: number
+  title: string
+  status: string
+  assignee?: string | null
+}
+
 async function getTasks() {
   try {
     const res = await fetch("http://localhost:8000/api/v1/tasks", { cache: "no-store" })
-    return res.json()
+    if (!res.ok) return { tasks: [] as Task[] }
+    return res.json() as Promise<{ tasks: Task[] }>
   } catch {
-    return { tasks: [] }
+    return { tasks: [] as Task[] }
   }
 }
 
@@ -22,12 +32,12 @@ export default async function TasksPage() {
     <main className="flex min-h-screen flex-col p-4">
       <div className="max-w-2xl w-full mx-auto">
         <div className="flex items-center gap-2 mb-4">
-          <a href="/" className="text-muted-foreground hover:underline">← Back</a>
+          <Link href="/" className="text-muted-foreground hover:underline">← Back</Link>
           <h1 className="text-xl font-bold">Tasks</h1>
         </div>
 
         <div className="space-y-2">
-          {tasks.map((t: any) => (
+          {tasks.map((t) => (
             <div key={t.number} className="border rounded p-3 flex items-center gap-3">
               <span className="font-mono text-sm text-muted-foreground">#{t.number}</span>
               <span className="flex-1">{t.title}</span>

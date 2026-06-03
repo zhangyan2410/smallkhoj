@@ -61,6 +61,7 @@ export function rewriteAgentPath(pathname: string, search: string, agentId: stri
   if (suffix === '/upload') return `/internal/agent-api/upload${search}`;
   if (suffix === '/resolve-channel') return `/internal/agent-api/resolve-channel${search}`;
   if (suffix === '/threads/unfollow') return `/internal/agent-api/threads/unfollow${search}`;
+  if (suffix === '/threads/follow') return `/internal/agent-api/threads/follow${search}`;
   if (suffix === '/prepare-action') return `/internal/agent-api/prepare-action${search}`;
   if (suffix === '/receive') {
     const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
@@ -181,11 +182,19 @@ export class AgentProxy extends EventEmitter {
   }
 
   recordIncomingMessage(event: Record<string, unknown>, emitEvent = true): void {
-    const seq = typeof event.seq === 'number' ? event.seq : undefined;
-    if (seq && seq > 0) this.updateSeq(seq);
-    this.eventBuffer.append('message_received', event);
+    this.recordIncomingEvent({ ...event, type: 'message_received' }, emitEvent);
+  }
+
+  recordIncomingEvent(event: Record<string, unknown>, emitEvent = true): void {
+    const eventType = eventTypeOf(event);
+    const seq = messageSeqOf(event);
+    if (eventType === 'message_received' && seq && seq > 0) this.updateSeq(seq);
+    this.eventBuffer.append(eventType, event);
     if (emitEvent) {
-      this.emit('message_received', event);
+      this.emit('event_received', event);
+      if (eventType === 'message_received') {
+        this.emit('message_received', event);
+      }
     }
   }
 
@@ -290,7 +299,7 @@ export class AgentProxy extends EventEmitter {
         if (upstreamRes.body) {
           const reader = upstreamRes.body.getReader();
           const sseParser = rewrittenPathname === '/internal/agent-api/events' && upstreamContentType.includes('text/event-stream')
-            ? new SseEventParser((event) => this.recordIncomingMessage(event))
+            ? new SseEventParser((event) => this.recordIncomingEvent(event))
             : null;
           try {
             while (true) {
@@ -347,9 +356,9 @@ export class AgentProxy extends EventEmitter {
     if (pathname === '/internal/agent-api/events' && Array.isArray(data.events)) {
       let maxSeq = this.readUpToSeq;
       for (const event of data.events as Record<string, unknown>[]) {
-        const seq = typeof event.seq === 'number' ? event.seq : undefined;
+        const seq = eventTypeOf(event) === 'message_received' ? messageSeqOf(event) : undefined;
         if (seq && seq > maxSeq) maxSeq = seq;
-        this.recordIncomingMessage(event);
+        this.recordIncomingEvent(event);
       }
       this.markReadUpTo(Math.max(maxSeq, this.lastSeenSeq));
     }
@@ -364,6 +373,11 @@ export class AgentProxy extends EventEmitter {
       }
       this.markReadUpTo(Math.max(maxSeq, this.lastSeenSeq));
     }
+  }
+
+  /** Public entry point for inbox polling fallback to feed responses through consumeResponse. */
+  consumeResponseExternal(pathname: string, targetUrl: string | URL, responseText: string): void {
+    this.consumeResponse(pathname, new URL(String(targetUrl)), responseText);
   }
 
   private buildFreshnessHold(body: Uint8Array | undefined): Record<string, unknown> | null {
@@ -397,11 +411,13 @@ export class AgentProxy extends EventEmitter {
 
   private pendingEventsSince(seenUpToSeq: number): ReturnType<EventBuffer['snapshot']> {
     return this.eventBuffer.snapshot().filter((event) => {
+      if (event.method !== 'message_received') return false;
       const params = event.params;
-      if (isRecord(params) && typeof params.seq === 'number') {
-        return params.seq > seenUpToSeq;
+      if (isRecord(params)) {
+        const seq = messageSeqOf(params);
+        if (seq) return seq > seenUpToSeq;
       }
-      return event.seq > seenUpToSeq;
+      return false;
     });
   }
 
@@ -446,6 +462,24 @@ export class AgentProxy extends EventEmitter {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function eventTypeOf(event: Record<string, unknown>): string {
+  const type = typeof event.type === 'string' && event.type.trim()
+    ? event.type.trim()
+    : typeof event.eventType === 'string' && event.eventType.trim()
+      ? event.eventType.trim()
+      : undefined;
+  return type ?? 'message_received';
+}
+
+function messageSeqOf(event: Record<string, unknown>): number | undefined {
+  for (const value of [event.seq, event.messageSeq]) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+  }
+  return undefined;
 }
 
 class SseEventParser {

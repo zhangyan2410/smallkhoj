@@ -669,6 +669,8 @@ export interface DaemonConfig {
   runtimeRestartOnCrash?: boolean;
   /** Busy runtime inactivity threshold before stall recovery; disabled when unset/0 */
   runtimeStallTimeoutMs?: number;
+  /** Register this daemon/computer/workspace with a local Slock-compatible backend */
+  daemonRegister?: boolean;
   /** Unix socket path (unused on Windows; falls back to TCP) */
   socketPath?: string;
 }

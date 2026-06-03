@@ -5,8 +5,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from routers import health, chat, agent_api, public_api
+from routers import health, chat, agent_api, public_api, hello
 from models.seed import create_tables, seed
+from services.reminder_scheduler import start_reminder_scheduler, stop_reminder_scheduler
 
 
 @asynccontextmanager
@@ -14,7 +15,11 @@ async def lifespan(app: FastAPI):
     """应用生命周期：创建表并初始化种子数据。"""
     await create_tables()
     await seed()
-    yield
+    reminder_task = start_reminder_scheduler()
+    try:
+        yield
+    finally:
+        await stop_reminder_scheduler(reminder_task)
 
 
 app = FastAPI(
@@ -36,6 +41,7 @@ app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(agent_api.router)
 app.include_router(public_api.router)
+app.include_router(hello.router)
 
 
 if __name__ == "__main__":

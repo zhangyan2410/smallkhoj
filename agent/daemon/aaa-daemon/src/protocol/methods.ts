@@ -70,6 +70,7 @@ export const DaemonMethods = {
   ChannelMembers: 'daemon/channel.members',
   ChannelJoin: 'daemon/channel.join',
   ChannelLeave: 'daemon/channel.leave',
+  ThreadFollow: 'daemon/thread.follow',
   ThreadUnfollow: 'daemon/thread.unfollow',
 
   // ── Profile / integration / reminder / attachment operations ─

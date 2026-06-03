@@ -282,6 +282,79 @@ test('AgentProxy consumes SSE event stream messages into inbox', async () => {
   }
 });
 
+test('AgentProxy buffers non-message events without blocking sends', async () => {
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/events') {
+      res.end(JSON.stringify({
+        events: [{
+          type: 'task_created',
+          eventSeq: 7,
+          taskNumber: 3,
+          target: '#general',
+          title: 'Implement delegated slice',
+          status: 'todo',
+        }],
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const proxy = new AgentProxy();
+  const events = [];
+  const messages = [];
+
+  try {
+    await proxy.start(0);
+    proxy.on('event_received', event => events.push(event));
+    proxy.on('message_received', event => messages.push(event));
+    proxy.register({
+      token: 'sap_proxy_token',
+      activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+      credential: {
+        agentId: 'agent-1',
+        serverId: 'server-1',
+        token: 'sk_machine_real',
+        serverUrl: upstream.url,
+      },
+    });
+
+    const check = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/receive?limit=10`, {
+      headers: { authorization: 'Bearer sap_proxy_token' },
+    });
+    assert.equal(check.status, 200);
+
+    const buffered = proxy.eventBuffer.snapshot();
+    assert.equal(buffered.length, 1);
+    assert.equal(buffered[0].method, 'task_created');
+    assert.equal(events.length, 1);
+    assert.equal(messages.length, 0);
+    assert.equal(proxy.getLastSeenSeq(), 0);
+
+    const sent = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/send`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer sap_proxy_token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ target: '#general', content: 'ack task event' }),
+    });
+    const sentBody = await sent.json();
+
+    assert.equal(sent.status, 200);
+    assert.equal(sentBody.state, 'sent');
+    assert.equal(upstream.requests.at(-1).req.url, '/internal/agent-api/send');
+  } finally {
+    proxy.stop();
+    await upstream.close();
+  }
+});
+
 test('postDaemonRpc forwards JSON-RPC to daemon endpoint', async () => {
   const proxy = new AgentProxy();
 
@@ -321,6 +394,10 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
     }
     if (url.pathname === '/internal/agent-api/knowledge/search') {
       res.end(JSON.stringify({ results: [{ id: 'k-1', q: url.searchParams.get('q') }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/threads/follow') {
+      res.end(JSON.stringify({ followed: true }));
       return;
     }
     res.end(JSON.stringify({ path: url.pathname }));
@@ -384,6 +461,22 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
     });
     assert.equal(upstream.requests.length, 2);
     assert.equal(upstream.requests[1].req.url, '/internal/agent-api/knowledge/search?q=runtime');
+
+    const follow = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'daemon/thread.follow',
+      params: { threadId: 'thread-1' },
+    });
+
+    assert.deepEqual(follow, {
+      jsonrpc: '2.0',
+      id: 3,
+      result: { followed: true },
+    });
+    assert.equal(upstream.requests.length, 3);
+    assert.equal(upstream.requests[2].req.url, '/internal/agent-api/threads/follow');
+    assert.deepEqual(JSON.parse(upstream.requests[2].body), { threadId: 'thread-1' });
   } finally {
     proxy.stop();
     await upstream.close();

@@ -144,6 +144,50 @@ test('daemon formats inbound Slock messages for Claude runtime delivery', () => 
   );
 });
 
+test('daemon formats non-message Slock events for Claude runtime delivery', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'task_created',
+    eventSeq: 7,
+    taskNumber: 3,
+    target: '#general',
+    actorId: 'supervisor',
+    title: 'Implement delegated slice',
+    status: 'todo',
+    details: {
+      assignee: '@aaa',
+      priority: 'high',
+    },
+  });
+
+  assert.deepEqual(message, {
+    eventType: 'task_created',
+    eventSeq: '7',
+    target: '#general',
+    taskNumber: '3',
+    status: 'todo',
+    title: 'Implement delegated slice',
+    actor: 'supervisor',
+    senderType: 'task_created',
+    content: [
+      'title=Implement delegated slice',
+      'status=todo',
+      'assignee=@aaa',
+      'priority=high',
+    ].join('\n'),
+  });
+  assert.equal(
+    formatRuntimeIncomingMessage(message),
+    [
+      'event=task_created eventSeq=7 target=#general task=#3 status=todo actor=supervisor type=task_created',
+      '',
+      'title=Implement delegated slice',
+      'status=todo',
+      'assignee=@aaa',
+      'priority=high',
+    ].join('\n'),
+  );
+});
+
 test('websocket helpers classify messages and build ack/activity payloads', () => {
   const [event] = parseWebSocketPayload(JSON.stringify({
     type: 'message_received',

@@ -114,6 +114,9 @@ export class ClientHandler extends EventEmitter {
       case DaemonMethods.ChannelLeave:
         return this.forwardToProxy(id, 'channel.leave', params);
 
+      case DaemonMethods.ThreadFollow:
+        return this.forwardToProxy(id, 'thread.follow', params);
+
       case DaemonMethods.ThreadUnfollow:
         return this.forwardToProxy(id, 'thread.unfollow', params);
 
@@ -276,6 +279,11 @@ export class ClientHandler extends EventEmitter {
           httpMethod = 'POST';
           body = params;
           break;
+        case 'thread.follow':
+          apiPath = `${agentPath}/threads/follow`;
+          httpMethod = 'POST';
+          body = params;
+          break;
         case 'profile.get':
           apiPath = `${agentPath}/profile${p.handle ? `/${encodeURIComponent(String(p.handle))}` : ''}`;
           break;
@@ -373,12 +381,11 @@ export class ClientHandler extends EventEmitter {
     const events = this.daemon.getProxy().eventBuffer.snapshot();
     let maxSeq = this.daemon.getProxy().getReadUpToSeq();
     for (const event of events) {
+      if (event.method !== 'message_received') continue;
       const params = event.params;
-      if (isRecord(params) && typeof params.seq === 'number' && params.seq > maxSeq) {
-        maxSeq = params.seq;
-      }
-      if (event.seq > maxSeq) {
-        maxSeq = event.seq;
+      if (isRecord(params)) {
+        const seq = messageSeqOf(params);
+        if (seq && seq > maxSeq) maxSeq = seq;
       }
     }
     this.daemon.getProxy().markReadUpTo(maxSeq);
@@ -478,6 +485,15 @@ export class ClientHandler extends EventEmitter {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function messageSeqOf(event: Record<string, unknown>): number | undefined {
+  for (const value of [event.seq, event.messageSeq]) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+  }
+  return undefined;
 }
 
 function compactBody(values: Record<string, unknown>): Record<string, unknown> {
