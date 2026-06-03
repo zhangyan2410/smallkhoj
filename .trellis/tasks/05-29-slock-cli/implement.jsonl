@@ -1,1 +1,3 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "agent/daemon/aaa-daemon/src/slock-cli.ts", "reason": "Source under test — all CLI commands, parseRequest, flag handling"}
+{"file": "agent/daemon/aaa-daemon/test/slock-cli.test.mjs", "reason": "Existing test patterns — runCli helper, fake HTTP server, assertion style"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Testing patterns — reuse runCli helper, don't duplicate setup"}
