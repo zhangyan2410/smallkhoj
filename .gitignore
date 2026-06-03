@@ -17,6 +17,10 @@ agent/daemon/aaa-daemon/dist/
 *.tsbuildinfo
 toremove/
 
+# Dev server runtime
+.dev-pids/
+.dev-logs/
+
 # Keep VS Code and agent configs
 !.vscode/
 !.codex/
