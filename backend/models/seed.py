@@ -216,7 +216,9 @@ async def ensure_extended_seed(db, server_id: uuid.UUID):
             "stopped",
         ),
     ]
+    workspace_ids_by_agent = {}
     for workspace_id, agent_id, runtime, runtime_command, status in workspace_specs:
+        workspace_ids_by_agent[agent_id] = workspace_id
         workspace = (await db.execute(
             select(AgentWorkspace).where(AgentWorkspace.id == workspace_id)
         )).scalar_one_or_none()
@@ -232,6 +234,16 @@ async def ensure_extended_seed(db, server_id: uuid.UUID):
             ))
         else:
             workspace.computer_id = computer.id
+            workspace.agent_id = agent_id
+            workspace.runtime = runtime
+
+    for member, _backend in [(aaa, "Claude"), (deepseek, "DeepSeek")]:
+        workspace_id = workspace_ids_by_agent.get(member.id)
+        if workspace_id:
+            member.config = {
+                **(member.config or {}),
+                "workspaceId": str(workspace_id),
+            }
 
     await ensure_api_key(db, server_id, "agent", aaa.id, "sk_agent_aaa_local")
     await ensure_api_key(db, server_id, "agent", deepseek.id, "sk_agent_deepseek_local")

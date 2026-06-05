@@ -680,6 +680,10 @@ def _sse_frame(event: str, data: dict, event_id: str | None = None) -> str:
 
 def _serialize_member(member: Member) -> dict:
     config = member.config or {}
+    workspace_id = config.get("workspaceId")
+    if member.kind == "agent" and member.workspaces:
+        latest_workspace = max(member.workspaces, key=lambda item: item.updated_at)
+        workspace_id = str(latest_workspace.id)
     return {
         "id": str(member.id),
         "name": member.display_name,
@@ -691,7 +695,7 @@ def _serialize_member(member: Member) -> dict:
         "skills": member.skills or [],
         "config": config,
         "computerId": str(member.computer_id) if member.computer_id else config.get("computerId"),
-        "workspaceId": config.get("workspaceId"),
+        "workspaceId": workspace_id,
         "backend": member.backend or config.get("backend"),
         "permissions": config.get("permissions") or {},
         "actions": config.get("actions") or {},
