@@ -5,3 +5,41 @@
 
 ---
 
+
+
+## Session 1: Finish agent delegation control plane
+
+**Date**: 2026-06-05
+**Task**: Finish agent delegation control plane
+**Branch**: `main`
+
+### Summary
+
+Completed and archived the agent delegation control plane: backend dotted events and task ownership, daemon runtime compatibility, control-plane member/computer views, worker orchestration helpers, runtime artifact ignores, and slock design references.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `024711e` | (see git log) |
+| `7091b27` | (see git log) |
+| `d096605` | (see git log) |
+| `eaba095` | (see git log) |
+| `39aa9c1` | (see git log) |
+| `f41acd4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

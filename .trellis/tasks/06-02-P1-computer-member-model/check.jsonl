@@ -1,0 +1,9 @@
+{"file":"zy-think/slock-design-spec.md","reason":"Verify implementation against finalized P1 model/API source of truth."}
+{"file":".trellis/spec/backend/index.md","reason":"Backend guideline index for review."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review schema/backfill approach."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Review API error behavior."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend quality gate."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend guideline index for review."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review new route UI composition."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Review frontend API typing."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review cross-layer data flow consistency."}
