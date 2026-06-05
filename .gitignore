@@ -12,6 +12,8 @@ agent/daemon/aaa-daemon/dist/
 
 # IDE
 .idea/
+.DS_Store
+**/.DS_Store
 
 # Build caches
 *.tsbuildinfo
@@ -20,6 +22,17 @@ toremove/
 # Dev server runtime
 .dev-pids/
 .dev-logs/
+.slock/
+agent/daemon/aaa-daemon/.slock/
+agent/daemon/aaa-daemon/aaa-daemon.pid
+
+# Locally installed Claude skill bundles
+.claude/skills/gh-fix-ci/
+.claude/skills/playwright/
+.claude/skills/security-best-practices/
+.claude/skills/security-ownership-map/
+.claude/skills/security-threat-model/
+.claude/skills/sentry/
 
 # Keep VS Code and agent configs
 !.vscode/
