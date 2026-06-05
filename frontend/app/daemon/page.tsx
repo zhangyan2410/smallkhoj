@@ -16,6 +16,7 @@ import {
   Server,
   Send,
   Shield,
+  Users,
   Wifi,
 } from "lucide-react"
 
@@ -382,6 +383,18 @@ export default async function DaemonPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Link href="/members">
+              <Button variant="outline" size="sm">
+                <Users className="size-4" />
+                Members
+              </Button>
+            </Link>
+            <Link href="/computers">
+              <Button variant="outline" size="sm">
+                <HardDrive className="size-4" />
+                Computers
+              </Button>
+            </Link>
             <span className={`size-2 rounded-full ${data.backendOnline ? "bg-emerald-500" : "bg-amber-500"}`} />
             <span>{data.backendOnline ? "Backend connected" : "Waiting for backend"}</span>
             <Wifi className="size-4" />
@@ -656,6 +669,7 @@ export default async function DaemonPage() {
             <CardContent className="grid gap-2 pt-4 text-sm sm:grid-cols-2">
               {[
                 "/api/v1/computers",
+                "/api/v1/members",
                 "/api/v1/activity",
                 "/api/v1/tasks",
                 "/api/v1/reminders",

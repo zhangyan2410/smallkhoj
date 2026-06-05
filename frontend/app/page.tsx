@@ -1,5 +1,7 @@
 import Link from "next/link"
 
+import { apiGet, type Member } from "@/lib/control-plane"
+
 type Channel = {
   id: string
   name: string
@@ -7,31 +9,12 @@ type Channel = {
   description?: string
 }
 
-type Member = {
-  id: string
-  name: string
-  kind: string
-  status: string
-}
-
 async function getChannels() {
-  try {
-    const res = await fetch("http://localhost:8000/api/v1/channels", { cache: "no-store" })
-    if (!res.ok) return { channels: [] as Channel[] }
-    return res.json() as Promise<{ channels: Channel[] }>
-  } catch {
-    return { channels: [] as Channel[] }
-  }
+  return apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] })
 }
 
 async function getMembers() {
-  try {
-    const res = await fetch("http://localhost:8000/api/v1/members", { cache: "no-store" })
-    if (!res.ok) return { members: [] as Member[] }
-    return res.json() as Promise<{ members: Member[] }>
-  } catch {
-    return { members: [] as Member[] }
-  }
+  return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] })
 }
 
 export default async function Home() {
@@ -82,6 +65,18 @@ export default async function Home() {
         <div>
           <Link href="/tasks" className="text-xl font-semibold hover:underline">
             Tasks →
+          </Link>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/daemon" className="rounded border p-3 font-semibold hover:bg-accent">
+            Control Plane →
+          </Link>
+          <Link href="/members" className="rounded border p-3 font-semibold hover:bg-accent">
+            Members →
+          </Link>
+          <Link href="/computers" className="rounded border p-3 font-semibold hover:bg-accent">
+            Computers →
           </Link>
         </div>
 

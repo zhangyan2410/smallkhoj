@@ -1,5 +1,7 @@
 import Link from "next/link"
 
+import { apiGet } from "@/lib/control-plane"
+
 type Task = {
   number: number
   title: string
@@ -8,13 +10,7 @@ type Task = {
 }
 
 async function getTasks() {
-  try {
-    const res = await fetch("http://localhost:8000/api/v1/tasks", { cache: "no-store" })
-    if (!res.ok) return { tasks: [] as Task[] }
-    return res.json() as Promise<{ tasks: Task[] }>
-  } catch {
-    return { tasks: [] as Task[] }
-  }
+  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] })
 }
 
 const statusColors: Record<string, string> = {
