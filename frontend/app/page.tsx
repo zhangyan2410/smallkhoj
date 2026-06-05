@@ -1,6 +1,11 @@
 import Link from "next/link"
+import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 
 import { apiGet, type Member } from "@/lib/control-plane"
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
+const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
 
 type Channel = {
   id: string
@@ -15,6 +20,36 @@ async function getChannels() {
 
 async function getMembers() {
   return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] })
+}
+
+async function createChannelAction(formData: FormData) {
+  "use server"
+  const name = formData.get("channelName") as string
+  if (!name) return
+  await fetch(`${API_BASE}/api/v1/channels`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    body: JSON.stringify({ name, description: formData.get("channelDescription") || "" }),
+  })
+  revalidatePath("/")
+}
+
+async function createDmAction(formData: FormData) {
+  "use server"
+  const peer = formData.get("peer") as string
+  if (!peer) return
+  const response = await fetch(`${API_BASE}/api/v1/dm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    body: JSON.stringify({ peer }),
+  })
+  revalidatePath("/")
+  if (response.ok) {
+    const data = await response.json()
+    if (data.channel?.name) {
+      redirect(`/chat/${data.channel.name}`)
+    }
+  }
 }
 
 export default async function Home() {
@@ -46,6 +81,24 @@ export default async function Home() {
               <li className="text-muted-foreground">No channels — is the backend running?</li>
             )}
           </ul>
+          <form action={createChannelAction} className="flex items-end gap-2">
+            <div>
+              <label htmlFor="channel-name" className="mb-1 block text-xs font-medium text-muted-foreground">
+                New Channel
+              </label>
+              <input
+                id="channel-name"
+                name="channelName"
+                placeholder="channel-name"
+                required
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+              />
+            </div>
+            <div>
+              <input name="channelDescription" placeholder="description" className="h-9 rounded-md border bg-background px-3 text-sm" />
+            </div>
+            <button type="submit" className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">Create</button>
+          </form>
         </div>
 
         <div className="space-y-4">
@@ -60,6 +113,20 @@ export default async function Home() {
               </li>
             ))}
           </ul>
+          <form action={createDmAction} className="flex items-end gap-2">
+            <div>
+              <label htmlFor="dm-peer" className="mb-1 block text-xs font-medium text-muted-foreground">
+                Start DM with
+              </label>
+              <select id="dm-peer" name="peer" required className="h-9 rounded-md border bg-background px-3 text-sm">
+                <option value="">Select member...</option>
+                {members.filter((m) => m.kind === "agent").map((m) => (
+                  <option key={m.id} value={m.name}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">DM</button>
+          </form>
         </div>
 
         <div>

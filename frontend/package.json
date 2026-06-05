@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "e2e": "cross-env NODE_PATH=./node_modules playwright test",
     "start": "next start",
     "lint": "eslint",
     "server": "tsx server.ts",
@@ -31,6 +32,7 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

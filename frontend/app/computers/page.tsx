@@ -3,6 +3,7 @@ import { ArrowLeft, Bot, Clock, Cpu, HardDrive, Network, Terminal } from "lucide
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ConnectComputerForm } from "./connect-computer-form"
 import {
   apiGet,
   badgeClass,
@@ -100,6 +101,8 @@ export default async function ComputersPage() {
             </CardHeader>
           </Card>
         </div>
+
+        <ConnectComputerForm />
 
         <div className="space-y-4">
           {computers.map((computer) => (

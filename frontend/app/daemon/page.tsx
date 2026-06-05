@@ -160,6 +160,17 @@ async function createTaskAction(formData: FormData) {
   })
 }
 
+async function createChannelAction(formData: FormData) {
+  "use server"
+  const name = formData.get("channelName") as string
+  if (!name) return
+  await apiWrite("/api/v1/channels", {
+    name,
+    description: formData.get("channelDescription") || "",
+    type: formData.get("channelType") || "public",
+  })
+}
+
 async function updateTaskAction(formData: FormData) {
   "use server"
   await apiWrite(`/api/v1/tasks/${formData.get("taskId")}`, {
@@ -419,7 +430,7 @@ export default async function DaemonPage() {
               </CardTitle>
               <CardDescription>创建任务、调整任务状态、向频道发送 supervisor 消息</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 pt-4 lg:grid-cols-3">
+            <CardContent className="grid gap-4 pt-4 lg:grid-cols-4">
               <form action={createTaskAction} className="space-y-2">
                 <ControlLabel text="Task" />
                 <Input name="title" placeholder="Title" required />
@@ -455,6 +466,17 @@ export default async function DaemonPage() {
                 <Button size="sm" variant="secondary" className="w-full" type="submit">
                   <Send className="size-4" />
                   Send
+                </Button>
+              </form>
+
+              <form action={createChannelAction} className="space-y-2">
+                <ControlLabel text="Channel" />
+                <Input name="channelName" placeholder="Channel name" required />
+                <Input name="channelDescription" placeholder="Description" />
+                <ControlSelect name="channelType" items={["public", "private"]} fallback="public" />
+                <Button size="sm" variant="outline" className="w-full" type="submit">
+                  <MessageSquare className="size-4" />
+                  Create
                 </Button>
               </form>
             </CardContent>

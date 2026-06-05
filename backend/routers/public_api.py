@@ -2,6 +2,7 @@
 
 import hashlib
 import re
+import secrets
 import uuid
 from datetime import datetime, timedelta
 
@@ -11,8 +12,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
-    get_db, AgentWorkspace, ActivityLog, Channel, Computer, Member, Message,
-    EventRecord, FileEntry, Reminder, Server, Task,
+    get_db, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
+    Computer, Member, Message, EventRecord, FileEntry, Reminder, Server, Task,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
 
@@ -837,3 +838,343 @@ async def update_public_reminder(reminder_id: str, request: Request, _auth: None
     await db.commit()
     await db.refresh(reminder)
     return {"updated": True, "reminder": await _serialize_reminder(db, reminder)}
+
+
+# ── Computer Credential ───────────────────────────────────────
+
+
+@router.post("/computers/credential")
+async def generate_computer_credential(
+    request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    token = f"sk_machine_{secrets.token_urlsafe(32)}"
+    key_prefix = token[:20]
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+    computer_id = uuid.uuid4()
+    computer = Computer(
+        id=computer_id,
+        server_id=server.id,
+        name=body.get("name", "unregistered-computer"),
+        os="unknown",
+        daemon_version="unknown",
+        api_key_prefix=key_prefix,
+        status="offline",
+        detected_runtimes=[],
+    )
+    db.add(computer)
+
+    db.add(ApiKey(
+        key_prefix=key_prefix,
+        token_hash=token_hash,
+        resource_type="computer",
+        resource_id=computer_id,
+        server_id=server.id,
+    ))
+
+    server_url = body.get("serverUrl", "http://localhost:8000")
+    await db.commit()
+    return {
+        "created": True,
+        "computerId": str(computer_id),
+        "apiKey": token,
+        "command": f"npx @slock-ai/daemon@latest --server-url {server_url} --api-key {token}",
+    }
+
+
+# ── Agent Creation ────────────────────────────────────────────
+
+
+@router.post("/members/agents")
+async def create_agent(
+    request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    name = body.get("name")
+    if not name:
+        raise HTTPException(400, "Missing name")
+
+    computer_id = body.get("computerId")
+    if not computer_id:
+        raise HTTPException(400, "Missing computerId")
+    try:
+        computer_id = uuid.UUID(computer_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid computerId")
+
+    computer = await db.execute(
+        select(Computer).where(Computer.id == computer_id, Computer.server_id == server.id)
+    )
+    if not computer.scalar_one_or_none():
+        raise HTTPException(404, "Computer not found")
+
+    runtime = body.get("runtime", "claude_code")
+    runtime_command = body.get("runtimeCommand")
+    runtime_model = body.get("runtimeModel")
+
+    agent = Member(
+        server_id=server.id,
+        kind="agent",
+        display_name=name,
+        status=body.get("status", "active"),
+        computer_id=computer_id,
+        backend=body.get("backend"),
+        config={
+            "computerId": str(computer_id),
+            "backend": body.get("backend"),
+        },
+    )
+    db.add(agent)
+    await db.flush()
+
+    workspace = AgentWorkspace(
+        computer_id=computer_id,
+        agent_id=agent.id,
+        runtime=runtime,
+        runtime_command=runtime_command,
+        runtime_model=runtime_model,
+        status="stopped",
+        cwd=body.get("cwd"),
+    )
+    db.add(workspace)
+    await db.flush()
+
+    agent.config = {**(agent.config or {}), "workspaceId": str(workspace.id)}
+
+    await db.commit()
+    await db.refresh(agent)
+    await db.refresh(workspace)
+    return {
+        "created": True,
+        "member": await serialize_member(db, agent),
+        "workspace": _serialize_workspace(workspace, agent),
+    }
+
+
+# ── Channel Creation ─────────────────────────────────────────
+
+
+@router.post("/channels")
+async def create_channel(
+    request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    name = body.get("name")
+    if not name:
+        raise HTTPException(400, "Missing name")
+
+    name = name.lstrip("#")
+    kind = body.get("type") or body.get("kind", "public")
+    if kind not in ("public", "private"):
+        raise HTTPException(400, "Invalid channel type")
+
+    existing = await db.execute(
+        select(Channel).where(Channel.server_id == server.id, Channel.name == name)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(409, f"Channel #{name} already exists")
+
+    creator = await _resolve_member(db, server, body.get("creator") or "zy-ean")
+
+    channel = Channel(
+        server_id=server.id,
+        name=name,
+        kind=kind,
+        description=body.get("description", ""),
+        creator_id=creator.id,
+    )
+    db.add(channel)
+    await db.flush()
+
+    db.add(ChannelMember(channel_id=channel.id, member_id=creator.id))
+
+    member_ids = body.get("memberIds") or []
+    for mid in member_ids:
+        try:
+            parsed_mid = uuid.UUID(mid)
+        except ValueError:
+            continue
+        member = await db.execute(
+            select(Member).where(Member.id == parsed_mid, Member.server_id == server.id)
+        )
+        if member.scalar_one_or_none():
+            db.add(ChannelMember(channel_id=channel.id, member_id=parsed_mid))
+
+    await db.commit()
+    await db.refresh(channel)
+    return {
+        "created": True,
+        "channel": {
+            "id": str(channel.id),
+            "name": f"#{channel.name}" if channel.kind == "public" else channel.name,
+            "type": channel.kind,
+            "description": channel.description or "",
+        },
+    }
+
+
+# ── Channel Members ──────────────────────────────────────────
+
+
+@router.post("/channels/{channel_id}/members")
+async def add_channel_member(
+    channel_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    try:
+        parsed_channel_id = uuid.UUID(channel_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid channel id")
+
+    channel = await db.execute(
+        select(Channel).where(Channel.id == parsed_channel_id, Channel.server_id == server.id)
+    )
+    ch = channel.scalar_one_or_none()
+    if not ch:
+        raise HTTPException(404, "Channel not found")
+
+    body = await request.json()
+    member_id = body.get("memberId")
+    if not member_id:
+        raise HTTPException(400, "Missing memberId")
+    try:
+        parsed_member_id = uuid.UUID(member_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid memberId")
+
+    member = await db.execute(
+        select(Member).where(Member.id == parsed_member_id, Member.server_id == server.id)
+    )
+    if not member.scalar_one_or_none():
+        raise HTTPException(404, "Member not found")
+
+    existing = await db.execute(
+        select(ChannelMember).where(
+            ChannelMember.channel_id == parsed_channel_id,
+            ChannelMember.member_id == parsed_member_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return {"added": False, "reason": "already_member"}
+
+    db.add(ChannelMember(channel_id=parsed_channel_id, member_id=parsed_member_id))
+    await db.commit()
+    return {"added": True, "channelId": str(parsed_channel_id), "memberId": str(parsed_member_id)}
+
+
+@router.delete("/channels/{channel_id}/members/{member_id}")
+async def remove_channel_member(
+    channel_id: str,
+    member_id: str,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    try:
+        parsed_channel_id = uuid.UUID(channel_id)
+        parsed_member_id = uuid.UUID(member_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid id format")
+
+    channel = await db.execute(
+        select(Channel).where(Channel.id == parsed_channel_id, Channel.server_id == server.id)
+    )
+    if not channel.scalar_one_or_none():
+        raise HTTPException(404, "Channel not found")
+
+    existing = await db.execute(
+        select(ChannelMember).where(
+            ChannelMember.channel_id == parsed_channel_id,
+            ChannelMember.member_id == parsed_member_id,
+        )
+    )
+    cm = existing.scalar_one_or_none()
+    if not cm:
+        return {"removed": False, "reason": "not_member"}
+
+    await db.delete(cm)
+    await db.commit()
+    return {"removed": True, "channelId": str(parsed_channel_id), "memberId": str(parsed_member_id)}
+
+
+# ── DM ───────────────────────────────────────────────────────
+
+
+@router.get("/channels/{channel_id}/members")
+async def list_channel_members(
+    channel_id: str,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    try:
+        parsed_channel_id = uuid.UUID(channel_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid channel id")
+
+    channel = await db.execute(
+        select(Channel).where(Channel.id == parsed_channel_id, Channel.server_id == server.id)
+    )
+    if not channel.scalar_one_or_none():
+        raise HTTPException(404, "Channel not found")
+
+    result = await db.execute(
+        select(ChannelMember).where(ChannelMember.channel_id == parsed_channel_id)
+    )
+    cms = result.scalars().all()
+    member_list = []
+    for cm in cms:
+        m_result = await db.execute(select(Member).where(Member.id == cm.member_id))
+        m = m_result.scalar_one_or_none()
+        if m:
+            member_list.append(await serialize_member(db, m))
+    return {"members": member_list}
+
+
+@router.post("/dm")
+async def create_or_get_dm(
+    request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    peer_name = body.get("peer")
+    if not peer_name:
+        raise HTTPException(400, "Missing peer")
+
+    sender = await _resolve_member(db, server, body.get("sender") or "zy-ean")
+    peer = await _resolve_member(db, server, peer_name)
+
+    dm_name = f"dm:{min(str(sender.id), str(peer.id))}-{max(str(sender.id), str(peer.id))}"
+    result = await db.execute(
+        select(Channel).where(Channel.server_id == server.id, Channel.kind == "dm", Channel.name == dm_name)
+    )
+    channel = result.scalar_one_or_none()
+
+    if not channel:
+        channel = Channel(
+            server_id=server.id,
+            name=dm_name,
+            kind="dm",
+            creator_id=sender.id,
+        )
+        db.add(channel)
+        await db.flush()
+        db.add(ChannelMember(channel_id=channel.id, member_id=sender.id))
+        db.add(ChannelMember(channel_id=channel.id, member_id=peer.id))
+        await db.commit()
+        await db.refresh(channel)
+
+    return {
+        "channel": {
+            "id": str(channel.id),
+            "name": channel.name,
+            "type": "dm",
+        },
+    }

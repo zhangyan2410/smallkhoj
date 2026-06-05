@@ -1,19 +1,44 @@
 import Link from "next/link"
+import { revalidatePath } from "next/cache"
 import { ArrowLeft, Bot, Cpu, HardDrive, Shield, UserRound } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import {
   apiGet,
   badgeClass,
   dotClass,
+  type Computer,
   type Member,
   shortId,
   statusLabel,
 } from "@/lib/control-plane"
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
+const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
+
 async function getMembers() {
   return apiGet<{ members: Member[]; count?: number }>("/api/v1/members", { members: [], count: 0 })
+}
+
+async function getComputers() {
+  return apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] })
+}
+
+async function createAgentAction(formData: FormData) {
+  "use server"
+  const name = formData.get("name") as string
+  const computerId = formData.get("computerId") as string
+  const runtime = formData.get("runtime") as string || "claude_code"
+  const backend = formData.get("backend") as string
+  if (!name || !computerId) return
+  await fetch(`${API_BASE}/api/v1/members/agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    body: JSON.stringify({ name, computerId, runtime, backend }),
+  })
+  revalidatePath("/members")
 }
 
 function profileName(member: Member) {
@@ -47,6 +72,7 @@ function Field({ label, value }: { label: string; value?: string | null }) {
 
 export default async function MembersPage() {
   const { members } = await getMembers()
+  const { computers } = await getComputers()
   const humans = members.filter((member) => member.kind === "human").length
   const agents = members.filter((member) => member.kind === "agent").length
   const boundAgents = members.filter((member) => member.kind === "agent" && member.computerId).length
@@ -107,6 +133,58 @@ export default async function MembersPage() {
             </CardHeader>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Bot className="size-4" />
+              Create Agent
+            </CardTitle>
+            <CardDescription>Create a new agent and bind it to a computer runtime.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form action={createAgentAction} className="flex flex-wrap items-end gap-3">
+              <div>
+                <label htmlFor="agent-name" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Agent Name
+                </label>
+                <Input id="agent-name" name="name" placeholder="my-agent" required className="w-36" />
+              </div>
+              <div>
+                <label htmlFor="agent-computer" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Computer
+                </label>
+                <select
+                  id="agent-computer"
+                  name="computerId"
+                  required
+                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">Select...</option>
+                  {computers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="agent-runtime" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Runtime
+                </label>
+                <select id="agent-runtime" name="runtime" className="h-9 rounded-md border bg-background px-3 text-sm">
+                  <option value="claude_code">Claude Code</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="agent-backend" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Backend
+                </label>
+                <Input id="agent-backend" name="backend" placeholder="Claude" className="w-28" />
+              </div>
+              <Button type="submit" size="sm">Create Agent</Button>
+            </form>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-3 xl:grid-cols-2">
           {members.map((member) => {

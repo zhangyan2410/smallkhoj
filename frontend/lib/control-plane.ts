@@ -88,6 +88,31 @@ export async function apiGet<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
+export async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error((error as { detail?: string }).detail || `HTTP ${response.status}`)
+  }
+  return response.json()
+}
+
+export async function apiDelete<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "DELETE",
+    headers: { "X-Public-Key": PUBLIC_KEY },
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error((error as { detail?: string }).detail || `HTTP ${response.status}`)
+  }
+  return response.json()
+}
+
 export function formatTime(value?: string | null) {
   if (!value) return "never"
   const date = new Date(value)
