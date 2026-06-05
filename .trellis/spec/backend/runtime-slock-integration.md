@@ -102,12 +102,16 @@ Future environment support must validate:
   - treat `result` events as turn boundaries where queued user messages may be flushed
 - Daemon-originated message delivery:
   - WebSocket `message_received` / `message` events are normalized into a text envelope with fields such as `target=`, `msg=`, `time=`, `sender=`, `type=`
+  - Backend event records use dotted canonical event names such as `message.created`, `task.created`, `task.claimed`, `task.updated`, `message.reaction_added`, and `channel.member_joined`, while also returning `legacyType` for older consumers.
+  - Daemon proxy/runtime code must treat dotted `message.*` events as legacy `message_received` for inbox buffering, freshness tracking, and runtime delivery. When a dotted message event has `payload.message`, flatten that nested message before buffering.
+  - Daemon proxy/runtime code must accept both snake-case task events (`task_created`) and dotted task events (`task.created`) and deliver them as non-message runtime events without touching pending-message freshness state.
   - proxy `/internal/agent-api/events` and SSE events use the same event buffer and emit the same `message_received` delivery path
   - runtime delivery calls `ClaudeRuntimeDriver.sendUserMessage()`; if Claude is busy, the runtime queue owns deferral until a safe turn boundary
 - WebSocket manager must:
   - send activity payloads on connect and heartbeat (`{type:"activity",status,at}`)
   - ack recognized message events with `{type:"ack",message_id?,seq?,at}`
   - support both raw event payloads and JSON-RPC `daemon/message.received` notifications
+  - support JSON-RPC dotted notifications: `message.*` maps to message delivery, and `task.*` maps to the generic event path for runtime delivery
 - Proxy freshness must hold stale sends:
   - sends to `/internal/agent-api/send` check `seenUpToSeq` when supplied, otherwise `readUpToSeq`
   - when pending message events have seq greater than `seenUpToSeq`, return HTTP 409 with `{state:"held",reason:"pending_messages",seenUpToSeq,pendingCount,pending}`
@@ -216,6 +220,8 @@ Future environment support must validate:
   - assert stale sends return HTTP 409 held responses before upstream send
   - assert checking/reading messages advances `readUpToSeq` enough for a later send
   - assert SSE `/events` frames are parsed and buffered into inbox events
+  - assert dotted SSE and polling `message.*` events are normalized to `message_received` buffer methods and still advance message freshness from the nested or top-level message seq
+  - assert dotted `task.*` events are buffered as task methods, delivered to runtime, and never block later sends as pending unread messages
 - Attach/client-handler tests:
   - assert `postDaemonRpc` posts to `/internal/daemon/jsonrpc`
   - assert extended daemon methods use local proxy bearer auth and reach expected upstream paths

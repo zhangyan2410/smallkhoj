@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmallKhoj Worker Orchestration"
+  short_description: "Start and supervise SmallKhoj workers"
+  default_prompt: "Use $smallkhoj-worker-orchestration to start the local worker stack, delegate work, and review worker output."
