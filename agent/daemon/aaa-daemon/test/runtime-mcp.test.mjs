@@ -144,6 +144,37 @@ test('daemon formats inbound Slock messages for Claude runtime delivery', () => 
   );
 });
 
+test('daemon normalizes dotted backend message events for Claude runtime delivery', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'message.created',
+    legacyType: 'message_received',
+    seq: 12,
+    eventSeq: 99,
+    target: '#general',
+    messageId: 'msg-12',
+    shortId: 'm12',
+    createdAt: '2026-06-05T10:00:00.000Z',
+    senderId: 'member-alice',
+    content: 'from dotted event',
+    channelId: 'channel-1',
+  });
+
+  assert.deepEqual(message, {
+    eventType: 'message.created',
+    eventSeq: '99',
+    target: '#general',
+    channelId: 'channel-1',
+    messageId: 'msg-12',
+    timestamp: '2026-06-05T10:00:00.000Z',
+    content: 'from dotted event',
+    senderType: 'message.created',
+  });
+  assert.equal(
+    formatRuntimeIncomingMessage(message),
+    'event=message.created eventSeq=99 target=#general channel=channel-1 msg=msg-12 time=2026-06-05T10:00:00.000Z type=message.created\n\nfrom dotted event',
+  );
+});
+
 test('daemon formats non-message Slock events for Claude runtime delivery', () => {
   const message = normalizeRuntimeIncomingMessage({
     type: 'task_created',
@@ -188,6 +219,49 @@ test('daemon formats non-message Slock events for Claude runtime delivery', () =
   );
 });
 
+test('daemon normalizes dotted task events from backend payloads', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'task.claimed',
+    eventSeq: 44,
+    payload: {
+      taskId: 'task-1',
+      taskNumber: 8,
+      channel: '#general',
+      assigneeId: 'agent-123',
+      changedBy: 'supervisor',
+      status: 'in_progress',
+      title: 'Pick up worker slice',
+    },
+    timestamp: '2026-06-05T10:05:00.000Z',
+  });
+
+  assert.deepEqual(message, {
+    eventType: 'task.claimed',
+    eventSeq: '44',
+    target: '#general',
+    taskId: 'task-1',
+    taskNumber: '8',
+    status: 'in_progress',
+    title: 'Pick up worker slice',
+    timestamp: '2026-06-05T10:05:00.000Z',
+    actor: 'supervisor',
+    senderType: 'task.claimed',
+    content: [
+      'title=Pick up worker slice',
+      'status=in_progress',
+    ].join('\n'),
+  });
+  assert.equal(
+    formatRuntimeIncomingMessage(message),
+    [
+      'event=task.claimed eventSeq=44 target=#general task=#8 status=in_progress time=2026-06-05T10:05:00.000Z actor=supervisor type=task.claimed',
+      '',
+      'title=Pick up worker slice',
+      'status=in_progress',
+    ].join('\n'),
+  );
+});
+
 test('websocket helpers classify messages and build ack/activity payloads', () => {
   const [event] = parseWebSocketPayload(JSON.stringify({
     type: 'message_received',
@@ -213,6 +287,41 @@ test('websocket helpers classify messages and build ack/activity payloads', () =
   assert.equal(activity.type, 'activity');
   assert.equal(activity.status, 'active');
   assert.match(activity.at, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('websocket helpers accept dotted message and task event names', () => {
+  const [messageEvent] = parseWebSocketPayload(JSON.stringify({
+    type: 'message.created',
+    seq: 13,
+    messageId: 'msg-13',
+    target: '#general',
+    content: 'hello dotted ws',
+  }));
+
+  assert.equal(messageEvent.type, 'message');
+  assert.deepEqual(messageEvent.message, {
+    type: 'message.created',
+    seq: 13,
+    messageId: 'msg-13',
+    target: '#general',
+    content: 'hello dotted ws',
+  });
+
+  const [taskEvent] = parseWebSocketPayload(JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'task.updated',
+    params: {
+      taskId: 'task-1',
+      status: 'done',
+    },
+  }));
+
+  assert.equal(taskEvent.type, 'event');
+  assert.deepEqual(taskEvent.event, {
+    type: 'task.updated',
+    taskId: 'task-1',
+    status: 'done',
+  });
 });
 
 test('claude runtime sends stream-json user messages with captured session id', () => {

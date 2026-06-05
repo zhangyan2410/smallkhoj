@@ -12,6 +12,7 @@ import type { JSONRPCMessage } from './protocol/jsonrpc.js';
 export type WebSocketManagerEvent =
   | { type: 'connected' }
   | { type: 'message'; message: unknown }
+  | { type: 'event'; event: unknown }
   | { type: 'disconnected'; reason: string }
   | { type: 'error'; error: string };
 
@@ -176,11 +177,18 @@ export function buildAckPayload(message: unknown): Record<string, unknown> | nul
 }
 
 function eventsFromJsonRpc(msg: JSONRPCMessage): WebSocketManagerEvent[] {
-  if (msg.method === 'message_received') {
+  const method = typeof msg.method === 'string' ? msg.method : '';
+  if (method === 'message_received') {
     return [{ type: 'message', message: msg.params ?? msg }];
   }
-  if (msg.method === 'daemon/message.received') {
+  if (method === 'daemon/message.received') {
     return [{ type: 'message', message: msg.params ?? msg }];
+  }
+  if (method.startsWith('message.')) {
+    return [{ type: 'message', message: msg.params ?? msg }];
+  }
+  if (method.startsWith('task.') || method.startsWith('task_')) {
+    return [{ type: 'event', event: { ...(isRecord(msg.params) ? msg.params : {}), type: method } }];
   }
   return [{ type: 'message', message: msg }];
 }
@@ -188,11 +196,11 @@ function eventsFromJsonRpc(msg: JSONRPCMessage): WebSocketManagerEvent[] {
 function eventFromRawPayload(value: unknown): WebSocketManagerEvent[] {
   if (!isRecord(value)) return [];
   const type = typeof value.type === 'string' ? value.type : '';
-  if (type === 'message_received') {
+  if (isMessageEventType(type)) {
     return [{ type: 'message', message: value.message ?? value.event ?? value }];
   }
-  if (type === 'message') {
-    return [{ type: 'message', message: value.message ?? value }];
+  if (isTaskEventType(type)) {
+    return [{ type: 'event', event: value.event ?? value }];
   }
   if (isRecord(value.message) || typeof value.content === 'string') {
     return [{ type: 'message', message: value }];
@@ -214,6 +222,17 @@ function firstString(...values: unknown[]): string | undefined {
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   }
   return undefined;
+}
+
+function isMessageEventType(type: string): boolean {
+  return type === 'message'
+    || type === 'message_received'
+    || type === 'message_created'
+    || type.startsWith('message.');
+}
+
+function isTaskEventType(type: string): boolean {
+  return type.startsWith('task_') || type.startsWith('task.');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -282,6 +282,65 @@ test('AgentProxy consumes SSE event stream messages into inbox', async () => {
   }
 });
 
+test('AgentProxy normalizes dotted SSE message events into inbox', async () => {
+  const upstream = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end([
+      'event: message.created',
+      'data: {"type":"message.created","legacyType":"message_received","seq":21,"eventSeq":101,"messageId":"msg-21","target":"#general","content":"from dotted sse","channelId":"channel-1"}',
+      '',
+      '',
+    ].join('\n'));
+  });
+  const proxy = new AgentProxy();
+  const received = [];
+
+  try {
+    await proxy.start(0);
+    proxy.on('message_received', (event) => {
+      received.push(event);
+    });
+    proxy.register({
+      token: 'sap_proxy_token',
+      activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+      credential: {
+        agentId: 'agent-1',
+        serverId: 'server-1',
+        token: 'sk_machine_real',
+        serverUrl: upstream.url,
+      },
+    });
+
+    const response = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/receive`, {
+      headers: { authorization: 'Bearer sap_proxy_token' },
+    });
+    const text = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(text, /from dotted sse/);
+    assert.equal(received.length, 1);
+    assert.deepEqual(received[0], {
+      type: 'message.created',
+      legacyType: 'message_received',
+      seq: 21,
+      eventSeq: 101,
+      messageId: 'msg-21',
+      target: '#general',
+      content: 'from dotted sse',
+      channelId: 'channel-1',
+    });
+
+    const buffered = proxy.eventBuffer.snapshot();
+    assert.equal(buffered.length, 1);
+    assert.equal(buffered[0].method, 'message_received');
+    assert.deepEqual(buffered[0].params, received[0]);
+    assert.equal(proxy.getLastSeenSeq(), 21);
+  } finally {
+    proxy.stop();
+    await upstream.close();
+  }
+});
+
 test('AgentProxy buffers non-message events without blocking sends', async () => {
   const upstream = await startServer((req, res, body) => {
     const url = new URL(req.url, 'http://upstream.test');
@@ -343,6 +402,118 @@ test('AgentProxy buffers non-message events without blocking sends', async () =>
         'content-type': 'application/json',
       },
       body: JSON.stringify({ target: '#general', content: 'ack task event' }),
+    });
+    const sentBody = await sent.json();
+
+    assert.equal(sent.status, 200);
+    assert.equal(sentBody.state, 'sent');
+    assert.equal(upstream.requests.at(-1).req.url, '/internal/agent-api/send');
+  } finally {
+    proxy.stop();
+    await upstream.close();
+  }
+});
+
+test('AgentProxy buffers dotted polling events and tracks message freshness', async () => {
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/events') {
+      res.end(JSON.stringify({
+        events: [
+          {
+            type: 'message.created',
+            legacyType: 'message_received',
+            seq: 34,
+            eventSeq: 203,
+            messageId: 'msg-34',
+            target: '#general',
+            content: 'dotted polling message',
+            channelId: 'channel-1',
+          },
+          {
+            type: 'task.updated',
+            eventSeq: 204,
+            payload: {
+              taskId: 'task-1',
+              taskNumber: 5,
+              channel: '#general',
+              status: 'done',
+              changedBy: 'supervisor',
+            },
+          },
+          {
+            type: 'channel.member_joined',
+            eventSeq: 205,
+            channelId: 'channel-1',
+            memberId: 'member-1',
+          },
+        ],
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const proxy = new AgentProxy();
+  const events = [];
+  const messages = [];
+
+  try {
+    await proxy.start(0);
+    proxy.on('event_received', event => events.push(event));
+    proxy.on('message_received', event => messages.push(event));
+    proxy.register({
+      token: 'sap_proxy_token',
+      activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+      credential: {
+        agentId: 'agent-1',
+        serverId: 'server-1',
+        token: 'sk_machine_real',
+        serverUrl: upstream.url,
+      },
+    });
+
+    const check = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/receive?limit=10`, {
+      headers: { authorization: 'Bearer sap_proxy_token' },
+    });
+    assert.equal(check.status, 200);
+
+    const buffered = proxy.eventBuffer.snapshot();
+    assert.equal(buffered.length, 3);
+    assert.equal(buffered[0].method, 'message_received');
+    assert.equal(buffered[1].method, 'task.updated');
+    assert.equal(buffered[2].method, 'channel.member_joined');
+    assert.equal(messages.length, 1);
+    assert.equal(events.length, 3);
+    assert.equal(proxy.getLastSeenSeq(), 34);
+    assert.equal(proxy.getReadUpToSeq(), 34);
+
+    const held = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/send`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer sap_proxy_token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ target: '#general', content: 'stale reply', seenUpToSeq: 33 }),
+    });
+    const heldBody = await held.json();
+
+    assert.equal(held.status, 409);
+    assert.equal(heldBody.reason, 'pending_messages');
+    assert.equal(heldBody.pendingCount, 1);
+    assert.equal(heldBody.pending[0].method, 'message_received');
+
+    const sent = await fetch(`${proxy.getProxyUrl()}/internal/agent/agent-1/send`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer sap_proxy_token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ target: '#general', content: 'fresh reply', seenUpToSeq: 34 }),
     });
     const sentBody = await sent.json();
 

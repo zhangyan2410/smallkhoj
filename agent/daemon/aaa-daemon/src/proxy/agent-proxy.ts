@@ -182,18 +182,27 @@ export class AgentProxy extends EventEmitter {
   }
 
   recordIncomingMessage(event: Record<string, unknown>, emitEvent = true): void {
-    this.recordIncomingEvent({ ...event, type: 'message_received' }, emitEvent);
+    const rawType = typeof event.type === 'string' && event.type.trim()
+      ? event.type.trim()
+      : typeof event.eventType === 'string' && event.eventType.trim()
+        ? event.eventType.trim()
+        : undefined;
+    const normalized = rawType && isMessageEventType(rawType)
+      ? normalizeIncomingEvent(event)
+      : { ...event, type: 'message_received' };
+    this.recordIncomingEvent(normalized, emitEvent);
   }
 
   recordIncomingEvent(event: Record<string, unknown>, emitEvent = true): void {
-    const eventType = eventTypeOf(event);
-    const seq = messageSeqOf(event);
+    const normalized = normalizeIncomingEvent(event);
+    const eventType = eventTypeOf(normalized);
+    const seq = messageSeqOf(normalized);
     if (eventType === 'message_received' && seq && seq > 0) this.updateSeq(seq);
-    this.eventBuffer.append(eventType, event);
+    this.eventBuffer.append(eventType, normalized);
     if (emitEvent) {
-      this.emit('event_received', event);
+      this.emit('event_received', normalized);
       if (eventType === 'message_received') {
-        this.emit('message_received', event);
+        this.emit('message_received', normalized);
       }
     }
   }
@@ -356,9 +365,10 @@ export class AgentProxy extends EventEmitter {
     if (pathname === '/internal/agent-api/events' && Array.isArray(data.events)) {
       let maxSeq = this.readUpToSeq;
       for (const event of data.events as Record<string, unknown>[]) {
-        const seq = eventTypeOf(event) === 'message_received' ? messageSeqOf(event) : undefined;
+        const normalized = normalizeIncomingEvent(event);
+        const seq = eventTypeOf(normalized) === 'message_received' ? messageSeqOf(normalized) : undefined;
         if (seq && seq > maxSeq) maxSeq = seq;
-        this.recordIncomingEvent(event);
+        this.recordIncomingEvent(normalized);
       }
       this.markReadUpTo(Math.max(maxSeq, this.lastSeenSeq));
     }
@@ -470,16 +480,122 @@ function eventTypeOf(event: Record<string, unknown>): string {
     : typeof event.eventType === 'string' && event.eventType.trim()
       ? event.eventType.trim()
       : undefined;
-  return type ?? 'message_received';
+  if (!type || isMessageEventType(type)) return 'message_received';
+  return type;
 }
 
 function messageSeqOf(event: Record<string, unknown>): number | undefined {
-  for (const value of [event.seq, event.messageSeq]) {
+  const payload = isRecord(event.payload) ? event.payload : undefined;
+  const payloadMessage = payload && isRecord(payload.message) ? payload.message : undefined;
+  for (const value of [event.seq, event.messageSeq, payloadMessage?.seq]) {
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
       return Math.floor(value);
     }
   }
   return undefined;
+}
+
+function normalizeIncomingEvent(event: Record<string, unknown>): Record<string, unknown> {
+  const rawType = typeof event.type === 'string' && event.type.trim()
+    ? event.type.trim()
+    : typeof event.eventType === 'string' && event.eventType.trim()
+      ? event.eventType.trim()
+      : undefined;
+
+  if (!rawType || isMessageEventType(rawType)) {
+    return normalizeMessageEvent(event, rawType);
+  }
+
+  if (isTaskEventType(rawType)) {
+    return normalizeTaskEvent(event, rawType);
+  }
+
+  return event;
+}
+
+function normalizeMessageEvent(event: Record<string, unknown>, rawType?: string): Record<string, unknown> {
+  if (rawType === 'message_received') return event;
+
+  const payload = isRecord(event.payload) ? event.payload : undefined;
+  const nestedMessage = payload && isRecord(payload.message)
+    ? payload.message
+    : isRecord(event.message)
+      ? event.message
+      : undefined;
+
+  if (!nestedMessage) return event;
+
+  const normalized: Record<string, unknown> = {
+    ...nestedMessage,
+    type: 'message_received',
+  };
+
+  copyIfPresent(normalized, event, 'eventSeq', 'eventSeq');
+  copyIfPresent(normalized, event, 'eventLogCursor', 'eventLogCursor');
+  copyIfPresent(normalized, event, 'eventCursor', 'eventCursor');
+  if (normalized.eventSeq === undefined && typeof event.seq === 'number' && typeof nestedMessage.seq === 'number' && event.seq !== nestedMessage.seq) {
+    normalized.eventSeq = event.seq;
+  }
+  if (normalized.channelId === undefined) {
+    const channelId = payload?.channelId ?? event.channelId ?? event.channel_id;
+    if (channelId !== undefined) normalized.channelId = channelId;
+  }
+  if (normalized.timestamp === undefined && event.timestamp !== undefined) normalized.timestamp = event.timestamp;
+  if (normalized.createdAt === undefined && event.createdAt !== undefined) normalized.createdAt = event.createdAt;
+  if (normalized.target === undefined) {
+    const target = payload?.target ?? payload?.channel ?? event.target ?? event.channel ?? event.channelName;
+    if (target !== undefined) normalized.target = target;
+  }
+
+  return normalized;
+}
+
+function normalizeTaskEvent(event: Record<string, unknown>, rawType: string): Record<string, unknown> {
+  const payload = isRecord(event.payload) ? event.payload : undefined;
+  if (!payload) return event;
+
+  const normalized: Record<string, unknown> = {
+    ...payload,
+    type: rawType,
+  };
+
+  copyIfPresent(normalized, event, 'eventSeq', 'eventSeq');
+  copyIfPresent(normalized, event, 'eventLogCursor', 'eventLogCursor');
+  copyIfPresent(normalized, event, 'eventCursor', 'eventCursor');
+  if (normalized.eventSeq === undefined && event.seq !== undefined) normalized.eventSeq = event.seq;
+  if (normalized.timestamp === undefined && event.timestamp !== undefined) normalized.timestamp = event.timestamp;
+  if (normalized.target === undefined) {
+    const target = payload.channel ?? payload.target ?? event.channel ?? event.target;
+    if (target !== undefined) normalized.target = target;
+  }
+  if (normalized.actor === undefined) {
+    const actor = payload.changedBy ?? payload.actor ?? payload.actorId ?? payload.assigneeId;
+    if (actor !== undefined) normalized.actor = actor;
+  }
+
+  return normalized;
+}
+
+function copyIfPresent(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  targetKey: string,
+  sourceKey: string,
+): void {
+  if (target[targetKey] === undefined && source[sourceKey] !== undefined) {
+    target[targetKey] = source[sourceKey];
+  }
+}
+
+function isMessageEventType(type: string): boolean {
+  return type === 'message'
+    || type === 'message_received'
+    || type === 'message_created'
+    || type.startsWith('message.');
+}
+
+function isTaskEventType(type: string): boolean {
+  return type.startsWith('task_') || type.startsWith('task.');
 }
 
 class SseEventParser {

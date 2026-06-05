@@ -86,7 +86,7 @@ export class DaemonCore extends EventEmitter {
       const eventType = firstString(data.type, data.eventType) ?? '';
       // Only deliver task events and message events to runtime; skip heartbeats/member updates
       if (eventType === 'message_received') return; // already handled above
-      if (!eventType.startsWith('task_')) return;
+      if (!isTaskEventType(eventType)) return;
       this.deliverRuntimeMessage(data, 'proxy');
     });
   }
@@ -184,6 +184,11 @@ export class DaemonCore extends EventEmitter {
           this.proxy.recordIncomingMessage(event.message, false);
         }
         this.deliverRuntimeMessage(event.message, 'websocket');
+      }
+      if (event.type === 'event') {
+        if (isRecord(event.event)) {
+          this.proxy.recordIncomingEvent(event.event);
+        }
       }
     });
     this.wsManager.connect();
@@ -616,7 +621,7 @@ export class DaemonCore extends EventEmitter {
 }
 
 export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncomingMessage | null {
-  const value = unwrapMessagePayload(input);
+  const value = normalizeRuntimeEventPayload(unwrapMessagePayload(input));
   if (!isRecord(value)) return null;
 
   const eventType = firstString(value.type, value.eventType);
@@ -684,6 +689,54 @@ function unwrapMessagePayload(input: unknown): unknown {
   return input;
 }
 
+function normalizeRuntimeEventPayload(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+
+  const rawType = firstString(input.type, input.eventType);
+  if (!rawType) return input;
+
+  if (isMessageEventType(rawType)) {
+    if (rawType === 'message_received') return input;
+    const payload = isRecord(input.payload) ? input.payload : undefined;
+    const nestedMessage = payload && isRecord(payload.message) ? payload.message : undefined;
+    if (!nestedMessage) return input;
+
+    const normalized: Record<string, unknown> = {
+      ...nestedMessage,
+      type: 'message_received',
+    };
+    assignRawIfMissing(normalized, 'channelId', payload?.channelId ?? input.channelId ?? input.channel_id);
+    assignRawIfMissing(normalized, 'target', payload?.target ?? payload?.channel ?? input.target ?? input.channel ?? input.channelName);
+    assignRawIfMissing(normalized, 'timestamp', input.timestamp);
+    assignRawIfMissing(normalized, 'createdAt', input.createdAt);
+    assignRawIfMissing(normalized, 'eventSeq', input.eventSeq ?? input.eventLogCursor ?? input.eventCursor);
+    if (normalized.eventSeq === undefined && typeof input.seq === 'number' && typeof nestedMessage.seq === 'number' && input.seq !== nestedMessage.seq) {
+      normalized.eventSeq = input.seq;
+    }
+    return normalized;
+  }
+
+  if (isTaskEventType(rawType) && isRecord(input.payload)) {
+    const normalized: Record<string, unknown> = {
+      ...input.payload,
+      type: rawType,
+    };
+    assignRawIfMissing(normalized, 'eventSeq', input.eventSeq ?? input.eventLogCursor ?? input.eventCursor ?? input.seq);
+    assignRawIfMissing(normalized, 'timestamp', input.timestamp);
+    assignRawIfMissing(normalized, 'target', input.payload.channel ?? input.payload.target ?? input.channel ?? input.target);
+    assignRawIfMissing(normalized, 'actor', input.payload.changedBy ?? input.payload.actor ?? input.payload.actorId ?? input.payload.assigneeId);
+    return normalized;
+  }
+
+  return input;
+}
+
+function assignRawIfMissing(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (target[key] === undefined && value !== undefined) {
+    target[key] = value;
+  }
+}
+
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value;
@@ -726,6 +779,17 @@ function summarizeRuntimeEvent(value: Record<string, unknown>, eventType?: strin
   }
 
   return fields.length ? fields.join('\n') : `Received Slock event: ${eventType}`;
+}
+
+function isMessageEventType(type: string): boolean {
+  return type === 'message'
+    || type === 'message_received'
+    || type === 'message_created'
+    || type.startsWith('message.');
+}
+
+function isTaskEventType(type: string): boolean {
+  return type.startsWith('task_') || type.startsWith('task.');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
