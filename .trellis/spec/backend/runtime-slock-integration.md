@@ -266,3 +266,108 @@ slock message send --target "#general" <<'SLOCKMSG'
 hello
 SLOCKMSG
 ```
+
+## Scenario: User Management Flow APIs And Agent-Facing E2E
+
+### 1. Scope / Trigger
+
+- Trigger: product management flow APIs and browser E2E span UI, public API, machine credentials, daemon registration, member/workspace binding, channel membership, and agent-facing send behavior.
+- This is a cross-layer contract: browser UI -> `/api/v1` management endpoints -> database models -> `/internal/agent-api` daemon/agent endpoints -> chat UI verification.
+
+### 2. Signatures
+
+- `POST /api/v1/computers/credential`
+- `POST /api/v1/members/agents`
+- `POST /api/v1/channels`
+- `POST /api/v1/channels/{channel_id}/members`
+- `DELETE /api/v1/channels/{channel_id}/members/{member_id}`
+- `GET /api/v1/channels/{channel_id}/members`
+- `POST /api/v1/dm`
+- Existing daemon registration: `POST /internal/agent-api/daemon/register`
+- Existing agent send: `POST /internal/agent-api/send`
+
+### 3. Contracts
+
+- Public management endpoints require `X-Public-Key: sk_public_local` in local test/dev flows.
+- `POST /api/v1/computers/credential` request:
+  - `name?: string`
+  - `serverUrl?: string`
+- `POST /api/v1/computers/credential` response:
+  - `computerId: string`
+  - `apiKey: string` with `sk_machine_` prefix
+  - `command: string` containing `npx @slock-ai/daemon@latest --server-url ... --api-key ...`
+- The generated machine credential must be persisted in `api_keys` with `resource_type="computer"` and a SHA-256 `token_hash`.
+- `POST /api/v1/members/agents` request:
+  - `name: string`
+  - `computerId: uuid`
+  - `runtime?: string`
+  - `runtimeCommand?: string`
+  - `runtimeModel?: string`
+  - `backend?: string`
+  - `cwd?: string`
+- Creating an agent must create both a `Member(kind="agent")` and an `AgentWorkspace` bound to the selected computer/runtime.
+- `POST /api/v1/channels` creates `public` or `private` channels and adds the creator to `channel_members`.
+- `POST /api/v1/channels/{channel_id}/members` and `DELETE /api/v1/channels/{channel_id}/members/{member_id}` operate by UUID channel id, not by display channel name.
+- `POST /api/v1/dm` request uses peer display name (`peer: string`) and returns a real DM channel name shaped `dm:<uuid>-<uuid>`.
+- Browser routes may contain URL-encoded DM names (`dm%3A...`). Frontend code must decode route params once for state/display and encode once when constructing API path segments.
+- Agent-facing sends use:
+  - Header `Authorization: Bearer <machine-or-agent-token>`
+  - Header `X-Agent-Id: <agent-member-id>`
+  - Body `{ "target": "#channel" | "dm:<peer_display_name>", "content": string }`
+- For agent-facing DM sends, the target is `dm:<peer display name>` such as `dm:zy-ean`, not the full stored DM channel name `dm:<uuid>-<uuid>`.
+
+### 4. Validation & Error Matrix
+
+- Missing public key -> `401 Missing API key`.
+- Invalid public key -> `401 Invalid API key`.
+- Missing computer credential name -> allowed; default to `unregistered-computer`.
+- Invalid `computerId` for agent creation -> `400 Invalid computerId`.
+- Unknown `computerId` for agent creation -> `404 Computer not found`.
+- Missing channel name -> `400 Missing name`.
+- Duplicate channel name on a server -> `409 Channel #<name> already exists`.
+- Invalid channel member channel UUID -> `400 Invalid channel id`.
+- Unknown channel id -> `404 Channel not found`.
+- Missing channel member id -> `400 Missing memberId`.
+- Unknown channel member id -> `404 Member not found`.
+- Adding an existing channel member -> `{ "added": false, "reason": "already_member" }`.
+- Removing a non-member -> `{ "removed": false, "reason": "not_member" }`.
+- Agent-facing DM send using full stored DM name `dm:<uuid>-<uuid>` -> peer lookup fails with `404 Peer ... not found`; use `dm:<peer display name>`.
+
+### 5. Good/Base/Bad Cases
+
+- Good: browser generates a machine credential, then daemon registration uses that exact `sk_machine_...` token with `X-Computer-Id`.
+- Good: browser creates an agent bound to the generated computer and selected runtime; e2e looks up the member id only after verifying the UI-created agent is visible.
+- Good: browser creates a channel, adds the agent by channel id/member id, sends a human message, and verifies an agent-authored response created through `/internal/agent-api/send`.
+- Good: browser opens a DM through `/api/v1/dm`, sends a human DM message, then verifies an agent-authored response sent to `dm:zy-ean`.
+- Bad: testing agent replies by posting to public `/api/v1/channels/{channel}/messages` with `sender: agentName`; that proves message rendering, not agent-facing auth/send contracts.
+- Bad: using the URL-encoded DM route segment directly as the public API channel name or agent-facing DM target.
+
+### 6. Tests Required
+
+- Browser E2E for the full management flow:
+  - UI generates machine credential and command
+  - generated credential registers a daemon/computer
+  - UI creates an agent bound to that computer/runtime
+  - UI creates a channel and adds the agent
+  - UI sends a channel message
+  - agent-facing `/internal/agent-api/send` posts a channel reply using the generated machine credential plus `X-Agent-Id`
+  - UI starts a DM and sends a DM message
+  - agent-facing `/internal/agent-api/send` posts a DM reply with target `dm:<peer display name>`
+- Regression assertions:
+  - DM route heading displays decoded `dm:` text, not `dm%3A`
+  - Playwright artifacts under `frontend/test-results` and `frontend/playwright-report` are ignored
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+const dmChannelName = decodeURIComponent(page.url().split("/chat/").at(-1) ?? "")
+await agentSend(apiKey, agentId, dmChannelName, dmReply)
+```
+
+#### Correct
+
+```typescript
+await agentSend(apiKey, agentId, "dm:zy-ean", dmReply)
+```
