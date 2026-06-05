@@ -52,7 +52,7 @@ async def resolve_agent(
     )
     api_keys = key_result.scalars().all()
     valid = False
-    computer_id = (member.config or {}).get("computerId")
+    computer_id = member.computer_id or (member.config or {}).get("computerId")
     for api_key in api_keys:
         if not api_key.token_hash or not hmac.compare_digest(api_key.token_hash, token_hash):
             continue

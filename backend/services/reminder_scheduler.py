@@ -113,14 +113,14 @@ async def fire_due_reminders(db: AsyncSession, limit: int = 50) -> int:
                 await db.flush()
                 db.add(EventRecord(
                     server_id=reminder.server_id,
-                    event_type="message_received",
+                    event_type="message.created",
                     actor_id=reminder.agent_id,
                     channel_id=channel.id,
                     task_id=reminder.task_id,
                     message_id=message.id,
-                    activity_id=activity.id,
                     payload={
-                        "type": "message_received",
+                        "type": "message.created",
+                        "legacyType": "message_received",
                         "activityId": str(activity.id),
                         "actorId": str(reminder.agent_id),
                         "agentId": str(reminder.agent_id),
@@ -141,14 +141,14 @@ async def fire_due_reminders(db: AsyncSession, limit: int = 50) -> int:
                 ))
                 db.add(EventRecord(
                     server_id=reminder.server_id,
-                    event_type="reminder_fired",
+                    event_type="reminder.fired",
                     actor_id=reminder.agent_id,
                     channel_id=channel.id,
                     task_id=reminder.task_id,
                     message_id=message.id,
-                    activity_id=activity.id,
                     payload={
-                        "type": "reminder_fired",
+                        "type": "reminder.fired",
+                        "legacyType": "reminder_fired",
                         "activityId": str(activity.id),
                         "actorId": str(reminder.agent_id),
                         "agentId": str(reminder.agent_id),

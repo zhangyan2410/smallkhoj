@@ -5,9 +5,9 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger, Boolean, CheckConstraint, Column, DateTime, ForeignKey,
-    Index, Integer, String, Text, UniqueConstraint, text,
+    Identity, Index, Integer, String, Text, UniqueConstraint, text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -42,6 +42,7 @@ class Member(Base):
     __tablename__ = "members"
     __table_args__ = (
         Index("idx_members_server", "server_id"),
+        Index("idx_members_computer", "computer_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -53,10 +54,17 @@ class Member(Base):
     status: Mapped[str] = mapped_column(String(20), default="offline")
     skills: Mapped[list] = mapped_column(JSONB, default=list)
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    computer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("computers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    backend: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
     server = relationship("Server", back_populates="members")
+    computer = relationship("Computer", back_populates="members")
     workspaces = relationship("AgentWorkspace", back_populates="agent", lazy="selectin")
 
 
@@ -81,6 +89,7 @@ class Computer(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
     server = relationship("Server", back_populates="computers")
+    members = relationship("Member", back_populates="computer", lazy="selectin")
     workspaces = relationship("AgentWorkspace", back_populates="computer", lazy="selectin")
 
 
@@ -140,6 +149,7 @@ class ChannelMember(Base):
     channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), primary_key=True)
     member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), primary_key=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    last_read_seq: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
 
     channel = relationship("Channel", back_populates="members")
     member = relationship("Member")
@@ -152,6 +162,7 @@ class Message(Base):
     __table_args__ = (
         Index("idx_messages_channel", "channel_id", "created_at"),
         Index("idx_messages_seq", "seq"),
+        Index("idx_messages_parent", "parent_id", postgresql_where=text("parent_id IS NOT NULL")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -161,6 +172,12 @@ class Message(Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id"), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     channel_type: Mapped[str] = mapped_column(String(10), nullable=False, default="channel")
+    mentions: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)),
+        nullable=False,
+        default=list,
+        server_default=text("'{}'::uuid[]"),
+    )
     seq: Mapped[int] = mapped_column(BigInteger, autoincrement=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
@@ -228,21 +245,36 @@ class ActivityLog(Base):
 class EventRecord(Base):
     __tablename__ = "event_records"
     __table_args__ = (
+        UniqueConstraint("server_id", "seq", name="uq_event_records_server_seq"),
         Index("idx_event_records_server_seq", "server_id", "seq"),
-        Index("idx_event_records_channel_seq", "channel_id", "seq"),
-        Index("idx_event_records_actor_seq", "actor_id", "seq"),
-        Index("idx_event_records_type_seq", "event_type", "seq"),
+        Index(
+            "idx_event_records_server_channel_seq",
+            "server_id",
+            "channel_id",
+            "seq",
+            postgresql_where=text("channel_id IS NOT NULL"),
+        ),
+        Index(
+            "idx_event_records_server_actor_seq",
+            "server_id",
+            "actor_id",
+            "seq",
+            postgresql_where=text("actor_id IS NOT NULL"),
+        ),
+        Index("idx_event_records_server_type_seq", "server_id", "event_type", "seq"),
+        Index("idx_event_records_created", "server_id", text("created_at DESC")),
+        Index("idx_event_records_message", "message_id", postgresql_where=text("message_id IS NOT NULL")),
+        Index("idx_event_records_task", "task_id", postgresql_where=text("task_id IS NOT NULL")),
     )
 
-    seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, unique=True, default=uuid.uuid4)
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
     channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
     task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
     message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
-    activity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("activity_logs.id", ondelete="SET NULL"), nullable=True)
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
@@ -251,7 +283,6 @@ class EventRecord(Base):
     channel = relationship("Channel")
     task = relationship("Task")
     message = relationship("Message")
-    activity = relationship("ActivityLog")
 
 
 # ── Files / Attachments ──────────────────────────────────────

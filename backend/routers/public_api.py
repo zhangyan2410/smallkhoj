@@ -1,6 +1,7 @@
 """Public API routes — frontend-facing endpoints under /api/v1/."""
 
 import hashlib
+import re
 import uuid
 from datetime import datetime, timedelta
 
@@ -13,19 +14,31 @@ from models import (
     get_db, AgentWorkspace, ActivityLog, Channel, Computer, Member, Message,
     EventRecord, FileEntry, Reminder, Server, Task,
 )
+from routers.member_serialization import member_backend, member_computer_id, serialize_member
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
 PUBLIC_API_KEY = "sk_public_local"
 
 PUBLIC_ACTIVITY_EVENT_TYPES = {
-    "supervisor_message_sent": "message_received",
-    "supervisor_task_created": "task_created",
-    "supervisor_task_updated": "task_updated",
-    "supervisor_member_updated": "member_updated",
-    "supervisor_reminder_created": "reminder_created",
-    "supervisor_reminder_updated": "reminder_updated",
+    "supervisor_message_sent": "message.created",
+    "supervisor_task_created": "task.created",
+    "supervisor_task_updated": "task.updated",
+    "supervisor_member_updated": "member.updated",
+    "supervisor_reminder_created": "reminder.created",
+    "supervisor_reminder_updated": "reminder.updated",
 }
+
+EVENT_TYPE_ALIASES = {
+    "message.created": "message_received",
+    "task.created": "task_created",
+    "task.updated": "task_updated",
+    "member.updated": "member_updated",
+    "reminder.created": "reminder_created",
+    "reminder.updated": "reminder_updated",
+}
+
+MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]+)")
 
 
 def _utcnow() -> datetime:
@@ -78,6 +91,19 @@ async def _resolve_member(db: AsyncSession, server: Server, handle_or_id: str | 
     return member
 
 
+async def _parse_mentions(db: AsyncSession, server: Server, content: str) -> list[uuid.UUID]:
+    handles = sorted({match.group(1) for match in MENTION_RE.finditer(content or "")})
+    if not handles:
+        return []
+    result = await db.execute(
+        select(Member.id).where(
+            Member.server_id == server.id,
+            Member.display_name.in_(handles),
+        )
+    )
+    return list(result.scalars().all())
+
+
 async def _resolve_channel(db: AsyncSession, server: Server, channel_name: str) -> Channel:
     result = await db.execute(
         select(Channel).where(
@@ -99,11 +125,35 @@ async def _next_task_number(db: AsyncSession, channel_id: uuid.UUID) -> int:
 
 
 def _serialize_workspace(workspace: AgentWorkspace, agent: Member | None = None) -> dict:
+    agent_payload = None
+    if agent:
+        agent_payload = {
+            "id": str(agent.id),
+            "name": agent.display_name,
+            "displayName": agent.display_name,
+            "handle": f"@{agent.display_name}",
+            "kind": agent.kind,
+            "type": agent.kind,
+            "status": agent.status,
+            "backend": member_backend(agent),
+            "computerId": member_computer_id(agent) or str(workspace.computer_id),
+            "workspaceId": str(workspace.id),
+            "profile": {
+                "displayName": agent.display_name,
+                "description": agent.description,
+                "avatarUrl": agent.avatar_url,
+            },
+        }
     return {
         "id": str(workspace.id),
+        "workspaceId": str(workspace.id),
         "computerId": str(workspace.computer_id),
         "agentId": str(workspace.agent_id),
         "agentName": agent.display_name if agent else None,
+        "agentHandle": f"@{agent.display_name}" if agent else None,
+        "agentStatus": agent.status if agent else None,
+        "backend": member_backend(agent) if agent else None,
+        "agent": agent_payload,
         "runtime": workspace.runtime,
         "runtimeCommand": workspace.runtime_command,
         "runtimeModel": workspace.runtime_model,
@@ -206,10 +256,13 @@ async def _serialize_reminder(db: AsyncSession, reminder: Reminder) -> dict:
 async def _serialize_task(db: AsyncSession, task: Task) -> dict:
     creator_result = await db.execute(select(Member).where(Member.id == task.creator_id))
     creator = creator_result.scalar_one_or_none()
+    creator_member = await serialize_member(db, creator) if creator else None
     assignee = None
+    assignee_member = None
     if task.assignee_id:
         assignee_result = await db.execute(select(Member).where(Member.id == task.assignee_id))
         assignee = assignee_result.scalar_one_or_none()
+        assignee_member = await serialize_member(db, assignee) if assignee else None
     channel_result = await db.execute(select(Channel).where(Channel.id == task.channel_id))
     channel = channel_result.scalar_one_or_none()
     return {
@@ -223,8 +276,10 @@ async def _serialize_task(db: AsyncSession, task: Task) -> dict:
         "status": task.status,
         "creator": creator.display_name if creator else "unknown",
         "creatorId": str(task.creator_id),
+        "creatorMember": creator_member,
         "assignee": assignee.display_name if assignee else None,
         "assigneeId": str(task.assignee_id) if task.assignee_id else None,
+        "assigneeMember": assignee_member,
         "data": task.data or {},
         "createdAt": task.created_at.isoformat() if task.created_at else None,
         "updatedAt": task.updated_at.isoformat() if task.updated_at else None,
@@ -265,6 +320,7 @@ async def _record_activity(
                 message_id = None
         payload = {
             "type": event_type,
+            "legacyType": EVENT_TYPE_ALIASES.get(event_type, event_type.replace(".", "_")),
             "activityId": str(activity.id),
             "actorId": str(agent.id),
             "agentId": str(agent.id),
@@ -284,7 +340,6 @@ async def _record_activity(
             channel_id=channel_id,
             task_id=task_id,
             message_id=message_id,
-            activity_id=activity.id,
             payload=payload,
         ))
     return activity
@@ -339,14 +394,23 @@ async def get_channel_messages(
     for msg in messages:
         sender_result = await db.execute(select(Member).where(Member.id == msg.sender_id))
         sender = sender_result.scalar_one_or_none()
+        sender_member = await serialize_member(db, sender) if sender else None
         result.append({
             "seq": msg.seq,
             "id": str(msg.id),
             "shortId": msg.short_id,
+            "channelId": str(msg.channel_id),
             "sender": f"@{sender.display_name}" if sender else "unknown",
+            "senderId": str(msg.sender_id),
             "senderType": sender.kind if sender else "unknown",
+            "senderMember": sender_member,
             "content": msg.content,
+            "mentions": [str(item) for item in (msg.mentions or [])],
+            "parentId": str(msg.parent_id) if msg.parent_id else None,
+            "threadId": str(msg.parent_id or msg.id),
+            "channelType": msg.channel_type,
             "time": msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else "",
+            "createdAt": msg.created_at.isoformat() if msg.created_at else None,
         })
 
     return {"messages": result, "channelName": name}
@@ -393,6 +457,7 @@ async def create_channel_message(
         parent_id=parent_id,
         content=content,
         channel_type="thread" if parent_id else channel.kind,
+        mentions=await _parse_mentions(db, server, content),
         seq=int(seq_result.scalar() or 0) + 1,
     )
     db.add(msg)
@@ -412,6 +477,7 @@ async def create_channel_message(
             "content": msg.content,
             "messageSnippet": content[:200],
             "channelType": msg.channel_type,
+            "mentions": [str(item) for item in (msg.mentions or [])],
             "parentId": str(parent_id) if parent_id else None,
             "threadId": str(parent_id or msg.id),
         },
@@ -425,10 +491,17 @@ async def create_channel_message(
             "id": str(msg.id),
             "shortId": msg.short_id,
             "seq": msg.seq,
+            "channelId": str(channel.id),
             "channel": f"#{channel.name}",
             "sender": f"@{sender.display_name}",
+            "senderId": str(sender.id),
+            "senderType": sender.kind,
+            "senderMember": await serialize_member(db, sender),
             "content": msg.content,
             "parentId": str(parent_id) if parent_id else None,
+            "threadId": str(parent_id or msg.id),
+            "channelType": msg.channel_type,
+            "createdAt": msg.created_at.isoformat() if msg.created_at else None,
         },
     }
 
@@ -634,19 +707,8 @@ async def list_members(_auth: None = Depends(verify_public_api_key), db: AsyncSe
     members = result.scalars().all()
 
     return {
-        "members": [
-            {
-                "id": str(m.id),
-                "name": m.display_name,
-                "kind": m.kind,
-                "status": m.status,
-                "avatarUrl": m.avatar_url,
-                "description": m.description,
-                "skills": m.skills or [],
-                "config": m.config or {},
-            }
-            for m in members
-        ]
+        "members": [await serialize_member(db, member) for member in members],
+        "count": len(members),
     }
 
 
@@ -669,6 +731,7 @@ async def update_member(member_id: str, request: Request, _auth: None = Depends(
         config["actions"] = {**(config.get("actions") or {}), **(body.get("actions") or {})}
     if "backend" in body:
         config["backend"] = body["backend"]
+        member.backend = body["backend"]
     member.config = config
 
     actor = await _resolve_member(db, server, body.get("actor") or "zy-ean")
@@ -687,16 +750,7 @@ async def update_member(member_id: str, request: Request, _auth: None = Depends(
     )
     await db.commit()
     await db.refresh(member)
-    return {
-        "updated": True,
-        "member": {
-            "id": str(member.id),
-            "name": member.display_name,
-            "kind": member.kind,
-            "status": member.status,
-            "config": member.config or {},
-        },
-    }
+    return {"updated": True, "member": await serialize_member(db, member)}
 
 
 @router.post("/reminders")

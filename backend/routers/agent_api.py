@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -113,6 +114,45 @@ def _split_thread_target(target: str) -> tuple[str, str | None]:
 
 def _dm_channel_name(member: Member, peer: Member) -> str:
     return f"dm:{min(str(member.id), str(peer.id))}-{max(str(member.id), str(peer.id))}"
+
+
+EVENT_TYPE_ALIASES = {
+    "message.created": "message_received",
+    "task.created": "task_created",
+    "task.claimed": "task_claimed",
+    "task.updated": "task_updated",
+    "task.unclaimed": "task_updated",
+    "member.updated": "member_updated",
+    "member.profile_updated": "member_profile_updated",
+    "message.reaction_added": "message_reaction_added",
+    "message.reaction_removed": "message_reaction_removed",
+    "channel.member_joined": "channel_member_joined",
+    "channel.member_left": "channel_member_left",
+    "workspace.registered": "workspace_registered",
+    "workspace.updated": "workspace_updated",
+    "workspace.heartbeat": "workspace_heartbeat",
+    "reminder.fired": "reminder_fired",
+    "reminder.created": "reminder_created",
+    "reminder.updated": "reminder_updated",
+    "integration.connected": "integration_connected",
+    "thread.followed": "thread_followed",
+    "thread.unfollowed": "thread_unfollowed",
+}
+
+
+LEGACY_EVENT_TYPES = {value: key for key, value in EVENT_TYPE_ALIASES.items()}
+
+
+VALID_TASK_TRANSITIONS = {
+    "todo": {"in_progress", "closed"},
+    "in_progress": {"in_review", "todo"},
+    "in_review": {"done", "in_progress"},
+    "done": {"closed"},
+    "closed": set(),
+}
+
+
+MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]+)")
 
 
 async def _resolve_dm_channel(
@@ -239,6 +279,47 @@ async def _resolve_member_by_handle(db: AsyncSession, server: Server, handle: st
     return member
 
 
+async def _parse_mentions(db: AsyncSession, server: Server, content: str) -> list[uuid.UUID]:
+    handles = sorted({match.group(1) for match in MENTION_RE.finditer(content or "")})
+    if not handles:
+        return []
+    result = await db.execute(
+        select(Member.id).where(
+            Member.server_id == server.id,
+            Member.display_name.in_(handles),
+        )
+    )
+    return list(result.scalars().all())
+
+
+def _legacy_event_type(event_type: str) -> str:
+    return EVENT_TYPE_ALIASES.get(event_type, event_type.replace(".", "_"))
+
+
+def _dotted_event_type(event_type: str) -> str:
+    return LEGACY_EVENT_TYPES.get(event_type, event_type)
+
+
+def _validate_task_transition(current_status: str, new_status: str) -> None:
+    if current_status == new_status:
+        return
+    allowed = VALID_TASK_TRANSITIONS.get(current_status, set())
+    if new_status not in allowed:
+        raise HTTPException(
+            409,
+            f"Invalid task transition: {current_status} -> {new_status}",
+        )
+
+
+def _ensure_agent_owns_task(member: Member, task: Task) -> None:
+    if task.assignee_id != member.id:
+        raise HTTPException(403, "Agent can only operate on tasks it owns")
+
+
+def _is_agent_allowed_task_status(status: str) -> bool:
+    return status in {"in_progress", "todo", "in_review"}
+
+
 async def _resolve_workspace_agent(
     db: AsyncSession,
     server: Server,
@@ -306,6 +387,42 @@ async def _next_task_number(db: AsyncSession, channel_id: uuid.UUID) -> int:
     return (result.scalar() or 0) + 1
 
 
+async def _resolve_task_by_id(db: AsyncSession, server: Server, task_id: str) -> Task:
+    try:
+        parsed_task_id = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid task id")
+
+    result = await db.execute(
+        select(Task).join(Channel).where(
+            Task.id == parsed_task_id,
+            Channel.server_id == server.id,
+        )
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(404, f"Task {task_id} not found")
+    return task
+
+
+def _apply_agent_status_transition(task: Task, new_status: str, member: Member) -> tuple[str, str]:
+    if new_status not in VALID_TASK_TRANSITIONS:
+        raise HTTPException(400, f"Invalid status: {new_status}")
+    _ensure_agent_owns_task(member, task)
+    old_status = task.status
+    if old_status == new_status:
+        return old_status, new_status
+    if (old_status, new_status) not in {("in_progress", "todo"), ("in_progress", "in_review")}:
+        raise HTTPException(403, f"Agent cannot change task status from {old_status} to {new_status}")
+    if not _is_agent_allowed_task_status(new_status):
+        raise HTTPException(403, f"Agent cannot set task status to {new_status}")
+    _validate_task_transition(old_status, new_status)
+    task.status = new_status
+    if new_status == "todo":
+        task.assignee_id = None
+    return old_status, new_status
+
+
 async def _serialize_message(db: AsyncSession, msg: Message) -> dict:
     channel_result = await db.execute(select(Channel).where(Channel.id == msg.channel_id))
     channel = channel_result.scalar_one_or_none()
@@ -331,6 +448,7 @@ async def _serialize_message(db: AsyncSession, msg: Message) -> dict:
         "sender": f"@{sender.display_name}" if sender else "unknown",
         "senderType": sender.kind if sender else "unknown",
         "content": msg.content,
+        "mentions": [str(item) for item in (msg.mentions or [])],
         "parentId": str(msg.parent_id) if msg.parent_id else None,
         "threadId": str(thread_root_id),
         "threadRootId": str(thread_root_id),
@@ -376,7 +494,8 @@ async def _visible_channel_ids(db: AsyncSession, member: Member) -> list[uuid.UU
 
 def _message_event(msg: Message) -> dict:
     return {
-        "type": "message_received",
+        "type": "message.created",
+        "legacyType": "message_received",
         "seq": msg.seq,
         "messageId": str(msg.id),
         "shortId": msg.short_id,
@@ -384,6 +503,7 @@ def _message_event(msg: Message) -> dict:
         "content": msg.content,
         "channelId": str(msg.channel_id),
         "channelType": msg.channel_type,
+        "mentions": [str(item) for item in (msg.mentions or [])],
         "parentId": str(msg.parent_id) if msg.parent_id else None,
         "threadId": str(msg.parent_id or msg.id),
         "createdAt": msg.created_at.isoformat() if msg.created_at else None,
@@ -391,27 +511,28 @@ def _message_event(msg: Message) -> dict:
 
 
 ACTIVITY_EVENT_TYPES = {
-    "message_sent": "message_received",
-    "supervisor_message_sent": "message_received",
-    "task_created": "task_created",
-    "task_claimed": "task_claimed",
-    "task_status_changed": "task_updated",
-    "task_updated": "task_updated",
-    "supervisor_task_created": "task_created",
-    "supervisor_task_updated": "task_updated",
-    "supervisor_member_updated": "member_updated",
-    "message_reaction_added": "message_reaction_added",
-    "message_reaction_removed": "message_reaction_removed",
-    "channel_joined": "channel_member_joined",
-    "channel_left": "channel_member_left",
-    "workspace_registered": "workspace_registered",
-    "workspace_updated": "workspace_updated",
-    "workspace_heartbeat": "workspace_heartbeat",
-    "reminder_fired": "reminder_fired",
-    "profile_updated": "member_profile_updated",
-    "integration_connected": "integration_connected",
-    "thread_followed": "thread_followed",
-    "thread_unfollowed": "thread_unfollowed",
+    "message_sent": "message.created",
+    "supervisor_message_sent": "message.created",
+    "task_created": "task.created",
+    "task_claimed": "task.claimed",
+    "task_unclaimed": "task.unclaimed",
+    "task_status_changed": "task.updated",
+    "task_updated": "task.updated",
+    "supervisor_task_created": "task.created",
+    "supervisor_task_updated": "task.updated",
+    "supervisor_member_updated": "member.updated",
+    "message_reaction_added": "message.reaction_added",
+    "message_reaction_removed": "message.reaction_removed",
+    "channel_joined": "channel.member_joined",
+    "channel_left": "channel.member_left",
+    "workspace_registered": "workspace.registered",
+    "workspace_updated": "workspace.updated",
+    "workspace_heartbeat": "workspace.heartbeat",
+    "reminder_fired": "reminder.fired",
+    "profile_updated": "member.profile_updated",
+    "integration_connected": "integration.connected",
+    "thread_followed": "thread.followed",
+    "thread_unfollowed": "thread.unfollowed",
 }
 
 
@@ -436,6 +557,7 @@ def _activity_event(activity: ActivityLog) -> dict:
     event_type = ACTIVITY_EVENT_TYPES.get(activity.kind, activity.kind)
     return {
         "type": event_type,
+        "legacyType": _legacy_event_type(event_type),
         "activityId": str(activity.id),
         "actorId": str(activity.agent_id),
         "agentId": str(activity.agent_id),
@@ -450,7 +572,9 @@ def _activity_event(activity: ActivityLog) -> dict:
 
 def _event_record_event(record: EventRecord) -> dict:
     payload = dict(record.payload or {})
-    payload["type"] = record.event_type
+    event_type = _dotted_event_type(record.event_type)
+    payload["type"] = event_type
+    payload["legacyType"] = payload.get("legacyType") or _legacy_event_type(event_type)
     payload["eventId"] = str(record.id)
     payload["eventSeq"] = record.seq
     payload["eventCursor"] = str(record.seq)
@@ -460,14 +584,13 @@ def _event_record_event(record: EventRecord) -> dict:
     payload["channelId"] = str(record.channel_id) if record.channel_id else payload.get("channelId")
     payload["taskId"] = str(record.task_id) if record.task_id else payload.get("taskId")
     payload["messageId"] = str(record.message_id) if record.message_id else payload.get("messageId")
-    payload["activityId"] = str(record.activity_id) if record.activity_id else payload.get("activityId")
     payload["createdAt"] = record.created_at.isoformat() if record.created_at else payload.get("createdAt")
     payload["activityCursor"] = str(record.seq)
     return payload
 
 
 def _event_record_message_seq(record: EventRecord) -> int | None:
-    if record.event_type != "message_received":
+    if _dotted_event_type(record.event_type) != "message.created":
         return None
     payload = record.payload or {}
     raw_seq = payload.get("seq") or payload.get("messageSeq")
@@ -523,7 +646,7 @@ def _is_thread_following(member: Member, root_id: uuid.UUID | str) -> bool:
 
 
 def _should_suppress_thread_event(member: Member, record: EventRecord) -> bool:
-    if record.event_type != "message_received":
+    if _dotted_event_type(record.event_type) != "message.created":
         return False
     payload = record.payload or {}
     if not payload.get("parentId"):
@@ -567,9 +690,9 @@ def _serialize_member(member: Member) -> dict:
         "avatarUrl": member.avatar_url,
         "skills": member.skills or [],
         "config": config,
-        "computerId": config.get("computerId"),
+        "computerId": str(member.computer_id) if member.computer_id else config.get("computerId"),
         "workspaceId": config.get("workspaceId"),
-        "backend": config.get("backend"),
+        "backend": member.backend or config.get("backend"),
         "permissions": config.get("permissions") or {},
         "actions": config.get("actions") or {},
     }
@@ -684,6 +807,9 @@ async def _upsert_daemon_workspace(
     if item.backend:
         config["backend"] = item.backend
     agent_member.config = config
+    agent_member.computer_id = computer.id
+    if item.backend:
+        agent_member.backend = item.backend
     if item.status in {"running", "active", "idle"}:
         agent_member.status = "active" if item.status == "running" else item.status
     elif item.status in {"stopped", "offline", "exited"}:
@@ -733,7 +859,6 @@ async def _record_activity(
             channel_id=channel_id,
             task_id=task_id,
             message_id=message_id,
-            activity_id=activity.id,
             payload=payload,
         ))
     return activity
@@ -975,6 +1100,7 @@ async def send_message(
         parent_id=parent_id,
         content=body.content,
         channel_type="thread" if parent_id else channel.kind,
+        mentions=await _parse_mentions(db, server, body.content),
         seq=last_seq + 1,
     )
     db.add(msg)
@@ -994,6 +1120,7 @@ async def send_message(
             "content": msg.content,
             "messageSnippet": body.content[:200],
             "channelType": msg.channel_type,
+            "mentions": [str(item) for item in (msg.mentions or [])],
             "parentId": str(parent_id) if parent_id else None,
             "threadId": str(parent_id or msg.id),
         },
@@ -1008,6 +1135,7 @@ async def send_message(
         "messageSeq": msg.seq,
         "shortId": msg.short_id,
         "target": target,
+        "mentions": [str(item) for item in (msg.mentions or [])],
         "parentId": str(parent_id) if parent_id else None,
         "threadId": str(parent_id or msg.id),
     }
@@ -1248,6 +1376,7 @@ async def get_history(
             "type": sender.kind if sender else "unknown",
             "sender": f"@{sender.display_name}" if sender else "unknown",
             "content": msg.content,
+            "mentions": [str(item) for item in (msg.mentions or [])],
             "parentId": str(msg.parent_id) if msg.parent_id else None,
             "threadId": str(msg.parent_id or msg.id),
         })
@@ -1530,6 +1659,7 @@ async def claim_task(
 
     q = select(Task).join(Channel).where(
         Task.assignee_id.is_(None),
+        Task.status == "todo",
         Channel.server_id == server.id,
     )
     if channel_target:
@@ -1550,6 +1680,7 @@ async def claim_task(
     if not task:
         raise HTTPException(404, "No unclaimed task found")
 
+    _validate_task_transition(task.status, "in_progress")
     task.assignee_id = member.id
     task.status = "in_progress"
     await _record_activity(
@@ -1606,12 +1737,12 @@ async def update_task_status(
     if not task:
         raise HTTPException(404, f"Task {task_number} not found")
 
-    task.status = new_status
+    _apply_agent_status_transition(task, new_status, member)
     await _record_activity(
         db,
         server,
         member,
-        "task_status_changed",
+        "task_unclaimed" if new_status == "todo" else "task_status_changed",
         f"@{member.display_name} changed task #{task.task_number} to {new_status}",
         {"taskNumber": task.task_number, "status": new_status, "title": task.title},
         channel_id=task.channel_id,
@@ -1639,27 +1770,19 @@ async def claim_task_by_id(
     _require_permission(member, "claimTask")
     body = await request.json()
 
-    try:
-        parsed_task_id = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(400, "Invalid task id")
-
-    result = await db.execute(
-        select(Task).join(Channel).where(
-            Task.id == parsed_task_id,
-            Channel.server_id == server.id,
-        )
-    )
-    task = result.scalar_one_or_none()
-    if not task:
-        raise HTTPException(404, f"Task {task_id} not found")
-    if task.assignee_id and str(task.assignee_id) != str(member.id):
+    task = await _resolve_task_by_id(db, server, task_id)
+    if task.assignee_id:
         raise HTTPException(409, "Task already assigned")
+    if task.status != "todo":
+        raise HTTPException(409, f"Task cannot be claimed from status {task.status}")
 
-    assignee = await _resolve_member_by_handle(db, server, body.get("assignee"))
-    task.assignee_id = assignee.id if assignee else member.id
-    if task.status == "todo":
-        task.status = "in_progress"
+    if body.get("assignee"):
+        assignee = await _resolve_member_by_handle(db, server, body.get("assignee"))
+        if assignee and assignee.id != member.id:
+            raise HTTPException(403, "Agent cannot claim task for another member")
+    _validate_task_transition(task.status, "in_progress")
+    task.assignee_id = member.id
+    task.status = "in_progress"
     await _record_activity(
         db,
         server,
@@ -1679,6 +1802,60 @@ async def claim_task_by_id(
     }
 
 
+@router.post("/tasks/{task_id}/unclaim")
+async def unclaim_task_by_id(
+    task_id: str,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    _require_permission(member, "claimTask")
+    task = await _resolve_task_by_id(db, server, task_id)
+    _apply_agent_status_transition(task, "todo", member)
+    await _record_activity(
+        db,
+        server,
+        member,
+        "task_unclaimed",
+        f"@{member.display_name} unclaimed task #{task.task_number}",
+        {"taskNumber": task.task_number, "status": task.status, "title": task.title},
+        channel_id=task.channel_id,
+        task_id=task.id,
+    )
+    await db.commit()
+    await db.refresh(task)
+    return {"unclaimed": True, "task": await _serialize_task(db, task)}
+
+
+@router.post("/tasks/{task_id}/submit")
+async def submit_task_by_id(
+    task_id: str,
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    _require_permission(member, "updateTask")
+    body = await request.json()
+    task = await _resolve_task_by_id(db, server, task_id)
+    _apply_agent_status_transition(task, "in_review", member)
+    if body.get("data"):
+        task.data = {**(task.data or {}), **body["data"]}
+    await _record_activity(
+        db,
+        server,
+        member,
+        "task_status_changed",
+        f"@{member.display_name} submitted task #{task.task_number} for review",
+        {"taskNumber": task.task_number, "status": task.status, "title": task.title},
+        channel_id=task.channel_id,
+        task_id=task.id,
+    )
+    await db.commit()
+    await db.refresh(task)
+    return {"submitted": True, "task": await _serialize_task(db, task)}
+
+
 @router.patch("/tasks/{task_id}")
 async def update_task_by_id(
     task_id: str,
@@ -1690,30 +1867,15 @@ async def update_task_by_id(
     _require_permission(member, "updateTask")
     body = await request.json()
 
-    try:
-        parsed_task_id = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(400, "Invalid task id")
+    task = await _resolve_task_by_id(db, server, task_id)
 
-    result = await db.execute(
-        select(Task).join(Channel).where(
-            Task.id == parsed_task_id,
-            Channel.server_id == server.id,
-        )
-    )
-    task = result.scalar_one_or_none()
-    if not task:
-        raise HTTPException(404, f"Task {task_id} not found")
-
-    if "title" in body:
-        task.title = body["title"]
+    disallowed_fields = {"title", "description", "assignee"}
+    if disallowed_fields.intersection(body):
+        raise HTTPException(403, "Agent cannot edit task title, description, or assignee")
     if "status" in body:
-        task.status = body["status"]
-    if "description" in body:
-        task.description = body["description"]
-    if "assignee" in body:
-        assignee = await _resolve_member_by_handle(db, server, body.get("assignee"))
-        task.assignee_id = assignee.id if assignee else None
+        _apply_agent_status_transition(task, body["status"], member)
+    else:
+        _ensure_agent_owns_task(member, task)
     if "data" in body:
         task.data = body["data"] or {}
 
@@ -1721,7 +1883,7 @@ async def update_task_by_id(
         db,
         server,
         member,
-        "task_status_changed" if "status" in body else "custom",
+        "task_unclaimed" if body.get("status") == "todo" else "task_status_changed" if "status" in body else "task_updated",
         f"@{member.display_name} updated task #{task.task_number}",
         {"taskNumber": task.task_number, "updates": body},
         channel_id=task.channel_id,

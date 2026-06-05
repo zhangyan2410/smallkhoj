@@ -16,6 +16,105 @@ async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(text("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS token_hash VARCHAR(64)"))
+        await conn.execute(text(
+            "ALTER TABLE members "
+            "ADD COLUMN IF NOT EXISTS computer_id UUID REFERENCES computers(id) ON DELETE SET NULL"
+        ))
+        await conn.execute(text("ALTER TABLE members ADD COLUMN IF NOT EXISTS backend VARCHAR(40)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_members_computer ON members(computer_id)"))
+        await conn.execute(text(
+            "ALTER TABLE channel_members "
+            "ADD COLUMN IF NOT EXISTS last_read_seq BIGINT NOT NULL DEFAULT 0"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE messages "
+            "ADD COLUMN IF NOT EXISTS mentions UUID[] NOT NULL DEFAULT '{}'::uuid[]"
+        ))
+        await conn.execute(text("ALTER TABLE event_records DROP COLUMN IF EXISTS activity_id"))
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+              IF EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'event_records'::regclass
+                  AND contype = 'p'
+                  AND conname = 'event_records_pkey'
+                  AND pg_get_constraintdef(oid) LIKE 'PRIMARY KEY (seq)%'
+              ) THEN
+                ALTER TABLE event_records DROP CONSTRAINT event_records_pkey;
+              END IF;
+
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'event_records'::regclass
+                  AND contype = 'p'
+              ) THEN
+                ALTER TABLE event_records ADD PRIMARY KEY (id);
+              END IF;
+
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'event_records'::regclass
+                  AND conname = 'uq_event_records_server_seq'
+              ) THEN
+                ALTER TABLE event_records
+                ADD CONSTRAINT uq_event_records_server_seq UNIQUE (server_id, seq);
+              END IF;
+            END $$;
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_messages_parent "
+            "ON messages(parent_id) WHERE parent_id IS NOT NULL"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_event_records_server_seq "
+            "ON event_records(server_id, seq)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_event_records_server_channel_seq "
+            "ON event_records(server_id, channel_id, seq) WHERE channel_id IS NOT NULL"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_event_records_server_actor_seq "
+            "ON event_records(server_id, actor_id, seq) WHERE actor_id IS NOT NULL"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_event_records_server_type_seq "
+            "ON event_records(server_id, event_type, seq)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_event_records_created "
+            "ON event_records(server_id, created_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_event_records_message "
+            "ON event_records(message_id) WHERE message_id IS NOT NULL"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_event_records_task "
+            "ON event_records(task_id) WHERE task_id IS NOT NULL"
+        ))
+        await conn.execute(text("""
+            UPDATE members AS m
+            SET computer_id = (m.config->>'computerId')::uuid
+            WHERE m.computer_id IS NULL
+              AND m.config ? 'computerId'
+              AND (m.config->>'computerId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              AND EXISTS (
+                SELECT 1
+                FROM computers AS c
+                WHERE c.id = (m.config->>'computerId')::uuid
+              )
+        """))
+        await conn.execute(text("""
+            UPDATE members
+            SET backend = config->>'backend'
+            WHERE backend IS NULL
+              AND config ? 'backend'
+        """))
     print("[DB] Tables created")
 
 
@@ -76,6 +175,8 @@ async def ensure_extended_seed(db, server_id: uuid.UUID):
         await db.flush()
 
     for member, backend in [(aaa, "Claude"), (deepseek, "DeepSeek")]:
+        member.computer_id = computer.id
+        member.backend = backend
         member.config = {
             **(member.config or {}),
             "computerId": str(computer.id),
@@ -129,6 +230,8 @@ async def ensure_extended_seed(db, server_id: uuid.UUID):
                 status=status,
                 cwd="/Users/code/project/smallkhoj",
             ))
+        else:
+            workspace.computer_id = computer.id
 
     await ensure_api_key(db, server_id, "agent", aaa.id, "sk_agent_aaa_local")
     await ensure_api_key(db, server_id, "agent", deepseek.id, "sk_agent_deepseek_local")
