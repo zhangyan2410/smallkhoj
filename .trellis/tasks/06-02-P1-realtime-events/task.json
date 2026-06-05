@@ -3,7 +3,7 @@
   "name": "P1-realtime-events",
   "title": "P1: 实时事件系统（WebSocket/SSE）",
   "description": "从轮询升级到 WebSocket/SSE 实时推送，减少延迟",
-  "status": "todo",
+  "status": "done",
   "dev_type": "backend",
   "scope": "backend",
   "package": "backend",
