@@ -117,6 +117,9 @@ Future environment support must validate:
 - Daemon-originated message delivery:
   - WebSocket `message_received` / `message` events are normalized into a text envelope with fields such as `target=`, `msg=`, `time=`, `sender=`, `type=`
   - Backend event records use dotted canonical event names such as `message.created`, `task.created`, `task.claimed`, `task.updated`, `message.reaction_added`, and `channel.member_joined`, while also returning `legacyType` for older consumers.
+  - Backend daemon WebSocket delivery is computer-scoped. `WS /internal/agent-api/ws` authenticates with the machine token, keeps a per-connection `eventLogCursor`, expands `EventRecord` rows by every agent on that computer that can see the event, and sets both `agentId` and `targetAgentId` to the receiving agent id before sending. Do not reuse `EventRecord.actor_id` as the delivery target.
+  - Backend daemon WebSocket push must run after the database commit that creates the `EventRecord`. If no WS peer is connected, the event remains in `event_records` for reconnect/SSE/polling fallback.
+  - The daemon WebSocket reconnect URL must include `eventLogCursor=<last delivered event seq>` once it has received message/task events, so reconnect does not replay old chat into the runtime.
   - Daemon proxy/runtime code must treat dotted `message.*` events as legacy `message_received` for inbox buffering, freshness tracking, and runtime delivery. When a dotted message event has `payload.message`, flatten that nested message before buffering.
   - Daemon proxy/runtime code must accept both snake-case task events (`task_created`) and dotted task events (`task.created`) and deliver them as non-message runtime events without touching pending-message freshness state.
   - Agent-scoped proxy `/events` and SSE responses must annotate buffered/emitted events with the registration `agentId` before normalization, unless the upstream event already includes `agentId`/`agent_id`. Multi-runtime delivery depends on this marker to avoid sending one agent's inbox item to another runtime.
@@ -128,6 +131,7 @@ Future environment support must validate:
   - support both raw event payloads and JSON-RPC `daemon/message.received` notifications
   - support JSON-RPC dotted notifications: `message.*` maps to message delivery, and `task.*` maps to the generic event path for runtime delivery
   - support raw `control` events and JSON-RPC `daemon.command.*` / `control.*` notifications; for JSON-RPC methods, the command type comes from the method suffix and must be preserved before dispatch.
+  - stop inbox polling while WS is connected, and restart legacy agent-scoped inbox polling only when WS disconnects and the daemon has a concrete `agentId`.
 - Proxy freshness must hold stale sends:
   - sends to `/internal/agent-api/send` check `seenUpToSeq` when supplied, otherwise `readUpToSeq`
   - when pending message events have seq greater than `seenUpToSeq`, return HTTP 409 with `{state:"held",reason:"pending_messages",seenUpToSeq,pendingCount,pending}`
@@ -198,6 +202,7 @@ Future environment support must validate:
 - Base: attach receives a JSON-RPC line on stdin, posts it to `/internal/daemon/jsonrpc`, and writes only the JSON-RPC response frame to stdout.
 - Base: a new WebSocket or SSE message is buffered; a stale send is held until `message.check` or history consumption marks the message read.
 - Base: backend returns `controlCommands` from register/heartbeat or emits a WS/polling control event; daemon starts/stops/restarts the addressed agent runtime without affecting other runtime records.
+- Base: public UI message creation commits a `message.created` event, then pushes it over the computer-level daemon WS to each visible agent on that computer with `targetAgentId` set to the recipient runtime id.
 - Base: an agent-scoped `message.check` buffers events with that `agentId`, so delivery routes to the matching runtime in a 1:N daemon.
 - Base: `aaa-daemon smoke --import-slock-runtime <runtimeDir>` reads `.slock/slock.cmd`, chains through the existing managed proxy, and calls only `server info`.
 - Base: `aaa-daemon start --import-slock-runtime <runtimeDir> --runtime claude` starts a managed Claude runtime whose first `slock server info` call reaches the imported managed proxy.
@@ -207,6 +212,7 @@ Future environment support must validate:
 - Bad: posting attach JSON-RPC to the local agent API root; the proxy root is bearer-authenticated Slock API traffic, not the daemon control endpoint.
 - Bad: using the daemon global `workspacePath/.slock` wrapper for every dynamic agent. The later runtime overwrites wrapper/token env for earlier runtimes.
 - Bad: dropping `agentId` when buffering agent-scoped events. In a 1:N daemon that can misroute or skip runtime delivery.
+- Bad: using the event actor as the daemon WS delivery target. Human-authored UI messages must route to the agent recipient, not the human sender.
 
 ### 6. Tests Required
 
@@ -250,6 +256,8 @@ Future environment support must validate:
   - assert raw and JSON-RPC WebSocket message events normalize to daemon message events
   - assert ack and activity payload builders preserve message id/seq where present
   - assert raw `control` payloads and JSON-RPC `daemon.command.*` payloads classify as control events and preserve command type, agent id, workspace id, and runtime config
+  - assert backend daemon WS sends committed `message.created` records to connected computer peers with `agentId`/`targetAgentId` set to the receiving agent, and advances its per-connection event cursor past invisible events
+  - live smoke: start backend and `aaa-daemon start --ws auto` with a fake Claude runtime that records stdin; post `POST /api/v1/channels/{name}/messages`; assert the marker appears in runtime stdin without waiting for polling
 - Proxy freshness/SSE tests:
   - assert stale sends return HTTP 409 held responses before upstream send
   - assert checking/reading messages advances `readUpToSeq` enough for a later send
@@ -340,7 +348,7 @@ SLOCKMSG
   - `node dist/cmd/main.js start --foreground`
   - `--runtime none`
   - `--server ...`
-  - `--ws none`
+  - `--ws auto`
   - `--proxy-port 0`
   - `--register-daemon`
   - It must not include `--agent-id` by default and must not reference `@slock-ai/daemon`.
@@ -438,7 +446,7 @@ npx @slock-ai/daemon@latest --server-url http://localhost:8000 --api-key sk_mach
 #### Correct
 
 ```bash
-cd /path/to/smallkhoj/agent/daemon/aaa-daemon && SLOCK_CONNECT_TOKEN=sk_connect_... node dist/cmd/main.js start --foreground --runtime none --server http://localhost:8000 --ws none --proxy-port 0 --register-daemon
+cd /path/to/smallkhoj/agent/daemon/aaa-daemon && SLOCK_CONNECT_TOKEN=sk_connect_... node dist/cmd/main.js start --foreground --runtime none --server http://localhost:8000 --ws auto --proxy-port 0 --register-daemon
 ```
 
 #### Wrong

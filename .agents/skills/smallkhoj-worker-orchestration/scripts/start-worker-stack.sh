@@ -132,7 +132,7 @@ start_daemon() {
         --runtime-command-arg "$WORKER_PROVIDER" \
         --runtime-command-arg "$WORKER_MODEL" \
         --server "http://127.0.0.1:$BACKEND_PORT" \
-        --ws none \
+        --ws auto \
         --agent-id "$AGENT_ID" \
         --proxy-port "$DAEMON_PORT" \
         --register-daemon \

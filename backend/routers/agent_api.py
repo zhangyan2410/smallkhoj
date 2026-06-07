@@ -24,7 +24,11 @@ from models import (
     ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction, Reminder, Server, Task,
 )
 from routers.auth import resolve_agent, resolve_machine
-from services.daemon_control import daemon_control_hub, pending_runtime_commands
+from services.daemon_control import (
+    daemon_control_hub,
+    pending_runtime_commands,
+    push_latest_events_for_server,
+)
 
 router = APIRouter(prefix="/internal/agent-api", tags=["agent-api"])
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / ".data" / "uploads"
@@ -1279,7 +1283,12 @@ async def daemon_websocket(
         return
 
     await websocket.accept()
-    daemon_control_hub.add(computer.id, websocket)
+    raw_cursor = websocket.query_params.get("eventLogCursor") or websocket.query_params.get("activityCursor") or "0"
+    try:
+        event_cursor = int(raw_cursor)
+    except (TypeError, ValueError):
+        event_cursor = 0
+    daemon_control_hub.add(computer.id, websocket, event_cursor)
     try:
         for event in await pending_runtime_commands(
             db,
@@ -1287,6 +1296,11 @@ async def daemon_websocket(
             computer_id=computer.id,
         ):
             await websocket.send_json(event)
+        await daemon_control_hub.push_events(
+            db,
+            server_id=server.id,
+            computer_id=computer.id,
+        )
 
         while True:
             raw_message = await websocket.receive_text()
@@ -1370,6 +1384,7 @@ async def send_message(
     )
     await db.commit()
     await db.refresh(msg)
+    await push_latest_events_for_server(db, server_id=server.id)
 
     return {
         "state": "sent",
@@ -1885,6 +1900,7 @@ async def create_tasks(
     await db.commit()
     for task in created:
         await db.refresh(task)
+    await push_latest_events_for_server(db, server_id=server.id)
 
     return {
         "created": True,
@@ -1951,6 +1967,7 @@ async def claim_task(
     )
     await db.commit()
     await db.refresh(task)
+    await push_latest_events_for_server(db, server_id=server.id)
 
     return {
         "claimed": True,
@@ -2006,6 +2023,7 @@ async def update_task_status(
     )
     await db.commit()
     await db.refresh(task)
+    await push_latest_events_for_server(db, server_id=server.id)
 
     return {
         "updated": True,
@@ -2051,6 +2069,7 @@ async def claim_task_by_id(
     )
     await db.commit()
     await db.refresh(task)
+    await push_latest_events_for_server(db, server_id=server.id)
 
     return {
         "claimed": True,
@@ -2080,6 +2099,7 @@ async def unclaim_task_by_id(
     )
     await db.commit()
     await db.refresh(task)
+    await push_latest_events_for_server(db, server_id=server.id)
     return {"unclaimed": True, "task": await _serialize_task(db, task)}
 
 
@@ -2109,6 +2129,7 @@ async def submit_task_by_id(
     )
     await db.commit()
     await db.refresh(task)
+    await push_latest_events_for_server(db, server_id=server.id)
     return {"submitted": True, "task": await _serialize_task(db, task)}
 
 
@@ -2147,6 +2168,7 @@ async def update_task_by_id(
     )
     await db.commit()
     await db.refresh(task)
+    await push_latest_events_for_server(db, server_id=server.id)
 
     return {
         "updated": True,

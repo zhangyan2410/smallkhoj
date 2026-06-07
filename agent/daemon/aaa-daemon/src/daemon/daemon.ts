@@ -259,6 +259,12 @@ export class DaemonCore extends EventEmitter {
     this.wsManager.on('event', (event) => {
       this.emit('daemon_event', event);
       this.log(`WS event: ${event.type}`, 'debug');
+      if (event.type === 'connected') {
+        this.stopInboxPolling();
+      }
+      if (event.type === 'disconnected' && this.credential?.agentId) {
+        this.startInboxPolling();
+      }
       if (event.type === 'message') {
         if (isRecord(event.message)) {
           this.proxy.recordIncomingMessage(event.message, false);

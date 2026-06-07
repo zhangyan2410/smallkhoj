@@ -21,6 +21,7 @@ from routers.member_serialization import member_backend, member_computer_id, ser
 from services.daemon_control import (
     PENDING_RUNTIME_START_STATUS,
     daemon_control_hub,
+    push_latest_events_for_server,
     runtime_start_command,
 )
 
@@ -73,7 +74,7 @@ def _computer_connection_command(
             "--server",
             shlex.quote(server_url),
             "--ws",
-            "none",
+            "auto",
             "--agent-id",
             shlex.quote(agent_id),
             "--register-daemon",
@@ -99,7 +100,7 @@ def _computer_connect_command(connect_token: str, server_url: str, daemon_dir: P
             "--server",
             shlex.quote(server_url),
             "--ws",
-            "none",
+            "auto",
             "--proxy-port",
             "0",
             "--register-daemon",
@@ -574,6 +575,7 @@ async def create_channel_message(
     )
     await db.commit()
     await db.refresh(msg)
+    await push_latest_events_for_server(db, server_id=server.id)
     return {
         "created": True,
         "message": {
@@ -641,6 +643,7 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
     )
     await db.commit()
     await db.refresh(task)
+    await push_latest_events_for_server(db, server_id=server.id)
     return {"created": True, "task": await _serialize_task(db, task)}
 
 
@@ -691,6 +694,7 @@ async def update_task(task_id: str, request: Request, _auth: None = Depends(veri
     )
     await db.commit()
     await db.refresh(task)
+    await push_latest_events_for_server(db, server_id=server.id)
     return {"updated": True, "task": await _serialize_task(db, task)}
 
 

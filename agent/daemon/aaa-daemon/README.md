@@ -44,10 +44,10 @@ Start Claude Code through aaa-daemon:
 node dist/cmd/main.js start --foreground --runtime claude
 ```
 
-Start the daemon against the local smallkhoj FastAPI backend without the official Slock websocket:
+Start the daemon against the local smallkhoj FastAPI backend and its daemon WebSocket:
 
 ```powershell
-node dist/cmd/main.js start --foreground --runtime none --server http://127.0.0.1:8000 --ws none --agent-id aaaa0000-0000-0000-0000-000000000001 --proxy-port 3457
+node dist/cmd/main.js start --foreground --runtime none --server http://127.0.0.1:8000 --ws auto --agent-id aaaa0000-0000-0000-0000-000000000001 --proxy-port 3457
 ```
 
 This generates a local `.slock/slock` wrapper. Read calls work directly:
@@ -162,7 +162,7 @@ SLOCK_AGENT_TOKEN=sk_machine_local \
 node dist/cmd/main.js start --foreground \
   --runtime none \
   --server http://127.0.0.1:8000 \
-  --ws none \
+  --ws auto \
   --agent-id aaaa0000-0000-0000-0000-000000000001 \
   --register-daemon
 ```

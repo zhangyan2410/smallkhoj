@@ -31,6 +31,7 @@ export class WebSocketManager extends EventEmitter {
   private activityInterval = 30_000;
   private isShuttingDown = false;
   private _connected = false;
+  private lastEventCursor = 0;
 
   constructor(private credential: Credential) {
     super();
@@ -48,9 +49,10 @@ export class WebSocketManager extends EventEmitter {
       return;
     }
 
-    console.log(`[WS] Connecting to ${wsUrl}...`);
+    const connectUrl = appendEventCursor(wsUrl, this.lastEventCursor);
+    console.log(`[WS] Connecting to ${connectUrl}...`);
 
-    this.ws = new WebSocket(wsUrl, {
+    this.ws = new WebSocket(connectUrl, {
       headers: {
         'Authorization': `Bearer ${this.credential.token}`,
         'X-Agent-Id': this.credential.agentId,
@@ -68,6 +70,7 @@ export class WebSocketManager extends EventEmitter {
     this.ws.on('message', (data: Buffer) => {
       try {
         for (const event of parseWebSocketPayload(data.toString())) {
+          this.lastEventCursor = Math.max(this.lastEventCursor, eventCursorOf(event));
           this.emit('event', event);
           if (event.type === 'message') {
             this.sendAck(event.message);
@@ -220,6 +223,33 @@ function eventFromRawPayload(value: unknown): WebSocketManagerEvent[] {
     return [{ type: 'message', message: value }];
   }
   return [];
+}
+
+function appendEventCursor(wsUrl: string, cursor: number): string {
+  if (!cursor || cursor <= 0) return wsUrl;
+  try {
+    const url = new URL(wsUrl);
+    url.searchParams.set('eventLogCursor', String(cursor));
+    return url.toString();
+  } catch {
+    return wsUrl;
+  }
+}
+
+function eventCursorOf(event: WebSocketManagerEvent): number {
+  if (event.type === 'message') return cursorFromPayload(event.message);
+  if (event.type === 'event') return cursorFromPayload(event.event);
+  return 0;
+}
+
+function cursorFromPayload(payload: unknown): number {
+  const value = unwrapMessage(payload);
+  if (!isRecord(value)) return 0;
+  for (const raw of [value.eventSeq, value.eventLogCursor, value.eventCursor, value.seq]) {
+    const parsed = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  }
+  return 0;
 }
 
 function unwrapMessage(input: unknown): unknown {

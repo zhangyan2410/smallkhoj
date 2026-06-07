@@ -89,7 +89,7 @@ node dist/cmd/main.js start --foreground \
   --runtime-command-arg "Zhipu GLM" \
   --runtime-command-arg glm-5.1 \
   --server http://127.0.0.1:8000 \
-  --ws none \
+  --ws auto \
   --agent-id aaaa0000-0000-0000-0000-000000000001 \
   --proxy-port 3457 \
   --register-daemon \
