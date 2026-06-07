@@ -19,7 +19,10 @@ Completed and archived the agent delegation control plane: backend dotted events
 
 ### Main Changes
 
-(Add details)
+- Rewrote `zy-think/total-design.md` around current product capabilities, current implementation state, and remaining work.
+- Rewrote `zy-think/slock-design-spec.md` to match the current connect-ticket, daemon lease, model, API, event, and runtime contracts.
+- Added `zy-think/current-architecture.md` as the global architecture archive entry.
+- Archived `.trellis/tasks/06-06-fix-computer-credential-daemon-command`.
 
 ### Git Commits
 
@@ -34,7 +37,8 @@ Completed and archived the agent delegation control plane: backend dotted events
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `git diff --check`
+- [OK] Active zy-think docs no longer contain old MVP comparison wording or browser-facing machine-token command examples.
 
 ### Status
 
@@ -131,6 +135,39 @@ Cleaned default seed data, fixed browser management channel/DM flow, expanded ma
 | Hash | Message |
 |------|---------|
 | `ef96298` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 5: Refresh Slock architecture notes
+
+**Date**: 2026-06-07
+**Task**: Refresh Slock architecture notes
+**Branch**: `main`
+
+### Summary
+
+Archived the completed computer credential daemon command task and refreshed zy-think docs around current connect-ticket architecture, current implementation status, and remaining work.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3a84eaa` | (see git log) |
 
 ### Testing
 

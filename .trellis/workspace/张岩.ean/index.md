@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-06-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~145 | Active |
+| `journal-1.md` | ~178 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-06-07 | Refresh Slock architecture notes | `3a84eaa` | `main` |
 | 4 | 2026-06-07 | Stabilize management flow for review | `ef96298` | `main` |
 | 3 | 2026-06-07 | Support mac dev startup | `57402ca` | `main` |
 | 2 | 2026-06-05 | Complete management product flow E2E | `36f8d3d`, `4aa37c4` | `main` |
