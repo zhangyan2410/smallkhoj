@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dev.sh — SmallKhoj 开发服务管理脚本 (Windows Git Bash)
+# dev.sh — SmallKhoj 开发服务管理脚本 (Windows Git Bash + macOS/Linux)
 # 用法:
 #   ./dev.sh start       启动 backend + frontend
 #   ./dev.sh stop        优雅停止所有服务
@@ -17,6 +17,9 @@ BACKEND_PORT=8000
 FRONTEND_PORT=3000
 BACKEND_PID_FILE="$PID_DIR/backend.pid"
 FRONTEND_PID_FILE="$PID_DIR/frontend.pid"
+DEFAULT_DB_USER="${SMALLKHOJ_DB_USER:-smallkhoj}"
+DEFAULT_DB_PASSWORD="${SMALLKHOJ_DB_PASSWORD:-smallkhoj}"
+DEFAULT_DB_NAME="${SMALLKHOJ_DB_NAME:-smallkhoj}"
 
 # ── helpers ──────────────────────────────────────────────
 
@@ -26,6 +29,17 @@ ensure_dirs() {
 
 log()  { echo "[$(date '+%H:%M:%S')] $*"; }
 warn() { echo "[$(date '+%H:%M:%S')] WARN: $*" >&2; }
+
+platform() {
+  case "${DEV_PLATFORM:-$(uname -s 2>/dev/null || echo unknown)}" in
+    MINGW*|MSYS*|CYGWIN*|Windows_NT) echo "windows" ;;
+    *) echo "unix" ;;
+  esac
+}
+
+is_windows() {
+  [[ "$(platform)" == "windows" ]]
+}
 
 # 获取 PID 文件中记录的 PID（如果进程还活着）
 read_pid() {
@@ -44,19 +58,41 @@ read_pid() {
 # 找到监听指定端口的所有 PID
 pids_on_port() {
   local port="$1"
-  netstat -ano 2>/dev/null | grep ":${port} " | grep LISTENING | awk '{print $5}' | sort -u | grep -v '^0$'
+  if is_windows; then
+    netstat -ano 2>/dev/null | grep ":${port} " | grep LISTENING | awk '{print $5}' | sort -u | grep -v '^0$'
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -tiTCP:"$port" -sTCP:LISTEN -n -P 2>/dev/null | sort -u
+  elif command -v ss >/dev/null 2>&1; then
+    ss -ltnp "sport = :$port" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u
+  else
+    netstat -ltnp 2>/dev/null | awk -v port=":$port" '$4 ~ port"$" {print $7}' | cut -d/ -f1 | grep -E '^[0-9]+$' | sort -u
+  fi
 }
 
-# 用 taskkill /F /T 杀掉进程树（Windows 原生，可靠）
+# 杀掉进程树：Windows 用 taskkill，macOS/Linux 递归清理子进程。
 kill_tree() {
   local pid="$1"
-  # 先尝试优雅的 taskkill（不加 /F）
-  cmd //c "taskkill /T /PID $pid" 2>/dev/null
-  sleep 2
-  # 如果还活着，强制杀
-  if kill -0 "$pid" 2>/dev/null; then
-    cmd //c "taskkill /F /T /PID $pid" 2>/dev/null || true
-    sleep 1
+  if is_windows; then
+    # 先尝试优雅的 taskkill（不加 /F）
+    cmd //c "taskkill /T /PID $pid" 2>/dev/null
+    sleep 2
+    # 如果还活着，强制杀
+    if kill -0 "$pid" 2>/dev/null; then
+      cmd //c "taskkill /F /T /PID $pid" 2>/dev/null || true
+      sleep 1
+    fi
+  else
+    local children
+    children=$(pgrep -P "$pid" 2>/dev/null || true)
+    for child in $children; do
+      kill_tree "$child"
+    done
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 2
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL "$pid" 2>/dev/null || true
+      sleep 1
+    fi
   fi
 }
 
@@ -68,10 +104,73 @@ force_kill_port() {
   if [[ -n "$pids" ]]; then
     warn "Port $port still occupied by PIDs: $(echo $pids | tr '\n' ' ')"
     for pid in $pids; do
-      cmd //c "taskkill /F /T /PID $pid" 2>/dev/null || true
+      if is_windows; then
+        cmd //c "taskkill /F /T /PID $pid" 2>/dev/null || true
+      else
+        kill "$pid" 2>/dev/null || true
+      fi
     done
     sleep 1
   fi
+}
+
+port_is_listening() {
+  local port="$1"
+  [[ -n "$(pids_on_port "$port")" ]]
+}
+
+http_ready() {
+  local url="$1"
+  curl -sf --max-time 3 "$url" -o /dev/null 2>/dev/null
+}
+
+default_db_port() {
+  if [[ -n "${SMALLKHOJ_DB_PORT:-}" ]]; then
+    echo "$SMALLKHOJ_DB_PORT"
+    return
+  fi
+  if ! is_windows && port_is_listening 55432; then
+    echo 55432
+    return
+  fi
+  echo 5432
+}
+
+backend_database_url() {
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+    echo "$DATABASE_URL"
+    return
+  fi
+  local port
+  port=$(default_db_port)
+  echo "postgresql+asyncpg://${DEFAULT_DB_USER}:${DEFAULT_DB_PASSWORD}@localhost:${port}/${DEFAULT_DB_NAME}"
+}
+
+backend_command() {
+  if is_windows && [[ -x "$BACKEND_DIR/.venv/Scripts/python.exe" ]]; then
+    echo ".venv/Scripts/python.exe main.py"
+  elif command -v uv >/dev/null 2>&1; then
+    echo "uv run python main.py"
+  elif [[ -x "$BACKEND_DIR/.venv/bin/python" ]]; then
+    echo ".venv/bin/python main.py"
+  else
+    echo "python3 main.py"
+  fi
+}
+
+start_background() {
+  local pidfile="$1"
+  local logfile="$2"
+  shift 2
+
+  if is_windows; then
+    "$@" >> "$logfile" 2>&1 &
+  else
+    "$@" >> "$logfile" 2>&1 &
+  fi
+  local child_pid=$!
+  echo "$child_pid" > "$pidfile"
+  echo "$child_pid"
 }
 
 # ── commands ─────────────────────────────────────────────
@@ -122,17 +221,26 @@ cmd_start() {
   fi
 
   # ── 启动 backend ──
-  log "Starting backend on :$BACKEND_PORT..."
-  cd "$BACKEND_DIR"
-  .venv/Scripts/python.exe main.py >> "$LOG_DIR/backend.log" 2>&1 &
-  local be_pid=$!
-  echo "$be_pid" > "$BACKEND_PID_FILE"
-  cd "$ROOT_DIR"
+  local db_url backend_cmd be_pid
+  if http_ready "http://localhost:$BACKEND_PORT/docs"; then
+    be_pid=$(pids_on_port "$BACKEND_PORT" | head -n 1)
+    log "Backend already ready on :$BACKEND_PORT (PID ${be_pid:-external})"
+  else
+    log "Starting backend on :$BACKEND_PORT..."
+    cd "$BACKEND_DIR"
+    db_url=$(backend_database_url)
+    backend_cmd=$(backend_command)
+    log "Backend database: ${db_url}"
+    log "Backend command: ${backend_cmd}"
+    # shellcheck disable=SC2086
+    be_pid=$(DATABASE_URL="$db_url" start_background "$BACKEND_PID_FILE" "$LOG_DIR/backend.log" $backend_cmd)
+    cd "$ROOT_DIR"
+  fi
 
   # 等待 backend 就绪
   local waited=0
   while (( waited < 15 )); do
-    if curl -sf "http://localhost:$BACKEND_PORT/docs" -o /dev/null 2>/dev/null; then
+    if http_ready "http://localhost:$BACKEND_PORT/docs"; then
       break
     fi
     sleep 1
@@ -145,16 +253,20 @@ cmd_start() {
   fi
 
   # ── 启动 frontend ──
-  log "Starting frontend on :$FRONTEND_PORT..."
-  cd "$FRONTEND_DIR"
-  npx next dev >> "$LOG_DIR/frontend.log" 2>&1 &
-  local fe_pid=$!
-  echo "$fe_pid" > "$FRONTEND_PID_FILE"
-  cd "$ROOT_DIR"
+  local fe_pid
+  if http_ready "http://localhost:$FRONTEND_PORT"; then
+    fe_pid=$(pids_on_port "$FRONTEND_PORT" | head -n 1)
+    log "Frontend already ready on :$FRONTEND_PORT (PID ${fe_pid:-external})"
+  else
+    log "Starting frontend on :$FRONTEND_PORT..."
+    cd "$FRONTEND_DIR"
+    fe_pid=$(NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-http://localhost:$BACKEND_PORT}" NEXT_PUBLIC_API_KEY="${NEXT_PUBLIC_API_KEY:-sk_public_local}" start_background "$FRONTEND_PID_FILE" "$LOG_DIR/frontend.log" npm run dev)
+    cd "$ROOT_DIR"
+  fi
 
   waited=0
   while (( waited < 30 )); do
-    if curl -sf "http://localhost:$FRONTEND_PORT" -o /dev/null 2>/dev/null; then
+    if http_ready "http://localhost:$FRONTEND_PORT"; then
       break
     fi
     sleep 1
@@ -174,15 +286,21 @@ cmd_status() {
   local be_ok=false fe_ok=false
 
   if be_pid=$(read_pid "$BACKEND_PID_FILE"); then
-    if curl -sf --max-time 3 "http://localhost:$BACKEND_PORT/docs" -o /dev/null 2>/dev/null; then
+    if http_ready "http://localhost:$BACKEND_PORT/docs"; then
       be_ok=true
     fi
+  elif http_ready "http://localhost:$BACKEND_PORT/docs"; then
+    be_pid="$(pids_on_port "$BACKEND_PORT" | head -n 1) external"
+    be_ok=true
   fi
 
   if fe_pid=$(read_pid "$FRONTEND_PID_FILE"); then
-    if curl -sf --max-time 3 "http://localhost:$FRONTEND_PORT" -o /dev/null 2>/dev/null; then
+    if http_ready "http://localhost:$FRONTEND_PORT"; then
       fe_ok=true
     fi
+  elif http_ready "http://localhost:$FRONTEND_PORT"; then
+    fe_pid="$(pids_on_port "$FRONTEND_PORT" | head -n 1) external"
+    fe_ok=true
   fi
 
   echo "Backend  :$BACKEND_PORT  $($be_ok && echo "RUNNING (PID $be_pid)" || echo "STOPPED")"
