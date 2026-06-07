@@ -1,72 +1,104 @@
-# Slock 设计规范 — 定稿
+# Slock 设计规范
 
-> 日期：2026-06-04
-> 替代 `slock-backend-architecture.md`、`slock-detail-spec.md`、`slock-ui-interaction-design.md` 中的错误部分
-> 原始文档保留作为参考，本文档为 source of truth
+> 更新日期：2026-06-07
+> 本文是 zy-think 下的数据模型和协议 source of truth。
+> 口径：直接对齐当前项目实现和目标架构。
 
 ---
 
-## 1. 数据模型
+## 1. 当前架构原则
 
-### 1.1 Server
+- **Server 隔离**：所有核心数据带 `server_id`，Computer/Member/Channel name 在 server 内约束唯一。
+- **Computer 先连接，Agent 后创建**：daemon connect 只创建或复用 Computer，不自动创建 Agent。
+- **一次性 connect ticket**：浏览器只展示 `sk_connect_...`，不展示长期 machine token。
+- **daemon lease**：同一个 online Computer 同时只允许一个 active daemon。
+- **Agent 是 Member**：Human 和 Agent 共用 `members` 表，通过 `type`/`kind` 区分。
+- **AgentWorkspace 承载 runtime**：Agent 绑定 Computer 后，由 workspace 描述 runtime、cwd、pid、session。
+- **Event 和 Activity 分层**：EventRecord 是系统通知和 daemon 投递流；ActivityLog 记录 agent/runtime 行为。
+- **权限先配置后 enforcement**：权限作为 config 同步给 agent，服务端强制权限属于后续工作。
+
+---
+
+## 2. 数据模型
+
+### 2.1 Server
 
 ```sql
 CREATE TABLE servers (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID PRIMARY KEY,
     name        VARCHAR(255) NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMPTZ NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL
 );
 ```
 
-### 1.2 Member（Human + Agent 统一）
+### 2.2 Member
 
 ```sql
 CREATE TABLE members (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id            UUID PRIMARY KEY,
     server_id     UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-    type          VARCHAR(10) NOT NULL,               -- 'human' | 'agent'
+    type          VARCHAR(10) NOT NULL,       -- human | agent
     display_name  VARCHAR(255) NOT NULL,
     description   TEXT,
     avatar_url    TEXT,
-    status        VARCHAR(20) DEFAULT 'offline',      -- online/offline/active/busy
+    status        VARCHAR(20) DEFAULT 'offline',
     skills        JSONB DEFAULT '[]',
-    config        JSONB DEFAULT '{}',                 -- permissions, actions 等
-    computer_id   UUID REFERENCES computers(id) ON DELETE SET NULL,  -- agent 独有
-    backend       VARCHAR(40),                        -- agent 独有: claude_code/deepseek/codex
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    config        JSONB DEFAULT '{}',
+    computer_id   UUID REFERENCES computers(id) ON DELETE SET NULL,
+    backend       VARCHAR(40),
+    created_at    TIMESTAMPTZ NOT NULL,
+    updated_at    TIMESTAMPTZ NOT NULL,
+    UNIQUE (server_id, display_name)
 );
-
-CREATE INDEX idx_members_server ON members(server_id);
 ```
 
-**设计决策**：
-- 一张 flat 表 + `type` 列区分 human/agent
-- `computer_id` 和 `backend` 是显式列（需要 FK + join + 过滤）
-- `permissions`/`actions` 保留在 `config` JSONB（配置数据，不需要 DB 级约束）
-- `workspaceId` 不存（从 AgentWorkspace 表反查 `WHERE agent_id = ?`）
-- **权限不做服务器端 enforcement**：权限是配置数据，daemon 同步，agent 自限，默认全开
+设计决策：
 
-### 1.3 Computer & AgentWorkspace
+- 一张 flat 表，`type` 区分 human/agent。
+- `computer_id` 和 `backend` 是显式列，用于 join、过滤和启动 runtime。
+- permissions/actions 仍在 `config` JSONB。
+- `workspaceId` 不作为列保存，当前序列化时从 AgentWorkspace 或 config 读取。
+
+### 2.3 Computer
 
 ```sql
 CREATE TABLE computers (
-    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    server_id         UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-    name              VARCHAR(255) NOT NULL,
-    os                VARCHAR(80) NOT NULL,
-    daemon_version    VARCHAR(80) NOT NULL,
-    api_key_prefix    VARCHAR(40),
-    status            VARCHAR(20) DEFAULT 'offline',
-    detected_runtimes JSONB DEFAULT '[]',
-    last_heartbeat_at TIMESTAMPTZ,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id                      UUID PRIMARY KEY,
+    server_id               UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    name                    VARCHAR(255) NOT NULL,
+    machine_id              VARCHAR(80),
+    os                      VARCHAR(80) NOT NULL,
+    daemon_version          VARCHAR(80) NOT NULL,
+    api_key_prefix          VARCHAR(40),
+    status                  VARCHAR(20) NOT NULL DEFAULT 'offline',
+    detected_runtimes       JSONB DEFAULT '[]',
+    active_daemon_id        VARCHAR(80),
+    daemon_lease_expires_at TIMESTAMPTZ,
+    last_heartbeat_at       TIMESTAMPTZ,
+    created_at              TIMESTAMPTZ NOT NULL,
+    updated_at              TIMESTAMPTZ NOT NULL,
+    UNIQUE (server_id, name)
 );
+```
 
+索引/约束：
+
+- `idx_computers_server(server_id)`
+- `idx_computers_server_machine(server_id, machine_id)`
+- partial unique `server_id, machine_id WHERE machine_id IS NOT NULL`
+
+设计决策：
+
+- `machine_id` 由 daemon 本地持久化生成。
+- `api_key_prefix` 只保存 machine token 前缀，完整 token 只在 connect 成功时返回给 daemon。
+- `active_daemon_id` + `daemon_lease_expires_at` 表示当前 daemon 租约。
+
+### 2.4 AgentWorkspace
+
+```sql
 CREATE TABLE agent_workspaces (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id               UUID PRIMARY KEY,
     computer_id      UUID NOT NULL REFERENCES computers(id) ON DELETE CASCADE,
     agent_id         UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
     runtime          VARCHAR(40) NOT NULL DEFAULT 'claude_code',
@@ -78,141 +110,124 @@ CREATE TABLE agent_workspaces (
     pid              INTEGER,
     started_at       TIMESTAMPTZ,
     stopped_at       TIMESTAMPTZ,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at       TIMESTAMPTZ NOT NULL,
+    updated_at       TIMESTAMPTZ NOT NULL
 );
-
-CREATE INDEX idx_agent_workspaces_computer ON agent_workspaces(computer_id);
-CREATE INDEX idx_agent_workspaces_agent ON agent_workspaces(agent_id);
 ```
 
-### 1.4 Channel & ChannelMember
+当前 workspace 状态：
+
+- `pending_start`：前端创建 Agent 后等待 daemon 启动 runtime。
+- `running` / `active` / `idle`：daemon heartbeat 上报的运行态。
+- `stopped` / `failed` / `exited`：停止或异常态。
+
+### 2.5 Channel / ChannelMember
 
 ```sql
 CREATE TABLE channels (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID PRIMARY KEY,
     server_id   UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     name        VARCHAR(255) NOT NULL,
     description TEXT,
-    type        VARCHAR(10) NOT NULL DEFAULT 'public',  -- public | private | dm
+    type        VARCHAR(10) NOT NULL DEFAULT 'public',
     creator_id  UUID REFERENCES members(id),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at  TIMESTAMPTZ NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL,
     UNIQUE (server_id, name)
 );
 
 CREATE TABLE channel_members (
     channel_id     UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
     member_id      UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-    joined_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_read_seq  BIGINT DEFAULT 0,            -- 未读计数基础
+    joined_at      TIMESTAMPTZ NOT NULL,
+    last_read_seq  BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (channel_id, member_id)
 );
-
-CREATE INDEX idx_channels_server ON channels(server_id);
 ```
 
-**设计决策**：
-- DM 是 `type='dm'` 的 channel，两个 ChannelMember，不加 DMChannel 独立结构
-- DM channel name：`dm:{min(uuid1,uuid2)}-{max(uuid1,uuid2)}`（不暴露给用户）
-- `last_read_seq`：未读计数 = `max(messages.seq) - last_read_seq`
-- `role`（admin/member/guest）和 `muted` P2 再加
+设计决策：
 
-### 1.5 Message
+- DM 是 `type='dm'` 的 Channel。
+- DM channel name 使用两个 member UUID 排序后拼接，用户不可见。
+- Channel role/muted 仍是后续扩展。
+
+### 2.6 Message
 
 ```sql
 CREATE TABLE messages (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id            UUID PRIMARY KEY,
     short_id      VARCHAR(20) NOT NULL UNIQUE,
     channel_id    UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
     sender_id     UUID NOT NULL REFERENCES members(id),
-    parent_id     UUID REFERENCES messages(id),         -- thread: 指向原始消息
-    content       TEXT NOT NULL,                         -- 统一 markdown（纯文本是 markdown 子集）
-    channel_type  VARCHAR(10) NOT NULL DEFAULT 'channel', -- channel | dm | thread
-    mentions      UUID[] DEFAULT '{}',                   -- 结构化 @mention（解析 @xxx 写入）
-    seq           BIGSERIAL UNIQUE,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    parent_id     UUID REFERENCES messages(id),
+    content       TEXT NOT NULL,
+    channel_type  VARCHAR(10) NOT NULL DEFAULT 'channel',
+    mentions      UUID[] NOT NULL DEFAULT '{}',
+    seq           BIGINT UNIQUE,
+    created_at    TIMESTAMPTZ NOT NULL,
+    updated_at    TIMESTAMPTZ NOT NULL
 );
-
-CREATE INDEX idx_messages_channel ON messages(channel_id, created_at);
-CREATE INDEX idx_messages_seq ON messages(seq);
-CREATE INDEX idx_messages_parent ON messages(parent_id) WHERE parent_id IS NOT NULL;
 ```
 
-**设计决策**：
-- **不加 contentType 字段**：所有 content 统一是 markdown，前端永远按 markdown 渲染
-- **不加 threads 表**：Thread 是虚拟的，从 `parent_id` 推导（reply_count = COUNT, participants = DISTINCT sender_id）
-- `mentions`：服务端解析 `@xxx` → 查 member → 写入 UUID 数组。thread reply 推给 @mention 的人
-- **不做消息删除**：append-only。Saved/bookmark P2
-- 消息编辑 P2 再加
+设计决策：
 
-### 1.6 Task
+- content 统一按 markdown 文本处理。
+- Thread 通过 `parent_id` 推导，不单独建 threads 表。
+- Mention 由服务端解析 `@handle` 后写入 UUID 数组。
+
+### 2.7 Task
 
 ```sql
 CREATE TABLE tasks (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id           UUID PRIMARY KEY,
     task_number  INTEGER NOT NULL,
     channel_id   UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
     message_id   UUID REFERENCES messages(id),
     title        TEXT NOT NULL,
     description  TEXT,
-    status       VARCHAR(20) NOT NULL DEFAULT 'todo',  -- todo | in_progress | in_review | done | closed
+    status       VARCHAR(20) NOT NULL DEFAULT 'todo',
     creator_id   UUID NOT NULL REFERENCES members(id),
     assignee_id  UUID REFERENCES members(id),
     data         JSONB DEFAULT '{}',
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at   TIMESTAMPTZ NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL,
     UNIQUE (channel_id, task_number)
 );
-
-CREATE INDEX idx_tasks_channel ON tasks(channel_id, status);
-CREATE INDEX idx_tasks_assignee ON tasks(assignee_id);
 ```
 
-**状态机**：
+状态机：
 
+```text
+todo -> in_progress -> in_review -> done -> closed
+          |               |
+          v               v
+         todo        in_progress
 ```
-TODO ──claim──> IN_PROGRESS ──submit──> IN_REVIEW ──approve──> DONE ──close──> CLOSED
-                   │                       │
-                unclaim                  reject
-                   │                       │
-                   └───────────────────────┘
-```
+
+有效转换：
 
 ```python
-VALID_TRANSITIONS = {
-    "todo":        {"in_progress", "closed"},
-    "in_progress": {"in_review", "todo"},          # todo = unclaim
-    "in_review":   {"done", "in_progress"},         # in_progress = reject
-    "done":        {"closed"},
-    "closed":      set(),                           # 终态，不可变更
+VALID_TASK_TRANSITIONS = {
+    "todo": {"in_progress", "closed"},
+    "in_progress": {"in_review", "todo"},
+    "in_review": {"done", "in_progress"},
+    "done": {"closed"},
+    "closed": set(),
 }
 ```
 
-**权限规则**：
-- agent 只能操作自己认领的任务（assignee == self）
-- agent 可做的：claim（todo→in_progress）、unclaim（in_progress→todo）、submit（in_progress→in_review）
-- 只有人类可以：关闭（任意→closed）、approve（in_review→done）、reject（in_review→in_progress）、改标题/描述
-- closed 是终态
+权限规则：
 
-**行为规范（agent system prompt）**：
-1. claim 后先在 task thread 发执行计划 → 人类可提前纠正
-2. 完成后发证据（前端任务：截图/录屏 via webdriver；后端任务：文字摘要+测试结果）→ status → in_review
+- agent 只能操作自己认领的任务。
+- agent 可 claim、unclaim、submit。
+- 人类可创建、修改、审核、关闭。
 
-**P2 扩展**：
-- `priority`、`tags`、`closedAt`/`closedBy`、`status_history JSONB`
-- 录屏/截图 via webdriver
-- 自动重试 + 指数退避（Symphony 启发）
-- Stall 检测：daemon 监测 agent 5 分钟无输出 → 终止 → 释放任务
-- 启动 reconciliation：后端启动时扫描 running workspace → 孤儿标记 stopped
-
-### 1.7 Event Records
+### 2.8 EventRecord
 
 ```sql
 CREATE TABLE event_records (
     seq          BIGSERIAL,
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id           UUID PRIMARY KEY,
     server_id    UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     event_type   VARCHAR(80) NOT NULL,
     actor_id     UUID REFERENCES members(id) ON DELETE SET NULL,
@@ -220,195 +235,252 @@ CREATE TABLE event_records (
     task_id      UUID REFERENCES tasks(id) ON DELETE SET NULL,
     message_id   UUID REFERENCES messages(id) ON DELETE SET NULL,
     payload      JSONB NOT NULL DEFAULT '{}',
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at   TIMESTAMPTZ NOT NULL,
     UNIQUE (server_id, seq)
 );
-
-CREATE INDEX idx_event_records_server_seq ON event_records(server_id, seq);
-CREATE INDEX idx_event_records_server_channel_seq ON event_records(server_id, channel_id, seq) WHERE channel_id IS NOT NULL;
-CREATE INDEX idx_event_records_server_actor_seq ON event_records(server_id, actor_id, seq) WHERE actor_id IS NOT NULL;
-CREATE INDEX idx_event_records_server_type_seq ON event_records(server_id, event_type, seq);
-CREATE INDEX idx_event_records_created ON event_records(server_id, created_at DESC);
-CREATE INDEX idx_event_records_message ON event_records(message_id) WHERE message_id IS NOT NULL;
-CREATE INDEX idx_event_records_task ON event_records(task_id) WHERE task_id IS NOT NULL;
 ```
 
-**设计决策**（详见 event-design-fix.md）：
-- per-server seq（BIGSERIAL + UNIQUE(server_id, seq)），id 做 PK
-- **通知模式**：event payload 只给 ID + preview，客户端按需 GET 拉取
-- **无 recipient 字段**：dispatcher 层 visibility 过滤
-- **SSE ack P2 不做**：SSE Last-Event-ID + cursor 够用
-- **平铺 envelope**：`{id, type, seq, timestamp, payload}`
-- **Plain JSON**：删 JSON-RPC
-- **Event ≠ Activity**：彻底解耦。activity 不入 event 流。L1/L2/L3 状态分层
-- **Activity 数据流**：daemon tap → server 内存 buffer（~50条/agent FIFO 不存DB）→ client
+设计决策：
 
-### 1.8 其他表
+- EventRecord 是 append-only 通知流。
+- daemon control hub 按 agent 的可见 channel 过滤事件。
+- payload 以 ID + preview 为主，需要完整资源时走 GET API。
+- 事件类型在应用层维护，DB 不加 enum/check。
 
-**FileEntry**、**MessageReaction**、**Reminder**、**ApiKey**：保持当前设计不变。
+### 2.9 其他表
 
-**删除**：`activity_logs` 表、`event_records.activity_id` 列。
-
----
-
-## 2. Auth
-
-双 token 路径：
-- **Agent token**（`sk_agent_xxx`）：agent 自己的 key，`resource_type=agent`
-- **Machine token**（`sk_machine_xxx`）：computer 级别的 key，`resource_type=computer`
-
-`resolve_agent` 接受两种 token（agent key 或 agent 所在 computer 的 key）。
-`resolve_machine` 只接受 computer token。
+- `activity_logs`：agent/runtime 行为日志。
+- `files`：附件元数据和本地存储路径。
+- `message_reactions`：消息表态。
+- `reminders`：提醒调度。
+- `api_keys`：agent/machine token 哈希。
+- `connect_tickets`：一次性 connect ticket。
 
 ---
 
-## 3. API
+## 3. Auth 与连接协议
 
-### 3.1 Worker API（daemon/agent 用）
+### 3.1 Token 类型
 
-前缀：`/internal/agent-api/`
+- **Public API key**：前端使用 `X-Public-Key`，本地默认 `sk_public_local`。
+- **Connect ticket**：`sk_connect_...`，一次性、短 TTL，仅用于 daemon connect。
+- **Machine token**：`sk_machine_...`，connect 成功后签发给 daemon，resource_type=`computer`。
+- **Agent token**：`sk_agent_...`，resource_type=`agent`，当前 resolver 支持但主流程主要走 machine token + `X-Agent-Id`。
+
+### 3.2 Computer connect
+
+```text
+Frontend
+  POST /api/v1/computers/connect-command
+    -> ConnectTicket(sk_connect_..., expires_at)
+    -> command with SLOCK_CONNECT_TOKEN
+
+Daemon
+  POST /internal/agent-api/daemon/connect
+    Authorization: Bearer sk_connect_...
+    body: machineId, daemonId, host metadata, detectedRuntimes
+
+Backend
+  validate ticket
+  create/reuse Computer by (server_id, machine_id)
+  reject duplicate Computer name
+  reject active daemon lease
+  issue sk_machine_...
+  mark ticket consumed
+```
+
+Invariants:
+
+- `connect-command` 不创建 Computer。
+- `connect-command` 不返回 `sk_machine_...`。
+- `daemon/connect` 才创建或复用 Computer。
+- connect token reuse 返回 409。
+- invalid/expired/revoked connect token 返回 401。
+- 同一 online machineId 有 active lease 时返回 409。
+- offline/lease expired machineId 可以 reconnect 并复用 Computer。
+
+### 3.3 Daemon register / heartbeat
+
+- `POST /internal/agent-api/daemon/register`：machine token 鉴权；刷新 Computer 元数据、lease、workspace 列表；返回 pending control commands。
+- `POST /internal/agent-api/daemon/heartbeat`：machine token 鉴权；刷新 lease、detected runtimes、workspace 状态；返回 pending control commands。
+- lease 当前为 90 秒。
+- daemon 默认 heartbeat 周期为 15 秒。
+
+### 3.4 Agent request auth
+
+`resolve_agent` 接受：
+
+- agent token + matching `X-Agent-Id`
+- computer token + agent 所在 `computer_id` + `X-Agent-Id`
+
+这允许 daemon 代表绑定在该 Computer 上的 Agent 调用消息、任务、文件、提醒等 API。
+
+---
+
+## 4. API
+
+### 4.1 Public API
+
+前缀：`/api/v1`
 
 | Endpoint | 说明 |
-|----------|------|
-| `GET /events` | SSE 流 + 历史拉取（cursor-based） |
-| `POST /daemon/register` | daemon 注册（machine token） |
-| `POST /daemon/heartbeat` | daemon 心跳 |
-| `POST /messages` | 发消息（支持 channel/DM/thread） |
-| `GET /messages` | 读消息历史 |
-| `POST /tasks/create` | 创建任务 |
-| `POST /tasks/claim` | 认领任务 |
-| `POST /tasks/unclaim` | 释放任务（新增） |
-| `POST /tasks/update-status` | 更新任务状态（加转换校验） |
-| `GET /tasks` | 列出任务 |
-| `POST /message/react` | 消息表态 |
-| `POST /reminders/schedule` | 调度提醒 |
-| `GET /reminders` | 列出提醒 |
-
-### 3.2 Supervisor API（人类/前端用）
-
-前缀：`/api/v1/`
-
-| Endpoint | 说明 |
-|----------|------|
-| `GET /servers` | 服务器信息 |
-| `GET /members` | 统一成员列表（human+agent） |
-| `GET /computers` | 已注册机器列表 |
+| --- | --- |
 | `GET /channels` | 频道列表 |
 | `POST /channels` | 创建频道 |
-| `POST /channels/:id/messages` | 发消息（支持 asTask） |
-| `GET /channels/:id/messages` | 频道消息历史 |
-| `PUT /members/:id/permissions` | 更新 agent 权限 |
-| `PUT /members/:id/actions` | 控制 agent 启停 |
+| `GET /channels/{channel_name}/messages` | 频道消息 |
+| `POST /channels/{channel_name}/messages` | 人类发送消息，可 asTask |
+| `GET /tasks` | 任务列表 |
+| `POST /tasks` | 创建任务 |
+| `PATCH /tasks/{task_id}` | 修改任务 |
+| `GET /computers` | Computer 列表 |
+| `POST /computers/connect-command` | 生成一次性连接命令 |
+| `POST /computers/credential` | 旧 machine credential 路径，保留兼容，不作为新 UI 主路径 |
+| `GET /members` | Member 列表 |
+| `PATCH /members/{member_id}` | 修改 Member |
+| `POST /members/agents` | 创建 Agent + workspace |
+| `GET /activity` | Activity 列表 |
+| `GET /files` | 文件列表 |
+| `GET /reminders` | 提醒列表 |
+| `POST /reminders` | 创建提醒 |
+| `PATCH /reminders/{reminder_id}` | 修改提醒 |
+| `POST /dm` | 创建/发送 DM |
+| `GET/POST/DELETE /channels/{id}/members` | Channel 成员管理 |
+
+### 4.2 Agent API
+
+前缀：`/internal/agent-api`
+
+| Endpoint | 说明 |
+| --- | --- |
+| `GET /server` | server bootstrap |
+| `POST /daemon/connect` | connect ticket 换 machine token |
+| `POST /daemon/register` | daemon 注册/刷新租约 |
+| `POST /daemon/heartbeat` | daemon heartbeat |
+| `GET /events` | cursor 事件拉取 |
+| `GET /events/stream` | SSE 事件流 |
+| `GET /history` | 消息历史 |
+| `GET /search` | 消息搜索 |
+| `POST /send` | agent 发送消息 |
+| `POST/DELETE /messages/{message_ref}/reactions` | 消息表态 |
+| `GET/POST /tasks` | 任务列表/创建 |
+| `POST /tasks/claim` | 按 task number 或 message claim |
+| `POST /tasks/update-status` | 更新任务状态 |
+| `POST /tasks/{task_id}/claim` | claim 指定任务 |
+| `POST /tasks/{task_id}/unclaim` | 释放任务 |
+| `POST /tasks/{task_id}/submit` | 提交 review |
+| `PATCH /tasks/{task_id}` | 更新任务 |
+| `GET /channel-members` | channel 成员列表 |
+| `GET/POST /resolve-channel` | 解析或创建 DM channel |
+| `POST /channels/{channel_ref}/join` | 加入频道 |
+| `POST /channels/{channel_ref}/leave` | 离开频道 |
+| `GET /threads` | thread 列表 |
+| `GET /threads/{thread_id}` | thread 详情 |
+| `POST /threads/follow` | 关注 thread |
+| `POST /threads/unfollow` | 取消关注 |
+| `GET/POST/PATCH/DELETE /reminders` | 提醒能力 |
+| `POST /upload` | 上传附件 |
+| `GET /attachments/{id}` | 附件信息/预览 |
+| `GET /attachments/{id}/download` | 附件下载 |
+| `GET/POST /profile` | agent profile |
+| `POST /profile/avatar` | avatar 上传 |
+| `GET /integrations` | integrations 列表 |
+| `POST /integrations/login` | integration login stub |
+| `GET/POST /activity` | activity 读取/写入 |
+| `POST /heartbeat` | agent/workspace heartbeat 兼容路径 |
 
 ---
 
-## 4. Agent 消息投递
+## 5. Daemon 与 runtime
 
-逐条投递，daemon 监听 agent 状态：
+当前 daemon 位于 `agent/daemon/aaa-daemon`。
 
+职责：
+
+- 本地持久化 machineId。
+- 用 `SLOCK_CONNECT_TOKEN` 完成首次 connect。
+- 保存 connect 后返回的 machine token 到运行时 credential。
+- 定期 register/heartbeat。
+- 接收 daemon control hub 下发的 `start_runtime`。
+- 启动 Claude Code runtime。
+- 从 backend 事件流和 daemon WS 接收消息并投递给 runtime stdin。
+- 上报 workspace sessionId、pid、cwd、runtime 状态。
+
+当前 runtime 策略：
+
+- 已实现 Claude Code runtime。
+- `runtime=none` 可以只连接 daemon，不自动启动 runtime。
+- Agent 创建后由 control command 启动 runtime。
+- 后续扩展 Codex/Kimi/OpenCode/Antigravity/自研 runtime。
+
+---
+
+## 6. 事件和投递
+
+消息/任务/成员/提醒等变化写入 EventRecord。daemon control hub 根据 Computer 上绑定的 Agent 过滤可见事件：
+
+```text
+Public/Agent API writes domain object
+  -> append EventRecord
+  -> push_latest_events_for_server
+  -> daemon_control_hub.push_events(computer)
+  -> daemon receives event with targetAgentId
+  -> runtime delivery
 ```
-daemon 收到 SSE event（新消息）
-  ↓
-判断 agent 当前状态（通过 stream-json）
-  ↓
-idle     → 立即注入这条消息（完整内容）
-busy     → 排队等待
-urgent   → 发 [STOP] 信号，agent 在下一个自然停顿点停止
-  ↓
-agent 回到 idle → 逐条注入队列里的消息
-```
 
-agent 状态（daemon 从 stream-json 推导）：
+可见性规则：
 
-| 状态 | 信号 | 处理 |
-|------|------|------|
-| idle | 等待 stdin 输入 | 立即注入 |
-| thinking | `type: "thinking"` | 不打断 |
-| tool_executing | `type: "tool_use"` + 等 result | 不打断 |
-| responding | `type: "text"` | 不打断 |
+- `channel_id IS NULL` 的 server 级事件可见。
+- actor 是该 agent 的事件可见。
+- event channel 在 agent joined channels 内可见。
+
+ActivityLog 不进入 EventRecord 投递流，主要用于 UI 观察 agent/runtime 行为。
 
 ---
 
-## 5. EventType Enum
+## 7. 当前优先级
 
-```python
-class EventType(str, Enum):
-    MESSAGE_CREATED = "message.created"
-    MESSAGE_UPDATED = "message.updated"
-    MESSAGE_DELETED = "message.deleted"
-    MESSAGE_REACTION = "message.reaction"
-    TASK_CREATED = "task.created"
-    TASK_CLAIMED = "task.claimed"
-    TASK_UPDATED = "task.updated"
-    TASK_CLOSED = "task.closed"
-    MEMBER_JOINED = "member.joined"
-    MEMBER_LEFT = "member.left"
-    MEMBER_STATUS_CHANGED = "member.status_changed"
-    MEMBER_PROFILE_UPDATED = "member.profile_updated"
-    CHANNEL_CREATED = "channel.created"
-    CHANNEL_MEMBER_JOINED = "channel.member_joined"
-    CHANNEL_MEMBER_LEFT = "channel.member_left"
-    FILE_UPLOADED = "file.uploaded"
-    REMINDER_FIRED = "reminder.fired"
-    CONNECTION_ESTABLISHED = "connection.established"
-    CONNECTION_LOST = "connection.lost"
-    AGENT_STARTED = "agent.started"
-    AGENT_STOPPED = "agent.stopped"
-    COMPUTER_CONNECTED = "computer.connected"
-    COMPUTER_DISCONNECTED = "computer.disconnected"
-    ERROR = "error"
-```
+### 已完成或基本完成
 
-应用层 enum，DB 存 VARCHAR(80)，不加 SQL CHECK。
+- Core tables 和 seed 数据
+- Member/Computer/AgentWorkspace 模型
+- Channel/Message/Task/Reminder/File/API 基础能力
+- EventRecord append-only 流
+- daemon connect ticket + machine token lease
+- daemon register/heartbeat
+- frontend Computers/Members/Tasks/Chat 基础页
+- Agent 创建触发 runtime start control command
+- Claude Code runtime 启动和事件投递路径
 
----
+### P0 下一步
 
-## 6. 可见性规则
+- Reconnect UI：对离线 Computer 生成复用该 machineId 的连接路径或明确重连语义。
+- 前端全流程稳定：Computers -> Members -> Chat -> Task -> runtime delivery 的 E2E。
+- daemon/runtime lifecycle：stop/restart、异常退出状态回写、pending_start 超时处理。
+- 打包后的 daemon launcher，替代本地路径命令。
 
-**Event 可见性**：
-- `X.channel_id IN agent.joinedChannels`
-- OR `X.actor_id == agent.id`
-- OR `X.channel_id IS NULL`（server 级事件）
+### P1
 
-**Thread visibility**：
-- thread reply 推给 thread 参与者（DISTINCT sender_id）+ 本条 @mention 的人
-- channel 成员只看 reply count 徽标，点击才加载
+- Threads/DM/Files/Reminders/Activity 高保真前端。
+- Channel unread/mentions/inbox。
+- Agent 权限 UI + daemon 同步。
+- Stall 检测和启动 reconciliation。
+- Task review 证据：截图、录屏、测试摘要。
+- 多 runtime provider。
 
----
+### P2
 
-## 7. 优先级汇总
-
-### P0（先做）
-- per-server seq + EventType enum（event 系统）
-- Event ≠ Activity 解耦（删 ACTIVITY_EVENT_TYPES）
-- 通知模式 payload
-
-### P1（紧接着）
-- Member 拆列（computer_id, backend）
-- Task 状态机校验 + unclaim endpoint
-- Message mentions 列 + 服务端解析
-- ChannelMember last_read_seq
-- SSE 实时推送改造（基于 event-design-fix.md）
-- Agent 状态感知投递（daemon 层）
-- Stall 检测（daemon 层）
-- 启动 reconciliation
-
-### P2（后续）
-- Redis 缓存层
-- SSE ack（可观测性）
-- 权限 enforcement
-- Task 录屏/截图（webdriver）
-- Task 扩展字段（priority, tags, status_history）
-- Saved/bookmark
-- 消息编辑
-- ChannelMember role/muted
-- 自动重试 + 指数退避
+- 权限服务端 enforcement。
+- Redis/广播层，支持多后端实例。
+- Message 编辑、Saved/bookmark。
+- Channel role/muted。
+- API key 管理和生产认证。
+- Task priority/tags/status_history。
 
 ---
 
 ## 8. 架构备注
 
-- **PG 14+** 推荐（部分索引 + IN() 查询优化）
-- **Redis P1 加**：P0 纯 PG，P1 加 Redis 做缓存层
-- **所有索引带 server_id 前缀**（daemon 不跨 server）
-- **Daemon 是 relay 不是 renderer**：接收 SSE → 转发给 agent stdin
+- 当前 backend 是真正 control plane；frontend 只做 UI/BFF 调用。
+- 当前 local dev 仍保留若干兼容接口，例如 `/computers/credential` 和 agent `/heartbeat`，新流程应优先使用 connect ticket + daemon heartbeat。
+- 所有新增索引应优先考虑 `server_id` 前缀和 daemon 可见性查询。
+- 浏览器连接入口应使用 `SLOCK_CONNECT_TOKEN` connect ticket 流程。
