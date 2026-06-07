@@ -16,12 +16,54 @@ async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(text("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS token_hash VARCHAR(64)"))
+        await conn.execute(text("ALTER TABLE computers ADD COLUMN IF NOT EXISTS machine_id VARCHAR(80)"))
+        await conn.execute(text("ALTER TABLE computers ADD COLUMN IF NOT EXISTS active_daemon_id VARCHAR(80)"))
+        await conn.execute(text("ALTER TABLE computers ADD COLUMN IF NOT EXISTS daemon_lease_expires_at TIMESTAMP WITH TIME ZONE"))
         await conn.execute(text(
             "ALTER TABLE members "
             "ADD COLUMN IF NOT EXISTS computer_id UUID REFERENCES computers(id) ON DELETE SET NULL"
         ))
         await conn.execute(text("ALTER TABLE members ADD COLUMN IF NOT EXISTS backend VARCHAR(40)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_members_computer ON members(computer_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_computers_server_machine ON computers(server_id, machine_id)"))
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1
+                FROM computers
+                WHERE machine_id IS NOT NULL
+                GROUP BY server_id, machine_id
+                HAVING count(*) > 1
+              ) THEN
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_computers_server_machine
+                ON computers(server_id, machine_id)
+                WHERE machine_id IS NOT NULL;
+              END IF;
+            END $$;
+        """))
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM computers GROUP BY server_id, name HAVING count(*) > 1
+              ) THEN
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_computers_server_name
+                ON computers(server_id, name);
+              END IF;
+            END $$;
+        """))
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM members GROUP BY server_id, display_name HAVING count(*) > 1
+              ) THEN
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_members_server_display_name
+                ON members(server_id, display_name);
+              END IF;
+            END $$;
+        """))
         await conn.execute(text(
             "ALTER TABLE channel_members "
             "ADD COLUMN IF NOT EXISTS last_read_seq BIGINT NOT NULL DEFAULT 0"

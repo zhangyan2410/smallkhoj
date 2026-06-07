@@ -1,26 +1,30 @@
 """Agent API routes — daemon-facing endpoints under /internal/agent-api/."""
 
 import asyncio
+import hashlib
+import hmac
 import json
 import re
+import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
-    get_db, ActivityLog, AgentWorkspace, Channel, ChannelMember, Computer,
-    EventRecord, FileEntry, Member, Message, MessageReaction, Reminder, Server, Task,
+    get_db, ActivityLog, AgentWorkspace, ApiKey, Channel, ChannelMember, Computer,
+    ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction, Reminder, Server, Task,
 )
 from routers.auth import resolve_agent, resolve_machine
 
 router = APIRouter(prefix="/internal/agent-api", tags=["agent-api"])
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / ".data" / "uploads"
+DAEMON_LEASE_SECONDS = 90
 
 
 # ── Schemas ──────────────────────────────────────────────────
@@ -61,6 +65,7 @@ class DaemonWorkspacePayload(BaseModel):
 
 
 class DaemonRegisterRequest(BaseModel):
+    daemonId: str | None = None
     name: str | None = None
     os: str | None = None
     daemonVersion: str | None = None
@@ -70,13 +75,52 @@ class DaemonRegisterRequest(BaseModel):
 
 
 class DaemonHeartbeatRequest(BaseModel):
+    daemonId: str | None = None
     status: str = "online"
     detectedRuntimes: list | None = None
     workspaces: list[DaemonWorkspacePayload] = []
 
 
+class DaemonConnectRequest(BaseModel):
+    daemonId: str | None = None
+    machineId: str
+    name: str | None = None
+    os: str | None = None
+    daemonVersion: str | None = None
+    status: str = "online"
+    detectedRuntimes: list | None = None
+
+
 def _utcnow() -> datetime:
     return datetime.utcnow()
+
+
+def _utcnow_aware() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _now_for(value: datetime) -> datetime:
+    return datetime.now(value.tzinfo) if value.tzinfo else _utcnow()
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _lease_active(computer: Computer, now: datetime) -> bool:
+    lease_expires_at = computer.daemon_lease_expires_at
+    if lease_expires_at and lease_expires_at.tzinfo and now.tzinfo is None:
+        now = datetime.now(lease_expires_at.tzinfo)
+    return (
+        computer.status in {"online", "active"}
+        and computer.active_daemon_id is not None
+        and lease_expires_at is not None
+        and lease_expires_at > now
+    )
+
+
+def _new_machine_token() -> str:
+    return f"sk_machine_{secrets.token_urlsafe(32)}"
 
 
 def _parse_datetime(value: str) -> datetime:
@@ -727,14 +771,24 @@ async def _serialize_computer(db: AsyncSession, computer: Computer) -> dict:
         select(AgentWorkspace).where(AgentWorkspace.computer_id == computer.id)
     )
     workspaces = workspaces_result.scalars().all()
+    status = computer.status
+    if (
+        computer.daemon_lease_expires_at
+        and computer.daemon_lease_expires_at <= _now_for(computer.daemon_lease_expires_at)
+        and status in {"online", "active"}
+    ):
+        status = "offline"
     return {
         "id": str(computer.id),
         "serverId": str(computer.server_id),
         "name": computer.name,
+        "machineId": computer.machine_id,
         "os": computer.os,
         "daemonVersion": computer.daemon_version,
         "apiKeyPrefix": computer.api_key_prefix,
-        "status": computer.status,
+        "status": status,
+        "activeDaemonId": computer.active_daemon_id,
+        "daemonLeaseExpiresAt": computer.daemon_lease_expires_at.isoformat() if computer.daemon_lease_expires_at else None,
         "detectedRuntimes": computer.detected_runtimes or [],
         "agentWorkspaces": [await _serialize_workspace(db, workspace) for workspace in workspaces],
         "createdAt": computer.created_at.isoformat() if computer.created_at else None,
@@ -979,6 +1033,119 @@ async def get_server(
 
 # ── Daemon computer/workspace lifecycle ──────────────────────
 
+
+@router.post("/daemon/connect")
+async def connect_daemon(
+    body: DaemonConnectRequest,
+    authorization: str = Header(..., alias="Authorization"),
+    db: AsyncSession = Depends(get_db),
+):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing Bearer token")
+    connect_token = authorization[7:]
+    if not connect_token:
+        raise HTTPException(401, "Missing Bearer token")
+
+    token_hash = _token_hash(connect_token)
+    ticket_result = await db.execute(
+        select(ConnectTicket).where(
+            ConnectTicket.key_prefix == connect_token[:20],
+        )
+    )
+    ticket = None
+    for candidate in ticket_result.scalars().all():
+        if hmac.compare_digest(candidate.token_hash, token_hash):
+            ticket = candidate
+            break
+    if not ticket:
+        raise HTTPException(401, "Invalid connect token")
+
+    now = _now_for(ticket.expires_at)
+    if ticket.revoked_at is not None:
+        raise HTTPException(401, "Connect token revoked")
+    if ticket.consumed_at is not None:
+        raise HTTPException(409, "Connect token already used")
+    if ticket.expires_at <= now:
+        raise HTTPException(401, "Connect token expired")
+
+    server_result = await db.execute(select(Server).where(Server.id == ticket.server_id))
+    server = server_result.scalar_one_or_none()
+    if not server:
+        raise HTTPException(401, "Server not found")
+
+    machine_id = body.machineId.strip()
+    if not machine_id:
+        raise HTTPException(400, "Missing machineId")
+    daemon_id = (body.daemonId or str(uuid.uuid4())).strip()
+    requested_name = (ticket.requested_name or body.name or "unregistered-computer").strip()
+
+    machine_result = await db.execute(
+        select(Computer).where(Computer.server_id == server.id, Computer.machine_id == machine_id)
+    )
+    computer = machine_result.scalar_one_or_none()
+
+    name_result = await db.execute(
+        select(Computer).where(Computer.server_id == server.id, Computer.name == requested_name)
+    )
+    name_owner = name_result.scalar_one_or_none()
+    if name_owner and (computer is None or name_owner.id != computer.id):
+        raise HTTPException(409, f"Computer name {requested_name} already exists")
+
+    if computer and _lease_active(computer, now):
+        raise HTTPException(409, "Computer already has an active daemon")
+
+    if computer is None:
+        computer = Computer(
+            server_id=server.id,
+            machine_id=machine_id,
+            name=requested_name,
+            os=body.os or "unknown",
+            daemon_version=body.daemonVersion or "unknown",
+            status=body.status,
+            detected_runtimes=body.detectedRuntimes or [],
+        )
+        db.add(computer)
+        await db.flush()
+    else:
+        computer.name = requested_name
+        computer.os = body.os or computer.os
+        computer.daemon_version = body.daemonVersion or computer.daemon_version
+        computer.status = body.status
+        if body.detectedRuntimes is not None:
+            computer.detected_runtimes = body.detectedRuntimes
+
+    machine_token = _new_machine_token()
+    await db.execute(
+        ApiKey.__table__.delete().where(
+            ApiKey.server_id == server.id,
+            ApiKey.resource_type == "computer",
+            ApiKey.resource_id == computer.id,
+        )
+    )
+    db.add(ApiKey(
+        key_prefix=machine_token[:20],
+        token_hash=_token_hash(machine_token),
+        resource_type="computer",
+        resource_id=computer.id,
+        server_id=server.id,
+    ))
+    computer.api_key_prefix = machine_token[:20]
+    computer.active_daemon_id = daemon_id
+    computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
+    computer.last_heartbeat_at = now
+    ticket.consumed_at = now
+
+    await db.commit()
+    await db.refresh(computer)
+    return {
+        "connected": True,
+        "daemonId": daemon_id,
+        "machineToken": machine_token,
+        "leaseExpiresAt": computer.daemon_lease_expires_at.isoformat() if computer.daemon_lease_expires_at else None,
+        "computer": await _serialize_computer(db, computer),
+    }
+
+
 @router.post("/daemon/register")
 async def register_daemon(
     body: DaemonRegisterRequest,
@@ -986,12 +1153,16 @@ async def register_daemon(
     db: AsyncSession = Depends(get_db),
 ):
     computer, server, api_key = machine
-    now = _utcnow()
+    now = _utcnow_aware()
+    if body.daemonId and computer.active_daemon_id and computer.active_daemon_id != body.daemonId:
+        raise HTTPException(409, "Computer is leased by another daemon")
     computer.name = body.name or computer.name
     computer.os = body.os or computer.os
     computer.daemon_version = body.daemonVersion or computer.daemon_version
     computer.api_key_prefix = api_key.key_prefix
     computer.status = body.status
+    computer.active_daemon_id = body.daemonId or computer.active_daemon_id
+    computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
     computer.last_heartbeat_at = now
     if body.detectedRuntimes is not None:
         computer.detected_runtimes = body.detectedRuntimes
@@ -1032,8 +1203,13 @@ async def daemon_heartbeat(
     db: AsyncSession = Depends(get_db),
 ):
     computer, server, _api_key = machine
+    if body.daemonId and computer.active_daemon_id and computer.active_daemon_id != body.daemonId:
+        raise HTTPException(409, "Computer is leased by another daemon")
     computer.status = body.status
-    computer.last_heartbeat_at = _utcnow()
+    now = _utcnow_aware()
+    computer.active_daemon_id = body.daemonId or computer.active_daemon_id
+    computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
+    computer.last_heartbeat_at = now
     if body.detectedRuntimes is not None:
         computer.detected_runtimes = body.detectedRuntimes
 

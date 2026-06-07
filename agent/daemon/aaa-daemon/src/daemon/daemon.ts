@@ -11,8 +11,10 @@
  */
 
 import { EventEmitter } from 'events';
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
-import { arch, hostname, platform, release } from 'os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { dirname, join } from 'path';
+import { randomUUID } from 'crypto';
+import { arch, homedir, hostname, platform, release } from 'os';
 import type { Credential, DaemonConfig } from '../types.js';
 import { AgentProxy, generateProxyToken } from '../proxy/agent-proxy.js';
 import { WebSocketManager } from '../websocket.js';
@@ -68,6 +70,8 @@ export class DaemonCore extends EventEmitter {
   private wrapper: SlockWrapperResult | null = null;
   private stopping = false;
   private daemonRegistrationEnabled = false;
+  private daemonId: string = randomUUID();
+  private machineId: string | null = null;
 
   constructor(config: DaemonConfig) {
     super();
@@ -134,7 +138,7 @@ export class DaemonCore extends EventEmitter {
     this.stopping = false;
 
     // 1. Load credential
-    this.credential = this.loadCredential();
+    this.credential = await this.loadCredential();
     if (!this.credential) {
       throw new Error('Failed to load credential');
     }
@@ -194,7 +198,7 @@ export class DaemonCore extends EventEmitter {
     this.wsManager.connect();
 
     // 5b. Inbox polling fallback when no WS
-    if (this.config.wsUrl === 'none' || !this.config.wsUrl) {
+    if ((this.config.wsUrl === 'none' || !this.config.wsUrl) && this.credential.agentId) {
       this.startInboxPolling();
     }
 
@@ -248,11 +252,15 @@ export class DaemonCore extends EventEmitter {
 
   // ── Credential ─────────────────────────────────────────────
 
-  private loadCredential(): Credential | null {
+  private async loadCredential(): Promise<Credential | null> {
     if (this.config.importSlockRuntime) {
       const imported = importSlockRuntime(this.config.importSlockRuntime);
       this.log(`Imported Slock runtime credentials from ${imported.source}`, 'info');
       return imported.credential;
+    }
+
+    if (process.env.SLOCK_CONNECT_TOKEN) {
+      return this.connectMachineCredential(process.env.SLOCK_CONNECT_TOKEN);
     }
 
     const credPath = this.config.credentialPath;
@@ -279,6 +287,76 @@ export class DaemonCore extends EventEmitter {
       serverId: process.env.SLOCK_SERVER_ID || 'prototype',
       token: process.env.SLOCK_AGENT_TOKEN || process.env.ANTHROPIC_AUTH_TOKEN || 'prototype-token',
       serverUrl: this.config.serverUrl,
+      wsUrl: this.config.wsUrl,
+    };
+  }
+
+  private machineIdPath(): string {
+    return process.env.AAA_DAEMON_MACHINE_ID_FILE
+      || process.env.SLOCK_MACHINE_ID_FILE
+      || join(homedir(), '.slock', 'aaa-daemon', 'machine-id');
+  }
+
+  private loadMachineId(): string {
+    if (this.machineId) return this.machineId;
+    const path = this.machineIdPath();
+    if (existsSync(path)) {
+      const existing = readFileSync(path, 'utf-8').trim();
+      if (existing) {
+        this.machineId = existing;
+        return existing;
+      }
+    }
+    const next = randomUUID();
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${next}\n`, 'utf-8');
+    this.machineId = next;
+    return next;
+  }
+
+  private async connectMachineCredential(connectToken: string): Promise<Credential> {
+    const serverUrl = this.config.serverUrl;
+    const machineId = this.loadMachineId();
+    const response = await fetch(new URL('/internal/agent-api/daemon/connect', serverUrl), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${connectToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        daemonId: this.daemonId,
+        machineId,
+        name: hostname(),
+        os: `${platform()} ${release()} ${arch()}`,
+        daemonVersion: '0.2.0',
+        status: 'online',
+        detectedRuntimes: [
+          {
+            type: this.config.runtime ?? 'daemon',
+            status: this.config.runtime === 'claude_code' ? 'available' : 'idle',
+            command: this.config.runtimeCommand,
+          },
+        ],
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`Daemon connect failed: ${response.status} ${text.slice(0, 200)}`);
+    }
+    const data = await response.json() as {
+      daemonId?: string;
+      machineToken?: string;
+      computer?: { serverId?: string };
+    };
+    if (!data.machineToken) {
+      throw new Error('Daemon connect did not return a machine token');
+    }
+    if (data.daemonId) this.daemonId = data.daemonId;
+    return {
+      agentId: this.config.agentId || process.env.SLOCK_AGENT_ID || '',
+      serverId: data.computer?.serverId || process.env.SLOCK_SERVER_ID || 'unknown',
+      token: data.machineToken,
+      serverUrl,
       wsUrl: this.config.wsUrl,
     };
   }
@@ -439,7 +517,7 @@ export class DaemonCore extends EventEmitter {
     this.stopDaemonHeartbeat();
     this.daemonHeartbeatTimer = setInterval(() => {
       void this.registerDaemonLifecycle('heartbeat');
-    }, 30_000);
+    }, 15_000);
   }
 
   private stopDaemonHeartbeat(): void {
@@ -511,8 +589,22 @@ export class DaemonCore extends EventEmitter {
     const workspacePath = this.config.workspacePath ?? process.cwd();
     const runtimeStatus = this.runtimeDriver ? (this.runtimeDriver.busy ? 'running' : 'idle') : 'idle';
     const runtimeCommand = this.config.runtimeCommand ?? (this.config.runtime === 'claude_code' ? 'claude' : undefined);
+    const workspaces = this.credential.agentId ? [
+      {
+        agentId: this.credential.agentId,
+        runtime: this.config.runtime ?? 'daemon',
+        runtimeCommand,
+        runtimeModel: this.config.runtimeModel,
+        status: runtimeStatus,
+        sessionId: this.runtimeSessionId,
+        cwd: workspacePath,
+        pid: this.runtimeDriver?.pid,
+        backend: this.config.runtime === 'claude_code' ? 'Claude' : undefined,
+      },
+    ] : [];
     const body = {
-      name: hostname(),
+      daemonId: this.daemonId,
+      name: process.env.SLOCK_CONNECT_TOKEN ? undefined : hostname(),
       os: `${platform()} ${release()} ${arch()}`,
       daemonVersion: '0.2.0',
       status: 'online',
@@ -523,19 +615,7 @@ export class DaemonCore extends EventEmitter {
           command: runtimeCommand,
         },
       ],
-      workspaces: [
-        {
-          agentId: this.credential.agentId,
-          runtime: this.config.runtime ?? 'daemon',
-          runtimeCommand,
-          runtimeModel: this.config.runtimeModel,
-          status: runtimeStatus,
-          sessionId: this.runtimeSessionId,
-          cwd: workspacePath,
-          pid: this.runtimeDriver?.pid,
-          backend: this.config.runtime === 'claude_code' ? 'Claude' : undefined,
-        },
-      ],
+      workspaces,
     };
 
     try {

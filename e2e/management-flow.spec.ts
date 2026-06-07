@@ -18,25 +18,25 @@ async function apiPost(path: string, body: Record<string, unknown>) {
   return res.json()
 }
 
-async function registerDaemon(apiKey: string, computerId: string, name: string) {
-  const res = await fetch(`${API_BASE}/internal/agent-api/daemon/register`, {
+async function connectDaemon(connectToken: string, machineId: string, name: string) {
+  const res = await fetch(`${API_BASE}/internal/agent-api/daemon/connect`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "X-Computer-Id": computerId,
+      Authorization: `Bearer ${connectToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
+      daemonId: `daemon-${machineId}`,
+      machineId,
       name,
       os: "e2e-os",
       daemonVersion: "e2e",
       status: "online",
       detectedRuntimes: ["custom"],
-      workspaces: [],
     }),
   })
   if (!res.ok) {
-    throw new Error(`daemon register failed: ${res.status} ${await res.text()}`)
+    throw new Error(`daemon connect failed: ${res.status} ${await res.text()}`)
   }
   return res.json()
 }
@@ -69,7 +69,7 @@ async function fillByLabel(page: Page, label: string, value: string) {
 }
 
 test.describe("Management product flow", () => {
-  test("browser flow: credential, computer, agent, channel, message, and DM", async ({ page }) => {
+  test("browser flow: daemon connect, computer, agent, channel, message, and DM", async ({ page }) => {
     const stamp = Date.now()
     const computerName = `e2e-ui-computer-${stamp}`
     const agentName = `e2e-ui-agent-${stamp}`
@@ -79,24 +79,32 @@ test.describe("Management product flow", () => {
     const dmMessage = `private dm ${stamp}`
     const dmReply = `agent dm reply ${stamp}`
 
-    // 1. Generate machine credential on Computers page
+    // 1. Generate one-time daemon connect command on Computers page
     await page.goto(`${FRONTEND_BASE}/computers`)
     await expect(page.getByRole("heading", { name: "Computers" })).toBeVisible()
     await fillByLabel(page, "Computer Name", computerName)
-    await page.getByRole("button", { name: "Generate Credential" }).click()
+    await page.getByRole("button", { name: "Generate Connect Command" }).click()
 
-    const apiKey = (await page.getByTestId("generated-api-key").textContent())?.trim()
-    const computerId = (await page.getByTestId("generated-computer-id").textContent())?.trim()
-    await expect(page.getByTestId("connection-command")).toContainText("npx @slock-ai/daemon@latest")
-    await expect(page.getByTestId("connection-command")).toContainText("--api-key")
+    const command = (await page.getByTestId("connection-command").textContent())?.trim() ?? ""
+    const connectToken = /SLOCK_CONNECT_TOKEN=(sk_connect_[^\s]+)/.exec(command)?.[1]
+    await expect(page.getByTestId("connection-command")).toContainText("agent/daemon/aaa-daemon")
+    await expect(page.getByTestId("connection-command")).toContainText("node dist/cmd/main.js start")
+    await expect(page.getByTestId("connection-command")).toContainText("SLOCK_CONNECT_TOKEN=sk_connect_")
+    await expect(page.getByTestId("connection-command")).toContainText("--proxy-port 0")
+    await expect(page.getByTestId("connection-command")).toContainText("--register-daemon")
+    await expect(page.getByTestId("connection-command")).not.toContainText("@slock-ai/daemon")
+    expect(connectToken).toMatch(/^sk_connect_/)
+
+    // 2. Connect daemon using generated one-time token; computer is created only after this.
+    const machineId = `e2e-machine-${stamp}`
+    const connect = await connectDaemon(connectToken!, machineId, computerName)
+    const apiKey = connect.machineToken as string
+    const computerId = connect.computer.id as string
     expect(apiKey).toMatch(/^sk_machine_/)
     expect(computerId).toMatch(/^[0-9a-f-]{36}$/)
 
-    // 2. Register daemon using generated credential
-    await registerDaemon(apiKey!, computerId!, computerName)
-
     await page.reload()
-    await expect(page.getByText(computerName)).toBeVisible()
+    await expect(page.getByText(computerName, { exact: true })).toBeVisible()
     await expect(page.getByText("e2e-os").first()).toBeVisible()
     await expect(page.getByText("custom").first()).toBeVisible()
 
@@ -143,7 +151,7 @@ test.describe("Management product flow", () => {
     await page.getByRole("button", { name: "Send message" }).click()
     await expect(page.getByText(channelMessage)).toBeVisible()
 
-    // 7. Agent replies via agent-facing API using generated machine credential
+    // 7. Agent replies via agent-facing API using the daemon-issued machine token
     await agentSend(apiKey!, agentId!, `#${channelName}`, channelReply)
     await page.reload()
     await expect(page.getByText(channelReply)).toBeVisible()

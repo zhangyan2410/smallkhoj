@@ -267,97 +267,144 @@ hello
 SLOCKMSG
 ```
 
-## Scenario: User Management Flow APIs And Agent-Facing E2E
+## Scenario: One Computer One Daemon Connect Model
 
 ### 1. Scope / Trigger
 
-- Trigger: product management flow APIs and browser E2E span UI, public API, machine credentials, daemon registration, member/workspace binding, channel membership, and agent-facing send behavior.
-- This is a cross-layer contract: browser UI -> `/api/v1` management endpoints -> database models -> `/internal/agent-api` daemon/agent endpoints -> chat UI verification.
+- Trigger: the computer connection flow spans browser UI, public API, database identity, daemon startup, daemon-facing auth, heartbeat lease renewal, and agent workspace creation.
+- The invariant is: a computer row exists only after a daemon successfully connects with a one-time ticket; one `machineId` maps to one computer per server; one computer has at most one active daemon lease.
 
 ### 2. Signatures
 
-- `POST /api/v1/computers/credential`
+- `POST /api/v1/computers/connect-command`
+- `POST /internal/agent-api/daemon/connect`
+- `POST /internal/agent-api/daemon/register`
+- `POST /internal/agent-api/daemon/heartbeat`
 - `POST /api/v1/members/agents`
 - `POST /api/v1/channels`
 - `POST /api/v1/channels/{channel_id}/members`
 - `DELETE /api/v1/channels/{channel_id}/members/{member_id}`
 - `GET /api/v1/channels/{channel_id}/members`
 - `POST /api/v1/dm`
-- Existing daemon registration: `POST /internal/agent-api/daemon/register`
-- Existing agent send: `POST /internal/agent-api/send`
+- Agent send: `POST /internal/agent-api/send`
 
 ### 3. Contracts
 
 - Public management endpoints require `X-Public-Key: sk_public_local` in local test/dev flows.
-- `POST /api/v1/computers/credential` request:
-  - `name?: string`
-  - `serverUrl?: string`
-- `POST /api/v1/computers/credential` response:
-  - `computerId: string`
-  - `apiKey: string` with `sk_machine_` prefix
-  - `command: string` containing `npx @slock-ai/daemon@latest --server-url ... --api-key ...`
-- The generated machine credential must be persisted in `api_keys` with `resource_type="computer"` and a SHA-256 `token_hash`.
-- `POST /api/v1/members/agents` request:
+- `POST /api/v1/computers/connect-command` request:
   - `name: string`
-  - `computerId: uuid`
-  - `runtime?: string`
-  - `runtimeCommand?: string`
-  - `runtimeModel?: string`
-  - `backend?: string`
-  - `cwd?: string`
-- Creating an agent must create both a `Member(kind="agent")` and an `AgentWorkspace` bound to the selected computer/runtime.
-- `POST /api/v1/channels` creates `public` or `private` channels and adds the creator to `channel_members`.
-- `POST /api/v1/channels/{channel_id}/members` and `DELETE /api/v1/channels/{channel_id}/members/{member_id}` operate by UUID channel id, not by display channel name.
-- `POST /api/v1/dm` request uses peer display name (`peer: string`) and returns a real DM channel name shaped `dm:<uuid>-<uuid>`.
-- Browser routes may contain URL-encoded DM names (`dm%3A...`). Frontend code must decode route params once for state/display and encode once when constructing API path segments.
-- Agent-facing sends use:
-  - Header `Authorization: Bearer <machine-or-agent-token>`
-  - Header `X-Agent-Id: <agent-member-id>`
-  - Body `{ "target": "#channel" | "dm:<peer_display_name>", "content": string }`
-- For agent-facing DM sends, the target is `dm:<peer display name>` such as `dm:zy-ean`, not the full stored DM channel name `dm:<uuid>-<uuid>`.
+  - `serverUrl?: string`
+- `POST /api/v1/computers/connect-command` response:
+  - `connectToken: string` with `sk_connect_` prefix
+  - `command: string`
+  - `expiresAt: iso datetime`
+  - Must not include `computerId`, `apiKey`, or any `sk_machine_...` token.
+- The command must contain:
+  - `cd <absolute repo path>/agent/daemon/aaa-daemon`
+  - `SLOCK_CONNECT_TOKEN=sk_connect_...`
+  - `node dist/cmd/main.js start --foreground`
+  - `--runtime none`
+  - `--server ...`
+  - `--ws none`
+  - `--proxy-port 0`
+  - `--register-daemon`
+  - It must not include `--agent-id` by default and must not reference `@slock-ai/daemon`.
+- Connect ticket storage:
+  - `connect_tickets.token_hash` stores SHA-256 of the full connect token.
+  - `connect_tickets.key_prefix` stores `token[:20]` for lookup.
+  - Tickets have `requested_name`, `expires_at`, `consumed_at`, and `revoked_at`.
+- `POST /internal/agent-api/daemon/connect` request:
+  - Header `Authorization: Bearer sk_connect_...`
+  - Body `{ daemonId?: string, machineId: string, name?: string, os?: string, daemonVersion?: string, status?: string, detectedRuntimes?: list }`
+- `POST /internal/agent-api/daemon/connect` response:
+  - `connected: true`
+  - `daemonId: string`
+  - `machineToken: string` with `sk_machine_` prefix
+  - `leaseExpiresAt: iso datetime`
+  - `computer: serialized Computer`
+- Database identity:
+  - `computers.machine_id` is the daemon-generated persistent machine UUID.
+  - Unique per server when present: `(server_id, machine_id)`.
+  - Computer names are unique per server.
+  - Member display names are unique per server.
+  - Lease fields are `active_daemon_id`, `daemon_lease_expires_at`, and `last_heartbeat_at`.
+- Daemon behavior:
+  - First startup creates a UUID `machineId` under `~/.slock/aaa-daemon/machine-id` unless `AAA_DAEMON_MACHINE_ID_FILE` or `SLOCK_MACHINE_ID_FILE` overrides it.
+  - `SLOCK_CONNECT_TOKEN` is used only for `/daemon/connect`.
+  - The returned `machineToken` is kept in memory and used for `/daemon/register`, `/daemon/heartbeat`, and agent-facing calls after a user-created agent exists.
+  - Heartbeat interval is 15 seconds; backend lease window is 90 seconds.
+  - No `agentId` means no workspace registration and no inbox polling.
+- Agent creation:
+  - `POST /api/v1/members/agents` creates both a `Member(kind="agent")` and an `AgentWorkspace` bound to a selected computer/runtime.
+  - Daemon connect must not auto-create an agent.
+- Existing management/chat contracts still apply:
+  - Channel member APIs operate by UUID channel id.
+  - `POST /api/v1/dm` uses peer display name and returns a stored `dm:<uuid>-<uuid>` channel.
+  - Agent-facing DM sends target `dm:<peer display name>`, not the stored DM channel name.
 
 ### 4. Validation & Error Matrix
 
 - Missing public key -> `401 Missing API key`.
 - Invalid public key -> `401 Invalid API key`.
-- Missing computer credential name -> allowed; default to `unregistered-computer`.
+- Missing connect-command name -> `400 Missing name`.
+- Invalid connect token -> `401 Invalid connect token`.
+- Revoked connect token -> `401 Connect token revoked`.
+- Expired connect token -> `401 Connect token expired`.
+- Reused connect token -> `409 Connect token already used`.
+- Missing daemon `machineId` -> `400 Missing machineId`.
+- Duplicate computer name for a different machine -> `409 Computer name <name> already exists`.
+- Same `machineId` while its computer has an unexpired active lease -> `409 Computer already has an active daemon`.
+- Same `machineId` after lease expiry -> reuse the existing computer and issue a fresh machine token.
+- Duplicate member display name -> `409 Member name <name> already exists`.
 - Invalid `computerId` for agent creation -> `400 Invalid computerId`.
 - Unknown `computerId` for agent creation -> `404 Computer not found`.
-- Missing channel name -> `400 Missing name`.
-- Duplicate channel name on a server -> `409 Channel #<name> already exists`.
-- Invalid channel member channel UUID -> `400 Invalid channel id`.
-- Unknown channel id -> `404 Channel not found`.
-- Missing channel member id -> `400 Missing memberId`.
-- Unknown channel member id -> `404 Member not found`.
-- Adding an existing channel member -> `{ "added": false, "reason": "already_member" }`.
-- Removing a non-member -> `{ "removed": false, "reason": "not_member" }`.
-- Agent-facing DM send using full stored DM name `dm:<uuid>-<uuid>` -> peer lookup fails with `404 Peer ... not found`; use `dm:<peer display name>`.
+- Missing channel/member identifiers keep their existing `400`/`404` behavior.
 
 ### 5. Good/Base/Bad Cases
 
-- Good: browser generates a machine credential, then daemon registration uses that exact `sk_machine_...` token with `X-Computer-Id`.
-- Good: browser creates an agent bound to the generated computer and selected runtime; e2e looks up the member id only after verifying the UI-created agent is visible.
-- Good: browser creates a channel, adds the agent by channel id/member id, sends a human message, and verifies an agent-authored response created through `/internal/agent-api/send`.
-- Good: browser opens a DM through `/api/v1/dm`, sends a human DM message, then verifies an agent-authored response sent to `dm:zy-ean`.
+- Good: browser generates a connect command; no computer row appears until daemon calls `/daemon/connect`.
+- Good: daemon connects with a persistent `machineId`; backend creates/reuses one computer and returns a fresh `sk_machine_...` token.
+- Good: second daemon for the same online `machineId` is rejected until heartbeat lease expiry.
+- Good: user creates an agent later on Members and binds it to the connected computer.
+- Good: browser creates a channel, adds the agent by channel id/member id, sends a human message, and verifies an agent-authored response through `/internal/agent-api/send`.
+- Bad: generating a long-lived machine token from the browser and creating a computer before the daemon has proven it can connect.
+- Bad: putting `--agent-id aaaa...` into the default computer connection command, because daemon connect must not auto-create or steal an agent workspace.
 - Bad: testing agent replies by posting to public `/api/v1/channels/{channel}/messages` with `sender: agentName`; that proves message rendering, not agent-facing auth/send contracts.
-- Bad: using the URL-encoded DM route segment directly as the public API channel name or agent-facing DM target.
 
 ### 6. Tests Required
 
-- Browser E2E for the full management flow:
-  - UI generates machine credential and command
-  - generated credential registers a daemon/computer
-  - UI creates an agent bound to that computer/runtime
-  - UI creates a channel and adds the agent
-  - UI sends a channel message
-  - agent-facing `/internal/agent-api/send` posts a channel reply using the generated machine credential plus `X-Agent-Id`
-  - UI starts a DM and sends a DM message
-  - agent-facing `/internal/agent-api/send` posts a DM reply with target `dm:<peer display name>`
-- Regression assertions:
-  - DM route heading displays decoded `dm:` text, not `dm%3A`
-  - Playwright artifacts under `frontend/test-results` and `frontend/playwright-report` are ignored
+- API tests:
+  - `connect-command` does not create a computer.
+  - `/daemon/connect` creates a computer after a valid token.
+  - Same offline `machineId` reuses the existing computer.
+  - Same online `machineId` returns `409`.
+  - Duplicate computer/member names return `409`.
+  - Expired or reused connect tokens return `401`/`409`.
+- Daemon tests:
+  - `machineId` is generated once and persists across restarts.
+  - `--proxy-port 0` starts on an available port.
+  - No `--agent-id` means no workspace payload.
+  - Heartbeat renews the lease.
+- Browser E2E:
+  - Generated command includes `SLOCK_CONNECT_TOKEN` and excludes `sk_machine_`.
+  - Computer list does not show the pending computer until daemon connect succeeds.
+  - Connected computer appears online and the pending command hides.
+  - Duplicate agent name displays the backend `409` error.
+  - DM route heading displays decoded `dm:` text, not `dm%3A`.
 
 ### 7. Wrong vs Correct
+
+#### Wrong
+
+```bash
+npx @slock-ai/daemon@latest --server-url http://localhost:8000 --api-key sk_machine_...
+```
+
+#### Correct
+
+```bash
+cd /path/to/smallkhoj/agent/daemon/aaa-daemon && SLOCK_CONNECT_TOKEN=sk_connect_... node dist/cmd/main.js start --foreground --runtime none --server http://localhost:8000 --ws none --proxy-port 0 --register-daemon
+```
 
 #### Wrong
 

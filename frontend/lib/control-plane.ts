@@ -64,10 +64,13 @@ export type Computer = {
   id: string
   serverId?: string
   name: string
+  machineId?: string | null
   os?: string | null
   daemonVersion?: string | null
   apiKeyPrefix?: string | null
   status: string
+  activeDaemonId?: string | null
+  daemonLeaseExpiresAt?: string | null
   detectedRuntimes: RuntimeInfo[]
   agentWorkspaces: AgentWorkspace[]
   createdAt?: string | null

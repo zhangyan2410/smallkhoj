@@ -1,4 +1,7 @@
 import Link from "next/link"
+import { revalidatePath } from "next/cache"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { ArrowLeft, Bot, Clock, Cpu, HardDrive, Network, Terminal } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -15,8 +18,60 @@ import {
   type Computer,
 } from "@/lib/control-plane"
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
+const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
+
 async function getComputers() {
   return apiGet<{ computers: Computer[]; count?: number }>("/api/v1/computers", { computers: [], count: 0 })
+}
+
+function searchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function parseCredentialCookie(value?: string) {
+  if (!value) return null
+  try {
+    const data = JSON.parse(value) as { name?: unknown; command?: unknown; expiresAt?: unknown }
+    if (typeof data.name !== "string" || typeof data.command !== "string" || typeof data.expiresAt !== "string") {
+      return null
+    }
+    return { name: data.name, command: data.command, expiresAt: data.expiresAt }
+  } catch {
+    return null
+  }
+}
+
+async function createComputerConnectCommandAction(formData: FormData) {
+  "use server"
+
+  const name = String(formData.get("name") || "").trim() || "unregistered-computer"
+  const response = await fetch(`${API_BASE}/api/v1/computers/connect-command`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    body: JSON.stringify({ name }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/computers?error=${encodeURIComponent(detail)}`)
+  }
+
+  const data = await response.json()
+  const cookieStore = await cookies()
+  cookieStore.set("smallkhoj_last_computer_connect_command", JSON.stringify({
+    name,
+    command: data.command,
+    expiresAt: data.expiresAt,
+  }), {
+    httpOnly: true,
+    maxAge: 300,
+    path: "/computers",
+    sameSite: "lax",
+  })
+  revalidatePath("/computers")
+  redirect("/computers?created=1")
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -36,8 +91,22 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   )
 }
 
-export default async function ComputersPage() {
+export default async function ComputersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const resolvedSearchParams = (await searchParams) ?? {}
+  const cookieStore = await cookies()
   const { computers } = await getComputers()
+  const pendingCredential = searchValue(resolvedSearchParams.created)
+    ? parseCredentialCookie(cookieStore.get("smallkhoj_last_computer_connect_command")?.value)
+    : null
+  const connectedComputer = pendingCredential
+    ? computers.find((computer) => computer.name === pendingCredential.name && (computer.status === "online" || computer.status === "active"))
+    : null
+  const credential = connectedComputer ? null : pendingCredential
+  const error = searchValue(resolvedSearchParams.error)
   const workspaceCount = computers.reduce((total, computer) => total + computer.agentWorkspaces.length, 0)
   const runningWorkspaces = computers.reduce(
     (total, computer) => total + computer.agentWorkspaces.filter((workspace) => workspace.status === "running").length,
@@ -102,7 +171,12 @@ export default async function ComputersPage() {
           </Card>
         </div>
 
-        <ConnectComputerForm />
+        <ConnectComputerForm
+          action={createComputerConnectCommandAction}
+          credential={credential}
+          connectedComputerName={connectedComputer?.name}
+          error={error}
+        />
 
         <div className="space-y-4">
           {computers.map((computer) => (
@@ -123,11 +197,12 @@ export default async function ComputersPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 pt-4">
-                <div className="grid gap-2 sm:grid-cols-4">
+                <div className="grid gap-2 sm:grid-cols-5">
                   <Field label="computerId" value={shortId(computer.id)} />
+                  <Field label="machineId" value={shortId(computer.machineId)} />
                   <Field label="serverId" value={shortId(computer.serverId)} />
                   <Field label="apiKey" value={computer.apiKeyPrefix} />
-                  <Field label="updated" value={formatTime(computer.updatedAt)} />
+                  <Field label="lease" value={formatTime(computer.daemonLeaseExpiresAt)} />
                 </div>
 
                 <div className="space-y-2">

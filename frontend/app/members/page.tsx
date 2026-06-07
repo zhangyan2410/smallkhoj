@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 import { ArrowLeft, Bot, Cpu, HardDrive, Shield, UserRound } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -32,13 +33,19 @@ async function createAgentAction(formData: FormData) {
   const computerId = formData.get("computerId") as string
   const runtime = formData.get("runtime") as string || "claude_code"
   const backend = formData.get("backend") as string
-  if (!name || !computerId) return
-  await fetch(`${API_BASE}/api/v1/members/agents`, {
+  if (!name || !computerId) redirect("/members?error=Missing%20name%20or%20computer")
+  const response = await fetch(`${API_BASE}/api/v1/members/agents`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
     body: JSON.stringify({ name, computerId, runtime, backend }),
   })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/members?error=${encodeURIComponent(detail)}`)
+  }
   revalidatePath("/members")
+  redirect("/members")
 }
 
 function profileName(member: Member) {
@@ -70,9 +77,19 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   )
 }
 
-export default async function MembersPage() {
+function searchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
+}
+
+export default async function MembersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const resolvedSearchParams = (await searchParams) ?? {}
   const { members } = await getMembers()
   const { computers } = await getComputers()
+  const error = searchValue(resolvedSearchParams.error)
   const humans = members.filter((member) => member.kind === "human").length
   const agents = members.filter((member) => member.kind === "agent").length
   const boundAgents = members.filter((member) => member.kind === "agent" && member.computerId).length
@@ -143,6 +160,7 @@ export default async function MembersPage() {
             <CardDescription>Create a new agent and bind it to a computer runtime.</CardDescription>
           </CardHeader>
           <CardContent>
+            {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
             <form action={createAgentAction} className="flex flex-wrap items-end gap-3">
               <div>
                 <label htmlFor="agent-name" className="mb-1.5 block text-xs font-medium text-muted-foreground">

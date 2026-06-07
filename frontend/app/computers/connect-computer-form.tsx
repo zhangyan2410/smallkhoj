@@ -1,40 +1,37 @@
 "use client"
 
-import { useState, useTransition, type FormEvent } from "react"
 import { Terminal } from "lucide-react"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { apiPost } from "@/lib/control-plane"
 
 type CredentialResponse = {
-  created: boolean
-  computerId: string
-  apiKey: string
+  name: string
   command: string
+  expiresAt: string
 }
 
-export function ConnectComputerForm() {
-  const [name, setName] = useState("")
-  const [credential, setCredential] = useState<CredentialResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
+export function ConnectComputerForm({
+  action,
+  credential,
+  connectedComputerName,
+  error,
+}: {
+  action: (formData: FormData) => Promise<void>
+  credential?: CredentialResponse | null
+  connectedComputerName?: string | null
+  error?: string | null
+}) {
+  const router = useRouter()
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setError(null)
-    startTransition(async () => {
-      try {
-        const result = await apiPost<CredentialResponse>("/api/v1/computers/credential", {
-          name: name.trim() || "unregistered-computer",
-        })
-        setCredential(result)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to generate credential")
-      }
-    })
-  }
+  useEffect(() => {
+    if (!credential) return
+    const timer = window.setInterval(() => router.refresh(), 3000)
+    return () => window.clearInterval(timer)
+  }, [credential, router])
 
   return (
     <Card>
@@ -43,10 +40,10 @@ export function ConnectComputerForm() {
           <Terminal className="size-4" />
           Connect New Computer
         </CardTitle>
-        <CardDescription>Generate a machine credential to connect a new computer via daemon.</CardDescription>
+        <CardDescription>Generate a one-time connect command; the computer is created after the daemon connects.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <form onSubmit={handleSubmit} className="flex items-end gap-3">
+        <form action={action} className="flex items-end gap-3">
           <div className="flex-1">
             <label htmlFor="computer-name" className="mb-1.5 block text-xs font-medium text-muted-foreground">
               Computer Name
@@ -54,19 +51,21 @@ export function ConnectComputerForm() {
             <Input
               id="computer-name"
               name="name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
               placeholder="my-computer"
               className="max-w-xs"
             />
           </div>
-          <Button type="submit" size="sm" disabled={isPending}>
-            {isPending ? "Generating..." : "Generate Credential"}
+          <Button type="submit" size="sm">
+            Generate Connect Command
           </Button>
         </form>
 
         {credential && (
           <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-medium uppercase text-muted-foreground">Pending Connection</div>
+              <div className="text-xs text-muted-foreground">Waiting for {credential.name}</div>
+            </div>
             <div className="text-xs font-medium uppercase text-muted-foreground">Connection Command</div>
             <code
               data-testid="connection-command"
@@ -76,18 +75,24 @@ export function ConnectComputerForm() {
             </code>
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="min-w-0">
-                <div className="text-[11px] font-medium uppercase text-muted-foreground">Computer ID</div>
-                <div data-testid="generated-computer-id" className="truncate font-mono text-xs">
-                  {credential.computerId}
+                <div className="text-[11px] font-medium uppercase text-muted-foreground">Computer Name</div>
+                <div data-testid="pending-computer-name" className="truncate font-mono text-xs">
+                  {credential.name}
                 </div>
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] font-medium uppercase text-muted-foreground">Machine API Key</div>
-                <div data-testid="generated-api-key" className="truncate font-mono text-xs">
-                  {credential.apiKey}
+                <div className="text-[11px] font-medium uppercase text-muted-foreground">Expires</div>
+                <div className="truncate font-mono text-xs">
+                  {credential.expiresAt}
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {connectedComputerName && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+            {connectedComputerName} connected.
           </div>
         )}
 

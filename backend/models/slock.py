@@ -41,6 +41,7 @@ class Server(Base):
 class Member(Base):
     __tablename__ = "members"
     __table_args__ = (
+        UniqueConstraint("server_id", "display_name", name="uq_members_server_display_name"),
         Index("idx_members_server", "server_id"),
         Index("idx_members_computer", "computer_id"),
     )
@@ -73,17 +74,29 @@ class Member(Base):
 class Computer(Base):
     __tablename__ = "computers"
     __table_args__ = (
+        UniqueConstraint("server_id", "name", name="uq_computers_server_name"),
         Index("idx_computers_server", "server_id"),
+        Index("idx_computers_server_machine", "server_id", "machine_id"),
+        Index(
+            "uq_computers_server_machine",
+            "server_id",
+            "machine_id",
+            unique=True,
+            postgresql_where=text("machine_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    machine_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     os: Mapped[str] = mapped_column(String(80), nullable=False)
     daemon_version: Mapped[str] = mapped_column(String(80), nullable=False)
     api_key_prefix: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="offline")
     detected_runtimes: Mapped[list] = mapped_column(JSONB, default=list)
+    active_daemon_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    daemon_lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
@@ -383,3 +396,23 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     server = relationship("Server", back_populates="api_keys")
+
+
+class ConnectTicket(Base):
+    __tablename__ = "connect_tickets"
+    __table_args__ = (
+        Index("idx_connect_tickets_prefix", "key_prefix"),
+        Index("idx_connect_tickets_server", "server_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id"), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(20), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    requested_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+    server = relationship("Server")

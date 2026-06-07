@@ -37,7 +37,7 @@ program
   .description('Start the daemon')
   .option('--foreground', 'Run in foreground (no daemonization)')
   .option('-c, --config <path>', 'Path to credential JSON')
-  .option('-p, --proxy-port <port>', 'HTTP proxy port', '3456')
+  .option('-p, --proxy-port <port>', 'HTTP proxy port', '0')
   .option('-s, --server <url>', 'Slock server URL', 'https://api.slock.ai')
   .option('-w, --ws <url>', 'WebSocket URL', 'wss://ws.slock.ai')
   .option('--agent-id <id>', 'Agent ID')

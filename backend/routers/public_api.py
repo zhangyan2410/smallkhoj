@@ -3,8 +3,10 @@
 import hashlib
 import re
 import secrets
+import shlex
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from fastapi import HTTPException
 from fastapi import APIRouter, Depends, Query, Request
@@ -13,13 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
     get_db, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
-    Computer, Member, Message, EventRecord, FileEntry, Reminder, Server, Task,
+    Computer, ConnectTicket, Member, Message, EventRecord, FileEntry, Reminder, Server, Task,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
 PUBLIC_API_KEY = "sk_public_local"
+DEFAULT_LOCAL_AGENT_ID = "aaaa0000-0000-0000-0000-000000000001"
+DEFAULT_LOCAL_DAEMON_DIR = Path(__file__).resolve().parents[2] / "agent" / "daemon" / "aaa-daemon"
+CONNECT_TICKET_TTL_SECONDS = 300
 
 PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_message_sent": "message.created",
@@ -39,11 +44,79 @@ EVENT_TYPE_ALIASES = {
     "reminder.updated": "reminder_updated",
 }
 
+
+def _computer_connection_command(
+    token: str,
+    server_url: str,
+    agent_id: str = DEFAULT_LOCAL_AGENT_ID,
+    daemon_dir: Path = DEFAULT_LOCAL_DAEMON_DIR,
+) -> str:
+    """Command shown in the UI for connecting this repo's local aaa-daemon."""
+    return " ".join(
+        [
+            "cd",
+            shlex.quote(str(daemon_dir)),
+            "&&",
+            f"SLOCK_AGENT_TOKEN={shlex.quote(token)}",
+            "SLOCK_ALLOW_WRITES=1",
+            "node",
+            "dist/cmd/main.js",
+            "start",
+            "--foreground",
+            "--runtime",
+            "none",
+            "--server",
+            shlex.quote(server_url),
+            "--ws",
+            "none",
+            "--agent-id",
+            shlex.quote(agent_id),
+            "--register-daemon",
+        ]
+    )
+
+
+def _computer_connect_command(connect_token: str, server_url: str, daemon_dir: Path = DEFAULT_LOCAL_DAEMON_DIR) -> str:
+    """Command shown in the UI for connecting a daemon with a one-time ticket."""
+    return " ".join(
+        [
+            "cd",
+            shlex.quote(str(daemon_dir)),
+            "&&",
+            f"SLOCK_CONNECT_TOKEN={shlex.quote(connect_token)}",
+            "SLOCK_ALLOW_WRITES=1",
+            "node",
+            "dist/cmd/main.js",
+            "start",
+            "--foreground",
+            "--runtime",
+            "none",
+            "--server",
+            shlex.quote(server_url),
+            "--ws",
+            "none",
+            "--proxy-port",
+            "0",
+            "--register-daemon",
+        ]
+    )
+
 MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]+)")
 
 
 def _utcnow() -> datetime:
     return datetime.utcnow()
+
+
+def _utcnow_aware() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _lease_expired(value: datetime | None) -> bool:
+    if not value:
+        return False
+    now = datetime.now(value.tzinfo) if value.tzinfo else _utcnow()
+    return value <= now
 
 
 async def verify_public_api_key(request: Request, db: AsyncSession = Depends(get_db)):
@@ -179,14 +252,24 @@ async def _serialize_computer(db: AsyncSession, computer: Computer) -> dict:
         agent = agent_result.scalar_one_or_none()
         workspace_items.append(_serialize_workspace(workspace, agent))
 
+    status = computer.status
+    if (
+        _lease_expired(computer.daemon_lease_expires_at)
+        and status in {"online", "active"}
+    ):
+        status = "offline"
+
     return {
         "id": str(computer.id),
         "serverId": str(computer.server_id),
         "name": computer.name,
+        "machineId": computer.machine_id,
         "os": computer.os,
         "daemonVersion": computer.daemon_version,
         "apiKeyPrefix": computer.api_key_prefix,
-        "status": computer.status,
+        "status": status,
+        "activeDaemonId": computer.active_daemon_id,
+        "daemonLeaseExpiresAt": computer.daemon_lease_expires_at.isoformat() if computer.daemon_lease_expires_at else None,
         "detectedRuntimes": computer.detected_runtimes or [],
         "agentWorkspaces": workspace_items,
         "createdAt": computer.created_at.isoformat() if computer.created_at else None,
@@ -843,12 +926,47 @@ async def update_public_reminder(reminder_id: str, request: Request, _auth: None
 # ── Computer Credential ───────────────────────────────────────
 
 
+@router.post("/computers/connect-command")
+async def generate_computer_connect_command(
+    request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    name = str(body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Missing name")
+
+    token = f"sk_connect_{secrets.token_urlsafe(32)}"
+    expires_at = _utcnow_aware() + timedelta(seconds=CONNECT_TICKET_TTL_SECONDS)
+    db.add(ConnectTicket(
+        server_id=server.id,
+        key_prefix=token[:20],
+        token_hash=hashlib.sha256(token.encode()).hexdigest(),
+        requested_name=name,
+        expires_at=expires_at,
+    ))
+    server_url = body.get("serverUrl", "http://localhost:8000")
+    await db.commit()
+    return {
+        "connectToken": token,
+        "command": _computer_connect_command(token, server_url),
+        "expiresAt": expires_at.isoformat(),
+    }
+
+
 @router.post("/computers/credential")
 async def generate_computer_credential(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
     server = await _get_server(db)
     body = await request.json()
+    name = body.get("name", "unregistered-computer")
+    existing = (await db.execute(
+        select(Computer).where(Computer.server_id == server.id, Computer.name == name)
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(409, f"Computer name {name} already exists")
+
     token = f"sk_machine_{secrets.token_urlsafe(32)}"
     key_prefix = token[:20]
     token_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -857,7 +975,7 @@ async def generate_computer_credential(
     computer = Computer(
         id=computer_id,
         server_id=server.id,
-        name=body.get("name", "unregistered-computer"),
+        name=name,
         os="unknown",
         daemon_version="unknown",
         api_key_prefix=key_prefix,
@@ -880,7 +998,7 @@ async def generate_computer_credential(
         "created": True,
         "computerId": str(computer_id),
         "apiKey": token,
-        "command": f"npx @slock-ai/daemon@latest --server-url {server_url} --api-key {token}",
+        "command": _computer_connection_command(token, server_url),
     }
 
 
@@ -896,6 +1014,11 @@ async def create_agent(
     name = body.get("name")
     if not name:
         raise HTTPException(400, "Missing name")
+    existing_agent = (await db.execute(
+        select(Member).where(Member.server_id == server.id, Member.display_name == name)
+    )).scalar_one_or_none()
+    if existing_agent:
+        raise HTTPException(409, f"Member name {name} already exists")
 
     computer_id = body.get("computerId")
     if not computer_id:
