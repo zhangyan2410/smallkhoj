@@ -14,6 +14,10 @@ type Channel = {
   description?: string
 }
 
+function channelPathSegment(name: string) {
+  return encodeURIComponent(name.replace(/^#/, ""))
+}
+
 async function getChannels() {
   return apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] })
 }
@@ -47,7 +51,7 @@ async function createDmAction(formData: FormData) {
   if (response.ok) {
     const data = await response.json()
     if (data.channel?.name) {
-      redirect(`/chat/${data.channel.name}`)
+      redirect(`/chat/${channelPathSegment(data.channel.name)}`)
     }
   }
 }
@@ -68,7 +72,7 @@ export default async function Home() {
           <ul className="space-y-2">
             {channels.map((ch) => (
               <li key={ch.id} className="border rounded p-3 hover:bg-accent">
-                <Link href={`/chat/${ch.name.replace("#", "")}`}>
+                <Link href={`/chat/${channelPathSegment(ch.name)}`}>
                   <span className="font-mono font-semibold">{ch.name}</span>
                   <span className="text-muted-foreground ml-2">({ch.type})</span>
                   {ch.description && (

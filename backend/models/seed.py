@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import os
 import uuid
 
 from sqlalchemy import select, text
@@ -10,6 +11,8 @@ from models import (
     Base, Server, Member, Computer, AgentWorkspace, Channel, ChannelMember,
     Message, Task, ActivityLog, ApiKey, async_session, engine,
 )
+
+DEMO_SEED_ENV = "SMALLKHOJ_SEED_DEMO"
 
 
 async def create_tables():
@@ -164,6 +167,10 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _demo_seed_enabled() -> bool:
+    return os.getenv(DEMO_SEED_ENV, "").lower() in {"1", "true", "yes", "on"}
+
+
 async def ensure_api_key(db, server_id: uuid.UUID, resource_type: str, resource_id: uuid.UUID, token: str):
     key_prefix = token[:20]
     existing = (await db.execute(
@@ -184,6 +191,55 @@ async def ensure_api_key(db, server_id: uuid.UUID, resource_type: str, resource_
         resource_id=resource_id,
         server_id=server_id,
     ))
+
+
+async def ensure_minimal_seed(db, server_id: uuid.UUID):
+    human_id = uuid.UUID("e9abeddb-4137-430c-96a6-ae42a77344da")
+    human = (await db.execute(select(Member).where(Member.id == human_id))).scalar_one_or_none()
+    if human:
+        human.server_id = server_id
+        human.kind = "human"
+        human.display_name = "zy-ean"
+        human.status = human.status or "online"
+        return human
+
+    human = Member(
+        id=human_id,
+        server_id=server_id,
+        kind="human",
+        display_name="zy-ean",
+        status="online",
+    )
+    db.add(human)
+    return human
+
+
+async def ensure_demo_members(db, server_id: uuid.UUID):
+    deepseek_id = uuid.UUID("d7942034-805b-4ee4-956d-4fe9483fdcd8")
+    aaa_id = uuid.UUID("aaaa0000-0000-0000-0000-000000000001")
+    specs = [
+        (deepseek_id, "deepseek", "active"),
+        (aaa_id, "aaa", "active"),
+    ]
+    members = []
+    for member_id, display_name, status in specs:
+        member = (await db.execute(select(Member).where(Member.id == member_id))).scalar_one_or_none()
+        if member:
+            member.server_id = server_id
+            member.kind = "agent"
+            member.display_name = display_name
+            member.status = member.status or status
+        else:
+            member = Member(
+                id=member_id,
+                server_id=server_id,
+                kind="agent",
+                display_name=display_name,
+                status=status,
+            )
+            db.add(member)
+        members.append(member)
+    return members
 
 
 async def ensure_extended_seed(db, server_id: uuid.UUID):
@@ -310,42 +366,33 @@ async def ensure_extended_seed(db, server_id: uuid.UUID):
 
 async def seed():
     async with async_session() as db:
-        # Check if already seeded
+        demo_seed = _demo_seed_enabled()
         result = await db.execute(select(Server).limit(1))
         existing_server = result.scalar_one_or_none()
         if existing_server:
-            await ensure_extended_seed(db, existing_server.id)
+            await ensure_minimal_seed(db, existing_server.id)
+            if demo_seed:
+                await ensure_demo_members(db, existing_server.id)
+                await db.flush()
+                await ensure_extended_seed(db, existing_server.id)
             await db.commit()
-            print("[DB] Already seeded, ensured extended baseline")
+            mode = "demo baseline" if demo_seed else "minimal baseline"
+            print(f"[DB] Already seeded, ensured {mode}")
             return
 
         server_id = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
         server = Server(id=server_id, name="Slock Server")
         db.add(server)
 
-        # Members
-        human = Member(
-            id=uuid.UUID("e9abeddb-4137-430c-96a6-ae42a77344da"),
-            server_id=server_id,
-            kind="human",
-            display_name="zy-ean",
-            status="online",
-        )
-        deepseek = Member(
-            id=uuid.UUID("d7942034-805b-4ee4-956d-4fe9483fdcd8"),
-            server_id=server_id,
-            kind="agent",
-            display_name="deepseek",
-            status="active",
-        )
-        aaa = Member(
-            id=uuid.UUID("aaaa0000-0000-0000-0000-000000000001"),
-            server_id=server_id,
-            kind="agent",
-            display_name="aaa",
-            status="active",
-        )
-        db.add_all([human, deepseek, aaa])
+        human = await ensure_minimal_seed(db, server_id)
+        await db.flush()
+
+        if not demo_seed:
+            await db.commit()
+            print("[DB] Minimal seed data inserted")
+            return
+
+        deepseek, aaa = await ensure_demo_members(db, server_id)
         await db.flush()
 
         await ensure_extended_seed(db, server_id)

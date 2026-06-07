@@ -198,6 +198,13 @@ async function createReminderAction(formData: FormData) {
   })
 }
 
+async function cancelReminderAction(formData: FormData) {
+  "use server"
+  const reminderId = String(formData.get("reminderId") || "")
+  if (!reminderId) return
+  await apiWrite(`/api/v1/reminders/${reminderId}`, { cancel: true }, "PATCH")
+}
+
 async function updateMemberAction(formData: FormData) {
   "use server"
   const paused = formData.get("paused") === "on"
@@ -650,10 +657,20 @@ export default async function DaemonPage() {
                   <span className="min-w-0 flex-1 truncate text-sm">{reminder.title}</span>
                   <StatusBadge status={reminder.status} />
                 </div>
-                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="size-3" />
-                  <span>{formatTime(reminder.fireAt)}</span>
-                  {reminder.agentName && <span>@{reminder.agentName}</span>}
+                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <Clock className="size-3 shrink-0" />
+                    <span>{formatTime(reminder.fireAt)}</span>
+                    {reminder.agentName && <span>@{reminder.agentName}</span>}
+                  </div>
+                  {reminder.status !== "cancelled" && reminder.status !== "fired" && (
+                    <form action={cancelReminderAction}>
+                      <input type="hidden" name="reminderId" value={reminder.id} />
+                      <Button type="submit" size="xs" variant="outline">
+                        Cancel
+                      </Button>
+                    </form>
+                  )}
                 </div>
               </div>
             ))}
@@ -674,6 +691,7 @@ export default async function DaemonPage() {
                 <div className="mt-1 truncate text-xs text-muted-foreground">
                   {file.mimeType} · {formatTime(file.createdAt)}
                 </div>
+                <div className="mt-1 text-xs text-muted-foreground">Public API exposes list metadata only.</div>
               </div>
             ))}
           />
@@ -690,17 +708,40 @@ export default async function DaemonPage() {
             </CardHeader>
             <CardContent className="grid gap-2 pt-4 text-sm sm:grid-cols-2">
               {[
-                "/api/v1/computers",
-                "/api/v1/members",
-                "/api/v1/activity",
-                "/api/v1/tasks",
-                "/api/v1/reminders",
-                "/api/v1/files",
-                "/api/v1/channels/:name/messages",
-              ].map((endpoint) => (
-                <div key={endpoint} className="flex min-w-0 items-center gap-2 rounded-md border p-2">
-                  <span className="size-2 rounded-full bg-emerald-500" />
-                  <span className="truncate font-mono text-xs">{endpoint}</span>
+                ["GET /api/v1/channels", "Home, chat sidebar, dispatch forms"],
+                ["POST /api/v1/channels", "Home and Dispatch channel form"],
+                ["GET/POST /api/v1/channels/:name/messages", "Chat page and Dispatch message form"],
+                ["GET/POST/PATCH /api/v1/tasks", "Tasks page and Dispatch review form"],
+                ["GET /api/v1/computers", "Computers page and Control Plane"],
+                ["POST /api/v1/computers/connect-command", "Computers connect form"],
+                ["POST /internal/agent-api/daemon/connect", "daemon one-time connect; creates/reuses computer"],
+                ["GET/PATCH /api/v1/members", "Members page and Agent Control permissions"],
+                ["POST /api/v1/members/agents", "Members create-agent form"],
+                ["GET/POST/PATCH /api/v1/reminders", "Control Plane schedule/cancel forms"],
+                ["GET /api/v1/files", "Control Plane metadata list"],
+                ["GET /api/v1/activity", "Control Plane activity feed"],
+                ["POST /api/v1/dm", "Home DM form"],
+                ["GET/POST/DELETE /api/v1/channels/:id/members", "Chat member panel"],
+              ].map(([endpoint, surface]) => (
+                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-md border p-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="size-2 rounded-full bg-emerald-500" />
+                    <span className="truncate font-mono text-xs">{endpoint}</span>
+                  </div>
+                  <span className="truncate text-xs text-muted-foreground">{surface}</span>
+                </div>
+              ))}
+              {[
+                ["GET /internal/agent-api/events", "agent runtime polling; visible through daemon logs/trace"],
+                ["POST /internal/agent-api/daemon/register", "legacy daemon lifecycle; visible on Computers"],
+                ["POST /internal/agent-api/upload", "agent attachment upload; public UI lists resulting files"],
+              ].map(([endpoint, surface]) => (
+                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-md border p-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="size-2 rounded-full bg-amber-500" />
+                    <span className="truncate font-mono text-xs">{endpoint}</span>
+                  </div>
+                  <span className="truncate text-xs text-muted-foreground">{surface}</span>
                 </div>
               ))}
             </CardContent>

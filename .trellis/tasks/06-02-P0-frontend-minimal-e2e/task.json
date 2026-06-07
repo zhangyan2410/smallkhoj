@@ -3,7 +3,7 @@
   "name": "P0-frontend-minimal-e2e",
   "title": "P0: 最小前端（满足 e2e 测试需求）",
   "description": "简单前端页面，能展示频道、消息、任务，配合 webdriver e2e 测试",
-  "status": "todo",
+  "status": "done",
   "dev_type": "frontend",
   "scope": "frontend",
   "package": "frontend",
