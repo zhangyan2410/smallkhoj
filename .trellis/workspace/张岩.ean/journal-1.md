@@ -77,3 +77,36 @@ Added management APIs and UI for machine credentials, agent creation, channel me
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Support mac dev startup
+
+**Date**: 2026-06-07
+**Task**: Support mac dev startup
+**Branch**: `main`
+
+### Summary
+
+Updated dev.sh to auto-detect Windows versus macOS/Linux startup paths, choose the backend command and database URL automatically, and recognize already-running local services without disrupting them.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `57402ca` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
