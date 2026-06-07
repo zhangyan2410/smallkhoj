@@ -55,6 +55,20 @@ Future environment support must validate:
 - MCP entry: `chat-bridge.js --agent-id <id> --server-url <url> --auth-token <token> --runtime claude --runtime-actions-only`
 - MCP tool: `runtime_profile_migration_done({ migration_key?: string })`
 - Existing runtime import entry: `aaa-daemon smoke --import-slock-runtime <runtimeDir>`
+- Daemon control endpoints:
+  - `POST /internal/agent-api/daemon/register`
+  - `POST /internal/agent-api/daemon/heartbeat`
+  - `GET /internal/agent-api/events?since=latest`
+  - `WS /internal/agent-api/ws`
+- Runtime control command envelope:
+  - Raw/control event: `{type:"control", command:{type:"start_runtime"|"stop_runtime"|"restart_runtime", agentId, workspaceId?, config?}}`
+  - JSON-RPC control notification: `{jsonrpc:"2.0", method:"daemon.command.start_runtime"|"daemon.command.stop_runtime"|"daemon.command.restart_runtime", params:{agent_id|agentId, workspace_id|workspaceId?, config?}}`
+  - `config.runtime`: currently `claude_code`
+  - `config.runtimeCommand?: string`
+  - `config.runtimeCommandArgs?: string[]`
+  - `config.runtimeModel?: string`
+  - `config.workspacePath?: string`
+  - `config.workspaceId?: string`
 
 ### 3. Contracts
 
@@ -105,6 +119,7 @@ Future environment support must validate:
   - Backend event records use dotted canonical event names such as `message.created`, `task.created`, `task.claimed`, `task.updated`, `message.reaction_added`, and `channel.member_joined`, while also returning `legacyType` for older consumers.
   - Daemon proxy/runtime code must treat dotted `message.*` events as legacy `message_received` for inbox buffering, freshness tracking, and runtime delivery. When a dotted message event has `payload.message`, flatten that nested message before buffering.
   - Daemon proxy/runtime code must accept both snake-case task events (`task_created`) and dotted task events (`task.created`) and deliver them as non-message runtime events without touching pending-message freshness state.
+  - Agent-scoped proxy `/events` and SSE responses must annotate buffered/emitted events with the registration `agentId` before normalization, unless the upstream event already includes `agentId`/`agent_id`. Multi-runtime delivery depends on this marker to avoid sending one agent's inbox item to another runtime.
   - proxy `/internal/agent-api/events` and SSE events use the same event buffer and emit the same `message_received` delivery path
   - runtime delivery calls `ClaudeRuntimeDriver.sendUserMessage()`; if Claude is busy, the runtime queue owns deferral until a safe turn boundary
 - WebSocket manager must:
@@ -112,6 +127,7 @@ Future environment support must validate:
   - ack recognized message events with `{type:"ack",message_id?,seq?,at}`
   - support both raw event payloads and JSON-RPC `daemon/message.received` notifications
   - support JSON-RPC dotted notifications: `message.*` maps to message delivery, and `task.*` maps to the generic event path for runtime delivery
+  - support raw `control` events and JSON-RPC `daemon.command.*` / `control.*` notifications; for JSON-RPC methods, the command type comes from the method suffix and must be preserved before dispatch.
 - Proxy freshness must hold stale sends:
   - sends to `/internal/agent-api/send` check `seenUpToSeq` when supplied, otherwise `readUpToSeq`
   - when pending message events have seq greater than `seenUpToSeq`, return HTTP 409 with `{state:"held",reason:"pending_messages",seenUpToSeq,pendingCount,pending}`
@@ -122,11 +138,18 @@ Future environment support must validate:
   - `ClientHandler` forwards daemon Slock methods through the local proxy with `Authorization: Bearer {sap_token}`, never with the proxy URL as a token
   - forwarded daemon methods include message, task, channel, thread, profile, integration, reminder, attachment, and knowledge read/search operations
 - Runtime lifecycle:
+  - daemon manages runtime instances by `agentId`; do not use a single global `ClaudeRuntimeDriver` for dynamic agents.
+  - each runtime has its own proxy registration, generated `.slock` wrapper directory, token file, workspace path, captured session id, restart timer, stall watchdog, and lifecycle status.
+  - dynamic `start_runtime` commands may arrive through `/daemon/register`, `/daemon/heartbeat`, polling `/events`, or `/ws`; all transports must dispatch the same parsed command object.
+  - dynamic runtime workspaces must be isolated. If a command omits `workspacePath`, use a per-agent path under the daemon workspace instead of sharing the daemon root `.slock` wrapper.
+  - heartbeat/register workspace payloads for active runtimes use `status:"running"` and include `workspaceId`, `runtime`, `runtimeCommand`, `runtimeModel`, `sessionId`, `cwd`, and `pid` when known.
+  - explicit stops report `status:"stopped"`; unexpected exits report `status:"exited"` before the runtime record is removed, so backend state does not stay falsely running.
   - daemon records captured Claude session ids in `SessionManager`
   - runtime trace events are emitted for start, stream events, session capture, message send, exit, error, restart scheduling, and stall detection
   - `--runtime-restart-on-crash` enables one restart after unexpected Claude exit, resuming the last known session id when available
   - `--runtime-stall-timeout-ms` enables an optional watchdog; it only terminates a busy runtime when no runtime progress occurs for the configured threshold
 - Daemon must start Claude runtime only when `--runtime claude` is explicitly set. Default daemon startup must not spawn a model process.
+- `aaa-daemon start --ws auto` derives the backend control WebSocket from `--server` as `/internal/agent-api/ws` with `http -> ws` and `https -> wss`. Use `--ws none` to disable WebSocket and rely on register/heartbeat/polling fallback.
 - Runtime command args supplied by `--runtime-command-arg` are placed before daemon-managed Claude args. This supports tests such as `node fake-claude.mjs ...managed args...`.
 - MCP stdout must contain only MCP JSON-RPC frames. Logs must go to stderr or a log file.
 - `claude-mcp-config.json --auth-token` is the chat bridge machine token, not an agent-api credential. Do not use it as the upstream token for `/internal/agent-api/*` calls against `https://api.slock.ai`; the server rejects that path with `invalid_principal`.
@@ -161,6 +184,8 @@ Future environment support must validate:
 - Target rejected by write allowlist -> CLI exits non-zero with JSON error code `WRITE_TARGET_NOT_ALLOWED`.
 - Invalid local proxy token -> proxy returns HTTP 401 JSON error `invalid_agent_proxy_token`.
 - Pending unread messages during send -> proxy returns HTTP 409 JSON `{state:"held",reason:"pending_messages",...}` and does not call upstream send.
+- Unsupported dynamic runtime in `start_runtime.config.runtime` -> daemon logs a warning and does not start a runtime.
+- Control command without `agentId` -> daemon logs a warning and ignores it.
 - `POST /internal/daemon/jsonrpc` with malformed JSON -> returns JSON-RPC parse error.
 - `POST /internal/daemon/jsonrpc` before daemon RPC handler registration -> returns HTTP 503 `daemon_rpc_unavailable`.
 - Imported MCP `--auth-token` used as direct agent-api bearer token -> upstream may return `invalid_principal`; fix by importing managed proxy credentials or minting a self-managed `sk_agent_*` profile.
@@ -172,12 +197,16 @@ Future environment support must validate:
 - Base: `slock message check --limit 10` maps to `/internal/agent/{agentId}/receive?limit=10`; proxy rewrites to `/internal/agent-api/events?limit=10&since=latest`.
 - Base: attach receives a JSON-RPC line on stdin, posts it to `/internal/daemon/jsonrpc`, and writes only the JSON-RPC response frame to stdout.
 - Base: a new WebSocket or SSE message is buffered; a stale send is held until `message.check` or history consumption marks the message read.
+- Base: backend returns `controlCommands` from register/heartbeat or emits a WS/polling control event; daemon starts/stops/restarts the addressed agent runtime without affecting other runtime records.
+- Base: an agent-scoped `message.check` buffers events with that `agentId`, so delivery routes to the matching runtime in a 1:N daemon.
 - Base: `aaa-daemon smoke --import-slock-runtime <runtimeDir>` reads `.slock/slock.cmd`, chains through the existing managed proxy, and calls only `server info`.
 - Base: `aaa-daemon start --import-slock-runtime <runtimeDir> --runtime claude` starts a managed Claude runtime whose first `slock server info` call reaches the imported managed proxy.
 - Bad: implementing `message.send`, `message.check`, or task operations as MCP tools. This diverges from the Slock runtime contract and breaks Claude Code compatibility expectations.
 - Bad: treating `claude-mcp-config.json --auth-token` as an agent API key for direct `/internal/agent-api/*` requests.
 - Bad: adding write-capable CLI operations such as task claim/update, channel join/leave, profile update, reactions, or reminders create/update without explicit tests and safety gates.
 - Bad: posting attach JSON-RPC to the local agent API root; the proxy root is bearer-authenticated Slock API traffic, not the daemon control endpoint.
+- Bad: using the daemon global `workspacePath/.slock` wrapper for every dynamic agent. The later runtime overwrites wrapper/token env for earlier runtimes.
+- Bad: dropping `agentId` when buffering agent-scoped events. In a 1:N daemon that can misroute or skip runtime delivery.
 
 ### 6. Tests Required
 
@@ -207,6 +236,10 @@ Future environment support must validate:
   - assert managed runtime args do not use inline `--system-prompt`
   - assert the fake Slock API receives `/internal/agent-api/server`
   - assert the fake Slock API receives `/internal/agent-api/send` with target/content body
+  - start `aaa-daemon start --runtime none --register-daemon` against a fake backend that returns `controlCommands:[start_runtime]`
+  - assert the control command starts the fake Claude runtime dynamically
+  - assert the dynamic runtime uses the commanded `agentId`, isolated workspace path, wrapper, and backend token
+  - assert heartbeat/register reports the dynamic workspace as `runtime:"claude_code"` and `status:"running"`
 - Claude stream-json unit tests:
   - parse stdout JSON lines for system/session-init, assistant/tool-use, user/tool-result, and result events
   - assert `sendUserMessage()` writes the expected JSONL stdin shape
@@ -216,11 +249,13 @@ Future environment support must validate:
 - WebSocket/message delivery tests:
   - assert raw and JSON-RPC WebSocket message events normalize to daemon message events
   - assert ack and activity payload builders preserve message id/seq where present
+  - assert raw `control` payloads and JSON-RPC `daemon.command.*` payloads classify as control events and preserve command type, agent id, workspace id, and runtime config
 - Proxy freshness/SSE tests:
   - assert stale sends return HTTP 409 held responses before upstream send
   - assert checking/reading messages advances `readUpToSeq` enough for a later send
   - assert SSE `/events` frames are parsed and buffered into inbox events
   - assert dotted SSE and polling `message.*` events are normalized to `message_received` buffer methods and still advance message freshness from the nested or top-level message seq
+  - assert agent-scoped SSE and polling events keep the proxy registration `agentId` in emitted events and buffer params
   - assert dotted `task.*` events are buffered as task methods, delivered to runtime, and never block later sends as pending unread messages
 - Attach/client-handler tests:
   - assert `postDaemonRpc` posts to `/internal/daemon/jsonrpc`

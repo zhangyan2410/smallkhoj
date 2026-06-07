@@ -273,6 +273,7 @@ test('AgentProxy consumes SSE event stream messages into inbox', async () => {
       id: 'msg-12',
       target: '#general',
       content: 'from sse',
+      agentId: 'agent-1',
     });
     assert.equal(proxy.eventBuffer.snapshot().length, 1);
     assert.equal(proxy.getLastSeenSeq(), 12);
@@ -328,6 +329,7 @@ test('AgentProxy normalizes dotted SSE message events into inbox', async () => {
       target: '#general',
       content: 'from dotted sse',
       channelId: 'channel-1',
+      agentId: 'agent-1',
     });
 
     const buffered = proxy.eventBuffer.snapshot();
@@ -489,6 +491,10 @@ test('AgentProxy buffers dotted polling events and tracks message freshness', as
     assert.equal(buffered[2].method, 'channel.member_joined');
     assert.equal(messages.length, 1);
     assert.equal(events.length, 3);
+    assert.equal(buffered[0].params.agentId, 'agent-1');
+    assert.equal(buffered[1].params.agentId, 'agent-1');
+    assert.equal(messages[0].agentId, 'agent-1');
+    assert.equal(events[1].agentId, 'agent-1');
     assert.equal(proxy.getLastSeenSeq(), 34);
     assert.equal(proxy.getReadUpToSeq(), 34);
 

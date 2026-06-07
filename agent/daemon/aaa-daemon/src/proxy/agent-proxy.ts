@@ -284,7 +284,7 @@ export class AgentProxy extends EventEmitter {
       const upstreamContentType = upstreamRes.headers.get('content-type') ?? '';
       if (BUFFER_PATHS.has(rewrittenPathname) && upstreamContentType.includes('json')) {
         const text = await upstreamRes.text();
-        this.consumeResponse(rewrittenPathname, target, text);
+        this.consumeResponse(rewrittenPathname, target, text, reg.credential.agentId);
 
         // Forward response headers (minus decoded ones)
         const resHeaders: Record<string, string> = {};
@@ -308,7 +308,7 @@ export class AgentProxy extends EventEmitter {
         if (upstreamRes.body) {
           const reader = upstreamRes.body.getReader();
           const sseParser = rewrittenPathname === '/internal/agent-api/events' && upstreamContentType.includes('text/event-stream')
-            ? new SseEventParser((event) => this.recordIncomingEvent(event))
+            ? new SseEventParser((event) => this.recordIncomingEvent(withAgentId(event, reg.credential.agentId)))
             : null;
           try {
             while (true) {
@@ -341,7 +341,7 @@ export class AgentProxy extends EventEmitter {
    * Parse buffered response to track inbox state.
    * Mirrors consumeVisibleResponse in the real daemon.
    */
-  private consumeResponse(pathname: string, _targetUrl: URL, responseText: string): void {
+  private consumeResponse(pathname: string, _targetUrl: URL, responseText: string, agentId?: string): void {
     let parsed: unknown;
     try {
       parsed = JSON.parse(responseText);
@@ -364,7 +364,8 @@ export class AgentProxy extends EventEmitter {
     // events response — buffer messages
     if (pathname === '/internal/agent-api/events' && Array.isArray(data.events)) {
       let maxSeq = this.readUpToSeq;
-      for (const event of data.events as Record<string, unknown>[]) {
+      for (const rawEvent of data.events as Record<string, unknown>[]) {
+        const event = agentId ? withAgentId(rawEvent, agentId) : rawEvent;
         const normalized = normalizeIncomingEvent(event);
         const seq = eventTypeOf(normalized) === 'message_received' ? messageSeqOf(normalized) : undefined;
         if (seq && seq > maxSeq) maxSeq = seq;
@@ -513,6 +514,11 @@ function normalizeIncomingEvent(event: Record<string, unknown>): Record<string, 
   return event;
 }
 
+function withAgentId(event: Record<string, unknown>, agentId: string): Record<string, unknown> {
+  if (event.agentId !== undefined || event.agent_id !== undefined) return event;
+  return { ...event, agentId };
+}
+
 function normalizeMessageEvent(event: Record<string, unknown>, rawType?: string): Record<string, unknown> {
   if (rawType === 'message_received') return event;
 
@@ -546,6 +552,8 @@ function normalizeMessageEvent(event: Record<string, unknown>, rawType?: string)
     const target = payload?.target ?? payload?.channel ?? event.target ?? event.channel ?? event.channelName;
     if (target !== undefined) normalized.target = target;
   }
+  copyIfPresent(normalized, event, 'agentId', 'agentId');
+  copyIfPresent(normalized, event, 'agent_id', 'agent_id');
 
   return normalized;
 }
@@ -562,6 +570,8 @@ function normalizeTaskEvent(event: Record<string, unknown>, rawType: string): Re
   copyIfPresent(normalized, event, 'eventSeq', 'eventSeq');
   copyIfPresent(normalized, event, 'eventLogCursor', 'eventLogCursor');
   copyIfPresent(normalized, event, 'eventCursor', 'eventCursor');
+  copyIfPresent(normalized, event, 'agentId', 'agentId');
+  copyIfPresent(normalized, event, 'agent_id', 'agent_id');
   if (normalized.eventSeq === undefined && event.seq !== undefined) normalized.eventSeq = event.seq;
   if (normalized.timestamp === undefined && event.timestamp !== undefined) normalized.timestamp = event.timestamp;
   if (normalized.target === undefined) {

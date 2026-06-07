@@ -18,6 +18,11 @@ from models import (
     Computer, ConnectTicket, Member, Message, EventRecord, FileEntry, Reminder, Server, Task,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
+from services.daemon_control import (
+    PENDING_RUNTIME_START_STATUS,
+    daemon_control_hub,
+    runtime_start_command,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
@@ -1028,10 +1033,11 @@ async def create_agent(
     except ValueError:
         raise HTTPException(400, "Invalid computerId")
 
-    computer = await db.execute(
+    computer_result = await db.execute(
         select(Computer).where(Computer.id == computer_id, Computer.server_id == server.id)
     )
-    if not computer.scalar_one_or_none():
+    computer = computer_result.scalar_one_or_none()
+    if not computer:
         raise HTTPException(404, "Computer not found")
 
     runtime = body.get("runtime", "claude_code")
@@ -1042,7 +1048,7 @@ async def create_agent(
         server_id=server.id,
         kind="agent",
         display_name=name,
-        status=body.get("status", "active"),
+        status=body.get("status", "offline"),
         computer_id=computer_id,
         backend=body.get("backend"),
         config={
@@ -1059,7 +1065,7 @@ async def create_agent(
         runtime=runtime,
         runtime_command=runtime_command,
         runtime_model=runtime_model,
-        status="stopped",
+        status=PENDING_RUNTIME_START_STATUS,
         cwd=body.get("cwd"),
     )
     db.add(workspace)
@@ -1070,6 +1076,7 @@ async def create_agent(
     await db.commit()
     await db.refresh(agent)
     await db.refresh(workspace)
+    await daemon_control_hub.push(computer.id, runtime_start_command(workspace, agent))
     return {
         "created": True,
         "member": await serialize_member(db, agent),

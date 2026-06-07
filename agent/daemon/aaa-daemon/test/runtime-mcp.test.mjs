@@ -15,7 +15,11 @@ import {
   writeSlockSystemPromptFile,
   ClaudeRuntimeDriver,
 } from '../dist/runtime/claude-runtime.js';
-import { formatRuntimeIncomingMessage, normalizeRuntimeIncomingMessage } from '../dist/daemon/daemon.js';
+import {
+  formatRuntimeIncomingMessage,
+  normalizeRuntimeIncomingMessage,
+  parseDaemonControlCommand,
+} from '../dist/daemon/daemon.js';
 import { buildAckPayload, buildActivityPayload, parseWebSocketPayload } from '../dist/websocket.js';
 
 const credential = {
@@ -321,6 +325,58 @@ test('websocket helpers accept dotted message and task event names', () => {
     type: 'task.updated',
     taskId: 'task-1',
     status: 'done',
+  });
+});
+
+test('websocket helpers classify daemon control commands', () => {
+  const [rawControl] = parseWebSocketPayload(JSON.stringify({
+    type: 'control',
+    command: {
+      type: 'start_runtime',
+      agentId: 'agent-control',
+      workspaceId: 'workspace-control',
+      config: {
+        runtime: 'claude_code',
+        runtimeModel: 'glm-5.1',
+      },
+    },
+  }));
+
+  assert.equal(rawControl.type, 'control');
+  assert.deepEqual(parseDaemonControlCommand(rawControl.command), {
+    type: 'start_runtime',
+    agentId: 'agent-control',
+    workspaceId: 'workspace-control',
+    config: {
+      runtime: 'claude_code',
+      runtimeModel: 'glm-5.1',
+      workspaceId: 'workspace-control',
+    },
+  });
+
+  const [rpcControl] = parseWebSocketPayload(JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'daemon.command.start_runtime',
+    params: {
+      agent_id: 'agent-rpc',
+      workspace_id: 'workspace-rpc',
+      config: {
+        runtime_command: 'claude',
+        workspace_path: '/tmp/agent-rpc',
+      },
+    },
+  }));
+
+  assert.equal(rpcControl.type, 'control');
+  assert.deepEqual(parseDaemonControlCommand(rpcControl.command), {
+    type: 'start_runtime',
+    agentId: 'agent-rpc',
+    workspaceId: 'workspace-rpc',
+    config: {
+      runtimeCommand: 'claude',
+      workspacePath: '/tmp/agent-rpc',
+      workspaceId: 'workspace-rpc',
+    },
   });
 });
 

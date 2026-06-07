@@ -25,6 +25,12 @@ function collect(value: string, previous: string[]): string[] {
   return previous;
 }
 
+function deriveBackendWebSocketUrl(serverUrl: string): string {
+  const url = new URL('/internal/agent-api/ws', serverUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+}
+
 program
   .name('aaa-daemon')
   .description('Minimal Slock Agent Daemon — based on opencan-daemon architecture')
@@ -39,7 +45,7 @@ program
   .option('-c, --config <path>', 'Path to credential JSON')
   .option('-p, --proxy-port <port>', 'HTTP proxy port', '0')
   .option('-s, --server <url>', 'Slock server URL', 'https://api.slock.ai')
-  .option('-w, --ws <url>', 'WebSocket URL', 'wss://ws.slock.ai')
+  .option('-w, --ws <url>', 'WebSocket URL (auto|none|ws://...)', 'auto')
   .option('--agent-id <id>', 'Agent ID')
   .option('--import-slock-runtime <path>', 'Import an existing Slock .slock runtime directory')
   .option('--pid-file <path>', 'PID file path', './aaa-daemon.pid')
@@ -78,10 +84,14 @@ program
       process.env.AAA_DAEMON_MCP = '1';
     }
 
+    const wsUrl = options.ws === 'auto'
+      ? deriveBackendWebSocketUrl(options.server)
+      : options.ws;
+
     const config: DaemonConfig = {
       agentId: options.agentId || process.env.SLOCK_AGENT_ID || '',
       serverUrl: options.server,
-      wsUrl: options.ws,
+      wsUrl,
       credentialPath: options.config || process.env.SLOCK_AGENT_CREDENTIAL || './credential.json',
       proxyPort: parseInt(options.proxyPort, 10),
       logLevel: options.verbose ? 'debug' : 'info',

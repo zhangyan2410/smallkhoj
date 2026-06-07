@@ -13,6 +13,7 @@ export type WebSocketManagerEvent =
   | { type: 'connected' }
   | { type: 'message'; message: unknown }
   | { type: 'event'; event: unknown }
+  | { type: 'control'; command: unknown }
   | { type: 'disconnected'; reason: string }
   | { type: 'error'; error: string };
 
@@ -178,6 +179,13 @@ export function buildAckPayload(message: unknown): Record<string, unknown> | nul
 
 function eventsFromJsonRpc(msg: JSONRPCMessage): WebSocketManagerEvent[] {
   const method = typeof msg.method === 'string' ? msg.method : '';
+  if (method.startsWith('daemon.command.') || method.startsWith('control.')) {
+    const commandType = method.slice(method.lastIndexOf('.') + 1);
+    const command = isRecord(msg.params)
+      ? { type: commandType, ...msg.params }
+      : { type: commandType, params: msg.params };
+    return [{ type: 'control', command }];
+  }
   if (method === 'message_received') {
     return [{ type: 'message', message: msg.params ?? msg }];
   }
@@ -196,6 +204,12 @@ function eventsFromJsonRpc(msg: JSONRPCMessage): WebSocketManagerEvent[] {
 function eventFromRawPayload(value: unknown): WebSocketManagerEvent[] {
   if (!isRecord(value)) return [];
   const type = typeof value.type === 'string' ? value.type : '';
+  if (type === 'control' || type === 'daemon_control' || type === 'daemon.command') {
+    return [{ type: 'control', command: value.command ?? value.event ?? value }];
+  }
+  if (type === 'start_runtime' || type === 'stop_runtime' || type === 'restart_runtime') {
+    return [{ type: 'control', command: value }];
+  }
   if (isMessageEventType(type)) {
     return [{ type: 'message', message: value.message ?? value.event ?? value }];
   }

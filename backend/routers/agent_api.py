@@ -10,7 +10,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile,
+    WebSocket, WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
@@ -21,6 +24,7 @@ from models import (
     ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction, Reminder, Server, Task,
 )
 from routers.auth import resolve_agent, resolve_machine
+from services.daemon_control import daemon_control_hub, pending_runtime_commands
 
 router = APIRouter(prefix="/internal/agent-api", tags=["agent-api"])
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / ".data" / "uploads"
@@ -1187,12 +1191,19 @@ async def register_daemon(
         )
         upserted.append(await _serialize_workspace(db, workspace))
 
+    control_commands = await pending_runtime_commands(
+        db,
+        server_id=server.id,
+        computer_id=computer.id,
+    )
+
     await db.commit()
     await db.refresh(computer)
     return {
         "registered": True,
         "computer": await _serialize_computer(db, computer),
         "workspaces": upserted,
+        "controlCommands": control_commands,
     }
 
 
@@ -1234,13 +1245,64 @@ async def daemon_heartbeat(
         )
         upserted.append(await _serialize_workspace(db, workspace))
 
+    control_commands = await pending_runtime_commands(
+        db,
+        server_id=server.id,
+        computer_id=computer.id,
+    )
+
     await db.commit()
     await db.refresh(computer)
     return {
         "ok": True,
         "computer": await _serialize_computer(db, computer),
         "workspaces": upserted,
+        "controlCommands": control_commands,
     }
+
+
+@router.websocket("/ws")
+async def daemon_websocket(
+    websocket: WebSocket,
+    db: AsyncSession = Depends(get_db),
+):
+    authorization = websocket.headers.get("authorization", "")
+    x_computer_id = websocket.headers.get("x-computer-id")
+    try:
+        computer, server, _api_key = await resolve_machine(
+            authorization=authorization,
+            x_computer_id=x_computer_id,
+            db=db,
+        )
+    except HTTPException as exc:
+        await websocket.close(code=1008, reason=str(exc.detail))
+        return
+
+    await websocket.accept()
+    daemon_control_hub.add(computer.id, websocket)
+    try:
+        for event in await pending_runtime_commands(
+            db,
+            server_id=server.id,
+            computer_id=computer.id,
+        ):
+            await websocket.send_json(event)
+
+        while True:
+            raw_message = await websocket.receive_text()
+            try:
+                message = json.loads(raw_message)
+            except ValueError:
+                message = {"type": "raw", "content": raw_message}
+            message_type = message.get("type") if isinstance(message, dict) else None
+            if message_type in {"activity", "ack"}:
+                computer.last_heartbeat_at = _utcnow_aware()
+                computer.status = "online"
+                await db.commit()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        daemon_control_hub.remove(computer.id, websocket)
 
 
 # ── Send message ─────────────────────────────────────────────
@@ -1342,6 +1404,20 @@ async def get_events(
     wants_sse = stream or "text/event-stream" in request.headers.get("accept", "")
     config = member.config or {}
     raw_event_log_cursor = eventLogCursor or activityCursor or config.get(event_log_cursor_key) or config.get(activity_cursor_key)
+    control_events: list[dict] = []
+    member_computer_id = member.computer_id or config.get("computerId")
+    if member.kind == "agent" and member_computer_id:
+        try:
+            parsed_computer_id = uuid.UUID(str(member_computer_id))
+        except ValueError:
+            parsed_computer_id = None
+        if parsed_computer_id:
+            control_events = await pending_runtime_commands(
+                db,
+                server_id=server.id,
+                computer_id=parsed_computer_id,
+                agent_id=member.id,
+            )
 
     if since == "latest":
         raw_cursor = config.get(cursor_key)
@@ -1362,11 +1438,11 @@ async def get_events(
                 await db.commit()
                 return {
                     "ok": True,
-                    "events": [],
+                    "events": control_events,
                     "nextCursor": str(cursor),
                     "eventLogCursor": raw_event_log_cursor,
                     "activityCursor": raw_event_log_cursor,
-                    "count": 0,
+                    "count": len(control_events),
                 }
         if raw_cursor is not None:
             try:
@@ -1446,7 +1522,7 @@ async def get_events(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    events = []
+    events = [*control_events]
     next_cursor = cursor
     event_log_cursor = raw_event_log_cursor or "0"
     records = await _visible_event_records(

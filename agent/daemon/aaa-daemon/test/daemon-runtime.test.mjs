@@ -76,6 +76,8 @@ const result = {
   serverStderr: (serverInfo.stderr || '').trim(),
   pathHead: (process.env.PATH || '').split(process.platform === 'win32' ? ';' : ':')[0],
   slockHome: process.env.SLOCK_HOME,
+  agentId: process.env.SLOCK_AGENT_ID,
+  currentWorkspacePath: process.env.SLOCK_CURRENT_WORKSPACE_PATH,
   launchId: process.env.SLOCK_AGENT_LAUNCH_ID,
 };
 const promptFlagIndex = result.argv.indexOf('--append-system-prompt-file');
@@ -165,6 +167,122 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
       target: '#general',
       content: 'hello from runtime',
     });
+  } catch (err) {
+    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
+  }
+});
+
+test('daemon handles backend start_runtime control command dynamically', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-control-runtime-'));
+  const runtimeWorkspace = join(root, 'dynamic-agent-workspace');
+  const marker = join(root, 'runtime-marker.json');
+  const fakeClaude = join(root, 'fake-claude-control.mjs');
+  const registerBodies = [];
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/register') {
+      registerBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({
+        registered: true,
+        controlCommands: [
+          {
+            type: 'control',
+            command: {
+              type: 'start_runtime',
+              agentId: 'agent-dynamic',
+              workspaceId: 'workspace-dynamic',
+              config: {
+                runtime: 'claude_code',
+                runtimeCommand: process.execPath,
+                runtimeCommandArgs: [fakeClaude],
+                workspacePath: runtimeWorkspace,
+              },
+            },
+          },
+        ],
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      registerBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({ ok: true, controlCommands: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/server') {
+      res.end(JSON.stringify({ id: 'server-control', channels: [{ name: 'general' }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeFakeClaudeScript(fakeClaude, marker, true);
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'none',
+    '--agent-id', 'bootstrap-agent',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'none',
+    '--register-daemon',
+  ], {
+    cwd: resolve('.'),
+    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real', SLOCK_ALLOW_WRITES: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => existsSync(marker));
+    const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
+
+    assert.equal(runtime.agentId, 'agent-dynamic');
+    assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
+    assert.match(runtime.serverStdout, /"server-control"/);
+    assert.equal(runtime.sendStatus, 0, runtime.sendStderr);
+    assert.match(runtime.sendStdout, /"sent"/);
+    assert.equal(runtime.pathHead, join(runtimeWorkspace, '.slock'));
+    assert.equal(runtime.slockHome, join(runtimeWorkspace, '.slock'));
+    assert.equal(runtime.currentWorkspacePath, runtimeWorkspace);
+    assert.equal(runtime.systemPromptFile, join(runtimeWorkspace, '.slock', 'claude-system-prompt.md'));
+
+    await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-dynamic')));
+    const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-dynamic'));
+    const workspace = runtimeHeartbeat.workspaces.find(item => item.agentId === 'agent-dynamic');
+    assert.equal(workspace.workspaceId, 'workspace-dynamic');
+    assert.equal(workspace.runtime, 'claude_code');
+    assert.equal(workspace.status, 'running');
+    assert.equal(workspace.cwd, runtimeWorkspace);
+
+    await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
+    const serverRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/server');
+    assert.equal(serverRequest.req.headers['x-agent-id'], 'agent-dynamic');
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
