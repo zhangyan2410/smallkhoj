@@ -180,3 +180,36 @@ Archived the completed computer credential daemon command task and refreshed zy-
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Fix agent DM thread replies after reconnect
+
+**Date**: 2026-06-08
+**Task**: Fix agent DM thread replies after reconnect
+**Branch**: `main`
+
+### Summary
+
+Fixed agent DM/thread routing after daemon reconnect by backfilling reply-safe targets during event replay, preserving thread targets in agent replies, verifying with WebDriver and E2E, and archiving the completed task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `75c3b79` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
