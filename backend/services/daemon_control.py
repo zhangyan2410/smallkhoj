@@ -7,7 +7,7 @@ from collections import defaultdict
 from typing import Any
 
 from fastapi import WebSocket
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import AgentWorkspace, Channel, ChannelMember, Computer, EventRecord, Member, Message
@@ -181,6 +181,38 @@ class DaemonControlHub:
 daemon_control_hub = DaemonControlHub()
 
 
+def parse_positive_event_cursor(raw_cursor: str | int | None) -> int | None:
+    """Return a resumable daemon event cursor, or None for live-subscribe starts."""
+    if raw_cursor is None:
+        return None
+    try:
+        parsed_cursor = int(raw_cursor)
+    except (TypeError, ValueError):
+        return None
+    return parsed_cursor if parsed_cursor > 0 else None
+
+
+async def initial_daemon_event_cursor(
+    db: AsyncSession,
+    *,
+    server_id: uuid.UUID,
+    raw_cursor: str | int | None,
+) -> int:
+    """Resolve the per-connection daemon WS cursor.
+
+    Missing, zero, negative, or invalid cursors represent a fresh live subscription:
+    start at the latest event row instead of replaying historical runtime input.
+    """
+    parsed_cursor = parse_positive_event_cursor(raw_cursor)
+    if parsed_cursor is not None:
+        return parsed_cursor
+
+    cursor_result = await db.execute(
+        select(func.coalesce(func.max(EventRecord.seq), 0)).where(EventRecord.server_id == server_id)
+    )
+    return int(cursor_result.scalar_one() or 0)
+
+
 async def pending_visible_events_for_computer(
     db: AsyncSession,
     *,
@@ -254,6 +286,11 @@ async def push_latest_events_for_server(db: AsyncSession, *, server_id: uuid.UUI
 def _event_visible_to_agent(record: EventRecord, agent: Member, channel_ids: set[uuid.UUID]) -> bool:
     target_agent_id = (record.payload or {}).get("targetAgentId")
     if target_agent_id and str(target_agent_id) != str(agent.id):
+        return False
+    event_type = _dotted_event_type(record.event_type)
+    if event_type == "thread.summary_updated":
+        return False
+    if event_type == "message.created" and record.actor_id == agent.id:
         return False
     return (
         record.channel_id is None

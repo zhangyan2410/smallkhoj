@@ -27,6 +27,7 @@ from models import (
 from routers.auth import resolve_agent, resolve_machine
 from services.daemon_control import (
     daemon_control_hub,
+    initial_daemon_event_cursor,
     mark_missing_runtimes_pending_start,
     pending_runtime_commands,
     push_latest_events_for_server,
@@ -1426,11 +1427,8 @@ async def daemon_websocket(
         return
 
     await websocket.accept()
-    raw_cursor = websocket.query_params.get("eventLogCursor") or websocket.query_params.get("activityCursor") or "0"
-    try:
-        event_cursor = int(raw_cursor)
-    except (TypeError, ValueError):
-        event_cursor = 0
+    raw_cursor = websocket.query_params.get("eventLogCursor") or websocket.query_params.get("activityCursor")
+    event_cursor = await initial_daemon_event_cursor(db, server_id=server.id, raw_cursor=raw_cursor)
     daemon_control_hub.add(computer.id, websocket, event_cursor)
     try:
         for event in await pending_runtime_commands(
