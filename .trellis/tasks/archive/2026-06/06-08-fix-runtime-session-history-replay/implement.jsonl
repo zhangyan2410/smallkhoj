@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/runtime-slock-integration.md","reason":"Owns daemon WebSocket, backend event fanout, runtime delivery, cursor, and reconnect contracts."}
+{"file":".trellis/tasks/06-08-fix-runtime-session-history-replay/research/session-investigation.md","reason":"Session-grounded investigation with event counts, example payloads, suspected root cause, and reproduction shape."}

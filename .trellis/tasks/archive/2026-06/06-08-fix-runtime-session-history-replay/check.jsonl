@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/runtime-slock-integration.md","reason":"Use runtime delivery contract to verify reconnect cursor behavior, self-message filtering, and daemon WS fanout."}
+{"file":".trellis/tasks/06-08-fix-runtime-session-history-replay/research/session-investigation.md","reason":"Check implementation against the observed glm2 session facts and required non-Playwright verification path."}
