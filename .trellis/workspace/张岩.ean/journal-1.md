@@ -213,3 +213,37 @@ Fixed agent DM/thread routing after daemon reconnect by backfilling reply-safe t
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: Fix runtime session history replay
+
+**Date**: 2026-06-08
+**Task**: Fix runtime session history replay
+**Branch**: `main`
+
+### Summary
+
+Fixed daemon WebSocket runtime replay by treating missing/zero/invalid cursors as live subscriptions, filtering self-authored runtime message events, adding backend regression tests, and verifying tttt reconnect plus channel/DM/thread delivery with WebDriver and runtime recorder evidence.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5244bd5` | (see git log) |
+| `5a3a4c7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
