@@ -35,7 +35,7 @@ Future environment support must validate:
 
 ### 2. Signatures
 
-- CLI entry: `slock message check|send|read|search|react`, `slock channel members|join|leave`, `slock server info`, `slock task list|create|claim|update`, `slock profile get|update`, `slock integration list|login`, `slock reminder list|schedule|create|update|cancel|delete`, `slock attachment view|download|upload`
+- CLI entry: `slock message check|send|read|search|react`, `slock channel members|join|leave`, `slock thread read|summary`, `slock server info`, `slock task list|create|claim|update`, `slock profile get|update`, `slock integration list|login`, `slock reminder list|schedule|create|update|cancel|delete`, `slock attachment view|download|upload`
 - Daemon runtime flags:
   - `aaa-daemon start --runtime none` (default)
   - `aaa-daemon start --runtime claude`
@@ -116,12 +116,13 @@ Future environment support must validate:
   - treat `result` events as turn boundaries where queued user messages may be flushed
 - Daemon-originated message delivery:
   - WebSocket `message_received` / `message` events are normalized into a text envelope with fields such as `target=`, `msg=`, `time=`, `sender=`, `type=`
-  - Backend event records use dotted canonical event names such as `message.created`, `task.created`, `task.claimed`, `task.updated`, `message.reaction_added`, and `channel.member_joined`, while also returning `legacyType` for older consumers.
+  - Backend event records use dotted canonical event names such as `message.created`, `task.created`, `task.claimed`, `task.updated`, `message.reaction_added`, `channel.member_joined`, and `thread.summary_requested`, while also returning `legacyType` for older consumers.
   - Backend daemon WebSocket delivery is computer-scoped. `WS /internal/agent-api/ws` authenticates with the machine token, keeps a per-connection `eventLogCursor`, expands `EventRecord` rows by every agent on that computer that can see the event, and sets both `agentId` and `targetAgentId` to the receiving agent id before sending. Do not reuse `EventRecord.actor_id` as the delivery target.
   - Backend daemon WebSocket push must run after the database commit that creates the `EventRecord`. If no WS peer is connected, the event remains in `event_records` for reconnect/SSE/polling fallback.
   - The daemon WebSocket reconnect URL must include `eventLogCursor=<last delivered event seq>` once it has received message/task events, so reconnect does not replay old chat into the runtime.
   - Daemon proxy/runtime code must treat dotted `message.*` events as legacy `message_received` for inbox buffering, freshness tracking, and runtime delivery. When a dotted message event has `payload.message`, flatten that nested message before buffering.
   - Daemon proxy/runtime code must accept both snake-case task events (`task_created`) and dotted task events (`task.created`) and deliver them as non-message runtime events without touching pending-message freshness state.
+  - Daemon proxy/runtime code must accept thread events such as `thread.summary_requested` and deliver them as non-message runtime events. Targeted thread events must preserve `targetAgentId` so only the selected runtime receives the request.
   - Agent-scoped proxy `/events` and SSE responses must annotate buffered/emitted events with the registration `agentId` before normalization, unless the upstream event already includes `agentId`/`agent_id`. Multi-runtime delivery depends on this marker to avoid sending one agent's inbox item to another runtime.
   - proxy `/internal/agent-api/events` and SSE events use the same event buffer and emit the same `message_received` delivery path
   - runtime delivery calls `ClaudeRuntimeDriver.sendUserMessage()`; if Claude is busy, the runtime queue owns deferral until a safe turn boundary
@@ -167,12 +168,14 @@ Future environment support must validate:
 - Read-only CLI commands must stay GET-only:
   - `message search --query <q> [--channel <target>] [--limit <n>]` -> `/search?q=...`
   - `channel members --channel <target>` -> `/channel-members?channel=...`
+  - `thread read --thread-id <id>` -> `/threads/{id}`
   - `profile get [--handle <handle>]` -> `/profile` or `/profile/{handle}`
   - `integration list` -> `/integrations`
   - `reminder list` -> `/reminders`
 - Write-capable CLI commands must require explicit opt-in before making local proxy requests:
   - `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`
   - optional target guard: `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`
+- `thread summary --thread-id <id> --summary <text>` is write-capable and maps to `POST /threads/{id}/summary` with body `{summary}`.
 - Attachment upload resolves `--channel` through `/resolve-channel`, then forwards multipart form data (`file`, `channelId`, optional `mimeType`) to `/upload`.
 
 ### 4. Validation & Error Matrix
@@ -184,6 +187,8 @@ Future environment support must validate:
 - Missing send content -> CLI exits non-zero with JSON error code `MISSING_CONTENT`.
 - Missing `--query` for `slock message search` -> CLI exits non-zero with JSON error code `MISSING_QUERY`.
 - Missing `--channel` for `slock channel members` -> CLI exits non-zero with JSON error code `MISSING_CHANNEL`.
+- Missing `--thread-id` for `slock thread read|summary` -> CLI exits non-zero with JSON error code `MISSING_THREAD_ID`.
+- Missing summary text for `slock thread summary` -> CLI exits non-zero with JSON error code `MISSING_SUMMARY`.
 - Missing write opt-in for write-capable commands -> CLI exits non-zero with JSON error code `WRITES_NOT_ALLOWED`.
 - Target rejected by write allowlist -> CLI exits non-zero with JSON error code `WRITE_TARGET_NOT_ALLOWED`.
 - Invalid local proxy token -> proxy returns HTTP 401 JSON error `invalid_agent_proxy_token`.
@@ -219,6 +224,7 @@ Future environment support must validate:
 - Unit test `rewriteAgentPath`:
   - preserves query strings for `history`, `search`, `tasks`, and attachment paths
   - adds `since=latest` for `/receive` when not supplied
+  - rewrites `/threads/{id}` and `/threads/{id}/summary` to canonical agent API thread endpoints
 - Unit test wrapper generation:
   - creates all platform wrappers
   - writes proxy token file under the agent token directory
@@ -255,6 +261,7 @@ Future environment support must validate:
 - WebSocket/message delivery tests:
   - assert raw and JSON-RPC WebSocket message events normalize to daemon message events
   - assert ack and activity payload builders preserve message id/seq where present
+  - assert `thread.summary_requested` is classified as a runtime event and formatted with target/thread context
   - assert raw `control` payloads and JSON-RPC `daemon.command.*` payloads classify as control events and preserve command type, agent id, workspace id, and runtime config
   - assert backend daemon WS sends committed `message.created` records to connected computer peers with `agentId`/`targetAgentId` set to the receiving agent, and advances its per-connection event cursor past invisible events
   - live smoke: start backend and `aaa-daemon start --ws auto` with a fake Claude runtime that records stdin; post `POST /api/v1/channels/{name}/messages`; assert the marker appears in runtime stdin without waiting for polling
