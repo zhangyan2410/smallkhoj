@@ -136,6 +136,7 @@ export function statusLabel(status: string) {
     done: "完成",
     closed: "关闭",
     pending: "待触发",
+    pending_start: "待启动",
     fired: "已触发",
     cancelled: "已取消",
     online: "在线",
@@ -160,6 +161,7 @@ export function dotClass(status: string) {
       return "bg-emerald-500"
     case "idle":
     case "pending":
+    case "pending_start":
     case "in_review":
     case "busy":
       return "bg-amber-500"
@@ -185,6 +187,7 @@ export function badgeClass(status: string) {
       return "border-emerald-200 bg-emerald-50 text-emerald-700"
     case "idle":
     case "pending":
+    case "pending_start":
     case "in_review":
     case "busy":
       return "border-amber-200 bg-amber-50 text-amber-700"

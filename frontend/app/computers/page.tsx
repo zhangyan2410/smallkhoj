@@ -2,7 +2,7 @@ import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { ArrowLeft, Bot, Clock, Cpu, HardDrive, Network, Terminal } from "lucide-react"
+import { ArrowLeft, Bot, Clock, Cpu, HardDrive, Network, RefreshCw, Terminal } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,11 +32,23 @@ function searchValue(value: string | string[] | undefined) {
 function parseCredentialCookie(value?: string) {
   if (!value) return null
   try {
-    const data = JSON.parse(value) as { name?: unknown; command?: unknown; expiresAt?: unknown }
+    const data = JSON.parse(value) as {
+      name?: unknown
+      command?: unknown
+      expiresAt?: unknown
+      mode?: unknown
+      computerId?: unknown
+    }
     if (typeof data.name !== "string" || typeof data.command !== "string" || typeof data.expiresAt !== "string") {
       return null
     }
-    return { name: data.name, command: data.command, expiresAt: data.expiresAt }
+    return {
+      name: data.name,
+      command: data.command,
+      expiresAt: data.expiresAt,
+      mode: data.mode === "reconnect" ? "reconnect" : "create",
+      computerId: typeof data.computerId === "string" ? data.computerId : null,
+    }
   } catch {
     return null
   }
@@ -64,6 +76,7 @@ async function createComputerConnectCommandAction(formData: FormData) {
     name,
     command: data.command,
     expiresAt: data.expiresAt,
+    mode: "create",
   }), {
     httpOnly: true,
     maxAge: 300,
@@ -72,6 +85,42 @@ async function createComputerConnectCommandAction(formData: FormData) {
   })
   revalidatePath("/computers")
   redirect("/computers?created=1")
+}
+
+async function createComputerReconnectCommandAction(formData: FormData) {
+  "use server"
+
+  const computerId = String(formData.get("computerId") || "").trim()
+  if (!computerId) redirect("/computers?error=Missing%20computer")
+
+  const response = await fetch(`${API_BASE}/api/v1/computers/${computerId}/reconnect-command`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    body: JSON.stringify({}),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/computers?error=${encodeURIComponent(detail)}`)
+  }
+
+  const data = await response.json()
+  const cookieStore = await cookies()
+  cookieStore.set("smallkhoj_last_computer_connect_command", JSON.stringify({
+    name: data.name,
+    command: data.command,
+    expiresAt: data.expiresAt,
+    mode: "reconnect",
+    computerId: data.computerId,
+  }), {
+    httpOnly: true,
+    maxAge: 300,
+    path: "/computers",
+    sameSite: "lax",
+  })
+  revalidatePath("/computers")
+  redirect(`/computers?reconnect=${encodeURIComponent(data.computerId)}`)
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -99,9 +148,12 @@ export default async function ComputersPage({
   const resolvedSearchParams = (await searchParams) ?? {}
   const cookieStore = await cookies()
   const { computers } = await getComputers()
-  const pendingCredential = searchValue(resolvedSearchParams.created)
+  const pendingCookie = searchValue(resolvedSearchParams.created) || searchValue(resolvedSearchParams.reconnect)
     ? parseCredentialCookie(cookieStore.get("smallkhoj_last_computer_connect_command")?.value)
     : null
+  const pendingCredential = pendingCookie?.mode === "create" ? pendingCookie : null
+  const reconnectComputerId = searchValue(resolvedSearchParams.reconnect)
+  const reconnectCredential = pendingCookie?.mode === "reconnect" ? pendingCookie : null
   const connectedComputer = pendingCredential
     ? computers.find((computer) => computer.name === pendingCredential.name && (computer.status === "online" || computer.status === "active"))
     : null
@@ -129,7 +181,7 @@ export default async function ComputersPage({
                 <HardDrive className="size-6 text-primary" />
                 Computers
               </h1>
-              <p className="text-sm text-muted-foreground">Daemon registrations, detected runtimes, and linked agent workspaces</p>
+              <p className="text-sm text-muted-foreground">New computer setup and existing computer reconnect commands</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -187,16 +239,50 @@ export default async function ComputersPage({
                   <span className="min-w-0 flex-1 truncate">{computer.name}</span>
                   <StatusBadge status={computer.status} />
                 </CardTitle>
-                <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span>{computer.os || "unknown os"}</span>
-                  <span>daemon {computer.daemonVersion || "unknown"}</span>
-                  <span className="inline-flex items-center gap-1">
-                    <Clock className="size-3" />
-                    {formatTime(computer.lastHeartbeatAt)}
-                  </span>
-                </CardDescription>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span>{computer.os || "unknown os"}</span>
+                    <span>daemon {computer.daemonVersion || "unknown"}</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="size-3" />
+                      {formatTime(computer.lastHeartbeatAt)}
+                    </span>
+                  </CardDescription>
+                  <form action={createComputerReconnectCommandAction}>
+                    <input type="hidden" name="computerId" value={computer.id} />
+                    <Button type="submit" size="sm" variant="outline">
+                      <RefreshCw className="size-4" />
+                      Reconnect
+                    </Button>
+                  </form>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4 pt-4">
+                {reconnectCredential?.computerId === computer.id && reconnectComputerId === computer.id && (
+                  <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs font-medium uppercase text-muted-foreground">Reconnect Command</div>
+                      <div className="text-xs text-muted-foreground">Use on {computer.name}</div>
+                    </div>
+                    <code
+                      data-testid="reconnect-command"
+                      className="block whitespace-pre-wrap break-all rounded-md border bg-background p-2 text-xs"
+                    >
+                      {reconnectCredential.command}
+                    </code>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-medium uppercase text-muted-foreground">Computer Name</div>
+                        <div className="truncate font-mono text-xs">{reconnectCredential.name}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-medium uppercase text-muted-foreground">Expires</div>
+                        <div className="truncate font-mono text-xs">{reconnectCredential.expiresAt}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid gap-2 sm:grid-cols-5">
                   <Field label="computerId" value={shortId(computer.id)} />
                   <Field label="machineId" value={shortId(computer.machineId)} />

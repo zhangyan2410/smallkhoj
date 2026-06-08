@@ -945,7 +945,9 @@ export function formatRuntimeIncomingMessage(message: RuntimeIncomingMessage): s
     message.senderType ? `type=${message.senderType}` : undefined,
   ].filter(Boolean).join(' ');
 
-  return header ? `${header}\n\n${message.content}` : message.content;
+  if (!header) return message.content;
+  const senderPrefix = message.sender ? `${message.sender}: ` : '';
+  return `[${header}] ${senderPrefix}${message.content}`;
 }
 
 export function parseDaemonControlCommand(input: unknown): DaemonControlCommand | null {

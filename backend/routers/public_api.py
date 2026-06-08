@@ -21,6 +21,7 @@ from models import (
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
 from services.daemon_control import (
     PENDING_RUNTIME_START_STATUS,
+    RUNTIME_ACTIVE_STATUSES,
     daemon_control_hub,
     push_latest_events_for_server,
     runtime_start_command,
@@ -191,6 +192,17 @@ async def _parse_mentions(db: AsyncSession, server: Server, content: str) -> lis
     return list(result.scalars().all())
 
 
+def _display_channel_target(channel: Channel) -> str:
+    if channel.kind in {"public", "private"}:
+        return f"#{channel.name}"
+    return channel.name
+
+
+def _message_target_for_runtime(channel: Channel, sender: Member, *, thread_ref: str | None = None) -> str:
+    base = f"dm:@{sender.display_name}" if channel.kind == "dm" else _display_channel_target(channel)
+    return f"{base}:{thread_ref}" if thread_ref else base
+
+
 async def _resolve_channel(db: AsyncSession, server: Server, channel_name: str) -> Channel:
     result = await db.execute(
         select(Channel).where(
@@ -211,7 +223,13 @@ async def _next_task_number(db: AsyncSession, channel_id: uuid.UUID) -> int:
     return int(result.scalar() or 0) + 1
 
 
-def _serialize_workspace(workspace: AgentWorkspace, agent: Member | None = None) -> dict:
+def _serialize_workspace(
+    workspace: AgentWorkspace,
+    agent: Member | None = None,
+    *,
+    effective_status: str | None = None,
+) -> dict:
+    status = effective_status or workspace.status
     agent_payload = None
     if agent:
         agent_payload = {
@@ -244,7 +262,7 @@ def _serialize_workspace(workspace: AgentWorkspace, agent: Member | None = None)
         "runtime": workspace.runtime,
         "runtimeCommand": workspace.runtime_command,
         "runtimeModel": workspace.runtime_model,
-        "status": workspace.status,
+        "status": status,
         "sessionId": workspace.session_id,
         "cwd": workspace.cwd,
         "pid": workspace.pid,
@@ -259,18 +277,23 @@ async def _serialize_computer(db: AsyncSession, computer: Computer) -> dict:
     )
     workspaces = workspaces_result.scalars().all()
 
-    workspace_items = []
-    for workspace in workspaces:
-        agent_result = await db.execute(select(Member).where(Member.id == workspace.agent_id))
-        agent = agent_result.scalar_one_or_none()
-        workspace_items.append(_serialize_workspace(workspace, agent))
-
     status = computer.status
     if (
         _lease_expired(computer.daemon_lease_expires_at)
         and status in {"online", "active"}
     ):
         status = "offline"
+
+    workspace_items = []
+    for workspace in workspaces:
+        agent_result = await db.execute(select(Member).where(Member.id == workspace.agent_id))
+        agent = agent_result.scalar_one_or_none()
+        effective_status = (
+            "offline"
+            if status == "offline" and workspace.status in RUNTIME_ACTIVE_STATUSES
+            else workspace.status
+        )
+        workspace_items.append(_serialize_workspace(workspace, agent, effective_status=effective_status))
 
     return {
         "id": str(computer.id),
@@ -601,6 +624,7 @@ async def create_channel_message(
     channel = await _resolve_channel(db, server, channel_name)
     sender = await _resolve_member(db, server, body.get("sender") or "zy-ean")
     parent_id = None
+    thread_target_short_id = None
     thread_ref = body.get("threadId") or body.get("parentId")
     if thread_ref:
         try:
@@ -619,6 +643,11 @@ async def create_channel_message(
         if not parent:
             raise HTTPException(404, "Thread root not found")
         parent_id = parent.parent_id or parent.id
+        root = parent
+        if parent.parent_id:
+            root_result = await db.execute(select(Message).where(Message.id == parent.parent_id))
+            root = root_result.scalar_one_or_none() or parent
+        thread_target_short_id = root.short_id
 
     seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
     msg = Message(
@@ -633,6 +662,7 @@ async def create_channel_message(
     )
     db.add(msg)
     await db.flush()
+    event_target = _message_target_for_runtime(channel, sender, thread_ref=thread_target_short_id)
     await _record_activity(
         db,
         server,
@@ -647,6 +677,8 @@ async def create_channel_message(
             "senderId": str(sender.id),
             "content": msg.content,
             "messageSnippet": content[:200],
+            "target": event_target,
+            "channel": event_target,
             "channelType": msg.channel_type,
             "mentions": [str(item) for item in (msg.mentions or [])],
             "parentId": str(parent_id) if parent_id else None,
@@ -1039,6 +1071,46 @@ async def generate_computer_connect_command(
     await db.commit()
     return {
         "connectToken": token,
+        "command": _computer_connect_command(token, server_url),
+        "expiresAt": expires_at.isoformat(),
+    }
+
+
+@router.post("/computers/{computer_id}/reconnect-command")
+async def generate_computer_reconnect_command(
+    computer_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    try:
+        parsed_computer_id = uuid.UUID(computer_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid computer id")
+
+    result = await db.execute(
+        select(Computer).where(Computer.id == parsed_computer_id, Computer.server_id == server.id)
+    )
+    computer = result.scalar_one_or_none()
+    if not computer:
+        raise HTTPException(404, "Computer not found")
+
+    token = f"sk_connect_{secrets.token_urlsafe(32)}"
+    expires_at = _utcnow_aware() + timedelta(seconds=CONNECT_TICKET_TTL_SECONDS)
+    db.add(ConnectTicket(
+        server_id=server.id,
+        key_prefix=token[:20],
+        token_hash=hashlib.sha256(token.encode()).hexdigest(),
+        requested_name=computer.name,
+        expires_at=expires_at,
+    ))
+    server_url = (await request.json()).get("serverUrl", "http://localhost:8000")
+    await db.commit()
+    return {
+        "connectToken": token,
+        "computerId": str(computer.id),
+        "name": computer.name,
         "command": _computer_connect_command(token, server_url),
         "expiresAt": expires_at.isoformat(),
     }

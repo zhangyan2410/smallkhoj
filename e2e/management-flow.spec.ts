@@ -62,11 +62,67 @@ async function agentSend(apiKey: string, agentId: string, target: string, conten
   return res.json()
 }
 
-async function findMemberIdByName(name: string): Promise<string | undefined> {
+async function daemonRegister(apiKey: string, daemonId: string, workspaces: Array<Record<string, unknown>> = []) {
+  const res = await fetch(`${API_BASE}/internal/agent-api/daemon/register`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      daemonId,
+      name: "e2e-daemon",
+      os: "e2e-os",
+      daemonVersion: "e2e",
+      status: "online",
+      detectedRuntimes: [{ type: "claude_code", status: "available" }],
+      workspaces,
+    }),
+  })
+  if (!res.ok) {
+    throw new Error(`daemon register failed: ${res.status} ${await res.text()}`)
+  }
+  return res.json()
+}
+
+async function agentEvents(apiKey: string, agentId: string, cursor = "0") {
+  const res = await fetch(`${API_BASE}/internal/agent-api/events?since=0&eventLogCursor=${cursor}`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "X-Agent-Id": agentId,
+    },
+  })
+  if (!res.ok) {
+    throw new Error(`agent events failed: ${res.status} ${await res.text()}`)
+  }
+  return res.json()
+}
+
+async function agentEventsLatest(apiKey: string, agentId: string) {
+  const res = await fetch(`${API_BASE}/internal/agent-api/events?since=latest`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "X-Agent-Id": agentId,
+    },
+  })
+  if (!res.ok) {
+    throw new Error(`agent latest events failed: ${res.status} ${await res.text()}`)
+  }
+  return res.json()
+}
+
+async function findMemberByName(name: string): Promise<{ id: string; workspaceId?: string | null } | undefined> {
   const res = await fetch(`${API_BASE}/api/v1/members`, { headers: { "X-Public-Key": PUBLIC_KEY } })
   if (!res.ok) return undefined
-  const data = await res.json() as { members: Array<{ name: string; id: string }> }
-  return data.members.find((m) => m.name === name)?.id
+  const data = await res.json() as { members: Array<{ name: string; id: string; workspaceId?: string | null }> }
+  return data.members.find((m) => m.name === name)
+}
+
+async function findDmByName(name: string): Promise<{ id: string; name: string } | undefined> {
+  const res = await fetch(`${API_BASE}/api/v1/dms`, { headers: { "X-Public-Key": PUBLIC_KEY } })
+  if (!res.ok) return undefined
+  const data = await res.json() as { dms: Array<{ id: string; name: string }> }
+  return data.dms.find((dm) => dm.name === name)
 }
 
 async function fillByLabel(page: Page, label: string, value: string) {
@@ -75,6 +131,12 @@ async function fillByLabel(page: Page, label: string, value: string) {
 
 function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`
+}
+
+function runSql(sql: string) {
+  execFileSync("psql", [E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-q", "-c", sql], {
+    stdio: "inherit",
+  })
 }
 
 function cleanupTestData(stamp: number) {
@@ -144,9 +206,7 @@ function cleanupTestData(stamp: number) {
     COMMIT;
   `
 
-  execFileSync("psql", [E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-q", "-c", sql], {
-    stdio: "inherit",
-  })
+  runSql(sql)
 }
 
 test.describe("Management product flow", () => {
@@ -159,6 +219,8 @@ test.describe("Management product flow", () => {
     const channelReply = `agent channel reply ${stamp}`
     const dmMessage = `private dm ${stamp}`
     const dmReply = `agent dm reply ${stamp}`
+    const dmReplyViaChannelId = `agent dm channel-id reply ${stamp}`
+    const dmAgentThreadReply = `agent dm thread reply ${stamp}`
     const channelThreadReply = `thread reply ${stamp}`
     const dmThreadReply = `dm thread reply ${stamp}`
 
@@ -183,8 +245,10 @@ test.describe("Management product flow", () => {
       const machineId = `e2e-machine-${stamp}`
       const connect = await connectDaemon(connectToken!, machineId, computerName)
       const apiKey = connect.machineToken as string
+      const daemonId = connect.daemonId as string
       const computerId = connect.computer.id as string
       expect(apiKey).toMatch(/^sk_machine_/)
+      expect(daemonId).toMatch(/^daemon-/)
       expect(computerId).toMatch(/^[0-9a-f-]{36}$/)
 
       await page.reload()
@@ -197,14 +261,57 @@ test.describe("Management product flow", () => {
       await expect(page.getByRole("heading", { name: "Members" })).toBeVisible()
       await fillByLabel(page, "Agent Name", agentName)
       await page.getByLabel("Computer").selectOption({ label: computerName })
-      await page.getByLabel("Runtime").selectOption("custom")
+      await page.getByLabel("Runtime").selectOption("claude_code")
       await fillByLabel(page, "Backend", "E2E")
       await page.getByRole("button", { name: "Create Agent" }).click()
       await expect(page.getByText(agentName).first()).toBeVisible()
 
       // Look up the agent's member ID for agent-api auth
-      const agentId = await findMemberIdByName(agentName)
+      const agentMember = await findMemberByName(agentName)
+      const agentId = agentMember?.id
+      const workspaceId = agentMember?.workspaceId
       expect(agentId).toBeDefined()
+      expect(workspaceId).toBeDefined()
+
+      const initialControl = await daemonRegister(apiKey!, daemonId, [])
+      expect(initialControl.controlCommands).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            command: expect.objectContaining({
+              type: "start_runtime",
+              agentId,
+              workspaceId,
+            }),
+          }),
+        ]),
+      )
+
+      const runningSync = await daemonRegister(apiKey!, daemonId, [
+        {
+          agentId,
+          workspaceId,
+          runtime: "claude_code",
+          runtimeCommand: process.execPath,
+          status: "running",
+          sessionId: `e2e-session-${stamp}`,
+          cwd: process.cwd(),
+          pid: 12345,
+        },
+      ])
+      expect(runningSync.controlCommands).toEqual([])
+
+      const reconnectSync = await daemonRegister(apiKey!, daemonId, [])
+      expect(reconnectSync.controlCommands).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            command: expect.objectContaining({
+              type: "start_runtime",
+              agentId,
+              workspaceId,
+            }),
+          }),
+        ]),
+      )
 
       // 4. Create channel on home page
       await page.goto(FRONTEND_BASE)
@@ -246,24 +353,69 @@ test.describe("Management product flow", () => {
       await page.getByRole("button", { name: "DM" }).click()
       await expect(page).toHaveURL(/\/chat\/dm(%3A|:)/)
       await expect(page.getByRole("heading", { name: `DM @${agentName}` })).toBeVisible()
+      const dmBaseline = await agentEventsLatest(apiKey!, agentId!)
       await page.getByPlaceholder("Type a message...").fill(dmMessage)
       await page.getByRole("button", { name: "Send message" }).click()
       await expect(page.getByText(dmMessage)).toBeVisible()
+
+      const dmDelivery = await agentEvents(apiKey!, agentId!, dmBaseline.eventLogCursor ?? "0")
+      const dmRootEvent = dmDelivery.events.find((event: { content?: string }) => event.content === dmMessage)
+      expect(dmRootEvent?.shortId).toMatch(/^[0-9a-f]{8}$/)
+      expect(dmDelivery.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "message.created",
+            content: dmMessage,
+            target: "dm:@zy-ean",
+            channelType: "dm",
+          }),
+        ]),
+      )
 
       await page.getByRole("button", { name: "Reply" }).first().click()
       await expect(page.getByRole("complementary", { name: "Thread" })).toBeVisible()
       await page.getByPlaceholder("Reply in thread...").fill(dmThreadReply)
       await page.getByRole("button", { name: "Send thread reply" }).click()
       await expect(page.getByRole("complementary", { name: "Thread" }).getByText(dmThreadReply)).toBeVisible()
+      runSql(`
+        UPDATE event_records
+        SET payload = payload - 'target' - 'channel'
+        WHERE message_id IN (
+          SELECT id FROM messages WHERE content = ${sqlLiteral(dmThreadReply)}
+        );
+      `)
+      const dmThreadDelivery = await agentEvents(apiKey!, agentId!, dmDelivery.eventLogCursor ?? "0")
+      expect(dmThreadDelivery.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "message.created",
+            content: dmThreadReply,
+            target: `dm:@zy-ean:${dmRootEvent.shortId}`,
+            channel: `dm:@zy-ean:${dmRootEvent.shortId}`,
+            channelType: "thread",
+          }),
+        ]),
+      )
       await page.getByRole("button", { name: "Close thread" }).click()
       await expect(page.getByText(dmThreadReply)).not.toBeVisible()
 
       // 9. Agent replies in DM via agent-facing API (target format: dm:<peer_name>)
       const dmChannelName = decodeURIComponent(page.url().split("/chat/").at(-1) ?? "")
       expect(dmChannelName).toContain("dm:")
+      const dmChannel = await findDmByName(dmChannelName)
+      expect(dmChannel?.id).toMatch(/^[0-9a-f-]{36}$/)
       await agentSend(apiKey!, agentId!, "dm:zy-ean", dmReply)
       await page.reload()
       await expect(page.getByText(dmReply)).toBeVisible()
+      await agentSend(apiKey!, agentId!, `dm:zy-ean:${dmRootEvent.shortId}`, dmAgentThreadReply)
+      await page.reload()
+      await expect(page.getByText(dmAgentThreadReply)).not.toBeVisible()
+      await page.getByRole("button", { name: /2 replies/ }).first().click()
+      await expect(page.getByRole("complementary", { name: "Thread" }).getByText(dmAgentThreadReply)).toBeVisible()
+      await page.getByRole("button", { name: "Close thread" }).click()
+      await agentSend(apiKey!, agentId!, dmChannel!.id, dmReplyViaChannelId)
+      await page.reload()
+      await expect(page.getByText(dmReplyViaChannelId)).toBeVisible()
     } finally {
       cleanupTestData(stamp)
     }

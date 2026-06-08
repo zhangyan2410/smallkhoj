@@ -1,13 +1,15 @@
 #!/usr/bin/env node
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
+const DEFAULT_DAEMON = 'http://127.0.0.1:3456';
 
 const defaults = {
   backend: process.env.SMALLKHOJ_BACKEND ?? 'http://127.0.0.1:8000',
   frontend: process.env.SMALLKHOJ_FRONTEND ?? 'http://127.0.0.1:3000',
-  daemon: process.env.SMALLKHOJ_DAEMON ?? 'http://127.0.0.1:3456',
+  daemon: process.env.SMALLKHOJ_DAEMON ?? DEFAULT_DAEMON,
   logDir: process.env.SMALLKHOJ_LOG_DIR ?? join(root, '.dev-logs'),
 };
 
@@ -27,7 +29,7 @@ Purpose:
 Environment:
   SMALLKHOJ_BACKEND   ${defaults.backend}
   SMALLKHOJ_FRONTEND  ${defaults.frontend}
-  SMALLKHOJ_DAEMON    ${defaults.daemon}
+  SMALLKHOJ_DAEMON    ${process.env.SMALLKHOJ_DAEMON ?? `${DEFAULT_DAEMON} (auto-detect when unset)`}
   SMALLKHOJ_LOG_DIR   ${defaults.logDir}
 `);
 }
@@ -72,8 +74,8 @@ async function checkHttp(name, url) {
   }
 }
 
-async function daemonRpc(method, params = undefined) {
-  const response = await fetch(new URL('/internal/daemon/jsonrpc', defaults.daemon), {
+async function daemonRpcAt(daemonUrl, method, params = undefined, timeoutMs = 3000) {
+  const response = await fetch(new URL('/internal/daemon/jsonrpc', daemonUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -82,7 +84,7 @@ async function daemonRpc(method, params = undefined) {
       method,
       params,
     }),
-    signal: AbortSignal.timeout(3000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     throw new Error(`daemon RPC HTTP ${response.status}`);
@@ -92,6 +94,75 @@ async function daemonRpc(method, params = undefined) {
     throw new Error(body.error.message ?? JSON.stringify(body.error));
   }
   return body.result;
+}
+
+function commandOutput(command, args) {
+  try {
+    return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return '';
+  }
+}
+
+function parseLocalDaemonPids() {
+  const output = commandOutput('ps', ['-axo', 'pid,command']);
+  const pids = [];
+  for (const line of output.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const match = /^(\d+)\s+(.+)$/.exec(trimmed);
+    if (!match) continue;
+    const [, pid, command] = match;
+    const normalized = command.replaceAll('\\', '/');
+    if (normalized.includes('dist/cmd/main.js start')) {
+      pids.push(pid);
+    }
+  }
+  return pids;
+}
+
+function parseListeningPortsForPids(pids) {
+  if (!pids.length) return [];
+  const wanted = new Set(pids.map(String));
+  const output = commandOutput('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN']);
+  const ports = [];
+  for (const line of output.split(/\r?\n/)) {
+    const columns = line.trim().split(/\s+/);
+    if (columns.length < 2 || !wanted.has(columns[1])) continue;
+    const match = /:(\d+)\s+\(LISTEN\)$/.exec(line.trim());
+    if (match) ports.push(Number(match[1]));
+  }
+  return [...new Set(ports)].filter(Number.isFinite);
+}
+
+async function firstHealthyDaemonUrl(urls) {
+  const seen = new Set();
+  for (const url of urls) {
+    if (seen.has(url)) continue;
+    seen.add(url);
+    try {
+      await daemonRpcAt(url, 'daemon/logs', undefined, 900);
+      return url;
+    } catch {
+      // Keep probing candidates; non-SmallKhoj daemons may require different tokens.
+    }
+  }
+  return null;
+}
+
+async function resolveDaemonUrl() {
+  if (process.env.SMALLKHOJ_DAEMON) return defaults.daemon;
+
+  const pidPorts = parseListeningPortsForPids(parseLocalDaemonPids());
+  const pidUrls = pidPorts.map((port) => `http://127.0.0.1:${port}`);
+  const healthyPidUrl = await firstHealthyDaemonUrl(pidUrls);
+  if (healthyPidUrl) return healthyPidUrl;
+
+  const fallbackUrls = [
+    DEFAULT_DAEMON,
+    'http://127.0.0.1:3457',
+    ...pidUrls,
+  ];
+  return (await firstHealthyDaemonUrl(fallbackUrls)) ?? DEFAULT_DAEMON;
 }
 
 function readTail(file, lines) {
@@ -147,12 +218,12 @@ function normalizeDaemonLog(entry, index) {
   };
 }
 
-async function loadDaemonState() {
+async function loadDaemonState(daemonUrl) {
   const state = { ok: false, logs: [], sessions: [], error: null };
   try {
     const [logs, sessions] = await Promise.all([
-      daemonRpc('daemon/logs'),
-      daemonRpc('daemon/session.list'),
+      daemonRpcAt(daemonUrl, 'daemon/logs'),
+      daemonRpcAt(daemonUrl, 'daemon/session.list'),
     ]);
     state.ok = true;
     state.logs = Array.isArray(logs?.entries) ? logs.entries.map(normalizeDaemonLog) : [];
@@ -183,16 +254,18 @@ function printTable(events) {
 }
 
 async function buildSummary(tail) {
+  const daemonUrl = await resolveDaemonUrl();
   const [backend, frontend, daemonEndpoint, daemonState] = await Promise.all([
     checkHttp('backend', new URL('/docs', defaults.backend)),
     checkHttp('frontend', defaults.frontend),
-    checkHttp('daemon', new URL('/internal/daemon/jsonrpc', defaults.daemon)),
-    loadDaemonState(),
+    checkHttp('daemon', new URL('/internal/daemon/jsonrpc', daemonUrl)),
+    loadDaemonState(daemonUrl),
   ]);
   const devLogs = loadDevLogs(tail);
   const daemonLogs = daemonState.logs.slice(-tail);
   return {
     services: [backend, frontend, daemonEndpoint],
+    daemonUrl,
     daemon: daemonState,
     timeline: sortTimeline([...devLogs, ...daemonLogs]).slice(-tail),
   };
@@ -237,8 +310,10 @@ const render = (data) => {
 if (args.command === 'logs') {
   render({ logs: loadDevLogs(args.tail) });
 } else if (args.command === 'daemon') {
-  const daemon = await loadDaemonState();
+  const daemonUrl = await resolveDaemonUrl();
+  const daemon = await loadDaemonState(daemonUrl);
   render({
+    daemonUrl,
     daemon,
     timeline: daemon.logs.slice(-args.tail),
   });

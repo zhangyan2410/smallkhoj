@@ -19,5 +19,7 @@ class Settings(BaseSettings):
     llm_api_base: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
 
+    thread_summary_scheduler_enabled: bool = False
+
 
 settings = Settings()

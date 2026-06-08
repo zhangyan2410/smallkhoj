@@ -27,6 +27,7 @@ from models import (
 from routers.auth import resolve_agent, resolve_machine
 from services.daemon_control import (
     daemon_control_hub,
+    mark_missing_runtimes_pending_start,
     pending_runtime_commands,
     push_latest_events_for_server,
 )
@@ -265,19 +266,46 @@ async def _resolve_dm_channel(
     return channel
 
 
-async def _resolve_channel(
+async def _member_can_use_channel(db: AsyncSession, channel: Channel, member: Member | None) -> bool:
+    if channel.kind == "public":
+        return True
+    if not member:
+        return False
+    result = await db.execute(
+        select(ChannelMember).where(
+            ChannelMember.channel_id == channel.id,
+            ChannelMember.member_id == member.id,
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _resolve_existing_channel_ref(
     db: AsyncSession,
     server: Server,
     target: str,
     member: Member | None = None,
-    create_dm: bool = False,
-) -> Channel:
-    if target.startswith("dm:"):
-        if not member:
-            raise HTTPException(400, "DM target requires an agent context")
-        return await _resolve_dm_channel(db, server, member, target, create=create_dm)
-
+) -> Channel | None:
     channel_name = _normalize_channel_name(target)
+    parsed_channel_id = None
+    try:
+        parsed_channel_id = uuid.UUID(channel_name)
+    except ValueError:
+        pass
+
+    if parsed_channel_id:
+        result = await db.execute(
+            select(Channel).where(
+                Channel.server_id == server.id,
+                Channel.id == parsed_channel_id,
+            )
+        )
+        channel = result.scalar_one_or_none()
+        if channel:
+            if not await _member_can_use_channel(db, channel, member):
+                raise HTTPException(403, f"Agent cannot access channel {target}")
+            return channel
+
     result = await db.execute(
         select(Channel).where(
             Channel.server_id == server.id,
@@ -286,8 +314,29 @@ async def _resolve_channel(
     )
     channel = result.scalar_one_or_none()
     if not channel:
-        raise HTTPException(404, f"Channel {target} not found")
+        return None
+    if not await _member_can_use_channel(db, channel, member):
+        raise HTTPException(403, f"Agent cannot access channel {target}")
     return channel
+
+
+async def _resolve_channel(
+    db: AsyncSession,
+    server: Server,
+    target: str,
+    member: Member | None = None,
+    create_dm: bool = False,
+) -> Channel:
+    channel = await _resolve_existing_channel_ref(db, server, target, member=member)
+    if channel:
+        return channel
+
+    if target.startswith("dm:"):
+        if not member:
+            raise HTTPException(400, "DM target requires an agent context")
+        return await _resolve_dm_channel(db, server, member, target, create=create_dm)
+
+    raise HTTPException(404, f"Channel {target} not found")
 
 
 async def _resolve_message_ref(
@@ -351,6 +400,33 @@ async def _parse_mentions(db: AsyncSession, server: Server, content: str) -> lis
         )
     )
     return list(result.scalars().all())
+
+
+async def _message_target_for_member(
+    db: AsyncSession,
+    channel: Channel,
+    recipient: Member,
+    *,
+    thread_ref: str | None = None,
+) -> str:
+    if channel.kind in {"public", "private"}:
+        base = _display_channel(channel)
+    elif channel.kind == "dm":
+        peer_result = await db.execute(
+            select(Member)
+            .join(ChannelMember, ChannelMember.member_id == Member.id)
+            .where(
+                ChannelMember.channel_id == channel.id,
+                Member.id != recipient.id,
+            )
+            .order_by(Member.kind.desc(), Member.display_name)
+            .limit(1)
+        )
+        peer = peer_result.scalar_one_or_none()
+        base = f"dm:@{peer.display_name}" if peer else channel.name
+    else:
+        base = _display_channel(channel)
+    return f"{base}:{thread_ref}" if thread_ref else base
 
 
 def _legacy_event_type(event_type: str) -> str:
@@ -631,7 +707,7 @@ def _activity_event(activity: ActivityLog) -> dict:
     }
 
 
-def _event_record_event(record: EventRecord) -> dict:
+async def _event_record_event(db: AsyncSession, record: EventRecord, recipient: Member) -> dict:
     payload = dict(record.payload or {})
     event_type = _dotted_event_type(record.event_type)
     payload["type"] = event_type
@@ -647,7 +723,42 @@ def _event_record_event(record: EventRecord) -> dict:
     payload["messageId"] = str(record.message_id) if record.message_id else payload.get("messageId")
     payload["createdAt"] = record.created_at.isoformat() if record.created_at else payload.get("createdAt")
     payload["activityCursor"] = str(record.seq)
+    if event_type == "message.created":
+        await _backfill_message_event_target(db, payload, record, recipient)
     return payload
+
+
+async def _backfill_message_event_target(
+    db: AsyncSession,
+    payload: dict,
+    record: EventRecord,
+    recipient: Member,
+) -> None:
+    """Recover reply-safe runtime targets for historical message event records."""
+    raw_target = str(payload.get("target") or payload.get("channel") or "")
+    if record.message_id is None:
+        return
+
+    result = await db.execute(
+        select(Message, Channel).join(Channel, Channel.id == Message.channel_id).where(
+            Message.id == record.message_id,
+        )
+    )
+    row = result.one_or_none()
+    if not row:
+        return
+
+    msg, channel = row
+    root = msg
+    if msg.parent_id:
+        root_result = await db.execute(select(Message).where(Message.id == msg.parent_id))
+        root = root_result.scalar_one_or_none() or msg
+
+    thread_ref = root.short_id if msg.parent_id else None
+    event_target = await _message_target_for_member(db, channel, recipient, thread_ref=thread_ref)
+    if not raw_target or (thread_ref and not raw_target.endswith(f":{thread_ref}")):
+        payload["target"] = event_target
+        payload["channel"] = event_target
 
 
 def _event_record_message_seq(record: EventRecord) -> int | None:
@@ -1192,8 +1303,10 @@ async def register_daemon(
         computer.detected_runtimes = body.detectedRuntimes
 
     upserted = []
+    reported_workspace_ids: set[uuid.UUID] = set()
     for item in body.workspaces:
         workspace, agent_member, created = await _upsert_daemon_workspace(db, server, computer, item)
+        reported_workspace_ids.add(workspace.id)
         await db.flush()
         await _record_activity(
             db,
@@ -1211,6 +1324,12 @@ async def register_daemon(
         )
         upserted.append(await _serialize_workspace(db, workspace))
 
+    await mark_missing_runtimes_pending_start(
+        db,
+        server_id=server.id,
+        computer_id=computer.id,
+        reported_workspace_ids=reported_workspace_ids,
+    )
     control_commands = await pending_runtime_commands(
         db,
         server_id=server.id,
@@ -1245,8 +1364,10 @@ async def daemon_heartbeat(
         computer.detected_runtimes = body.detectedRuntimes
 
     upserted = []
+    reported_workspace_ids: set[uuid.UUID] = set()
     for item in body.workspaces:
         workspace, agent_member, created = await _upsert_daemon_workspace(db, server, computer, item)
+        reported_workspace_ids.add(workspace.id)
         await db.flush()
         await _record_activity(
             db,
@@ -1265,6 +1386,12 @@ async def daemon_heartbeat(
         )
         upserted.append(await _serialize_workspace(db, workspace))
 
+    await mark_missing_runtimes_pending_start(
+        db,
+        server_id=server.id,
+        computer_id=computer.id,
+        reported_workspace_ids=reported_workspace_ids,
+    )
     control_commands = await pending_runtime_commands(
         db,
         server_id=server.id,
@@ -1352,11 +1479,16 @@ async def send_message(
     channel = await _resolve_channel(db, server, base_target, member=member, create_dm=True)
 
     parent_id = None
+    thread_target_short_id = None
     if thread_ref:
         parent = await _resolve_message_ref(db, server, thread_ref)
         if parent.channel_id != channel.id:
             raise HTTPException(400, "Thread root belongs to a different channel")
         parent_id = parent.parent_id or parent.id
+        root = parent
+        if parent.parent_id:
+            root = await _resolve_message_ref(db, server, str(parent.parent_id))
+        thread_target_short_id = root.short_id
 
     # Get next seq (global)
     seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
@@ -1377,6 +1509,12 @@ async def send_message(
     )
     db.add(msg)
     await db.flush()
+    event_target = await _message_target_for_member(
+        db,
+        channel,
+        member,
+        thread_ref=thread_target_short_id,
+    )
     await _record_activity(
         db,
         server,
@@ -1391,6 +1529,8 @@ async def send_message(
             "senderId": str(member.id),
             "content": msg.content,
             "messageSnippet": body.content[:200],
+            "target": event_target,
+            "channel": event_target,
             "channelType": msg.channel_type,
             "mentions": [str(item) for item in (msg.mentions or [])],
             "parentId": str(parent_id) if parent_id else None,
@@ -1528,7 +1668,7 @@ async def get_events(
                     message_seq = _event_record_message_seq(record)
                     if message_seq is not None:
                         cursor = max(cursor, message_seq)
-                    event = _event_record_event(record)
+                    event = await _event_record_event(db, record, member)
                     yield _sse_frame(event["type"], event, f"event:{record.seq}")
 
                 now = _utcnow()
@@ -1570,7 +1710,7 @@ async def get_events(
         message_seq = _event_record_message_seq(record)
         if message_seq is not None:
             next_cursor = max(next_cursor, message_seq)
-        events.append(_event_record_event(record))
+        events.append(await _event_record_event(db, record, member))
 
     events.sort(key=lambda item: (
         int(item.get("eventSeq") or 0),

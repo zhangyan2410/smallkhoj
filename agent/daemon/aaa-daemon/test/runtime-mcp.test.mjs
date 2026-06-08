@@ -80,6 +80,8 @@ test('claude args and prompt force slock CLI communication', () => {
   assert.match(prompt, /WRITES_NOT_ALLOWED/);
   assert.doesNotMatch(prompt, /not yet implemented/);
   assert.match(prompt, /Message Targets/);
+  assert.match(prompt, /Reuse the exact `target=` value/);
+  assert.match(prompt, /Never use `channel=` or a bare channel UUID/);
   assert.match(prompt, /Agent ID: agent-123/);
 });
 
@@ -144,7 +146,7 @@ test('daemon formats inbound Slock messages for Claude runtime delivery', () => 
   });
   assert.equal(
     formatRuntimeIncomingMessage(message),
-    'target=#general msg=msg-1 time=2026-05-30T00:00:00.000Z sender=@alice type=human\n\nplease check this',
+    '[target=#general msg=msg-1 time=2026-05-30T00:00:00.000Z sender=@alice type=human] @alice: please check this',
   );
 });
 
@@ -175,7 +177,7 @@ test('daemon normalizes dotted backend message events for Claude runtime deliver
   });
   assert.equal(
     formatRuntimeIncomingMessage(message),
-    'event=message.created eventSeq=99 target=#general channel=channel-1 msg=msg-12 time=2026-06-05T10:00:00.000Z type=message.created\n\nfrom dotted event',
+    '[event=message.created eventSeq=99 target=#general channel=channel-1 msg=msg-12 time=2026-06-05T10:00:00.000Z type=message.created] from dotted event',
   );
 });
 
@@ -213,9 +215,7 @@ test('daemon formats non-message Slock events for Claude runtime delivery', () =
   assert.equal(
     formatRuntimeIncomingMessage(message),
     [
-      'event=task_created eventSeq=7 target=#general task=#3 status=todo actor=supervisor type=task_created',
-      '',
-      'title=Implement delegated slice',
+      '[event=task_created eventSeq=7 target=#general task=#3 status=todo actor=supervisor type=task_created] title=Implement delegated slice',
       'status=todo',
       'assignee=@aaa',
       'priority=high',
@@ -258,9 +258,7 @@ test('daemon normalizes dotted task events from backend payloads', () => {
   assert.equal(
     formatRuntimeIncomingMessage(message),
     [
-      'event=task.claimed eventSeq=44 target=#general task=#8 status=in_progress time=2026-06-05T10:05:00.000Z actor=supervisor type=task.claimed',
-      '',
-      'title=Pick up worker slice',
+      '[event=task.claimed eventSeq=44 target=#general task=#8 status=in_progress time=2026-06-05T10:05:00.000Z actor=supervisor type=task.claimed] title=Pick up worker slice',
       'status=in_progress',
     ].join('\n'),
   );
@@ -296,9 +294,7 @@ test('daemon formats thread summary requests for runtime delivery', () => {
   assert.equal(
     formatRuntimeIncomingMessage(message),
     [
-      'event=thread.summary_requested eventSeq=55 target=#general:abc123ef msg=thread-1 time=2026-06-05T10:08:00.000Z actor=agent-123 type=thread.summary_requested',
-      '',
-      'Summarize this thread and write it back with slock thread summary.',
+      '[event=thread.summary_requested eventSeq=55 target=#general:abc123ef msg=thread-1 time=2026-06-05T10:08:00.000Z actor=agent-123 type=thread.summary_requested] Summarize this thread and write it back with slock thread summary.',
     ].join('\n'),
   );
 });

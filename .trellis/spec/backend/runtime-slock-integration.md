@@ -114,8 +114,11 @@ Future environment support must validate:
   - treat `assistant` events with `tool_use` blocks as busy
   - treat matching `user` events with `tool_result` blocks as tool completion evidence
   - treat `result` events as turn boundaries where queued user messages may be flushed
-- Daemon-originated message delivery:
-  - WebSocket `message_received` / `message` events are normalized into a text envelope with fields such as `target=`, `msg=`, `time=`, `sender=`, `type=`
+  - Daemon-originated message delivery:
+  - WebSocket `message_received` / `message` events are normalized into a bracketed text envelope such as `[target=dm:@zy-ean channel=<uuid> msg=12345678 time=... sender=@zy-ean type=human] @zy-ean: message`.
+  - Runtime prompts must state that `target=` is the only reply target to reuse. `channel=` / `channelId` are machine metadata only and must not be used as `slock message send --target`.
+  - Backend `message.created` event payloads must include a reply-safe `target`/`channel` string for runtime prompts, plus `channelId` for machine lookup. Public/private channel targets use `#name`; DM targets use the sender peer handle from the receiving runtime's perspective, for example a human-authored DM to an agent uses `target:"dm:@zy-ean"`. Thread targets append the root short id, for example `dm:@zy-ean:a1b2c3d4`. A bare channel UUID is valid as an API fallback target, but it must not be the primary runtime prompt target.
+  - Event replay must backfill reply-safe `target`/`channel` for historical `message.created` rows whose stored payload lacks those fields. Polling, SSE, and daemon WebSocket expansion must derive the target from `event_records.message_id` -> message/channel/root thread plus the receiving agent's DM peer, so reconnecting daemons do not replay old DM thread messages as targetless top-level DMs.
   - Backend event records use dotted canonical event names such as `message.created`, `task.created`, `task.claimed`, `task.updated`, `message.reaction_added`, `channel.member_joined`, and `thread.summary_requested`, while also returning `legacyType` for older consumers.
   - Backend daemon WebSocket delivery is computer-scoped. `WS /internal/agent-api/ws` authenticates with the machine token, keeps a per-connection `eventLogCursor`, expands `EventRecord` rows by every agent on that computer that can see the event, and sets both `agentId` and `targetAgentId` to the receiving agent id before sending. Do not reuse `EventRecord.actor_id` as the delivery target.
   - Backend daemon WebSocket push must run after the database commit that creates the `EventRecord`. If no WS peer is connected, the event remains in `event_records` for reconnect/SSE/polling fallback.
@@ -148,6 +151,7 @@ Future environment support must validate:
   - dynamic `start_runtime` commands may arrive through `/daemon/register`, `/daemon/heartbeat`, polling `/events`, or `/ws`; all transports must dispatch the same parsed command object.
   - dynamic runtime workspaces must be isolated. If a command omits `workspacePath`, use a per-agent path under the daemon workspace instead of sharing the daemon root `.slock` wrapper.
   - heartbeat/register workspace payloads for active runtimes use `status:"running"` and include `workspaceId`, `runtime`, `runtimeCommand`, `runtimeModel`, `sessionId`, `cwd`, and `pid` when known.
+  - On daemon register/heartbeat, the `workspaces` array is the authoritative list of runtimes currently managed by that daemon process. Any workspace on the same computer that was previously `running`, `active`, or `idle` but is missing from the payload must be treated as stale and re-armed as `pending_start` so the next control response can send `start_runtime` again.
   - explicit stops report `status:"stopped"`; unexpected exits report `status:"exited"` before the runtime record is removed, so backend state does not stay falsely running.
   - daemon records captured Claude session ids in `SessionManager`
   - runtime trace events are emitted for start, stream events, session capture, message send, exit, error, restart scheduling, and stall detection
@@ -218,6 +222,7 @@ Future environment support must validate:
 - Bad: using the daemon global `workspacePath/.slock` wrapper for every dynamic agent. The later runtime overwrites wrapper/token env for earlier runtimes.
 - Bad: dropping `agentId` when buffering agent-scoped events. In a 1:N daemon that can misroute or skip runtime delivery.
 - Bad: using the event actor as the daemon WS delivery target. Human-authored UI messages must route to the agent recipient, not the human sender.
+- Bad: emitting only `channelId`/bare UUID for a DM runtime prompt. Models tend to reuse the visible header, so missing `target=dm:@peer` causes replies to hit "Channel ... not found" or land outside the visible DM.
 
 ### 6. Tests Required
 
@@ -252,6 +257,7 @@ Future environment support must validate:
   - assert the control command starts the fake Claude runtime dynamically
   - assert the dynamic runtime uses the commanded `agentId`, isolated workspace path, wrapper, and backend token
   - assert heartbeat/register reports the dynamic workspace as `runtime:"claude_code"` and `status:"running"`
+  - browser/API regression: create an agent workspace, sync it as `running`, then simulate daemon reconnect/register with an empty `workspaces` payload and assert the backend returns a `start_runtime` control command for that workspace
 - Claude stream-json unit tests:
   - parse stdout JSON lines for system/session-init, assistant/tool-use, user/tool-result, and result events
   - assert `sendUserMessage()` writes the expected JSONL stdin shape
@@ -264,7 +270,10 @@ Future environment support must validate:
   - assert `thread.summary_requested` is classified as a runtime event and formatted with target/thread context
   - assert raw `control` payloads and JSON-RPC `daemon.command.*` payloads classify as control events and preserve command type, agent id, workspace id, and runtime config
   - assert backend daemon WS sends committed `message.created` records to connected computer peers with `agentId`/`targetAgentId` set to the receiving agent, and advances its per-connection event cursor past invisible events
+  - assert DM `message.created` events delivered to an agent include `target:"dm:@<human>"`, while `/internal/agent-api/send` accepts both that target and the raw DM `channelId`
+  - assert a DM thread `message.created` event still returns `target:"dm:@<human>:<rootShortId>"` when the persisted event payload has had `target`/`channel` removed before replay
   - live smoke: start backend and `aaa-daemon start --ws auto` with a fake Claude runtime that records stdin; post `POST /api/v1/channels/{name}/messages`; assert the marker appears in runtime stdin without waiting for polling
+  - user-facing agent/chat/thread bugs require an additional WebDriver acceptance pass against the running local app. Drive the real browser through the reported workflow, use a unique marker, verify the visible DOM state, and cross-check persistence/API fields such as `parent_id`, `target`, and `threadId`. Treat this as a stronger acceptance gate than automated E2E alone; if WebDriver behavior disagrees with the requested behavior, keep fixing even when E2E is green.
 - Proxy freshness/SSE tests:
   - assert stale sends return HTTP 409 held responses before upstream send
   - assert checking/reading messages advances `readUpToSeq` enough for a later send

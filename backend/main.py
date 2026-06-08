@@ -17,7 +17,11 @@ async def lifespan(app: FastAPI):
     await create_tables()
     await seed()
     reminder_task = start_reminder_scheduler()
-    thread_summary_task = start_thread_summary_scheduler()
+    thread_summary_task = (
+        start_thread_summary_scheduler()
+        if settings.thread_summary_scheduler_enabled
+        else None
+    )
     try:
         yield
     finally:
@@ -34,7 +38,8 @@ app = FastAPI(
 # CORS：开发时允许前端 localhost:3000 和 daemon proxy
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):[0-9]+$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
