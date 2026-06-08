@@ -15,7 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
     get_db, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
-    Computer, ConnectTicket, Member, Message, EventRecord, FileEntry, Reminder, Server, Task,
+    Computer, ConnectTicket, Member, Message, EventRecord, FileEntry, Reminder,
+    Server, Task, ThreadSummary,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
 from services.daemon_control import (
@@ -23,6 +24,12 @@ from services.daemon_control import (
     daemon_control_hub,
     push_latest_events_for_server,
     runtime_start_command,
+)
+from services.thread_summary import (
+    load_thread_metadata,
+    resolve_thread_root,
+    serialize_thread_summary,
+    thread_reply_count,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
@@ -343,6 +350,59 @@ async def _serialize_reminder(db: AsyncSession, reminder: Reminder) -> dict:
     }
 
 
+async def _serialize_public_message(
+    db: AsyncSession,
+    msg: Message,
+    thread_metadata: dict[uuid.UUID, dict] | None = None,
+) -> dict:
+    sender_result = await db.execute(select(Member).where(Member.id == msg.sender_id))
+    sender = sender_result.scalar_one_or_none()
+    sender_member = await serialize_member(db, sender) if sender else None
+    root_id = msg.parent_id or msg.id
+    metadata = (thread_metadata or {}).get(root_id, {})
+    return {
+        "seq": msg.seq,
+        "id": str(msg.id),
+        "shortId": msg.short_id,
+        "channelId": str(msg.channel_id),
+        "sender": f"@{sender.display_name}" if sender else "unknown",
+        "senderId": str(msg.sender_id),
+        "senderType": sender.kind if sender else "unknown",
+        "senderMember": sender_member,
+        "content": msg.content,
+        "mentions": [str(item) for item in (msg.mentions or [])],
+        "parentId": str(msg.parent_id) if msg.parent_id else None,
+        "threadId": str(root_id),
+        "threadShortId": msg.short_id if not msg.parent_id else None,
+        "channelType": msg.channel_type,
+        "replyCount": int(metadata.get("replyCount") or 0) if not msg.parent_id else 0,
+        "threadSummary": metadata.get("threadSummary") if not msg.parent_id else None,
+        "time": msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else "",
+        "createdAt": msg.created_at.isoformat() if msg.created_at else None,
+    }
+
+
+async def _dm_channel_payload(db: AsyncSession, channel: Channel, viewer: Member) -> dict:
+    peer_result = await db.execute(
+        select(Member)
+        .join(ChannelMember, ChannelMember.member_id == Member.id)
+        .where(
+            ChannelMember.channel_id == channel.id,
+            Member.id != viewer.id,
+        )
+        .order_by(Member.kind.desc(), Member.display_name)
+        .limit(1)
+    )
+    peer = peer_result.scalar_one_or_none()
+    return {
+        "id": str(channel.id),
+        "name": channel.name,
+        "type": "dm",
+        "displayName": f"DM @{peer.display_name}" if peer else "DM",
+        "peer": await serialize_member(db, peer) if peer else None,
+    }
+
+
 async def _serialize_task(db: AsyncSession, task: Task) -> dict:
     creator_result = await db.execute(select(Member).where(Member.id == task.creator_id))
     creator = creator_result.scalar_one_or_none()
@@ -464,6 +524,7 @@ async def list_channels(_auth: None = Depends(verify_public_api_key), db: AsyncS
 async def get_channel_messages(
     channel_name: str,
     limit: int = Query(50),
+    threadMode: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     name = channel_name.lstrip("#")
@@ -474,36 +535,56 @@ async def get_channel_messages(
     if not ch:
         return {"messages": []}
 
-    msgs_result = await db.execute(
-        select(Message).where(Message.channel_id == ch.id)
-        .order_by(Message.seq.desc()).limit(limit)
-    )
+    q = select(Message).where(Message.channel_id == ch.id)
+    if threadMode == "roots":
+        q = q.where(Message.parent_id.is_(None))
+    msgs_result = await db.execute(q.order_by(Message.seq.desc()).limit(limit))
     messages = list(reversed(msgs_result.scalars().all()))
 
-    result = []
-    for msg in messages:
-        sender_result = await db.execute(select(Member).where(Member.id == msg.sender_id))
-        sender = sender_result.scalar_one_or_none()
-        sender_member = await serialize_member(db, sender) if sender else None
-        result.append({
-            "seq": msg.seq,
-            "id": str(msg.id),
-            "shortId": msg.short_id,
-            "channelId": str(msg.channel_id),
-            "sender": f"@{sender.display_name}" if sender else "unknown",
-            "senderId": str(msg.sender_id),
-            "senderType": sender.kind if sender else "unknown",
-            "senderMember": sender_member,
-            "content": msg.content,
-            "mentions": [str(item) for item in (msg.mentions or [])],
-            "parentId": str(msg.parent_id) if msg.parent_id else None,
-            "threadId": str(msg.parent_id or msg.id),
-            "channelType": msg.channel_type,
-            "time": msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else "",
-            "createdAt": msg.created_at.isoformat() if msg.created_at else None,
-        })
+    root_ids = [msg.id for msg in messages if msg.parent_id is None]
+    metadata = await load_thread_metadata(db, root_ids)
+    result = [await _serialize_public_message(db, msg, metadata) for msg in messages]
 
     return {"messages": result, "channelName": name}
+
+
+@router.get("/threads/{thread_id}")
+async def get_public_thread(
+    thread_id: str,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    root = await resolve_thread_root(db, server.id, thread_id)
+    if not root:
+        raise HTTPException(404, "Thread root not found")
+    replies_result = await db.execute(
+        select(Message).where(Message.parent_id == root.id).order_by(Message.seq)
+    )
+    replies = replies_result.scalars().all()
+    summary_result = await db.execute(
+        select(ThreadSummary).where(ThreadSummary.root_message_id == root.id)
+    )
+    summary = summary_result.scalar_one_or_none()
+    metadata = {
+        root.id: {
+            "replyCount": len(replies),
+            "threadSummary": serialize_thread_summary(summary),
+        }
+    }
+    return {
+        "thread": await _serialize_public_message(db, root, metadata),
+        "replies": [
+            await _serialize_public_message(db, item, metadata)
+            for item in replies
+        ],
+        "messages": [
+            await _serialize_public_message(db, item, metadata)
+            for item in [root, *replies]
+        ],
+        "replyCount": len(replies),
+        "threadSummary": serialize_thread_summary(summary),
+    }
 
 
 @router.post("/channels/{channel_name}/messages")
@@ -1272,6 +1353,31 @@ async def list_channel_members(
     return {"members": member_list}
 
 
+@router.get("/dms")
+async def list_dms(
+    sender: str = Query("zy-ean"),
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    viewer = await _resolve_member(db, server, sender)
+    result = await db.execute(
+        select(Channel)
+        .join(ChannelMember, ChannelMember.channel_id == Channel.id)
+        .where(
+            Channel.server_id == server.id,
+            Channel.kind == "dm",
+            ChannelMember.member_id == viewer.id,
+        )
+        .order_by(Channel.updated_at.desc(), Channel.created_at.desc())
+    )
+    channels = result.scalars().all()
+    return {
+        "dms": [await _dm_channel_payload(db, channel, viewer) for channel in channels],
+        "count": len(channels),
+    }
+
+
 @router.post("/dm")
 async def create_or_get_dm(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
@@ -1306,9 +1412,5 @@ async def create_or_get_dm(
         await db.refresh(channel)
 
     return {
-        "channel": {
-            "id": str(channel.id),
-            "name": channel.name,
-            "type": "dm",
-        },
+        "channel": await _dm_channel_payload(db, channel, sender),
     }

@@ -158,12 +158,13 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
     assert.match(readFileSync(runtime.systemPromptFile, 'utf-8'), /slock CLI ONLY/);
     assert.equal(runtime.argv.includes('--system-prompt'), false);
 
-    await waitFor(() => upstream.requests.length >= 2);
-    assert.equal(upstream.requests[0].req.url, '/internal/agent-api/server');
-    assert.equal(upstream.requests[0].req.headers.authorization, 'Bearer sk_machine_real');
-    assert.equal(upstream.requests[0].req.headers['x-agent-id'], 'agent-1');
-    assert.equal(upstream.requests[1].req.url, '/internal/agent-api/send');
-    assert.deepEqual(JSON.parse(upstream.requests[1].body), {
+    await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
+    await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/send'));
+    const serverRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/server');
+    const sendRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/send');
+    assert.equal(serverRequest.req.headers.authorization, 'Bearer sk_machine_real');
+    assert.equal(serverRequest.req.headers['x-agent-id'], 'agent-1');
+    assert.deepEqual(JSON.parse(sendRequest.body), {
       target: '#general',
       content: 'hello from runtime',
     });

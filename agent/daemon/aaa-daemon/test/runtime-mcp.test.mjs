@@ -266,6 +266,43 @@ test('daemon normalizes dotted task events from backend payloads', () => {
   );
 });
 
+test('daemon formats thread summary requests for runtime delivery', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'thread.summary_requested',
+    eventSeq: 55,
+    payload: {
+      targetAgentId: 'agent-123',
+      target: '#general:abc123ef',
+      threadId: 'thread-1',
+      threadShortId: 'abc123ef',
+      messageId: 'thread-1',
+      content: 'Summarize this thread and write it back with slock thread summary.',
+      replyCount: 4,
+      summaryMaxChars: 300,
+    },
+    timestamp: '2026-06-05T10:08:00.000Z',
+  });
+
+  assert.deepEqual(message, {
+    eventType: 'thread.summary_requested',
+    eventSeq: '55',
+    target: '#general:abc123ef',
+    messageId: 'thread-1',
+    timestamp: '2026-06-05T10:08:00.000Z',
+    actor: 'agent-123',
+    senderType: 'thread.summary_requested',
+    content: 'Summarize this thread and write it back with slock thread summary.',
+  });
+  assert.equal(
+    formatRuntimeIncomingMessage(message),
+    [
+      'event=thread.summary_requested eventSeq=55 target=#general:abc123ef msg=thread-1 time=2026-06-05T10:08:00.000Z actor=agent-123 type=thread.summary_requested',
+      '',
+      'Summarize this thread and write it back with slock thread summary.',
+    ].join('\n'),
+  );
+});
+
 test('websocket helpers classify messages and build ack/activity payloads', () => {
   const [event] = parseWebSocketPayload(JSON.stringify({
     type: 'message_received',
@@ -325,6 +362,21 @@ test('websocket helpers accept dotted message and task event names', () => {
     type: 'task.updated',
     taskId: 'task-1',
     status: 'done',
+  });
+
+  const [threadEvent] = parseWebSocketPayload(JSON.stringify({
+    type: 'thread.summary_requested',
+    targetAgentId: 'agent-123',
+    target: '#general:abc123ef',
+    content: 'Summarize this thread.',
+  }));
+
+  assert.equal(threadEvent.type, 'event');
+  assert.deepEqual(threadEvent.event, {
+    type: 'thread.summary_requested',
+    targetAgentId: 'agent-123',
+    target: '#general:abc123ef',
+    content: 'Summarize this thread.',
   });
 });
 

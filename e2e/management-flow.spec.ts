@@ -159,6 +159,8 @@ test.describe("Management product flow", () => {
     const channelReply = `agent channel reply ${stamp}`
     const dmMessage = `private dm ${stamp}`
     const dmReply = `agent dm reply ${stamp}`
+    const channelThreadReply = `thread reply ${stamp}`
+    const dmThreadReply = `dm thread reply ${stamp}`
 
     try {
       // 1. Generate one-time daemon connect command on Computers page
@@ -223,6 +225,15 @@ test.describe("Management product flow", () => {
       await page.getByRole("button", { name: "Send message" }).click()
       await expect(page.getByText(channelMessage)).toBeVisible()
 
+      await page.getByRole("button", { name: "Reply" }).first().click()
+      await expect(page.getByRole("complementary", { name: "Thread" })).toBeVisible()
+      await page.getByPlaceholder("Reply in thread...").fill(channelThreadReply)
+      await page.getByRole("button", { name: "Send thread reply" }).click()
+      await expect(page.getByRole("complementary", { name: "Thread" }).getByText(channelThreadReply)).toBeVisible()
+      await page.getByRole("button", { name: "Close thread" }).click()
+      await expect(page.getByText(channelThreadReply)).not.toBeVisible()
+      await expect(page.getByRole("button", { name: /1 replies/ }).first()).toBeVisible()
+
       // 7. Agent replies via agent-facing API using the daemon-issued machine token
       await agentSend(apiKey!, agentId!, `#${channelName}`, channelReply)
       await page.reload()
@@ -234,10 +245,18 @@ test.describe("Management product flow", () => {
       await page.getByLabel("Start DM with").selectOption(agentName)
       await page.getByRole("button", { name: "DM" }).click()
       await expect(page).toHaveURL(/\/chat\/dm(%3A|:)/)
-      await expect(page.locator("h1")).toContainText("dm:")
+      await expect(page.getByRole("heading", { name: `DM @${agentName}` })).toBeVisible()
       await page.getByPlaceholder("Type a message...").fill(dmMessage)
       await page.getByRole("button", { name: "Send message" }).click()
       await expect(page.getByText(dmMessage)).toBeVisible()
+
+      await page.getByRole("button", { name: "Reply" }).first().click()
+      await expect(page.getByRole("complementary", { name: "Thread" })).toBeVisible()
+      await page.getByPlaceholder("Reply in thread...").fill(dmThreadReply)
+      await page.getByRole("button", { name: "Send thread reply" }).click()
+      await expect(page.getByRole("complementary", { name: "Thread" }).getByText(dmThreadReply)).toBeVisible()
+      await page.getByRole("button", { name: "Close thread" }).click()
+      await expect(page.getByText(dmThreadReply)).not.toBeVisible()
 
       // 9. Agent replies in DM via agent-facing API (target format: dm:<peer_name>)
       const dmChannelName = decodeURIComponent(page.url().split("/chat/").at(-1) ?? "")

@@ -62,6 +62,7 @@ export function rewriteAgentPath(pathname: string, search: string, agentId: stri
   if (suffix === '/resolve-channel') return `/internal/agent-api/resolve-channel${search}`;
   if (suffix === '/threads/unfollow') return `/internal/agent-api/threads/unfollow${search}`;
   if (suffix === '/threads/follow') return `/internal/agent-api/threads/follow${search}`;
+  if (suffix.startsWith('/threads/')) return `/internal/agent-api${suffix}${search}`;
   if (suffix === '/prepare-action') return `/internal/agent-api/prepare-action${search}`;
   if (suffix === '/receive') {
     const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);

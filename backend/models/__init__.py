@@ -1,6 +1,6 @@
 from .base import Base, engine, async_session, get_db
 from .slock import (
-    Server, Member, Computer, AgentWorkspace, Channel, ChannelMember, Message,
+    Server, Member, Computer, AgentWorkspace, Channel, ChannelMember, Message, ThreadSummary,
     Task, ActivityLog, EventRecord, FileEntry, MessageReaction, Reminder, ApiKey,
     ConnectTicket,
 )
@@ -8,6 +8,6 @@ from .slock import (
 __all__ = [
     "Base", "engine", "async_session", "get_db",
     "Server", "Member", "Computer", "AgentWorkspace", "Channel", "ChannelMember",
-    "Message", "Task", "ActivityLog", "EventRecord", "FileEntry", "MessageReaction",
+    "Message", "ThreadSummary", "Task", "ActivityLog", "EventRecord", "FileEntry", "MessageReaction",
     "Reminder", "ApiKey", "ConnectTicket",
 ]

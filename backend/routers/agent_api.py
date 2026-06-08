@@ -21,13 +21,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
     get_db, ActivityLog, AgentWorkspace, ApiKey, Channel, ChannelMember, Computer,
-    ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction, Reminder, Server, Task,
+    ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction,
+    Reminder, Server, Task, ThreadSummary,
 )
 from routers.auth import resolve_agent, resolve_machine
 from services.daemon_control import (
     daemon_control_hub,
     pending_runtime_commands,
     push_latest_events_for_server,
+)
+from services.thread_summary import (
+    SUMMARY_MAX_CHARS,
+    serialize_thread_summary,
+    thread_participant_ids,
+    thread_reply_count,
 )
 
 router = APIRouter(prefix="/internal/agent-api", tags=["agent-api"])
@@ -189,6 +196,8 @@ EVENT_TYPE_ALIASES = {
     "integration.connected": "integration_connected",
     "thread.followed": "thread_followed",
     "thread.unfollowed": "thread_unfollowed",
+    "thread.summary_requested": "thread_summary_requested",
+    "thread.summary_updated": "thread_summary_updated",
 }
 
 
@@ -632,7 +641,7 @@ def _event_record_event(record: EventRecord) -> dict:
     payload["eventCursor"] = str(record.seq)
     payload["eventLogCursor"] = str(record.seq)
     payload["actorId"] = str(record.actor_id) if record.actor_id else payload.get("actorId")
-    payload["agentId"] = str(record.actor_id) if record.actor_id else payload.get("agentId")
+    payload["agentId"] = str(record.actor_id) if record.actor_id else payload.get("agentId") or payload.get("targetAgentId")
     payload["channelId"] = str(record.channel_id) if record.channel_id else payload.get("channelId")
     payload["taskId"] = str(record.task_id) if record.task_id else payload.get("taskId")
     payload["messageId"] = str(record.message_id) if record.message_id else payload.get("messageId")
@@ -675,7 +684,14 @@ async def _visible_event_records(
     query = query.where(or_(*visibility))
 
     result = await db.execute(query.order_by(EventRecord.seq).limit(limit))
-    return result.scalars().all()
+    records = result.scalars().all()
+    visible = []
+    for record in records:
+        target_agent_id = (record.payload or {}).get("targetAgentId")
+        if target_agent_id and str(target_agent_id) != str(member.id):
+            continue
+        visible.append(record)
+    return visible
 
 
 def _thread_subscription_config(member: Member) -> dict:
@@ -2383,12 +2399,107 @@ async def get_thread(
         select(Message).where(Message.parent_id == root.id).order_by(Message.seq)
     )
     replies = replies_result.scalars().all()
+    summary_result = await db.execute(
+        select(ThreadSummary).where(ThreadSummary.root_message_id == root.id)
+    )
+    summary = summary_result.scalar_one_or_none()
 
     return {
         "thread": await _serialize_message(db, root),
+        "replies": [await _serialize_message(db, item) for item in replies],
         "messages": [await _serialize_message(db, item) for item in [root, *replies]],
         "replyCount": len(replies),
         "following": _is_thread_following(member, root.id),
+        "threadSummary": serialize_thread_summary(summary),
+    }
+
+
+@router.post("/threads/{thread_id}/summary")
+async def update_thread_summary(
+    thread_id: str,
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    body = await request.json()
+    text = str(body.get("summary") or "").strip()
+    if not text:
+        raise HTTPException(400, "Missing summary")
+    if len(text) > SUMMARY_MAX_CHARS:
+        raise HTTPException(400, f"Summary must be at most {SUMMARY_MAX_CHARS} characters")
+
+    message = await _resolve_message_ref(db, server, thread_id)
+    root_id = message.parent_id or message.id
+    root_result = await db.execute(select(Message).where(Message.id == root_id))
+    root = root_result.scalar_one_or_none()
+    if not root:
+        raise HTTPException(404, "Thread root not found")
+
+    summary_result = await db.execute(
+        select(ThreadSummary).where(ThreadSummary.root_message_id == root.id)
+    )
+    summary = summary_result.scalar_one_or_none()
+    participant_ids = await thread_participant_ids(db, root.id)
+    if summary and summary.requested_agent_id and summary.requested_agent_id != member.id and member.id not in participant_ids:
+        raise HTTPException(403, "Agent is not allowed to summarize this thread")
+    if not summary and member.id not in participant_ids:
+        raise HTTPException(403, "Agent is not allowed to summarize this thread")
+
+    reply_count = await thread_reply_count(db, root.id)
+    now = _utcnow()
+    if summary is None:
+        summary = ThreadSummary(
+            server_id=server.id,
+            channel_id=root.channel_id,
+            root_message_id=root.id,
+        )
+        db.add(summary)
+    summary.summary = text
+    summary.status = "ready"
+    summary.updated_by = member.id
+    summary.reply_count_at_summary = reply_count
+    summary.summarized_at = now
+
+    await _record_activity(
+        db,
+        server,
+        member,
+        "thread_summary_updated",
+        f"@{member.display_name} summarized thread {root.short_id}",
+        {
+            "threadId": str(root.id),
+            "threadShortId": root.short_id,
+            "messageId": str(root.id),
+            "summary": text,
+            "replyCount": reply_count,
+        },
+        channel_id=root.channel_id,
+    )
+    db.add(EventRecord(
+        server_id=server.id,
+        event_type="thread.summary_updated",
+        actor_id=member.id,
+        channel_id=root.channel_id,
+        message_id=root.id,
+        payload={
+            "type": "thread.summary_updated",
+            "legacyType": "thread_summary_updated",
+            "actorId": str(member.id),
+            "agentId": str(member.id),
+            "threadId": str(root.id),
+            "threadShortId": root.short_id,
+            "messageId": str(root.id),
+            "summary": text,
+            "replyCount": reply_count,
+        },
+    ))
+    await db.commit()
+    await db.refresh(summary)
+    await push_latest_events_for_server(db, server_id=server.id)
+    return {
+        "updated": True,
+        "threadSummary": serialize_thread_summary(summary),
     }
 
 

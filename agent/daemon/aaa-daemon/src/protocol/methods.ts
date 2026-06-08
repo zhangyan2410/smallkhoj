@@ -72,6 +72,8 @@ export const DaemonMethods = {
   ChannelLeave: 'daemon/channel.leave',
   ThreadFollow: 'daemon/thread.follow',
   ThreadUnfollow: 'daemon/thread.unfollow',
+  ThreadRead: 'daemon/thread.read',
+  ThreadSummary: 'daemon/thread.summary',
 
   // ── Profile / integration / reminder / attachment operations ─
 

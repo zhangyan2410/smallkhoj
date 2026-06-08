@@ -218,6 +218,9 @@ async def push_latest_events_for_server(db: AsyncSession, *, server_id: uuid.UUI
 
 
 def _event_visible_to_agent(record: EventRecord, agent: Member, channel_ids: set[uuid.UUID]) -> bool:
+    target_agent_id = (record.payload or {}).get("targetAgentId")
+    if target_agent_id and str(target_agent_id) != str(agent.id):
+        return False
     return (
         record.channel_id is None
         or record.actor_id == agent.id

@@ -49,6 +49,16 @@ test('rewriteAgentPath preserves query strings and normalizes receive', () => {
     rewriteAgentPath('/internal/agent/agent%201/channels/%23general/join', '', agentId),
     '/internal/agent-api/channels/%23general/join',
   );
+
+  assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/threads/thread-1', '', agentId),
+    '/internal/agent-api/threads/thread-1',
+  );
+
+  assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/threads/thread-1/summary', '', agentId),
+    '/internal/agent-api/threads/thread-1/summary',
+  );
 });
 
 test('writeSlockWrapper writes wrappers and proxy token', () => {

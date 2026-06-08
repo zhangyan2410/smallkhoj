@@ -8,6 +8,7 @@ from config import settings
 from routers import health, chat, agent_api, public_api, hello
 from models.seed import create_tables, seed
 from services.reminder_scheduler import start_reminder_scheduler, stop_reminder_scheduler
+from services.thread_summary import start_thread_summary_scheduler, stop_thread_summary_scheduler
 
 
 @asynccontextmanager
@@ -16,10 +17,12 @@ async def lifespan(app: FastAPI):
     await create_tables()
     await seed()
     reminder_task = start_reminder_scheduler()
+    thread_summary_task = start_thread_summary_scheduler()
     try:
         yield
     finally:
         await stop_reminder_scheduler(reminder_task)
+        await stop_thread_summary_scheduler(thread_summary_task)
 
 
 app = FastAPI(

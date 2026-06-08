@@ -216,7 +216,7 @@ function eventFromRawPayload(value: unknown): WebSocketManagerEvent[] {
   if (isMessageEventType(type)) {
     return [{ type: 'message', message: value.message ?? value.event ?? value }];
   }
-  if (isTaskEventType(type)) {
+  if (isTaskEventType(type) || isThreadEventType(type)) {
     return [{ type: 'event', event: value.event ?? value }];
   }
   if (isRecord(value.message) || typeof value.content === 'string') {
@@ -277,6 +277,10 @@ function isMessageEventType(type: string): boolean {
 
 function isTaskEventType(type: string): boolean {
   return type.startsWith('task_') || type.startsWith('task.');
+}
+
+function isThreadEventType(type: string): boolean {
+  return type.startsWith('thread_') || type.startsWith('thread.');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

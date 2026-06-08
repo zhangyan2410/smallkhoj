@@ -199,6 +199,37 @@ class Message(Base):
     sender = relationship("Member")
 
 
+class ThreadSummary(Base):
+    __tablename__ = "thread_summaries"
+    __table_args__ = (
+        UniqueConstraint("root_message_id", name="uq_thread_summaries_root_message"),
+        Index("idx_thread_summaries_server", "server_id", "updated_at"),
+        Index("idx_thread_summaries_channel", "channel_id", "updated_at"),
+        Index("idx_thread_summaries_requested_agent", "requested_agent_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
+    root_message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="empty")
+    requested_agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    reply_count_at_request: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    reply_count_at_summary: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    last_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    summarized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    channel = relationship("Channel")
+    root_message = relationship("Message", foreign_keys=[root_message_id])
+    requested_agent = relationship("Member", foreign_keys=[requested_agent_id])
+    updated_by_member = relationship("Member", foreign_keys=[updated_by])
+
+
 # ── Tasks ────────────────────────────────────────────────────
 
 class Task(Base):

@@ -180,6 +180,18 @@ test('slock CLI error paths', async (t) => {
     assert.equal(JSON.parse(result.stderr).code, 'MISSING_CHANNEL');
   });
 
+  await t.test('#32 thread read missing --thread-id', async () => {
+    const result = await runCli(['thread', 'read'], baseEnv(root));
+    assert.equal(result.code, 1);
+    assert.equal(JSON.parse(result.stderr).code, 'MISSING_THREAD_ID');
+  });
+
+  await t.test('#32 thread summary missing --summary', async () => {
+    const result = await runCli(['thread', 'summary', '--thread-id', 'thread-1'], baseEnv(root));
+    assert.equal(result.code, 1);
+    assert.equal(JSON.parse(result.stderr).code, 'MISSING_SUMMARY');
+  });
+
   // #33 - task claim insufficient args
   await t.test('#33 task claim insufficient args', async () => {
     const result = await runCli(['task', 'claim'], baseEnv(root));
@@ -377,6 +389,16 @@ function buildUpstreamHandler() {
     // server info
     if (pathname === '/internal/agent-api/server') {
       res.end(JSON.stringify({ id: 'server-1' }));
+      return;
+    }
+
+    // thread read / summary
+    if (pathname === '/internal/agent-api/threads/thread-1' && req.method === 'GET') {
+      res.end(JSON.stringify({ thread: { id: 'thread-1' }, replies: [] }));
+      return;
+    }
+    if (pathname === '/internal/agent-api/threads/thread-1/summary' && req.method === 'POST') {
+      res.end(JSON.stringify({ updated: true, body: JSON.parse(body) }));
       return;
     }
 
@@ -585,6 +607,22 @@ test('slock CLI command variants', async (t) => {
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.left, true);
       assert.equal(parsed.channelId, 'chan-explicit-id');
+    });
+
+    await t.test('#5 thread read by short id', async () => {
+      const result = await runCli(['thread', 'read', '--thread-id', 'thread-1'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.deepEqual(parsed.thread, { id: 'thread-1' });
+      assert.deepEqual(parsed.replies, []);
+    });
+
+    await t.test('#5 thread summary writes summary body', async () => {
+      const result = await runCli(['thread', 'summary', '--thread-id', 'thread-1', '--summary', 'Current state is clear.'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.updated, true);
+      assert.deepEqual(parsed.body, { summary: 'Current state is clear.' });
     });
 
     // #6 - task claim --id <taskId>

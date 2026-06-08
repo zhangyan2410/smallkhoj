@@ -562,7 +562,7 @@ test('postDaemonRpc forwards JSON-RPC to daemon endpoint', async () => {
 });
 
 test('ClientHandler forwards extended daemon methods through local proxy bearer auth', async () => {
-  const upstream = await startServer((req, res) => {
+  const upstream = await startServer((req, res, body) => {
     const url = new URL(req.url, 'http://upstream.test');
     res.writeHead(200, { 'content-type': 'application/json' });
     if (url.pathname === '/internal/agent-api/profile/%40alice') {
@@ -575,6 +575,14 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
     }
     if (url.pathname === '/internal/agent-api/threads/follow') {
       res.end(JSON.stringify({ followed: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/threads/thread-1' && req.method === 'GET') {
+      res.end(JSON.stringify({ thread: { id: 'thread-1' }, replies: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/threads/thread-1/summary' && req.method === 'POST') {
+      res.end(JSON.stringify({ updated: true, body: JSON.parse(body) }));
       return;
     }
     res.end(JSON.stringify({ path: url.pathname }));
@@ -654,6 +662,37 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
     assert.equal(upstream.requests.length, 3);
     assert.equal(upstream.requests[2].req.url, '/internal/agent-api/threads/follow');
     assert.deepEqual(JSON.parse(upstream.requests[2].body), { threadId: 'thread-1' });
+
+    const threadRead = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'daemon/thread.read',
+      params: { threadId: 'thread-1' },
+    });
+
+    assert.deepEqual(threadRead, {
+      jsonrpc: '2.0',
+      id: 4,
+      result: { thread: { id: 'thread-1' }, replies: [] },
+    });
+    assert.equal(upstream.requests.length, 4);
+    assert.equal(upstream.requests[3].req.url, '/internal/agent-api/threads/thread-1');
+
+    const threadSummary = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'daemon/thread.summary',
+      params: { threadId: 'thread-1', summary: 'Current state is clear.' },
+    });
+
+    assert.deepEqual(threadSummary, {
+      jsonrpc: '2.0',
+      id: 5,
+      result: { updated: true, body: { summary: 'Current state is clear.' } },
+    });
+    assert.equal(upstream.requests.length, 5);
+    assert.equal(upstream.requests[4].req.url, '/internal/agent-api/threads/thread-1/summary');
+    assert.deepEqual(JSON.parse(upstream.requests[4].body), { summary: 'Current state is clear.' });
   } finally {
     proxy.stop();
     await upstream.close();

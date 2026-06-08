@@ -119,9 +119,9 @@ export class DaemonCore extends EventEmitter {
     this.proxy.on('event_received', (data) => {
       if (!isRecord(data)) return;
       const eventType = firstString(data.type, data.eventType) ?? '';
-      // Only deliver task events and message events to runtime; skip heartbeats/member updates
+      // Only deliver task/thread events and message events to runtime; skip heartbeats/member updates.
       if (eventType === 'message_received') return; // already handled above
-      if (!isTaskEventType(eventType)) return;
+      if (!isTaskEventType(eventType) && !isThreadEventType(eventType)) return;
       this.deliverRuntimeMessage(data, 'proxy');
     });
   }
@@ -1080,6 +1080,18 @@ function normalizeRuntimeEventPayload(input: unknown): unknown {
     return normalized;
   }
 
+  if (isThreadEventType(rawType) && isRecord(input.payload)) {
+    const normalized: Record<string, unknown> = {
+      ...input.payload,
+      type: rawType,
+    };
+    assignRawIfMissing(normalized, 'eventSeq', input.eventSeq ?? input.eventLogCursor ?? input.eventCursor ?? input.seq);
+    assignRawIfMissing(normalized, 'timestamp', input.timestamp);
+    assignRawIfMissing(normalized, 'target', input.payload.target ?? input.target ?? input.channel ?? input.channelName);
+    assignRawIfMissing(normalized, 'actor', input.payload.actor ?? input.payload.actorId ?? input.payload.agentId ?? input.payload.targetAgentId);
+    return normalized;
+  }
+
   return input;
 }
 
@@ -1142,6 +1154,10 @@ function isMessageEventType(type: string): boolean {
 
 function isTaskEventType(type: string): boolean {
   return type.startsWith('task_') || type.startsWith('task.');
+}
+
+function isThreadEventType(type: string): boolean {
+  return type.startsWith('thread_') || type.startsWith('thread.');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

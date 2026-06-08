@@ -120,6 +120,12 @@ export class ClientHandler extends EventEmitter {
       case DaemonMethods.ThreadUnfollow:
         return this.forwardToProxy(id, 'thread.unfollow', params);
 
+      case DaemonMethods.ThreadRead:
+        return this.forwardToProxy(id, 'thread.read', params);
+
+      case DaemonMethods.ThreadSummary:
+        return this.forwardToProxy(id, 'thread.summary', params);
+
       case DaemonMethods.ProfileGet:
         return this.forwardToProxy(id, 'profile.get', params);
 
@@ -284,6 +290,14 @@ export class ClientHandler extends EventEmitter {
           httpMethod = 'POST';
           body = params;
           break;
+        case 'thread.read':
+          apiPath = `${agentPath}/threads/${encodeURIComponent(String(p.threadId ?? p.thread_id ?? p.id ?? ''))}`;
+          break;
+        case 'thread.summary':
+          apiPath = `${agentPath}/threads/${encodeURIComponent(String(p.threadId ?? p.thread_id ?? p.id ?? ''))}/summary`;
+          httpMethod = 'POST';
+          body = compactBody({ summary: p.summary ?? p.text });
+          break;
         case 'profile.get':
           apiPath = `${agentPath}/profile${p.handle ? `/${encodeURIComponent(String(p.handle))}` : ''}`;
           break;
@@ -343,7 +357,7 @@ export class ClientHandler extends EventEmitter {
           return buildError(id, ErrorCode.MethodNotFound, `Unknown method for proxy: ${method}`);
       }
 
-      if (apiPath.endsWith('//reactions') || apiPath.endsWith('/tasks/') || apiPath.endsWith('/channels//join') || apiPath.endsWith('/channels//leave') || apiPath.endsWith('/reminders/') || apiPath.endsWith('/attachments/') || apiPath.endsWith('/knowledge/')) {
+      if (apiPath.endsWith('//reactions') || apiPath.endsWith('/tasks/') || apiPath.endsWith('/channels//join') || apiPath.endsWith('/channels//leave') || apiPath.endsWith('/threads/') || apiPath.endsWith('/threads//summary') || apiPath.endsWith('/reminders/') || apiPath.endsWith('/attachments/') || apiPath.endsWith('/knowledge/')) {
         return buildError(id, ErrorCode.InvalidParams, `Missing required identifier for ${method}`);
       }
 

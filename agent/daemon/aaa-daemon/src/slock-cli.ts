@@ -29,7 +29,7 @@ function printUsage(): never {
   stderr.write(JSON.stringify({
     ok: false,
     code: 'USAGE',
-    message: 'Usage: slock message check|send|read|search|react, slock channel members|join|leave, slock server info, slock task list|claim|update|create, slock profile get|update, slock integration list|login, slock reminder list|schedule|create|update|cancel|delete, slock attachment view|download|upload',
+    message: 'Usage: slock message check|send|read|search|react, slock channel members|join|leave, slock thread read|summary, slock server info, slock task list|claim|update|create, slock profile get|update, slock integration list|login, slock reminder list|schedule|create|update|cancel|delete, slock attachment view|download|upload',
   }) + '\n');
   exit(2);
 }
@@ -298,6 +298,26 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
 
   if (group === 'server' && command === 'info') {
     return { method: 'GET', path: `${agentPrefix}/server` };
+  }
+
+  if (group === 'thread' && command === 'read') {
+    const threadId = getOption(rest, '--thread-id') ?? getOption(rest, '--id') ?? positionalArgs(rest)[0];
+    if (!threadId) throw Object.assign(new Error('Missing --thread-id'), { code: 'MISSING_THREAD_ID' });
+    return { method: 'GET', path: `${agentPrefix}/threads/${encodeURIComponent(threadId)}` };
+  }
+
+  if (group === 'thread' && command === 'summary') {
+    const threadId = getOption(rest, '--thread-id') ?? getOption(rest, '--id') ?? positionalArgs(rest)[0];
+    if (!threadId) throw Object.assign(new Error('Missing --thread-id'), { code: 'MISSING_THREAD_ID' });
+    const inline = getOption(rest, '--summary') ?? getOption(rest, '--text') ?? positionalArgs(rest).slice(1).join(' ').trim();
+    const summary = inline || await readStdinText();
+    if (!summary) throw Object.assign(new Error('Missing --summary'), { code: 'MISSING_SUMMARY' });
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/threads/${encodeURIComponent(threadId)}/summary`,
+      body: { summary },
+      safety: writeSafety(`thread:${threadId}`),
+    };
   }
 
   if (group === 'task' && command === 'list') {
