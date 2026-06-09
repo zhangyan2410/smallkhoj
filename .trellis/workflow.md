@@ -521,6 +521,7 @@ The check agent's job:
 - Review code changes against specs
 - Auto-fix issues it finds
 - Run lint and typecheck to verify
+- For browser-facing or runtime/control-plane changes, verify the task's Real Test SOP evidence exists under `{TASK_DIR}/evidence/` or keep the task in progress. Real-test evidence must use the project WebDriver (`agent/daemon/webdriver/twd.py`) plus API/DB/trace cross-checks when relevant.
 
 [/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
 
@@ -530,6 +531,7 @@ Load the `trellis-check` skill and verify the code per its guidance:
 - Spec compliance
 - lint / type-check / tests
 - Cross-layer consistency (when changes span layers)
+- Real Test SOP evidence for browser-facing or runtime/control-plane changes: `twd.py` browser proof, unique marker, visible DOM check, and API/DB/trace cross-checks when relevant.
 
 If issues are found → fix → re-check, until green.
 
@@ -553,6 +555,7 @@ Load the `trellis-check` skill and do a final verification:
 - Spec compliance
 - lint / type-check / tests
 - Cross-layer consistency (when changes span layers)
+- Real Test SOP evidence for browser-facing or runtime/control-plane changes. Treat missing or failing real-test evidence as a failed quality gate even when automated tests pass.
 
 If issues are found → fix → re-check, until green.
 

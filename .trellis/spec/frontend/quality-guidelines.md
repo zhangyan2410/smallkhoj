@@ -122,12 +122,27 @@ Use `http://localhost:3000` for local browser e2e, or configure `allowedDevOrigi
 
 ### Mutation Smoke Tests
 
-For forms that write to backend APIs, include at least one Playwright/e2e or equivalent browser smoke test that:
+For forms that write to backend APIs, include at least one project WebDriver browser smoke test using `agent/daemon/webdriver/twd.py` that:
 
 - Fills and submits the visible form.
 - Verifies the expected result appears in the UI.
 - Verifies temporary test data is cleaned up or isolated.
 - Watches network events when a previous bug involved the wrong HTTP method.
+
+### Real Browser Test SOP
+
+For browser-facing product work, add a task-local Real Test SOP and evidence files. Use the project WebDriver harness, not Playwright, for repository browser/UI verification.
+
+Required evidence:
+
+- Unique marker in the shape `REAL_<task-slug>_<timestamp>`.
+- `twd.py` navigation/action commands against the running local app.
+- Visible DOM assertion through `scan --text` or `eval`.
+- Screenshot saved under `{TASK_DIR}/evidence/`.
+- API or database cross-check when the UI creates or mutates backend state.
+- `smallkhoj-trace` cross-check when daemon/runtime delivery is part of the workflow.
+
+If the real browser behavior disagrees with automated tests, treat the task as failing and keep fixing.
 
 ---
 

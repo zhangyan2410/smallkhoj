@@ -1,0 +1,11 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend implementation guidelines"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "frontend quality and project WebDriver real-test gate"}
+{"file": ".trellis/tasks/06-09-product-maturity-gap-decomposition/research/slock-product-surface.md", "reason": "Slock product surface evidence"}
+{"file": ".trellis/tasks/06-09-product-maturity-gap-decomposition/research/smallkhoj-current-gap.md", "reason": "SmallKhoj current gap evidence"}
+{"file": ".trellis/tasks/06-09-product-maturity-gap-decomposition/real-test-sop-integration.md", "reason": "real browser/runtime SOP template"}
+{"file": ".trellis/tasks/06-09-message-actions-thread-reactions-saved/info.md", "reason": "task implementation plan/spec/real-test SOP"}
+{"file": ".trellis/tasks/06-09-product-maturity-gap-decomposition/execution-roadmap.md", "reason": "parent execution sequence and dependency plan"}
+{"file": ".trellis/tasks/06-09-product-maturity-gap-decomposition/agent-handoff-sop.md", "reason": "agent execution and evidence handoff SOP"}
+{"file": ".trellis/tasks/06-09-product-maturity-gap-decomposition/completion-audit.md", "reason": "parent completion audit and scope boundary"}
+{"file": ".trellis/tasks/06-09-product-maturity-gap-decomposition/review-packet.md", "reason": "one-page user review packet and approval options"}
