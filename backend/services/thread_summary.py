@@ -21,6 +21,7 @@ from services.daemon_control import push_latest_events_for_server
 SUMMARY_MAX_CHARS = 300
 SUMMARY_REQUEST_INTERVAL_SECONDS = 600
 SUMMARY_SCHEDULER_INTERVAL_SECONDS = 60
+SUMMARY_REQUEST_BATCH_LIMIT = 5
 
 
 def _utcnow() -> datetime:
@@ -258,7 +259,7 @@ async def request_thread_summary(
     return True
 
 
-async def request_due_thread_summaries(db: AsyncSession, limit: int = 50) -> int:
+async def request_due_thread_summaries(db: AsyncSession, limit: int = SUMMARY_REQUEST_BATCH_LIMIT) -> int:
     reply_stats = (
         select(
             Message.parent_id.label("root_message_id"),
@@ -294,9 +295,9 @@ async def request_due_thread_summaries(db: AsyncSession, limit: int = 50) -> int
             if last_touch_at and not _older_than(last_touch_at, SUMMARY_REQUEST_INTERVAL_SECONDS):
                 continue
             if reply_count <= summary.reply_count_at_request and not summary.summary:
-                # Retry an unanswered request after the window, but avoid multiple requests
-                # for the same reply count inside that window.
-                pass
+                # Do not keep re-prompting a runtime for the same unanswered thread state.
+                # A later reply_count increase is the next automatic trigger.
+                continue
         did_request = await request_thread_summary(
             db,
             root=root,

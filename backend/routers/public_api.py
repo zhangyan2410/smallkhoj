@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
-    get_db, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
+    get_db, Account, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
     Computer, ConnectTicket, Member, Message, EventRecord, FileEntry, Reminder,
     Server, Task, ThreadSummary,
 )
@@ -39,6 +39,10 @@ PUBLIC_API_KEY = "sk_public_local"
 DEFAULT_LOCAL_AGENT_ID = "aaaa0000-0000-0000-0000-000000000001"
 DEFAULT_LOCAL_DAEMON_DIR = Path(__file__).resolve().parents[2] / "agent" / "daemon" / "aaa-daemon"
 CONNECT_TICKET_TTL_SECONDS = 300
+DEFAULT_SERVER_ID = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
+DEFAULT_SERVER_NAME = "Slock Server"
+SESSION_COOKIE_NAME = "smallkhoj_session"
+ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_message_sent": "message.created",
@@ -48,6 +52,8 @@ PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_reminder_created": "reminder.created",
     "supervisor_reminder_updated": "reminder.updated",
 }
+
+HEARTBEAT_ACTIVITY_TYPES = {"workspace_heartbeat"}
 
 EVENT_TYPE_ALIASES = {
     "message.created": "message_received",
@@ -155,6 +161,17 @@ async def _get_server(db: AsyncSession) -> Server:
     return server
 
 
+async def _ensure_server(db: AsyncSession) -> Server:
+    result = await db.execute(select(Server).limit(1))
+    server = result.scalar_one_or_none()
+    if server:
+        return server
+    server = Server(id=DEFAULT_SERVER_ID, name=DEFAULT_SERVER_NAME)
+    db.add(server)
+    await db.flush()
+    return server
+
+
 async def _resolve_member(db: AsyncSession, server: Server, handle_or_id: str | None) -> Member | None:
     if not handle_or_id:
         return None
@@ -177,6 +194,135 @@ async def _resolve_member(db: AsyncSession, server: Server, handle_or_id: str | 
     if not member:
         raise HTTPException(404, f"Member {handle_or_id} not found")
     return member
+
+
+async def _ensure_human_member(db: AsyncSession, server: Server, handle_or_id: str) -> Member:
+    name = handle_or_id.lstrip("@").strip()
+    if not name:
+        raise HTTPException(400, "Missing human member")
+
+    result = await db.execute(
+        select(Member).where(
+            Member.server_id == server.id,
+            Member.display_name == name,
+        )
+    )
+    member = result.scalar_one_or_none()
+    if member:
+        return member
+
+    member = Member(
+        server_id=server.id,
+        kind="human",
+        display_name=name,
+        status="online",
+    )
+    db.add(member)
+    await db.flush()
+    return member
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _normalize_account_name(raw_name: str | None) -> str:
+    name = (raw_name or "").strip().lstrip("@")
+    if not name:
+        raise HTTPException(400, "Missing account name")
+    if not ACCOUNT_NAME_RE.fullmatch(name):
+        raise HTTPException(400, "Account name must use letters, numbers, dot, underscore, or dash")
+    return name
+
+
+async def _account_from_token(db: AsyncSession, token: str | None) -> Account | None:
+    if not token:
+        return None
+    result = await db.execute(select(Account).where(Account.session_token_hash == _hash_token(token)))
+    return result.scalar_one_or_none()
+
+
+async def _current_account(db: AsyncSession, request: Request) -> Account | None:
+    token = request.headers.get("X-Account-Token") or request.cookies.get(SESSION_COOKIE_NAME)
+    return await _account_from_token(db, token)
+
+
+async def _bootstrap_account(
+    db: AsyncSession,
+    *,
+    name: str,
+    display_name: str | None = None,
+) -> tuple[Account, Server, Member, str]:
+    account_name = _normalize_account_name(name)
+    server = await _ensure_server(db)
+    result = await db.execute(select(Account).where(Account.name == account_name))
+    account = result.scalar_one_or_none()
+    if account:
+        member_result = await db.execute(select(Member).where(Member.id == account.member_id))
+        member = member_result.scalar_one_or_none()
+        if not member:
+            member = await _ensure_human_member(db, server, account_name)
+            account.member_id = member.id
+        account.server_id = server.id
+    else:
+        member = await _ensure_human_member(db, server, account_name)
+        account = Account(
+            name=account_name,
+            display_name=display_name or account_name,
+            server_id=server.id,
+            member_id=member.id,
+        )
+        db.add(account)
+        await db.flush()
+
+    member.status = "online"
+    if display_name:
+        account.display_name = display_name
+    token = f"sk_session_{secrets.token_urlsafe(32)}"
+    account.session_token_hash = _hash_token(token)
+    account.last_login_at = _utcnow_aware()
+    await db.flush()
+    return account, server, member, token
+
+
+async def _resolve_human_actor(
+    db: AsyncSession,
+    server: Server,
+    request: Request,
+    explicit_name: str | None,
+    *,
+    role: str,
+    required: bool = True,
+) -> Member | None:
+    if explicit_name:
+        return await _ensure_human_member(db, server, explicit_name)
+    account = await _current_account(db, request)
+    if account:
+        member_result = await db.execute(
+            select(Member).where(Member.id == account.member_id, Member.server_id == server.id)
+        )
+        member = member_result.scalar_one_or_none()
+        if member:
+            return member
+        return await _ensure_human_member(db, server, account.name)
+    if required:
+        raise HTTPException(401, f"Login required for {role}")
+    return None
+
+
+async def _serialize_account(db: AsyncSession, account: Account, server: Server, member: Member) -> dict:
+    return {
+        "account": {
+            "id": str(account.id),
+            "name": account.name,
+            "displayName": account.display_name or account.name,
+        },
+        "server": {
+            "id": str(server.id),
+            "name": server.name,
+        },
+        "member": await serialize_member(db, member),
+    }
 
 
 async def _parse_mentions(db: AsyncSession, server: Server, content: str) -> list[uuid.UUID]:
@@ -214,6 +360,57 @@ async def _resolve_channel(db: AsyncSession, server: Server, channel_name: str) 
     if not channel:
         raise HTTPException(404, f"Channel {channel_name} not found")
     return channel
+
+
+@router.post("/auth/register")
+async def register_account(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    account, server, member, token = await _bootstrap_account(
+        db,
+        name=body.get("name"),
+        display_name=body.get("displayName"),
+    )
+    await db.commit()
+    payload = await _serialize_account(db, account, server, member)
+    payload["sessionToken"] = token
+    return payload
+
+
+@router.post("/auth/login")
+async def login_account(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    account, server, member, token = await _bootstrap_account(
+        db,
+        name=body.get("name"),
+        display_name=body.get("displayName"),
+    )
+    await db.commit()
+    payload = await _serialize_account(db, account, server, member)
+    payload["sessionToken"] = token
+    return payload
+
+
+@router.get("/auth/me")
+async def current_account(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    account = await _current_account(db, request)
+    if not account:
+        raise HTTPException(401, "Not logged in")
+    server_result = await db.execute(select(Server).where(Server.id == account.server_id))
+    server = server_result.scalar_one_or_none()
+    member_result = await db.execute(select(Member).where(Member.id == account.member_id))
+    member = member_result.scalar_one_or_none()
+    if not server or not member:
+        raise HTTPException(401, "Account is not linked to a server member")
+    return await _serialize_account(db, account, server, member)
+
+
+@router.post("/auth/logout")
+async def logout_account(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    account = await _current_account(db, request)
+    if account:
+        account.session_token_hash = None
+        await db.commit()
+    return {"ok": True}
 
 
 async def _next_task_number(db: AsyncSession, channel_id: uuid.UUID) -> int:
@@ -331,6 +528,23 @@ async def _serialize_activity(db: AsyncSession, activity: ActivityLog) -> dict:
     }
 
 
+def compact_activity_feed(items: list[ActivityLog], limit: int) -> list[ActivityLog]:
+    latest_heartbeats_by_agent: dict[uuid.UUID, ActivityLog] = {}
+    visible_items: list[ActivityLog] = []
+    sort_key = lambda item: item.occurred_at or datetime.min.replace(tzinfo=timezone.utc)
+
+    for item in items:
+        if item.kind in HEARTBEAT_ACTIVITY_TYPES:
+            latest_heartbeats_by_agent.setdefault(item.agent_id, item)
+        else:
+            visible_items.append(item)
+
+    visible_items.sort(key=sort_key, reverse=True)
+    heartbeats = sorted(latest_heartbeats_by_agent.values(), key=sort_key, reverse=True)
+    remaining = max(limit - len(visible_items), 0)
+    return [*visible_items[:limit], *heartbeats[:remaining]]
+
+
 def _serialize_file(file_entry: FileEntry) -> dict:
     return {
         "id": str(file_entry.id),
@@ -443,6 +657,7 @@ async def _serialize_task(db: AsyncSession, task: Task) -> dict:
         "number": task.task_number,
         "taskNumber": task.task_number,
         "channelId": str(task.channel_id),
+        "messageId": str(task.message_id) if task.message_id else None,
         "channel": f"#{channel.name}" if channel and channel.kind == "public" else channel.name if channel else None,
         "title": task.title,
         "description": task.description,
@@ -622,7 +837,7 @@ async def create_channel_message(
     if not content:
         raise HTTPException(400, "Missing content")
     channel = await _resolve_channel(db, server, channel_name)
-    sender = await _resolve_member(db, server, body.get("sender") or "zy-ean")
+    sender = await _resolve_human_actor(db, server, request, body.get("sender"), role="message sender")
     parent_id = None
     thread_target_short_id = None
     thread_ref = body.get("threadId") or body.get("parentId")
@@ -728,29 +943,65 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
     if not title:
         raise HTTPException(400, "Missing title")
     channel = await _resolve_channel(db, server, body.get("channel") or "#all")
-    creator = await _resolve_member(db, server, body.get("creator") or "zy-ean")
-    if not creator:
-        raise HTTPException(400, "Missing creator")
+    creator = await _resolve_human_actor(db, server, request, body.get("creator"), role="task creator")
     assignee = await _resolve_member(db, server, body.get("assignee"))
+    parsed_message_id = None
+    source_payload = None
+    if body.get("messageId"):
+        try:
+            parsed_message_id = uuid.UUID(str(body.get("messageId")))
+        except ValueError:
+            raise HTTPException(400, "Invalid messageId")
+        message_result = await db.execute(
+            select(Message).where(Message.id == parsed_message_id, Message.channel_id == channel.id)
+        )
+        source_message = message_result.scalar_one_or_none()
+        if not source_message:
+            raise HTTPException(404, "Source message not found in task channel")
+        source_payload = {
+            "type": "message",
+            "messageId": str(source_message.id),
+            "messageShortId": source_message.short_id,
+            "threadId": str(source_message.parent_id or source_message.id),
+            "channelId": str(channel.id),
+            "channel": f"#{channel.name}" if channel.kind == "public" else channel.name,
+        }
+    task_data = body.get("data") or {}
+    if source_payload:
+        task_data = {**task_data, "source": source_payload}
     task = Task(
         task_number=await _next_task_number(db, channel.id),
         channel_id=channel.id,
+        message_id=parsed_message_id,
         title=title,
         description=body.get("description"),
         status=body.get("status") or "todo",
         creator_id=creator.id,
         assignee_id=assignee.id if assignee else None,
-        data=body.get("data") or {},
+        data=task_data,
     )
     db.add(task)
     await db.flush()
+    channel_target = f"#{channel.name}" if channel.kind == "public" else channel.name
+    assignee_handle = f"@{assignee.display_name}" if assignee else None
     await _record_activity(
         db,
         server,
         creator,
         "supervisor_task_created",
         f"@{creator.display_name} created task #{task.task_number}",
-        {"taskNumber": task.task_number, "title": task.title, "assignee": assignee.display_name if assignee else None},
+        {
+            "taskNumber": task.task_number,
+            "title": task.title,
+            "status": task.status,
+            "assignee": assignee_handle,
+            "assigneeId": str(assignee.id) if assignee else None,
+            "targetAgentId": str(assignee.id) if assignee and assignee.kind == "agent" else None,
+            "target": channel_target,
+            "channel": channel_target,
+            "messageId": str(parsed_message_id) if parsed_message_id else None,
+            "source": source_payload,
+        },
         channel_id=channel.id,
         task_id=task.id,
     )
@@ -794,14 +1045,26 @@ async def update_task(task_id: str, request: Request, _auth: None = Depends(veri
     if "data" in body:
         task.data = body["data"] or {}
 
-    actor = await _resolve_member(db, server, body.get("actor") or "zy-ean")
+    actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="task actor")
+    assignee = None
+    if task.assignee_id:
+        assignee_result = await db.execute(select(Member).where(Member.id == task.assignee_id))
+        assignee = assignee_result.scalar_one_or_none()
     await _record_activity(
         db,
         server,
         actor,
         "supervisor_task_updated",
         f"@{actor.display_name} updated task #{task.task_number}",
-        {"taskNumber": task.task_number, "updates": body},
+        {
+            "taskNumber": task.task_number,
+            "title": task.title,
+            "status": task.status,
+            "updates": body,
+            "assignee": f"@{assignee.display_name}" if assignee else None,
+            "assigneeId": str(assignee.id) if assignee else None,
+            "targetAgentId": str(assignee.id) if assignee and assignee.kind == "agent" else None,
+        },
         channel_id=task.channel_id,
         task_id=task.id,
     )
@@ -830,6 +1093,7 @@ async def list_computers(_auth: None = Depends(verify_public_api_key), db: Async
 async def list_activity(
     agent_id: str | None = Query(None, alias="agentId"),
     limit: int = Query(50),
+    compact: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Server).limit(1))
@@ -837,6 +1101,8 @@ async def list_activity(
     if not server:
         return {"activity": [], "count": 0}
 
+    requested_limit = max(1, min(limit, 100))
+    query_limit = min(max(requested_limit * 20, 250), 500) if compact else requested_limit
     q = select(ActivityLog).where(ActivityLog.server_id == server.id)
     if agent_id:
         try:
@@ -844,10 +1110,12 @@ async def list_activity(
         except ValueError:
             raise HTTPException(400, "Invalid agentId")
         q = q.where(ActivityLog.agent_id == parsed_agent_id)
-    q = q.order_by(ActivityLog.occurred_at.desc()).limit(limit)
+    q = q.order_by(ActivityLog.occurred_at.desc()).limit(query_limit)
 
     result = await db.execute(q)
     items = result.scalars().all()
+    if compact:
+        items = compact_activity_feed(items, requested_limit)
     return {
         "activity": [await _serialize_activity(db, item) for item in items],
         "count": len(items),
@@ -940,7 +1208,7 @@ async def update_member(member_id: str, request: Request, _auth: None = Depends(
         member.backend = body["backend"]
     member.config = config
 
-    actor = await _resolve_member(db, server, body.get("actor") or "zy-ean")
+    actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="member actor")
     await _record_activity(
         db,
         server,
@@ -1052,7 +1320,7 @@ async def update_public_reminder(reminder_id: str, request: Request, _auth: None
 async def generate_computer_connect_command(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    server = await _ensure_server(db)
     body = await request.json()
     name = str(body.get("name") or "").strip()
     if not name:
@@ -1120,7 +1388,7 @@ async def generate_computer_reconnect_command(
 async def generate_computer_credential(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    server = await _ensure_server(db)
     body = await request.json()
     name = body.get("name", "unregistered-computer")
     existing = (await db.execute(
@@ -1265,7 +1533,7 @@ async def create_channel(
     if existing.scalar_one_or_none():
         raise HTTPException(409, f"Channel #{name} already exists")
 
-    creator = await _resolve_member(db, server, body.get("creator") or "zy-ean")
+    creator = await _resolve_human_actor(db, server, request, body.get("creator"), role="channel creator")
 
     channel = Channel(
         server_id=server.id,
@@ -1427,12 +1695,13 @@ async def list_channel_members(
 
 @router.get("/dms")
 async def list_dms(
-    sender: str = Query("zy-ean"),
+    request: Request,
+    sender: str | None = Query(None),
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
     server = await _get_server(db)
-    viewer = await _resolve_member(db, server, sender)
+    viewer = await _resolve_human_actor(db, server, request, sender, role="DM viewer")
     result = await db.execute(
         select(Channel)
         .join(ChannelMember, ChannelMember.channel_id == Channel.id)
@@ -1460,7 +1729,7 @@ async def create_or_get_dm(
     if not peer_name:
         raise HTTPException(400, "Missing peer")
 
-    sender = await _resolve_member(db, server, body.get("sender") or "zy-ean")
+    sender = await _resolve_human_actor(db, server, request, body.get("sender"), role="DM sender")
     peer = await _resolve_member(db, server, peer_name)
 
     dm_name = f"dm:{min(str(sender.id), str(peer.id))}-{max(str(sender.id), str(peer.id))}"

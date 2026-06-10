@@ -36,6 +36,29 @@ class Server(Base):
     api_keys = relationship("ApiKey", back_populates="server", lazy="selectin")
 
 
+# ── Accounts ─────────────────────────────────────────────────
+
+class Account(Base):
+    __tablename__ = "accounts"
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_accounts_name"),
+        Index("idx_accounts_member", "member_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    session_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    member = relationship("Member")
+
+
 # ── Members ──────────────────────────────────────────────────
 
 class Member(Base):

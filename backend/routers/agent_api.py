@@ -136,6 +136,15 @@ def _lease_active(computer: Computer, now: datetime) -> bool:
     )
 
 
+def _daemon_lease_conflicts(computer: Computer, daemon_id: str | None, now: datetime) -> bool:
+    return bool(
+        daemon_id
+        and computer.active_daemon_id
+        and computer.active_daemon_id != daemon_id
+        and _lease_active(computer, now)
+    )
+
+
 def _new_machine_token() -> str:
     return f"sk_machine_{secrets.token_urlsafe(32)}"
 
@@ -550,7 +559,11 @@ def _apply_agent_status_transition(task: Task, new_status: str, member: Member) 
     old_status = task.status
     if old_status == new_status:
         return old_status, new_status
-    if (old_status, new_status) not in {("in_progress", "todo"), ("in_progress", "in_review")}:
+    if (old_status, new_status) not in {
+        ("todo", "in_progress"),
+        ("in_progress", "todo"),
+        ("in_progress", "in_review"),
+    }:
         raise HTTPException(403, f"Agent cannot change task status from {old_status} to {new_status}")
     if not _is_agent_allowed_task_status(new_status):
         raise HTTPException(403, f"Agent cannot set task status to {new_status}")
@@ -1290,7 +1303,7 @@ async def register_daemon(
 ):
     computer, server, api_key = machine
     now = _utcnow_aware()
-    if body.daemonId and computer.active_daemon_id and computer.active_daemon_id != body.daemonId:
+    if _daemon_lease_conflicts(computer, body.daemonId, now):
         raise HTTPException(409, "Computer is leased by another daemon")
     computer.name = body.name or computer.name
     computer.os = body.os or computer.os
@@ -1354,10 +1367,10 @@ async def daemon_heartbeat(
     db: AsyncSession = Depends(get_db),
 ):
     computer, server, _api_key = machine
-    if body.daemonId and computer.active_daemon_id and computer.active_daemon_id != body.daemonId:
+    now = _utcnow_aware()
+    if _daemon_lease_conflicts(computer, body.daemonId, now):
         raise HTTPException(409, "Computer is leased by another daemon")
     computer.status = body.status
-    now = _utcnow_aware()
     computer.active_daemon_id = body.daemonId or computer.active_daemon_id
     computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
     computer.last_heartbeat_at = now
@@ -2200,7 +2213,28 @@ async def claim_task_by_id(
 
     task = await _resolve_task_by_id(db, server, task_id)
     if task.assignee_id:
-        raise HTTPException(409, "Task already assigned")
+        if task.assignee_id != member.id:
+            raise HTTPException(409, "Task already assigned")
+        if task.status == "todo":
+            _apply_agent_status_transition(task, "in_progress", member)
+            await _record_activity(
+                db,
+                server,
+                member,
+                "task_claimed",
+                f"@{member.display_name} started assigned task #{task.task_number}",
+                {"taskNumber": task.task_number, "title": task.title},
+                channel_id=task.channel_id,
+                task_id=task.id,
+            )
+            await db.commit()
+            await db.refresh(task)
+            await push_latest_events_for_server(db, server_id=server.id)
+            return {
+                "claimed": True,
+                "task": await _serialize_task(db, task),
+            }
+        raise HTTPException(409, f"Task already assigned with status {task.status}")
     if task.status != "todo":
         raise HTTPException(409, f"Task cannot be claimed from status {task.status}")
 

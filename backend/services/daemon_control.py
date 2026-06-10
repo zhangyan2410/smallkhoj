@@ -149,6 +149,7 @@ class DaemonControlHub:
         *,
         server_id: uuid.UUID,
         computer_id: uuid.UUID,
+        max_batches: int = 10,
     ) -> int:
         peers = list(self._connections.get(str(computer_id), set()))
         if not peers:
@@ -157,24 +158,29 @@ class DaemonControlHub:
         delivered = 0
         for websocket in peers:
             cursor = self._event_cursors.get(websocket, 0)
-            events, scanned_cursor = await pending_visible_events_for_computer(
-                db,
-                server_id=server_id,
-                computer_id=computer_id,
-                event_cursor=cursor,
-            )
-            if not events:
-                if scanned_cursor > cursor:
-                    self._event_cursors[websocket] = scanned_cursor
-                continue
-            max_cursor = scanned_cursor
-            try:
-                for event in events:
-                    await websocket.send_json(event)
-                    delivered += 1
-                self._event_cursors[websocket] = max_cursor
-            except Exception:
-                self.remove(computer_id, websocket)
+            for _ in range(max_batches):
+                events, scanned_cursor = await pending_visible_events_for_computer(
+                    db,
+                    server_id=server_id,
+                    computer_id=computer_id,
+                    event_cursor=cursor,
+                )
+                if not events:
+                    if scanned_cursor <= cursor:
+                        break
+                    cursor = scanned_cursor
+                    self._event_cursors[websocket] = cursor
+                    continue
+                try:
+                    for event in events:
+                        await websocket.send_json(event)
+                        delivered += 1
+                    cursor = scanned_cursor
+                    self._event_cursors[websocket] = cursor
+                except Exception:
+                    self.remove(computer_id, websocket)
+                    break
+                break
         return delivered
 
 
@@ -247,6 +253,7 @@ async def pending_visible_events_for_computer(
         .where(
             EventRecord.server_id == server_id,
             EventRecord.seq > event_cursor,
+            EventRecord.event_type.not_like("workspace.%"),
         )
         .order_by(EventRecord.seq)
         .limit(limit)
@@ -289,6 +296,8 @@ def _event_visible_to_agent(record: EventRecord, agent: Member, channel_ids: set
         return False
     event_type = _dotted_event_type(record.event_type)
     if event_type == "thread.summary_updated":
+        return False
+    if event_type.startswith("workspace."):
         return False
     if event_type == "message.created" and record.actor_id == agent.id:
         return False

@@ -1,4 +1,4 @@
-"""Database init: create tables and seed data."""
+"""Database init: create tables and optional demo data."""
 
 import asyncio
 import hashlib
@@ -13,6 +13,8 @@ from models import (
 )
 
 DEMO_SEED_ENV = "SMALLKHOJ_SEED_DEMO"
+DEFAULT_SERVER_ID = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
+DEFAULT_SERVER_NAME = "Slock Server"
 
 
 async def create_tables():
@@ -67,6 +69,24 @@ async def create_tables():
               END IF;
             END $$;
         """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS accounts (
+                id UUID PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                display_name VARCHAR(255),
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                session_token_hash VARCHAR(64),
+                last_login_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+            )
+        """))
+        await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS display_name VARCHAR(255)"))
+        await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS session_token_hash VARCHAR(64)"))
+        await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE"))
+        await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_name ON accounts(name)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_accounts_member ON accounts(member_id)"))
         await conn.execute(text(
             "ALTER TABLE channel_members "
             "ADD COLUMN IF NOT EXISTS last_read_seq BIGINT NOT NULL DEFAULT 0"
@@ -212,6 +232,17 @@ async def ensure_minimal_seed(db, server_id: uuid.UUID):
     )
     db.add(human)
     return human
+
+
+async def ensure_server(db) -> Server:
+    server = (await db.execute(select(Server).limit(1))).scalar_one_or_none()
+    if server:
+        return server
+
+    server = Server(id=DEFAULT_SERVER_ID, name=DEFAULT_SERVER_NAME)
+    db.add(server)
+    await db.flush()
+    return server
 
 
 async def ensure_demo_members(db, server_id: uuid.UUID):
@@ -367,35 +398,17 @@ async def ensure_extended_seed(db, server_id: uuid.UUID):
 async def seed():
     async with async_session() as db:
         demo_seed = _demo_seed_enabled()
-        result = await db.execute(select(Server).limit(1))
-        existing_server = result.scalar_one_or_none()
-        if existing_server:
-            await ensure_minimal_seed(db, existing_server.id)
-            if demo_seed:
-                await ensure_demo_members(db, existing_server.id)
-                await db.flush()
-                await ensure_extended_seed(db, existing_server.id)
-            await db.commit()
-            mode = "demo baseline" if demo_seed else "minimal baseline"
-            print(f"[DB] Already seeded, ensured {mode}")
-            return
-
-        server_id = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
-        server = Server(id=server_id, name="Slock Server")
-        db.add(server)
-
-        human = await ensure_minimal_seed(db, server_id)
-        await db.flush()
-
         if not demo_seed:
-            await db.commit()
-            print("[DB] Minimal seed data inserted")
+            print("[DB] Demo seed disabled; no startup data inserted")
             return
 
-        deepseek, aaa = await ensure_demo_members(db, server_id)
+        server = await ensure_server(db)
+        human = await ensure_minimal_seed(db, server.id)
+        await db.flush()
+        deepseek, aaa = await ensure_demo_members(db, server.id)
         await db.flush()
 
-        await ensure_extended_seed(db, server_id)
+        await ensure_extended_seed(db, server.id)
         computer = (await db.execute(
             select(Computer).where(Computer.id == uuid.UUID("c0a10000-0000-0000-0000-000000000001"))
         )).scalar_one()
@@ -403,28 +416,28 @@ async def seed():
         # Channels
         all_ch = Channel(
             id=uuid.uuid4(),
-            server_id=server_id,
+            server_id=server.id,
             name="all",
             kind="public",
             description="General channel for all members",
         )
         mac_ch = Channel(
             id=uuid.uuid4(),
-            server_id=server_id,
+            server_id=server.id,
             name="mac",
             kind="public",
             description="Mac agent workspace",
         )
         window_ch = Channel(
             id=uuid.uuid4(),
-            server_id=server_id,
+            server_id=server.id,
             name="window",
             kind="public",
             description="Windows agent workspace",
         )
         ab_ch = Channel(
             id=uuid.uuid4(),
-            server_id=server_id,
+            server_id=server.id,
             name="ab",
             kind="public",
             description="AB testing channel",
@@ -441,7 +454,7 @@ async def seed():
         # DM channel
         dm_ch = Channel(
             id=uuid.uuid4(),
-            server_id=server_id,
+            server_id=server.id,
             name=f"dm:{min(str(human.id), str(deepseek.id))}-{max(str(human.id), str(deepseek.id))}",
             kind="dm",
             creator_id=human.id,
@@ -484,7 +497,7 @@ async def seed():
 
         db.add_all([
             ActivityLog(
-                server_id=server_id,
+                server_id=server.id,
                 agent_id=deepseek.id,
                 kind="task_claimed",
                 description="@deepseek claimed task #1",
