@@ -2,8 +2,10 @@ import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { ArrowLeft, Bot, Clock, Cpu, HardDrive, Network, RefreshCw, Terminal } from "lucide-react"
+import { Bot, Clock, Cpu, Network, RefreshCw, Terminal } from "lucide-react"
 
+import { ProductShell } from "@/components/product-shell"
+import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConnectComputerForm } from "./connect-computer-form"
@@ -17,9 +19,9 @@ import {
   statusLabel,
   type Computer,
 } from "@/lib/control-plane"
+import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
-const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
 
 async function getComputers() {
   return apiGet<{ computers: Computer[]; count?: number }>("/api/v1/computers", { computers: [], count: 0 })
@@ -60,7 +62,7 @@ async function createComputerConnectCommandAction(formData: FormData) {
   const name = String(formData.get("name") || "").trim() || "unregistered-computer"
   const response = await fetch(`${API_BASE}/api/v1/computers/connect-command`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    headers: await serverApiHeaders(true),
     body: JSON.stringify({ name }),
   })
 
@@ -95,7 +97,7 @@ async function createComputerReconnectCommandAction(formData: FormData) {
 
   const response = await fetch(`${API_BASE}/api/v1/computers/${computerId}/reconnect-command`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    headers: await serverApiHeaders(true),
     body: JSON.stringify({}),
   })
 
@@ -124,11 +126,7 @@ async function createComputerReconnectCommandAction(formData: FormData) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`inline-flex h-6 items-center rounded-md border px-2 text-xs ${badgeClass(status)}`}>
-      {statusLabel(status)}
-    </span>
-  )
+  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
 }
 
 function Field({ label, value }: { label: string; value?: string | null }) {
@@ -145,6 +143,7 @@ export default async function ComputersPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const session = await requireCurrentAccount()
   const resolvedSearchParams = (await searchParams) ?? {}
   const cookieStore = await cookies()
   const { computers } = await getComputers()
@@ -167,24 +166,31 @@ export default async function ComputersPage({
   const onlineComputers = computers.filter((computer) => computer.status === "online" || computer.status === "active").length
 
   return (
-    <main className="min-h-screen bg-background p-4 sm:p-6">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <Link href="/daemon">
-              <Button variant="outline" size="icon-sm" aria-label="返回控制台">
-                <ArrowLeft />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-                <HardDrive className="size-6 text-primary" />
-                Computers
-              </h1>
-              <p className="text-sm text-muted-foreground">New computer setup and existing computer reconnect commands</p>
-            </div>
+    <ProductShell
+      active="computers"
+      title="Computers"
+      description="Daemon onboarding, reconnect commands, detected runtimes, and agent workspace status."
+      session={session}
+      sidebarTitle="Runtime Snapshot"
+      sidebarDescription="Live counts from the connected control plane."
+      sidebar={
+        <div className="space-y-2">
+          <div className="rounded-md border bg-background p-3">
+            <div className="text-xs text-muted-foreground">Registered</div>
+            <div className="mt-1 text-2xl font-semibold">{computers.length}</div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="rounded-md border bg-background p-3">
+            <div className="text-xs text-muted-foreground">Online</div>
+            <div className="mt-1 text-2xl font-semibold">{onlineComputers}</div>
+          </div>
+          <div className="rounded-md border bg-background p-3">
+            <div className="text-xs text-muted-foreground">Running workspaces</div>
+            <div className="mt-1 text-2xl font-semibold">{runningWorkspaces}</div>
+          </div>
+        </div>
+      }
+      actions={
+        <>
             <Link href="/members">
               <Button variant="outline" size="sm">
                 <Bot className="size-4" />
@@ -196,8 +202,10 @@ export default async function ComputersPage({
                 Tasks
               </Button>
             </Link>
-          </div>
-        </div>
+        </>
+      }
+    >
+      <div className="space-y-5">
 
         <div className="grid gap-3 sm:grid-cols-3">
           <Card size="sm">
@@ -298,9 +306,9 @@ export default async function ComputersPage({
                   </div>
                   <div className="flex min-h-8 flex-wrap gap-1.5">
                     {(computer.detectedRuntimes.length ? computer.detectedRuntimes : ["none"]).map((runtime) => (
-                      <span key={runtimeLabel(runtime)} className="rounded-md border bg-background px-2 py-1 text-xs">
+                      <RuntimeChip key={runtimeLabel(runtime)}>
                         {runtimeLabel(runtime)}
-                      </span>
+                      </RuntimeChip>
                     ))}
                   </div>
                 </div>
@@ -362,12 +370,12 @@ export default async function ComputersPage({
 
         {computers.length === 0 && (
           <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No computers returned from /api/v1/computers.
+            <CardContent>
+              <EmptyState title="No computers returned" description="Generate a connect command above to register the first daemon." />
             </CardContent>
           </Card>
         )}
       </div>
-    </main>
+    </ProductShell>
   )
 }

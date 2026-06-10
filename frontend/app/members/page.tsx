@@ -1,8 +1,10 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { ArrowLeft, Bot, Cpu, HardDrive, Shield, UserRound } from "lucide-react"
+import { Bot, Cpu, HardDrive, Shield, UserRound } from "lucide-react"
 
+import { ProductShell } from "@/components/product-shell"
+import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,9 +17,9 @@ import {
   shortId,
   statusLabel,
 } from "@/lib/control-plane"
+import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
-const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
 
 async function getMembers() {
   return apiGet<{ members: Member[]; count?: number }>("/api/v1/members", { members: [], count: 0 })
@@ -36,7 +38,7 @@ async function createAgentAction(formData: FormData) {
   if (!name || !computerId) redirect("/members?error=Missing%20name%20or%20computer")
   const response = await fetch(`${API_BASE}/api/v1/members/agents`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    headers: await serverApiHeaders(true),
     body: JSON.stringify({ name, computerId, runtime, backend }),
   })
   if (!response.ok) {
@@ -61,11 +63,7 @@ function profileAvatar(member: Member) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`inline-flex h-6 items-center rounded-md border px-2 text-xs ${badgeClass(status)}`}>
-      {statusLabel(status)}
-    </span>
-  )
+  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
 }
 
 function Field({ label, value }: { label: string; value?: string | null }) {
@@ -86,6 +84,7 @@ export default async function MembersPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const session = await requireCurrentAccount()
   const resolvedSearchParams = (await searchParams) ?? {}
   const { members } = await getMembers()
   const { computers } = await getComputers()
@@ -95,24 +94,31 @@ export default async function MembersPage({
   const boundAgents = members.filter((member) => member.kind === "agent" && member.computerId).length
 
   return (
-    <main className="min-h-screen bg-background p-4 sm:p-6">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <Link href="/daemon">
-              <Button variant="outline" size="icon-sm" aria-label="返回控制台">
-                <ArrowLeft />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-                <UserRound className="size-6 text-primary" />
-                Members
-              </h1>
-              <p className="text-sm text-muted-foreground">Unified human and agent directory with P1 binding fields</p>
-            </div>
+    <ProductShell
+      active="members"
+      title="Members"
+      description="Humans and agents with profile, runtime binding, permissions, skills, and activity hints."
+      session={session}
+      sidebarTitle="Member Groups"
+      sidebarDescription="The selected-member tabs will grow from this directory surface."
+      sidebar={
+        <div className="space-y-2">
+          <div className="rounded-md border bg-background p-3">
+            <div className="text-xs text-muted-foreground">Humans</div>
+            <div className="mt-1 text-2xl font-semibold">{humans}</div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="rounded-md border bg-background p-3">
+            <div className="text-xs text-muted-foreground">Agents</div>
+            <div className="mt-1 text-2xl font-semibold">{agents}</div>
+          </div>
+          <div className="rounded-md border bg-background p-3">
+            <div className="text-xs text-muted-foreground">Bound agents</div>
+            <div className="mt-1 text-2xl font-semibold">{boundAgents}</div>
+          </div>
+        </div>
+      }
+      actions={
+        <>
             <Link href="/computers">
               <Button variant="outline" size="sm">
                 <HardDrive className="size-4" />
@@ -124,8 +130,10 @@ export default async function MembersPage({
                 Tasks
               </Button>
             </Link>
-          </div>
-        </div>
+        </>
+      }
+    >
+      <div className="space-y-5">
 
         <div className="grid gap-3 sm:grid-cols-3">
           <Card size="sm">
@@ -250,9 +258,9 @@ export default async function MembersPage({
                       </div>
                       <div className="flex min-h-8 flex-wrap gap-1.5">
                         {(member.skills?.length ? member.skills : ["none"]).map((skill) => (
-                          <span key={skill} className="rounded-md border bg-background px-2 py-1 text-xs">
+                          <RuntimeChip key={skill}>
                             {skill}
-                          </span>
+                          </RuntimeChip>
                         ))}
                       </div>
                     </div>
@@ -298,12 +306,12 @@ export default async function MembersPage({
 
         {members.length === 0 && (
           <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No members returned from /api/v1/members.
+            <CardContent>
+              <EmptyState title="No members returned" description="Create or seed a human/agent member to start." />
             </CardContent>
           </Card>
         )}
       </div>
-    </main>
+    </ProductShell>
   )
 }

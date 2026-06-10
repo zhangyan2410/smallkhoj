@@ -1,5 +1,6 @@
 import { ChannelClient } from "./channel-client"
-import { API_BASE, PUBLIC_KEY, type Member } from "@/lib/control-plane"
+import { API_BASE, type Member } from "@/lib/control-plane"
+import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 type ChannelInfo = { id: string; name: string; type: string; description?: string }
 type DmInfo = {
@@ -33,10 +34,12 @@ function decodeChannelParam(value: string) {
 }
 
 export default async function ChannelPage({ params }: { params: Promise<{ channel: string }> }) {
+  await requireCurrentAccount()
+  const sessionToken = await getSessionToken()
   const { channel } = await params
   const initialChannel = decodeChannelParam(channel)
   const encodedChannel = encodeURIComponent(initialChannel)
-  const headers = { "X-Public-Key": PUBLIC_KEY }
+  const headers = await serverApiHeaders()
   const [messagesRes, channelsRes, dmsRes, membersRes] = await Promise.all([
     fetch(`${API_BASE}/api/v1/channels/${encodedChannel}/messages?limit=50&threadMode=roots`, { headers, cache: "no-store" }),
     fetch(`${API_BASE}/api/v1/channels`, { headers, cache: "no-store" }),
@@ -65,6 +68,7 @@ export default async function ChannelPage({ params }: { params: Promise<{ channe
       initialChannels={channels}
       initialDms={dms}
       initialChannelId={matchedChannelId}
+      sessionToken={sessionToken}
     />
   )
 }

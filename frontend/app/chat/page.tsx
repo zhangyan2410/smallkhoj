@@ -1,73 +1,112 @@
-"use client"
+import Link from "next/link"
+import { AtSign, Hash, MessageSquare, Plus } from "lucide-react"
 
-import { useState } from "react"
-import { useChatWebSocket } from "@/hooks/use-websocket"
+import { ProductShell } from "@/components/product-shell"
+import { EmptyState, RuntimeChip } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { apiGet, type Member } from "@/lib/control-plane"
+import { requireCurrentAccount } from "@/lib/server-auth"
 
-export default function ChatPage() {
-  const [input, setInput] = useState("")
-  const { messages, isThinking, sendMessage } = useChatWebSocket()
+type Channel = {
+  id: string
+  name: string
+  type: string
+  description?: string | null
+}
 
-  const handleSend = () => {
-    if (!input.trim()) return
-    sendMessage(input.trim())
-    setInput("")
-  }
+type DmInfo = {
+  id: string
+  name: string
+  type: "dm"
+  displayName: string
+  peer?: Member | null
+}
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
+function channelPathSegment(name: string) {
+  return encodeURIComponent(name.replace(/^#/, ""))
+}
+
+export default async function ChatPage() {
+  const session = await requireCurrentAccount()
+  const [{ channels }, { dms }] = await Promise.all([
+    apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] }),
+    apiGet<{ dms: DmInfo[] }>("/api/v1/dms", { dms: [] }),
+  ])
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="border-b px-4 py-3">
-        <h1 className="text-lg font-semibold">SmallKhoj Chat</h1>
-        <p className="text-xs text-muted-foreground">WebSocket 实时通信</p>
-      </header>
-
-      <ScrollArea className="flex-1 p-4">
-        <div className="max-w-3xl mx-auto space-y-4">
-          {messages.length === 0 && !isThinking && (
-            <div className="text-center text-muted-foreground py-20">
-              <p className="text-lg">发送一条消息开始对话</p>
-              <p className="text-sm mt-1">基于 FastAPI WebSocket + OpenAI 流式 API</p>
-            </div>
-          )}
-          {messages.map((msg, i) => (
-            <div key={i} className="space-y-1">
-              <div className="text-xs text-muted-foreground">Assistant</div>
-              <div className="prose prose-sm dark:prose-invert max-w-none bg-muted/50 rounded-lg p-4">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {msg || (i === messages.length - 1 && isThinking ? "..." : "")}
-                </ReactMarkdown>
-              </div>
-            </div>
-          ))}
+    <ProductShell
+      active="chat"
+      title="Chat"
+      description="Channels and direct messages for human-agent collaboration."
+      session={session}
+      sidebarTitle="Conversation Tabs"
+      sidebarDescription="Each conversation will host Chat, Tasks, and Files tabs."
+      sidebar={
+        <div className="space-y-2">
+          <RuntimeChip>Chat</RuntimeChip>
+          <RuntimeChip className="border-sky-200 bg-sky-50 text-sky-700">Tasks</RuntimeChip>
+          <RuntimeChip className="border-slate-200 bg-slate-50 text-slate-700">Files</RuntimeChip>
         </div>
-      </ScrollArea>
+      }
+    >
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Hash className="size-4 text-primary" />
+              Channels
+            </CardTitle>
+            <CardDescription>Open a channel to send messages, use threads, and add members.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {channels.map((channel) => (
+              <Link
+                key={channel.id}
+                href={`/chat/${channelPathSegment(channel.name)}`}
+                className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-accent"
+              >
+                <Hash className="size-4 text-cyan-700" />
+                <span className="min-w-0 flex-1 truncate font-medium">{channel.name}</span>
+                <span className="text-xs text-muted-foreground">{channel.type}</span>
+              </Link>
+            ))}
+            {channels.length === 0 && <EmptyState title="No channels" description="Create a channel from the workbench quick start." />}
+          </CardContent>
+        </Card>
 
-      <footer className="border-t p-4">
-        <div className="max-w-3xl mx-auto flex gap-2">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入消息，按 Enter 发送..."
-            disabled={isThinking}
-            className="flex-1"
-          />
-          <Button onClick={handleSend} disabled={isThinking || !input.trim()}>
-            发送
-          </Button>
-        </div>
-      </footer>
-    </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <MessageSquare className="size-4 text-primary" />
+              Direct Messages
+            </CardTitle>
+            <CardDescription>Continue human-agent or human-human conversations.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {dms.map((dm) => (
+              <Link
+                key={dm.id}
+                href={`/chat/${channelPathSegment(dm.name)}`}
+                className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-accent"
+              >
+                <AtSign className="size-4 text-cyan-700" />
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {dm.peer?.displayName || dm.peer?.name || dm.displayName}
+                </span>
+                <span className="text-xs text-muted-foreground">DM</span>
+              </Link>
+            ))}
+            {dms.length === 0 && <EmptyState title="No DMs" description="Start a DM from the workbench quick start." />}
+            <Link href="/">
+              <Button variant="outline" size="sm">
+                <Plus className="size-4" />
+                Start from Workbench
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    </ProductShell>
   )
 }

@@ -24,9 +24,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
-const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
 
 type Channel = {
   id: string
@@ -131,7 +131,7 @@ type DashboardData = {
 
 async function apiGet<T>(path: string, fallback: T): Promise<T> {
   try {
-    const response = await fetch(`${API_BASE}${path}`, { cache: "no-store", headers: { "X-Public-Key": PUBLIC_KEY } })
+    const response = await fetch(`${API_BASE}${path}`, { cache: "no-store", headers: await serverApiHeaders() })
     if (!response.ok) return fallback
     return response.json()
   } catch {
@@ -143,7 +143,7 @@ async function apiWrite(path: string, body: Record<string, unknown>, method = "P
   "use server"
   await fetch(`${API_BASE}${path}`, {
     method,
-    headers: { "Content-Type": "application/json", "X-Public-Key": PUBLIC_KEY },
+    headers: await serverApiHeaders(true),
     body: JSON.stringify(body),
   })
   revalidatePath("/daemon")
@@ -184,7 +184,6 @@ async function sendMessageAction(formData: FormData) {
   const channel = String(formData.get("channel") || "#all").replace(/^#/, "")
   await apiWrite(`/api/v1/channels/${encodeURIComponent(channel)}/messages`, {
     content: formData.get("content"),
-    sender: "zy-ean",
   })
 }
 
@@ -227,7 +226,7 @@ async function getDashboardData(): Promise<DashboardData> {
       apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }),
       apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] }),
       apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }),
-      apiGet<{ activity: ActivityItem[] }>("/api/v1/activity?limit=25", { activity: [] }),
+      apiGet<{ activity: ActivityItem[] }>("/api/v1/activity?limit=25&compact=true", { activity: [] }),
       apiGet<{ files: FileItem[] }>("/api/v1/files?limit=12", { files: [] }),
       apiGet<{ reminders: Reminder[] }>("/api/v1/reminders?limit=12", { reminders: [] }),
     ])
@@ -374,6 +373,7 @@ function runtimeLabel(runtime: string | { type?: string; status?: string; comman
 }
 
 export default async function DaemonPage() {
+  await requireCurrentAccount()
   const data = await getDashboardData()
   const workspaces = data.computers.flatMap((computer) => computer.agentWorkspaces)
   const runningWorkspaces = workspaces.filter((workspace) => workspace.status === "running").length
@@ -638,7 +638,7 @@ export default async function DaemonPage() {
             description="当前任务队列"
             empty="暂无任务。"
             items={data.tasks.slice(0, 12).map((task) => (
-              <div key={task.number} className="flex min-w-0 items-center gap-2 rounded-md border p-2">
+              <div key={task.id ?? task.number} className="flex min-w-0 items-center gap-2 rounded-md border p-2">
                 <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
                 <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
                 <StatusBadge status={task.status} />

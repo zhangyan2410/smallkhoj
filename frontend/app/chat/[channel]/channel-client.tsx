@@ -2,18 +2,38 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, AtSign, Hash, MessageCircle, Plus, Send, Trash2, Users, X } from "lucide-react"
+import {
+  Activity,
+  AtSign,
+  Bookmark,
+  CheckSquare,
+  Clipboard,
+  Files,
+  Hash,
+  ImageIcon,
+  ListChecks,
+  MessageCircle,
+  MoreHorizontal,
+  Paperclip,
+  Plus,
+  Send,
+  Smile,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { RuntimeChip } from "@/components/product-ui"
 import {
   apiGet,
   apiPost,
   apiDelete,
+  apiHeaders,
   type Member,
   statusLabel,
   dotClass,
-  PUBLIC_KEY,
   API_BASE,
 } from "@/lib/control-plane"
 
@@ -51,6 +71,12 @@ type ThreadData = {
   threadSummary?: ThreadSummary | null
 }
 
+const conversationTabs = [
+  { label: "Chat", icon: MessageCircle },
+  { label: "Tasks", icon: ListChecks },
+  { label: "Files", icon: Files },
+]
+
 function channelPathSegment(value: string) {
   return encodeURIComponent(value)
 }
@@ -63,6 +89,7 @@ export function ChannelClient({
   initialChannels = [],
   initialDms = [],
   initialChannelId = "",
+  sessionToken,
 }: {
   initialChannel: string
   initialMessages?: ChannelMessage[]
@@ -71,6 +98,7 @@ export function ChannelClient({
   initialChannels?: ChannelInfo[]
   initialDms?: DmInfo[]
   initialChannelId?: string
+  sessionToken?: string | null
 }) {
   const [channelName, setChannelName] = useState(initialChannel)
   const [messages, setMessages] = useState<ChannelMessage[]>(initialMessages)
@@ -85,6 +113,9 @@ export function ChannelClient({
   const [threadLoading, setThreadLoading] = useState(false)
   const [showMembers, setShowMembers] = useState(true)
   const [channelId, setChannelId] = useState(initialChannelId)
+  const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(() => new Set())
+  const [reactedMessageIds, setReactedMessageIds] = useState<Set<string>>(() => new Set())
+  const [taskMessageIds, setTaskMessageIds] = useState<Set<string>>(() => new Set())
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
 
   const currentChannel = channels.find((c) => c.name.replace("#", "") === channelName)
@@ -100,7 +131,7 @@ export function ChannelClient({
       setChannelName(decodedChannel)
       setActiveThreadId(null)
       setThreadData(null)
-      const h = { "X-Public-Key": PUBLIC_KEY }
+      const h = apiHeaders(sessionToken)
       const msgsRes = await fetch(`${API_BASE}/api/v1/channels/${encodedChannel}/messages?limit=50&threadMode=roots`, { headers: h })
       if (msgsRes.ok) { const d = await msgsRes.json(); if (!cancelled) setMessages(d.messages || []) }
       const [chsRes, dmsRes] = await Promise.all([
@@ -130,13 +161,14 @@ export function ChannelClient({
     }
     void loadChannel()
     return () => { cancelled = true }
-  }, [initialChannel])
+  }, [initialChannel, sessionToken])
 
   async function refreshMessages() {
     const encodedChannel = channelPathSegment(channelName)
     const data = await apiGet<{ messages: ChannelMessage[] }>(
       `/api/v1/channels/${encodedChannel}/messages?limit=50&threadMode=roots`,
       { messages: [] },
+      sessionToken,
     )
     setMessages(data.messages || [])
   }
@@ -145,7 +177,7 @@ export function ChannelClient({
     if (!threadId) return
     setThreadLoading(true)
     try {
-      const data = await apiGet<ThreadData>(`/api/v1/threads/${encodeURIComponent(threadId)}`, {})
+      const data = await apiGet<ThreadData>(`/api/v1/threads/${encodeURIComponent(threadId)}`, {}, sessionToken)
       setThreadData(data)
     } finally {
       setThreadLoading(false)
@@ -161,7 +193,7 @@ export function ChannelClient({
   async function refreshMembers() {
     if (!channelId) return
     try {
-      const data = await apiGet<{ members: Member[] }>(`/api/v1/channels/${channelId}/members`, { members: [] })
+      const data = await apiGet<{ members: Member[] }>(`/api/v1/channels/${channelId}/members`, { members: [] }, sessionToken)
       setMembers(data.members || [])
     } catch {
       setMembers([])
@@ -172,7 +204,7 @@ export function ChannelClient({
     const memberId = addMemberSelectRef.current?.value
     if (!channelId || !memberId) return
     try {
-      await apiPost(`/api/v1/channels/${channelId}/members`, { memberId })
+      await apiPost(`/api/v1/channels/${channelId}/members`, { memberId }, sessionToken)
       if (addMemberSelectRef.current) addMemberSelectRef.current.value = ""
       await refreshMembers()
     } catch (e) {
@@ -184,7 +216,7 @@ export function ChannelClient({
     if (!input.trim()) return
     try {
       const encodedChannel = channelPathSegment(channelName)
-      await apiPost(`/api/v1/channels/${encodedChannel}/messages`, { content: input.trim(), sender: "zy-ean" })
+      await apiPost(`/api/v1/channels/${encodedChannel}/messages`, { content: input.trim() }, sessionToken)
       setInput("")
       await refreshMessages()
     } catch (e) {
@@ -198,9 +230,8 @@ export function ChannelClient({
       const encodedChannel = channelPathSegment(channelName)
       await apiPost(`/api/v1/channels/${encodedChannel}/messages`, {
         content: threadInput.trim(),
-        sender: "zy-ean",
         threadId: activeThreadId,
-      })
+      }, sessionToken)
       setThreadInput("")
       await Promise.all([refreshMessages(), refreshThread(activeThreadId)])
     } catch (e) {
@@ -208,10 +239,139 @@ export function ChannelClient({
     }
   }
 
+  async function handleCreateTaskFromMessage(message: ChannelMessage) {
+    if (taskMessageIds.has(message.id)) return
+    const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
+    const channelAgent = !currentIsDm ? members.find((member) => member.kind === "agent") : null
+    const assignee = dmAgent?.handle
+      ?? dmAgent?.name
+      ?? channelAgent?.handle
+      ?? channelAgent?.name
+      ?? null
+    const taskTitle = message.content.length > 72
+      ? `${message.content.slice(0, 69)}...`
+      : message.content
+    try {
+      await apiPost("/api/v1/tasks", {
+        channel: currentDm?.name ?? currentChannel?.name ?? `#${channelName}`,
+        title: taskTitle || `Follow up ${message.shortId ?? message.id.slice(0, 8)}`,
+        description: `Created from ${currentTitle} message ${message.shortId ?? message.id.slice(0, 8)}.`,
+        assignee,
+        status: "todo",
+        messageId: message.id,
+        data: {
+          evidence: {
+            notes: ["Created from chat message action."],
+            links: [],
+          },
+        },
+      }, sessionToken)
+      setTaskMessageIds((previous) => new Set(previous).add(message.id))
+    } catch (e) {
+      console.error("Create task from message failed:", e)
+    }
+  }
+
+  async function handleCopyMessage(message: ChannelMessage) {
+    try {
+      await navigator.clipboard.writeText(message.content)
+    } catch (e) {
+      console.error("Copy message failed:", e)
+    }
+  }
+
+  function toggleSaved(messageId: string) {
+    setSavedMessageIds((previous) => {
+      const next = new Set(previous)
+      if (next.has(messageId)) next.delete(messageId)
+      else next.add(messageId)
+      return next
+    })
+  }
+
+  function toggleReaction(messageId: string) {
+    setReactedMessageIds((previous) => {
+      const next = new Set(previous)
+      if (next.has(messageId)) next.delete(messageId)
+      else next.add(messageId)
+      return next
+    })
+  }
+
+  function renderMessageActions(message: ChannelMessage, compact = false) {
+    return (
+      <div className={`${compact ? "mt-2" : "mt-3 border-t pt-2"} flex flex-wrap items-center gap-1`}>
+        {!compact && (
+          <button
+            type="button"
+            onClick={() => openThread(message)}
+            aria-label="Reply in thread"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <MessageCircle className="size-3" />
+            Reply
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => toggleReaction(message.id)}
+          aria-label="React to message"
+          className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium ${
+            reactedMessageIds.has(message.id) ? "bg-amber-50 text-amber-700" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Smile className="size-3" />
+          {reactedMessageIds.has(message.id) ? "+1" : "React"}
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleSaved(message.id)}
+          aria-label="Save message"
+          className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium ${
+            savedMessageIds.has(message.id) ? "bg-cyan-50 text-cyan-800" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Bookmark className="size-3" />
+          {savedMessageIds.has(message.id) ? "Saved" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleCreateTaskFromMessage(message)}
+          aria-label="Create task from message"
+          className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium ${
+            taskMessageIds.has(message.id) ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <CheckSquare className="size-3" />
+          {taskMessageIds.has(message.id) ? "Task" : "As Task"}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleCopyMessage(message)}
+          aria-label="Copy message"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <Clipboard className="size-3" />
+          Copy
+        </button>
+        {!compact && (
+          <button
+            type="button"
+            aria-label="Open message menu"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <MoreHorizontal className="size-3" />
+            More
+          </button>
+        )}
+      </div>
+    )
+  }
+
   async function handleRemoveMember(memberId: string) {
     if (!channelId) return
     try {
-      await apiDelete(`/api/v1/channels/${channelId}/members/${memberId}`)
+      await apiDelete(`/api/v1/channels/${channelId}/members/${memberId}`, sessionToken)
       await refreshMembers()
     } catch (e) {
       console.error("Remove member failed:", e)
@@ -236,44 +396,58 @@ export function ChannelClient({
   const activeReplies = threadData?.replies ?? (threadData?.messages || []).filter((msg) => msg.parentId)
 
   return (
-    <div className="flex h-screen">
-      <aside className="w-56 shrink-0 border-r bg-muted/30 flex flex-col">
+    <div className="flex h-screen bg-background">
+      <aside className="w-60 shrink-0 border-r bg-sidebar/80 flex flex-col">
         <div className="border-b p-3">
-          <Link href="/" className="flex items-center gap-1 text-sm text-muted-foreground hover:underline">
-            <ArrowLeft className="size-3" /> Back
+          <Link href="/" className="block rounded-md px-2 py-1.5 text-sm font-semibold hover:bg-sidebar-accent">
+            SmallKhoj
+            <span className="block text-xs font-normal text-muted-foreground">Chat workbench</span>
           </Link>
         </div>
         <div className="p-3">
-          <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Channels</h3>
+          <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Attention</h3>
           <div className="space-y-1">
-            {channels.map((ch) => (
+            <Link href="/daemon" className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
+              <Activity className="size-3.5" />
+              Activity
+            </Link>
+            <Link href="/?focus=saved" className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
+              <Bookmark className="size-3.5" />
+              Saved
+            </Link>
+          </div>
+          <h3 className="mb-2 mt-5 text-xs font-medium uppercase text-muted-foreground">Channels</h3>
+          <div className="space-y-1">
+            {[...channels].sort((a, b) => a.name.localeCompare(b.name)).map((ch) => (
               <Link
                 key={ch.id}
                 href={`/chat/${channelPathSegment(ch.name.replace("#", ""))}`}
-                className={`block truncate rounded px-2 py-1 text-sm ${
-                  ch.name.replace("#", "") === channelName ? "bg-accent font-medium" : "hover:bg-accent/50"
+                className={`block truncate rounded-md px-2 py-1.5 text-sm ${
+                  ch.name.replace("#", "") === channelName ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
                 }`}
               >
-                <span className="inline-flex items-center gap-1">
+                <span className="inline-flex min-w-0 items-center gap-1">
                   <Hash className="size-3" />
-                  {ch.name.replace("#", "")}
+                  <span className="truncate">{ch.name.replace("#", "")}</span>
+                  <span className="ml-auto text-[0.7rem] text-muted-foreground">ch</span>
                 </span>
               </Link>
             ))}
           </div>
           <h3 className="mb-2 mt-5 text-xs font-medium uppercase text-muted-foreground">DMs</h3>
           <div className="space-y-1">
-            {dms.map((dm) => (
+            {[...dms].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((dm) => (
               <Link
                 key={dm.id}
                 href={`/chat/${channelPathSegment(dm.name)}`}
-                className={`block truncate rounded px-2 py-1 text-sm ${
-                  dm.name === channelName ? "bg-accent font-medium" : "hover:bg-accent/50"
+                className={`block truncate rounded-md px-2 py-1.5 text-sm ${
+                  dm.name === channelName ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
                 }`}
               >
-                <span className="inline-flex items-center gap-1">
+                <span className="inline-flex min-w-0 items-center gap-1">
                   <AtSign className="size-3" />
-                  {dm.peer?.displayName || dm.peer?.name || dm.displayName.replace(/^DM @/, "")}
+                  <span className="truncate">{dm.peer?.displayName || dm.peer?.name || dm.displayName.replace(/^DM @/, "")}</span>
+                  <span className={`ml-auto size-1.5 rounded-full ${dotClass(dm.peer?.status || "offline")}`} />
                 </span>
               </Link>
             ))}
@@ -292,17 +466,39 @@ export function ChannelClient({
       </aside>
 
       <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b px-4 py-3">
-          <h1 className="truncate text-lg font-semibold">{currentTitle}</h1>
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label={showMembers ? "Hide channel members" : "Show channel members"}
-            onClick={() => setShowMembers(!showMembers)}
-          >
-            <Users className="size-4" />
-            {members.length}
-          </Button>
+        <header className="border-b px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold">{currentTitle}</h1>
+              <div className="mt-1 flex items-center gap-2">
+                <RuntimeChip>{currentIsDm ? "Direct message" : "Channel"}</RuntimeChip>
+                <span className="text-xs text-muted-foreground">{messages.length} root messages</span>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={showMembers ? "Hide channel members" : "Show channel members"}
+              onClick={() => setShowMembers(!showMembers)}
+            >
+              <Users className="size-4" />
+              {members.length}
+            </Button>
+          </div>
+          <div className="mt-3 flex gap-1">
+            {conversationTabs.map(({ label, icon: Icon }) => (
+              <button
+                key={String(label)}
+                type="button"
+                className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium ${
+                  label === "Chat" ? "border-cyan-200 bg-cyan-50 text-cyan-800" : "bg-background text-muted-foreground"
+                }`}
+              >
+                <Icon className="size-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
         </header>
 
         <div className="flex flex-1 overflow-hidden">
@@ -310,7 +506,7 @@ export function ChannelClient({
             <div className="flex-1 overflow-y-auto p-4">
               <div className="mx-auto max-w-3xl space-y-3">
                 {messages.map((msg) => (
-                  <div key={msg.id} className="rounded-lg border bg-card p-3">
+                  <div key={msg.id} className="rounded-lg border bg-card p-3 shadow-sm shadow-slate-200/40">
                     <div className="flex items-center gap-2 text-sm">
                       <span
                         className={`font-semibold ${
@@ -337,16 +533,7 @@ export function ChannelClient({
                         </button>
                       </div>
                     )}
-                    {!msg.replyCount && !msg.threadSummary && (
-                      <button
-                        type="button"
-                        onClick={() => openThread(msg)}
-                        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-                      >
-                        <MessageCircle className="size-3" />
-                        Reply
-                      </button>
-                    )}
+                    {renderMessageActions(msg)}
                   </div>
                 ))}
                 {messages.length === 0 && (
@@ -357,6 +544,24 @@ export function ChannelClient({
 
             <div className="border-t p-4">
               <div className="mx-auto flex max-w-3xl gap-2">
+                <button
+                  type="button"
+                  aria-label="Attach file coming soon"
+                  disabled
+                  title="File attachments are queued for the Files surface."
+                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 text-muted-foreground opacity-60"
+                >
+                  <Paperclip className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Attach image coming soon"
+                  disabled
+                  title="Image attachments are queued for the Files surface."
+                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 text-muted-foreground opacity-60"
+                >
+                  <ImageIcon className="size-4" />
+                </button>
                 <Input
                   name="content"
                   value={input}
@@ -414,6 +619,7 @@ export function ChannelClient({
                           {threadData.threadSummary.summary}
                         </p>
                       )}
+                      {renderMessageActions(activeRoot, true)}
                     </div>
                   )}
 
@@ -427,6 +633,7 @@ export function ChannelClient({
                         <span className="text-xs text-muted-foreground">{msg.time}</span>
                       </div>
                       <p className="mt-1 whitespace-pre-wrap text-sm">{msg.content}</p>
+                      {renderMessageActions(msg, true)}
                     </div>
                   ))}
                   {!threadLoading && activeReplies.length === 0 && (
