@@ -1,0 +1,94 @@
+2026-06-09 14:51:46,260 INFO sqlalchemy.engine.Engine select pg_catalog.version()
+2026-06-09 14:51:46,260 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-06-09 14:51:46,265 INFO sqlalchemy.engine.Engine select current_schema()
+2026-06-09 14:51:46,265 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-06-09 14:51:46,268 INFO sqlalchemy.engine.Engine show standard_conforming_strings
+2026-06-09 14:51:46,268 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-06-09 14:51:46,271 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-09 14:51:46,287 INFO sqlalchemy.engine.Engine SELECT tasks.id, tasks.task_number, tasks.channel_id, tasks.message_id, tasks.title, tasks.description, tasks.status, tasks.creator_id, tasks.assignee_id, tasks.data, tasks.created_at, tasks.updated_at 
+FROM tasks 
+WHERE tasks.title LIKE $1::VARCHAR ORDER BY tasks.created_at DESC
+2026-06-09 14:51:46,287 INFO sqlalchemy.engine.Engine [generated in 0.00011s] ('%REAL_chat_20260609143627%',)
+2026-06-09 14:51:46,295 INFO sqlalchemy.engine.Engine SELECT event_records.seq, event_records.id, event_records.server_id, event_records.event_type, event_records.actor_id, event_records.channel_id, event_records.task_id, event_records.message_id, event_records.payload, event_records.created_at 
+FROM event_records 
+WHERE event_records.task_id = $1::UUID ORDER BY event_records.seq
+2026-06-09 14:51:46,295 INFO sqlalchemy.engine.Engine [generated in 0.00019s] (UUID('e06649fe-b376-4770-a6be-f51ecf6d767f'),)
+[
+  {
+    "taskId": "e06649fe-b376-4770-a6be-f51ecf6d767f",
+    "channelId": "3748ce7f-9ef2-43b0-a8aa-136ee1758050",
+    "messageId": "00844330-dae9-42a7-b40e-8314ea9be061",
+    "data": {
+      "source": {
+        "type": "message",
+        "channel": "#real-ui-auth-20260608233519",
+        "threadId": "00844330-dae9-42a7-b40e-8314ea9be061",
+        "channelId": "3748ce7f-9ef2-43b0-a8aa-136ee1758050",
+        "messageId": "00844330-dae9-42a7-b40e-8314ea9be061",
+        "messageShortId": "f2c6e56b"
+      },
+      "evidence": {
+        "links": [],
+        "notes": [
+          "Created from chat message action."
+        ]
+      }
+    },
+    "events": [
+      {
+        "seq": 3524,
+        "eventType": "task.created",
+        "channelId": "3748ce7f-9ef2-43b0-a8aa-136ee1758050",
+        "payload": {
+          "type": "task.created",
+          "title": "REAL_chat_20260609143627 channel root",
+          "source": {
+            "type": "message",
+            "channel": "#real-ui-auth-20260608233519",
+            "threadId": "00844330-dae9-42a7-b40e-8314ea9be061",
+            "channelId": "3748ce7f-9ef2-43b0-a8aa-136ee1758050",
+            "messageId": "00844330-dae9-42a7-b40e-8314ea9be061",
+            "messageShortId": "f2c6e56b"
+          },
+          "status": "todo",
+          "target": "#real-ui-auth-20260608233519",
+          "taskId": "e06649fe-b376-4770-a6be-f51ecf6d767f",
+          "actorId": "f4590332-509e-4b24-bf61-fa64726c6b9b",
+          "agentId": "f4590332-509e-4b24-bf61-fa64726c6b9b",
+          "channel": "#real-ui-auth-20260608233519",
+          "details": {
+            "title": "REAL_chat_20260609143627 channel root",
+            "source": {
+              "type": "message",
+              "channel": "#real-ui-auth-20260608233519",
+              "threadId": "00844330-dae9-42a7-b40e-8314ea9be061",
+              "channelId": "3748ce7f-9ef2-43b0-a8aa-136ee1758050",
+              "messageId": "00844330-dae9-42a7-b40e-8314ea9be061",
+              "messageShortId": "f2c6e56b"
+            },
+            "status": "todo",
+            "target": "#real-ui-auth-20260608233519",
+            "channel": "#real-ui-auth-20260608233519",
+            "assignee": null,
+            "messageId": "00844330-dae9-42a7-b40e-8314ea9be061",
+            "assigneeId": null,
+            "taskNumber": 2,
+            "targetAgentId": null
+          },
+          "assignee": null,
+          "channelId": "3748ce7f-9ef2-43b0-a8aa-136ee1758050",
+          "createdAt": "2026-06-09T06:50:34.429566",
+          "messageId": "00844330-dae9-42a7-b40e-8314ea9be061",
+          "activityId": "46421270-d82e-4a95-9ca2-86361a7a6088",
+          "assigneeId": null,
+          "legacyType": "task_created",
+          "occurredAt": "2026-06-09T06:50:34.429566",
+          "taskNumber": 2,
+          "description": "@zy-ean created task #2",
+          "targetAgentId": null
+        }
+      }
+    ]
+  }
+]
+2026-06-09 14:51:46,302 INFO sqlalchemy.engine.Engine ROLLBACK

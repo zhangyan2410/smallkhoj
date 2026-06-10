@@ -1,0 +1,166 @@
+ljq_driver: 已连接
+ljq_driver: 已连接
+SmallKhoj
+Product workbench
+Search
+Chat
+Tasks
+Members
+Computers
+Activity
+Settings
+张岩.ean
+Slock Server
+SMALLKHOJ CONTROL PLANE
+Tasks
+
+Create, assign, scan, and move work with visible status, source links, and review evidence.
+
+Control Plane
+Board/List surface
+7 visible of 7
+Board
+List
+Total
+7
+Open
+7
+Agents
+1
+Create Task
+Creates a backend task and emits task.created for agent pickup.
+TITLE
+DESCRIPTION
+CHANNEL
+#real-ui-auth-20260608233519
+ASSIGNEE
+Unassigned
+@glm1
+STATUS
+todo
+in_progress
+in_review
+done
+closed
+Create
+Update Task
+Move status or reassign while preserving create/update behavior.
+TASK
+Unassigned
+#1 你好
+#1 测试
+#2 REAL_chat_20260609143627 dm root
+#2 REAL_chat_20260609143627 channel root
+#3 REAL_tasks_20260609143627 board item
+#3 REAL_chat_20260609143627 dm root
+#4 REAL_task_agent_chain_20260609154938 assigned dm task
+TITLE
+DESCRIPTION
+STATUS
+todo
+in_progress
+in_review
+done
+closed
+ASSIGNEE
+Unassigned
+@glm1
+Update
+Filters
+CHANNEL
+Any channel
+#real-ui-auth-20260608233519
+CREATOR
+Any creator
+zy-ean
+ASSIGNEE
+Any assignee
+glm1
+STATUS
+Any status
+todo
+in_progress
+in_review
+done
+closed
+Apply
+Clear
+待办
+5
+dm:5a7ea587-3b95-4057-a5ba-5d34c7e39938-f4590332-509e-4b24-bf61-fa64726c6b9b #1
+你好
+待办
+by @zy-ean
+assigned @glm1
+06/09 06:52
+message 43e421d5
+#real-ui-auth-20260608233519 #1
+测试
+待办
+by @zy-ean
+assigned @glm1
+06/09 03:45
+dm:5a7ea587-3b95-4057-a5ba-5d34c7e39938-f4590332-509e-4b24-bf61-fa64726c6b9b #2
+REAL_chat_20260609143627 dm root
+待办
+by @zy-ean
+assigned @glm1
+06/09 06:53
+message dd25cdd9
+#real-ui-auth-20260608233519 #2
+REAL_chat_20260609143627 channel root
+待办
+by @zy-ean
+06/09 06:50
+message f2c6e56b
+dm:5a7ea587-3b95-4057-a5ba-5d34c7e39938-f4590332-509e-4b24-bf61-fa64726c6b9b #3
+REAL_chat_20260609143627 dm root
+待办
+by @zy-ean
+assigned @glm1
+06/09 07:03
+message dd25cdd9
+进行中
+0
+Empty
+审核中
+2
+#real-ui-auth-20260608233519 #3
+REAL_tasks_20260609143627 board item
+审核中
+by @zy-ean
+assigned @glm1
+06/09 06:56
+dm:5a7ea587-3b95-4057-a5ba-5d34c7e39938-f4590332-509e-4b24-bf61-fa64726c6b9b #4
+REAL_task_agent_chain_20260609154938 assigned dm task
+审核中
+by @zy-ean
+assigned @glm1
+06/09 07:51
+完成
+0
+Empty
+关闭
+0
+Empty
+Task Detail
+
+Source and evidence for the selected work item.
+
+dm:5a7ea587-3b95-4057-a5ba-5d34c7e39938-f4590332-509e-4b24-bf61-fa64726c6b9b #1
+你好
+
+Created from DM @glm1 message 43e421d5.
+
+Status
+待办
+Assignee
+@glm1
+Creator
+@zy-ean
+Source
+Type: message
+Message: 43e421d5
+Thread: 8472bc7c
+Evidence
+Created from chat message action.

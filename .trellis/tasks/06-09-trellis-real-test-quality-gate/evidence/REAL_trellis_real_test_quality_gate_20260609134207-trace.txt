@@ -1,0 +1,89 @@
+Services
+  backend  OK 200 75ms http://127.0.0.1:8000/docs
+  frontend OK 200 46ms http://127.0.0.1:3000
+  daemon   FAIL 405 2ms http://127.0.0.1:64730/internal/daemon/jsonrpc
+
+Sessions
+  active ab8da1cf-a422-40c0-9fa9-06de917ea943 claude /Users/code/project/smallkhoj/agent/daemon/aaa-daemon/.slock-runtimes/5a7ea587-3b95-4057-a5ba-5d34c7e39938
+
+Timeline
+no-time      frontend         log              - Local:         http://localhost:3000
+no-time      backend          log                            ) THEN
+no-time      frontend         log              - Network:       http://192.168.9.109:3000
+no-time      backend          log                              ALTER TABLE event_records
+no-time      frontend         log              ✓ Ready in 189ms
+no-time      backend          log                              ADD CONSTRAINT uq_event_records_server_seq UNIQUE (server_id, seq);
+no-time      frontend         log               GET / 200 in 250ms (next.js: 106ms, application-code: 144ms)
+no-time      backend          log                            END IF;
+no-time      backend          log                          END $$;
+no-time      backend          log                      
+no-time      backend          log              2026-06-08 22:03:56,068 INFO sqlalchemy.engine.Engine [generated in 0.00004s] ()
+no-time      backend          log              2026-06-08 22:03:56,071 INFO sqlalchemy.engine.Engine CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id) WHERE parent_id IS NOT NULL
+no-time      backend          log              2026-06-08 22:03:56,071 INFO sqlalchemy.engine.Engine [generated in 0.00004s] ()
+no-time      backend          log              2026-06-08 22:03:56,073 INFO sqlalchemy.engine.Engine CREATE INDEX IF NOT EXISTS idx_event_records_server_seq ON event_records(server_id, seq)
+no-time      backend          log              2026-06-08 22:03:56,073 INFO sqlalchemy.engine.Engine [generated in 0.00010s] ()
+no-time      backend          log              2026-06-08 22:03:56,074 INFO sqlalchemy.engine.Engine CREATE INDEX IF NOT EXISTS idx_event_records_server_channel_seq ON event_records(server_id, channel_id, seq) WHERE channel_id IS NOT NULL
+no-time      backend          log              2026-06-08 22:03:56,074 INFO sqlalchemy.engine.Engine [generated in 0.00004s] ()
+no-time      backend          log              2026-06-08 22:03:56,076 INFO sqlalchemy.engine.Engine CREATE INDEX IF NOT EXISTS idx_event_records_server_actor_seq ON event_records(server_id, actor_id, seq) WHERE actor_id IS NOT NULL
+no-time      backend          log              2026-06-08 22:03:56,076 INFO sqlalchemy.engine.Engine [generated in 0.00004s] ()
+no-time      backend          log              2026-06-08 22:03:56,077 INFO sqlalchemy.engine.Engine CREATE INDEX IF NOT EXISTS idx_event_records_server_type_seq ON event_records(server_id, event_type, seq)
+no-time      backend          log              2026-06-08 22:03:56,077 INFO sqlalchemy.engine.Engine [generated in 0.00003s] ()
+no-time      backend          log              2026-06-08 22:03:56,079 INFO sqlalchemy.engine.Engine CREATE INDEX IF NOT EXISTS idx_event_records_created ON event_records(server_id, created_at DESC)
+no-time      backend          log              2026-06-08 22:03:56,079 INFO sqlalchemy.engine.Engine [generated in 0.00002s] ()
+no-time      backend          log              2026-06-08 22:03:56,081 INFO sqlalchemy.engine.Engine CREATE INDEX IF NOT EXISTS idx_event_records_message ON event_records(message_id) WHERE message_id IS NOT NULL
+no-time      backend          log              2026-06-08 22:03:56,081 INFO sqlalchemy.engine.Engine [generated in 0.00005s] ()
+no-time      backend          log              2026-06-08 22:03:56,082 INFO sqlalchemy.engine.Engine CREATE INDEX IF NOT EXISTS idx_event_records_task ON event_records(task_id) WHERE task_id IS NOT NULL
+no-time      backend          log              2026-06-08 22:03:56,082 INFO sqlalchemy.engine.Engine [generated in 0.00003s] ()
+no-time      backend          log              2026-06-08 22:03:56,083 INFO sqlalchemy.engine.Engine 
+no-time      backend          log                          UPDATE members AS m
+no-time      backend          log                          SET computer_id = (m.config->>'computerId')::uuid
+no-time      backend          log                          WHERE m.computer_id IS NULL
+no-time      backend          log                            AND m.config ? 'computerId'
+no-time      backend          log                            AND (m.config->>'computerId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+no-time      backend          log                            AND EXISTS (
+no-time      backend          log                              SELECT 1
+no-time      backend          log                              FROM computers AS c
+no-time      backend          log                              WHERE c.id = (m.config->>'computerId')::uuid
+no-time      backend          log                            )
+no-time      backend          log                      
+no-time      backend          log              2026-06-08 22:03:56,083 INFO sqlalchemy.engine.Engine [generated in 0.00003s] ()
+no-time      backend          log              2026-06-08 22:03:56,085 INFO sqlalchemy.engine.Engine 
+no-time      backend          log                          UPDATE members
+no-time      backend          log                          SET backend = config->>'backend'
+no-time      backend          log                          WHERE backend IS NULL
+no-time      backend          log                            AND config ? 'backend'
+no-time      backend          log                      
+no-time      backend          log              2026-06-08 22:03:56,085 INFO sqlalchemy.engine.Engine [generated in 0.00002s] ()
+no-time      backend          log              2026-06-08 22:03:56,086 INFO sqlalchemy.engine.Engine COMMIT
+no-time      backend          log              [DB] Tables created
+no-time      backend          log              [DB] Demo seed disabled; no startup data inserted
+no-time      backend          log              2026-06-08 22:03:56,088 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+no-time      backend          log              2026-06-08 22:03:56,110 INFO sqlalchemy.engine.Engine SELECT reminders.id, reminders.server_id, reminders.agent_id, reminders.title, reminders.description, reminders.fire_at, reminders.status, reminders.repeat, reminders.channel_id, reminders.message_id, reminders.task_id, reminders.data, reminders.created_at, reminders.updated_at, reminders.fired_at 
+no-time      backend          log              FROM reminders 
+no-time      backend          log              WHERE reminders.status = $1::VARCHAR AND reminders.fire_at <= $2::TIMESTAMP WITH TIME ZONE ORDER BY reminders.fire_at 
+no-time      backend          log               LIMIT $3::INTEGER
+no-time      backend          log              2026-06-08 22:03:56,110 INFO sqlalchemy.engine.Engine [generated in 0.00012s] ('pending', datetime.datetime(2026, 6, 8, 14, 3, 56, 88611), 50)
+no-time      backend          log              INFO:     Application startup complete.
+no-time      backend          log              2026-06-08 22:03:56,114 INFO sqlalchemy.engine.Engine ROLLBACK
+no-time      backend          log              INFO:     127.0.0.1:64640 - "GET /docs HTTP/1.1" 200 OK
+no-time      backend          log              2026-06-08 22:03:57,117 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+no-time      backend          log              2026-06-08 22:03:57,117 INFO sqlalchemy.engine.Engine SELECT reminders.id, reminders.server_id, reminders.agent_id, reminders.title, reminders.description, reminders.fire_at, reminders.status, reminders.repeat, reminders.channel_id, reminders.message_id, reminders.task_id, reminders.data, reminders.created_at, reminders.updated_at, reminders.fired_at 
+no-time      backend          log              FROM reminders 
+no-time      backend          log              WHERE reminders.status = $1::VARCHAR AND reminders.fire_at <= $2::TIMESTAMP WITH TIME ZONE ORDER BY reminders.fire_at 
+no-time      backend          log               LIMIT $3::INTEGER
+no-time      backend          log              2026-06-08 22:03:57,118 INFO sqlalchemy.engine.Engine [cached since 1.008s ago] ('pending', datetime.datetime(2026, 6, 8, 14, 3, 57, 116976), 50)
+no-time      backend          log              2026-06-08 22:03:57,120 INFO sqlalchemy.engine.Engine ROLLBACK
+no-time      backend          log              2026-06-08 22:03:57,350 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+no-time      backend          log              2026-06-08 22:03:57,351 INFO sqlalchemy.engine.Engine SELECT servers.id, servers.name, servers.created_at, servers.updated_at 
+no-time      backend          log              FROM servers 
+no-time      backend          log               LIMIT $1::INTEGER
+no-time      backend          log              2026-06-08 22:03:57,351 INFO sqlalchemy.engine.Engine [generated in 0.00007s] (1,)
+no-time      backend          log              INFO:     127.0.0.1:64659 - "GET /api/v1/channels HTTP/1.1" 200 OK
+no-time      backend          log              2026-06-08 22:03:57,355 INFO sqlalchemy.engine.Engine ROLLBACK
+no-time      backend          log              2026-06-08 22:03:57,376 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+no-time      backend          log              2026-06-08 22:03:57,376 INFO sqlalchemy.engine.Engine SELECT servers.id, servers.name, servers.created_at, servers.updated_at 
+no-time      backend          log              FROM servers 
+no-time      backend          log               LIMIT $1::INTEGER
+no-time      backend          log              2026-06-08 22:03:57,376 INFO sqlalchemy.engine.Engine [cached since 0.02542s ago] (1,)
+no-time      backend          log              INFO:     127.0.0.1:64660 - "GET /api/v1/members HTTP/1.1" 200 OK
+no-time      backend          log              2026-06-08 22:03:57,381 INFO sqlalchemy.engine.Engine ROLLBACK
