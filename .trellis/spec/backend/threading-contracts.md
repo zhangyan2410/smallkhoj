@@ -32,6 +32,7 @@
 - Reply creation must accept either a root message id/short id or a reply id/short id, then persist against the root id.
 - Summary text must be non-empty and at most 300 characters.
 - Summary request events must include `targetAgentId`, `threadId`, `threadShortId`, `target`, `content`, `replyCount`, and `summaryMaxChars`.
+- Automatic summary scheduling is conservative: it is disabled unless `THREAD_SUMMARY_SCHEDULER_ENABLED=true`, processes only a small batch per tick, and must not re-request a summary for the same unanswered `replyCount`. A new reply count or an outdated completed summary is required before another automatic request.
 - DM APIs keep raw `dm:...` channel names for routing but include `displayName` and `peer` for human-facing UI.
 
 ### 4. Validation & Error Matrix
@@ -47,15 +48,18 @@
 
 - Good: main timeline fetches `threadMode=roots`, opens the right-side panel via `GET /threads/{id}`, posts replies with `threadId`, and refreshes both the root list and panel.
 - Base: an agent receives `thread.summary_requested`, reads the thread with `slock thread read`, and writes metadata with `slock thread summary`; it does not send a chat message.
+- Base: daemon restart does not replay old `thread.summary_requested` events into runtime queues when the WS connection lacks a positive cursor.
 - Bad: rendering replies in the main channel timeline.
 - Bad: creating nested replies by storing a reply's id as `parent_id`.
 - Bad: displaying raw `dm:uuid-uuid` as the primary DM title when peer metadata is available.
+- Bad: retrying an unanswered summary request for the same thread/reply count on every scheduler interval or daemon restart.
 
 ### 6. Tests Required
 
 - Backend/API: root-only timeline includes `replyCount` and `threadSummary`; thread detail separates `thread` and `replies`; summary write rejects empty/too-long/non-participant writes.
 - Daemon: CLI/proxy/JSON-RPC route `thread.read` and `thread.summary` to canonical agent API endpoints.
 - Runtime delivery: `thread.summary_requested` is classified as a runtime event and delivered only to `targetAgentId`.
+- Runtime delivery: daemon WS reconnect/initial-connect regression covers historical `thread.summary_requested` rows so they are not pushed into model queues without an explicit positive cursor.
 - Browser E2E: channel and DM thread replies appear in the thread panel and not in the main timeline; DM headers/sidebar use peer display names.
 
 ### 7. Wrong vs Correct

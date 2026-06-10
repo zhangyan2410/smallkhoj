@@ -17,12 +17,12 @@ Upgrade Tasks from create/update forms into a mature work-management surface wit
 
 ## Acceptance Criteria
 
-* [ ] Board and list view can be toggled.
-* [ ] Filtering changes visible tasks correctly.
-* [ ] A task created from UI appears in board/list with correct status and channel.
-* [ ] Status transition is reflected in UI and API.
-* [ ] Evidence section exists, even if first version stores only links/notes.
-* [ ] Real WebDriver evidence captures board/list and API verification.
+* [x] Board and list view can be toggled.
+* [x] Filtering changes visible tasks correctly.
+* [x] A task created from UI appears in board/list with correct status and channel.
+* [x] Status transition is reflected in UI and API.
+* [x] Evidence section exists, even if first version stores only links/notes.
+* [x] Real WebDriver evidence captures board/list and API verification.
 
 ## Real Test SOP
 

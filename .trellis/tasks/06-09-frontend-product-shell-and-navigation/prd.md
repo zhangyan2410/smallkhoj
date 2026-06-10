@@ -16,11 +16,11 @@ Replace the current homepage/link-based navigation with an app-first SmallKhoj p
 
 ## Acceptance Criteria
 
-* [ ] Browser opens `http://127.0.0.1:3000/` and sees the product shell immediately.
-* [ ] Main nav links or buttons reach Chat, Tasks, Members, Computers, Settings.
-* [ ] The shell can host per-section sidebars without nesting page cards inside cards.
-* [ ] Existing channel/DM creation flows remain reachable.
-* [ ] Real WebDriver screenshot evidence is saved under `evidence/`.
+* [x] Browser opens `http://127.0.0.1:3000/` and sees the product shell immediately.
+* [x] Main nav links or buttons reach Chat, Tasks, Members, Computers, Settings.
+* [x] The shell can host per-section sidebars without nesting page cards inside cards.
+* [x] Existing channel/DM creation flows remain reachable.
+* [x] Real WebDriver screenshot evidence is saved under `evidence/`.
 
 ## Real Test SOP
 

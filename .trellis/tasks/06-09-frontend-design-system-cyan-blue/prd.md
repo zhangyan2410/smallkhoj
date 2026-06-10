@@ -16,10 +16,10 @@ Create a cohesive SmallKhoj frontend visual system that is product-grade, cyan/b
 
 ## Acceptance Criteria
 
-* [ ] Core design tokens are documented and used by shared UI patterns.
-* [ ] Chat/Tasks/Members/Computers can reuse the same status/chip/list-row patterns.
-* [ ] UI text does not overflow in key rows/cards on desktop or mobile.
-* [ ] Real screenshots show a coherent cyan/blue SmallKhoj identity.
+* [x] Core design tokens are documented and used by shared UI patterns.
+* [x] Chat/Tasks/Members/Computers can reuse the same status/chip/list-row patterns.
+* [x] UI text does not overflow in key rows/cards on desktop or mobile.
+* [x] Real screenshots show a coherent cyan/blue SmallKhoj identity.
 
 ## Real Test SOP
 

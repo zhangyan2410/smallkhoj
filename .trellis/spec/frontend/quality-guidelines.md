@@ -133,6 +133,8 @@ For forms that write to backend APIs, include at least one project WebDriver bro
 
 For browser-facing product work, add a task-local Real Test SOP and evidence files. Use the project WebDriver harness, not Playwright, for repository browser/UI verification.
 
+Start new task evidence from `docs/real-test-sop-template.md`, then specialize the steps for the feature being verified.
+
 Required evidence:
 
 - Unique marker in the shape `REAL_<task-slug>_<timestamp>`.

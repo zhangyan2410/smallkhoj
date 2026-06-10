@@ -16,11 +16,11 @@ Make real browser/runtime verification part of Trellis workflow for SmallKhoj ta
 
 ## Acceptance Criteria
 
-* [ ] `.trellis/workflow.md` or relevant Trellis spec docs mention the real-test quality gate.
-* [ ] Frontend quality guidelines mention `twd.py` evidence for browser workflows.
-* [ ] Backend/runtime guidelines mention cross-layer proof for runtime/user-visible bugs.
-* [ ] A reusable SOP template exists.
-* [ ] Existing `docs/real-runtime-dm-reply-sop.md` is referenced or harmonized.
+* [x] `.trellis/workflow.md` or relevant Trellis spec docs mention the real-test quality gate.
+* [x] Frontend quality guidelines mention `twd.py` evidence for browser workflows.
+* [x] Backend/runtime guidelines mention cross-layer proof for runtime/user-visible bugs.
+* [x] A reusable SOP template exists.
+* [x] Existing `docs/real-runtime-dm-reply-sop.md` is referenced or harmonized.
 
 ## Real Test SOP
 

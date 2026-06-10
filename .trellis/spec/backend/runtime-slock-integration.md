@@ -126,6 +126,9 @@ Future environment support must validate:
   - A daemon WebSocket connection with no cursor, `eventLogCursor=0`, or an invalid cursor is a live subscription starting at the current max `EventRecord.seq`. It must not replay historical chat into Claude or other runtimes on daemon restart. Historical context is pulled explicitly by the agent with read/check/search commands when needed.
   - Daemon proxy/runtime code must treat dotted `message.*` events as legacy `message_received` for inbox buffering, freshness tracking, and runtime delivery. When a dotted message event has `payload.message`, flatten that nested message before buffering.
   - Daemon proxy/runtime code must accept both snake-case task events (`task_created`) and dotted task events (`task.created`) and deliver them as non-message runtime events without touching pending-message freshness state.
+  - Tasks created from chat messages must preserve source linkage (`Task.message_id`, event `messageId`, and `payload.source`) and stay in the source channel/DM. `assigneeId` / `targetAgentId` is assignment metadata only; it must not bypass channel or DM membership visibility to deliver a task to an agent that cannot see that conversation.
+  - An assigned `task.created` / `task_created` event is actionable runtime work for the assigned visible agent, not a passive notification. Runtime formatting and prompts must tell the model to claim/start the task, do the work, reply to the source target/thread, and move the task to `in_review` when ready.
+  - Agent task status transitions are intentionally narrower than supervisor transitions: an agent assigned to the task may move `todo -> in_progress` by claiming/starting it, `in_progress -> in_review` when submitting work, and `in_progress -> todo` when unclaiming. Agents must not set `done`; human/supervisor review owns approval.
   - Daemon proxy/runtime code must accept thread events such as `thread.summary_requested` and deliver them as non-message runtime events. Targeted thread events must preserve `targetAgentId` so only the selected runtime receives the request.
   - Agent-scoped proxy `/events` and SSE responses must annotate buffered/emitted events with the registration `agentId` before normalization, unless the upstream event already includes `agentId`/`agent_id`. Multi-runtime delivery depends on this marker to avoid sending one agent's inbox item to another runtime.
   - proxy `/internal/agent-api/events` and SSE events use the same event buffer and emit the same `message_received` delivery path
@@ -227,6 +230,8 @@ Future environment support must validate:
 - Bad: emitting only `channelId`/bare UUID for a DM runtime prompt. Models tend to reuse the visible header, so missing `target=dm:@peer` causes replies to hit "Channel ... not found" or land outside the visible DM.
 
 ### 6. Tests Required
+
+For product-facing runtime/control-plane changes, also use the task-local Real Test SOP template in `docs/real-test-sop-template.md`. Runtime evidence must cross-check visible browser state with API/DB state and `smallkhoj-trace` output when daemon or agent delivery is involved.
 
 - Unit test `rewriteAgentPath`:
   - preserves query strings for `history`, `search`, `tasks`, and attachment paths
@@ -416,6 +421,8 @@ SLOCKMSG
 - Duplicate computer name for a different machine -> `409 Computer name <name> already exists`.
 - Same `machineId` while its computer has an unexpired active lease -> `409 Computer already has an active daemon`.
 - Same `machineId` after lease expiry -> reuse the existing computer and issue a fresh machine token.
+- Daemon `register` / `heartbeat` with a different `daemonId` while the stored lease is expired -> accept and replace `active_daemon_id`; stale daemon ids must not block recovery after a process crash.
+- Daemon `register` / `heartbeat` with a different `daemonId` while the stored lease is still active -> `409 Computer is leased by another daemon`.
 - Duplicate member display name -> `409 Member name <name> already exists`.
 - Invalid `computerId` for agent creation -> `400 Invalid computerId`.
 - Unknown `computerId` for agent creation -> `404 Computer not found`.

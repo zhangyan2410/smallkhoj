@@ -44,7 +44,14 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 - Quick summary: `./smallkhoj-trace summary`
 - Follow live trace: `./smallkhoj-trace follow`
 - Machine-readable output: `./smallkhoj-trace summary --json`
-- Scope: this is the project debug harness for flow visibility; Playwright covers UI assertions, while `smallkhoj-trace` covers why messages/tasks/runtime events moved through the system.
+- Scope: this is the project debug harness for flow visibility; use the project WebDriver tool for UI/browser assertions, while `smallkhoj-trace` covers why messages/tasks/runtime events moved through the system.
+
+### Project WebDriver Policy
+
+- Do not use Playwright for browser/UI verification in this repository.
+- Use the project WebDriver harness instead: `/Users/code/project/smallkhoj/agent/daemon/webdriver/twd.py`.
+- For frontend or browser-facing fixes, drive the running local app through this WebDriver tool, use unique markers, verify visible DOM state, and cross-check backend/API/database state when relevant.
+- Keep `smallkhoj-trace` for runtime/control-plane flow diagnosis; use WebDriver only for browser-visible behavior.
 
 ### CC Switch Terminal Launcher
 

@@ -17,12 +17,12 @@ Make Chat the main SmallKhoj collaboration surface with Slock-like workflow dept
 
 ## Acceptance Criteria
 
-* [ ] Chat route shows Activity, Saved, Channels, and Direct Messages.
-* [ ] A DM and a channel both support sending a unique marker.
-* [ ] Message action controls are visible and do not overlap content.
-* [ ] Thread replies still persist and render.
-* [ ] As Task creates a task linked back to message/thread source.
-* [ ] Real WebDriver evidence verifies visible DOM and API state.
+* [x] Chat route shows Activity, Saved, Channels, and Direct Messages.
+* [x] A DM and a channel both support sending a unique marker.
+* [x] Message action controls are visible and do not overlap content.
+* [x] Thread replies still persist and render.
+* [x] As Task creates a task linked back to message/thread source.
+* [x] Real WebDriver evidence verifies visible DOM and API state.
 
 ## Real Test SOP
 
