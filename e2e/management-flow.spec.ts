@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 import { execFileSync } from "node:child_process"
+import WebSocket, { type RawData } from "ws"
 
 const API_BASE = process.env.API_BASE ?? "http://localhost:8000"
 const FRONTEND_BASE = process.env.FRONTEND_BASE ?? "http://localhost:3000"
@@ -46,6 +47,11 @@ async function connectDaemon(connectToken: string, machineId: string, name: stri
   return res.json()
 }
 
+async function createComputerCredential(name: string) {
+  const data = await apiPost("/api/v1/computers/credential", { name, serverUrl: API_BASE })
+  return data as { computerId: string; apiKey: string }
+}
+
 async function agentSend(apiKey: string, agentId: string, target: string, content: string) {
   const res = await fetch(`${API_BASE}/internal/agent-api/send`, {
     method: "POST",
@@ -60,6 +66,68 @@ async function agentSend(apiKey: string, agentId: string, target: string, conten
     throw new Error(`agent send failed: ${res.status} ${await res.text()}`)
   }
   return res.json()
+}
+
+async function addChannelMember(channelId: string, memberId: string) {
+  return apiPost(`/api/v1/channels/${channelId}/members`, { memberId })
+}
+
+function connectDaemonWs(apiKey: string, computerId: string, cursor?: string) {
+  const url = new URL("/internal/agent-api/ws", API_BASE.replace(/^http/, "ws"))
+  if (cursor !== undefined) {
+    url.searchParams.set("eventLogCursor", cursor)
+  }
+  return new WebSocket(url, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "X-Computer-Id": computerId,
+    },
+  })
+}
+
+function waitForWsEvent(
+  ws: WebSocket,
+  predicate: (event: Record<string, unknown>) => boolean,
+  timeoutMs = 5_000,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ws.off("message", onMessage)
+      reject(new Error("Timed out waiting for matching websocket event"))
+    }, timeoutMs)
+    const onMessage = (data: RawData) => {
+      const text = data.toString()
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(text) as Record<string, unknown>
+      } catch {
+        return
+      }
+      if (!predicate(parsed)) return
+      clearTimeout(timer)
+      ws.off("message", onMessage)
+      resolve(parsed)
+    }
+    ws.on("message", onMessage)
+  })
+}
+
+function collectWsEvents(ws: WebSocket, durationMs = 500): Promise<Array<Record<string, unknown>>> {
+  return new Promise((resolve) => {
+    const events: Array<Record<string, unknown>> = []
+    const onMessage = (data: RawData) => {
+      try {
+        events.push(JSON.parse(data.toString()) as Record<string, unknown>)
+      } catch {
+        // Ignore non-JSON frames in diagnostics collection.
+      }
+    }
+    ws.on("message", onMessage)
+    setTimeout(() => {
+      ws.off("message", onMessage)
+      resolve(events)
+    }, durationMs)
+  })
 }
 
 async function daemonRegister(apiKey: string, daemonId: string, workspaces: Array<Record<string, unknown>> = []) {
@@ -210,6 +278,118 @@ function cleanupTestData(stamp: number) {
 }
 
 test.describe("Management product flow", () => {
+  test("daemon websocket starts at latest event when no cursor is supplied", async () => {
+    const stamp = Date.now()
+    const computerName = `e2e-ui-computer-${stamp}`
+    const agentName = `e2e-ui-agent-${stamp}`
+    const channelName = `e2e-ui-${stamp}`
+    const historyMessage = `historical daemon replay guard ${stamp}`
+    const historySummaryRequest = `historical summary replay guard ${stamp}`
+    const liveMessage = `live daemon delivery guard ${stamp}`
+    let ws: WebSocket | undefined
+
+    try {
+      const credential = await createComputerCredential(computerName)
+      const agentResult = await apiPost("/api/v1/members/agents", {
+        name: agentName,
+        computerId: credential.computerId,
+        runtime: "claude_code",
+        backend: "E2E",
+      }) as { member: { id: string } }
+      const agentId = agentResult.member.id
+      const channelResult = await apiPost("/api/v1/channels", {
+        name: channelName,
+        description: "E2E websocket replay guard",
+      }) as { channel: { id: string; name: string } }
+      await addChannelMember(channelResult.channel.id, agentId)
+
+      const historyResult = await apiPost(`/api/v1/channels/${channelName}/messages`, {
+        sender: "zy-ean",
+        content: historyMessage,
+      }) as { message: { id: string; shortId: string } }
+      runSql(`
+        INSERT INTO event_records (id, server_id, event_type, actor_id, channel_id, message_id, payload, created_at)
+        SELECT gen_random_uuid(),
+               c.server_id,
+               'thread.summary_requested',
+               NULL,
+               c.id,
+               ${sqlLiteral(historyResult.message.id)}::uuid,
+               ${sqlLiteral(JSON.stringify({
+                 type: "thread.summary_requested",
+                 legacyType: "thread_summary_requested",
+                 targetAgentId: agentId,
+                 threadId: historyResult.message.id,
+                 threadShortId: historyResult.message.shortId,
+                 messageId: historyResult.message.id,
+                 shortId: historyResult.message.shortId,
+                 target: `#${channelName}:${historyResult.message.shortId}`,
+                 content: historySummaryRequest,
+                 replyCount: 1,
+                 summaryMaxChars: 300,
+               }))}::jsonb,
+               now()
+        FROM channels c
+        WHERE c.name = ${sqlLiteral(channelName)};
+      `)
+
+      for (const cursor of [undefined, "0", "not-a-number"]) {
+        ws = connectDaemonWs(credential.apiKey, credential.computerId, cursor)
+        const initialEventsPromise = collectWsEvents(ws, 700)
+        await new Promise<void>((resolve, reject) => {
+          ws!.once("open", resolve)
+          ws!.once("error", reject)
+        })
+        const initialEvents = await initialEventsPromise
+        expect(initialEvents).not.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "message.created",
+              content: historyMessage,
+            }),
+          ]),
+        )
+        expect(initialEvents).not.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "thread.summary_requested",
+              content: historySummaryRequest,
+            }),
+          ]),
+        )
+        ws.close()
+        ws = undefined
+      }
+
+      ws = connectDaemonWs(credential.apiKey, credential.computerId)
+      await new Promise<void>((resolve, reject) => {
+        ws!.once("open", resolve)
+        ws!.once("error", reject)
+      })
+
+      const liveEventPromise = waitForWsEvent(
+        ws,
+        (event) => event.type === "message.created" && event.content === liveMessage,
+      )
+      await apiPost(`/api/v1/channels/${channelName}/messages`, {
+        sender: "zy-ean",
+        content: liveMessage,
+      })
+      const liveEvent = await liveEventPromise
+      expect(liveEvent).toEqual(
+        expect.objectContaining({
+          type: "message.created",
+          content: liveMessage,
+          target: `#${channelName}`,
+          targetAgentId: agentId,
+        }),
+      )
+    } finally {
+      ws?.close()
+      cleanupTestData(stamp)
+    }
+  })
+
   test("browser flow: daemon connect, computer, agent, channel, message, and DM", async ({ page }) => {
     const stamp = Date.now()
     const computerName = `e2e-ui-computer-${stamp}`
