@@ -339,7 +339,7 @@ export default async function ComputersPage({
                             </span>
                           </div>
                           <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                            {shortId(workspace.workspaceId || workspace.id)} · {workspace.backend || "backend unknown"}
+                            {shortId(workspace.workspaceId || workspace.id)} · {workspace.runtimeProvider || workspace.backend || "provider default"}
                           </div>
                         </div>
                         <div className="min-w-0">
@@ -348,7 +348,7 @@ export default async function ComputersPage({
                             <span className="truncate">{workspace.runtime || "runtime"}</span>
                           </div>
                           <div className="mt-1 truncate text-xs text-muted-foreground">
-                            {workspace.runtimeModel || workspace.runtimeCommand || "no model"}
+                            {workspace.runtimeProvider || workspace.runtimeModel || workspace.runtimeCommand || "default provider"}
                           </div>
                         </div>
                         <StatusBadge status={workspace.status} />

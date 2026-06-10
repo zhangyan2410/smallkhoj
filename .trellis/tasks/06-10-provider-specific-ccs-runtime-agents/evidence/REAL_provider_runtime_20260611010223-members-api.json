@@ -1,0 +1,18 @@
+{
+  "members": [
+    {
+      "id": "8bd77997-acf4-490e-a595-49be7c32c732",
+      "displayName": "REAL_provider_runtime_20260611010223",
+      "status": "active",
+      "backend": null,
+      "runtimeProvider": "Kimi",
+      "computerId": "c2b630e2-85a3-4b2a-ae0f-54cfff7e8f86",
+      "workspaceId": "f2f97cc2-19ec-427a-81b4-2042912637e2",
+      "config": {
+        "runtimeProvider": "Kimi",
+        "runtimeDesiredStatus": "running",
+        "backend": null
+      }
+    }
+  ]
+}

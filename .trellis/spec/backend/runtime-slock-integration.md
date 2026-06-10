@@ -43,6 +43,7 @@ Future environment support must validate:
   - `aaa-daemon start --runtime-command <command>`
   - `aaa-daemon start --runtime-command-arg <arg>` (repeatable)
   - `aaa-daemon start --runtime-model <model>`
+  - `aaa-daemon start --runtime-provider <providerName>`
   - `aaa-daemon start --runtime-resume-session-id <id>`
   - `aaa-daemon start --runtime-restart-on-crash`
   - `aaa-daemon start --runtime-stall-timeout-ms <ms>`
@@ -67,6 +68,7 @@ Future environment support must validate:
   - `config.runtimeCommand?: string`
   - `config.runtimeCommandArgs?: string[]`
   - `config.runtimeModel?: string`
+  - `config.runtimeProvider?: string`
   - `config.workspacePath?: string`
   - `config.workspaceId?: string`
 
@@ -126,7 +128,7 @@ Future environment support must validate:
   - A daemon WebSocket connection with no cursor, `eventLogCursor=0`, or an invalid cursor is a live subscription starting at the current max `EventRecord.seq`. It must not replay historical chat into Claude or other runtimes on daemon restart. Historical context is pulled explicitly by the agent with read/check/search commands when needed.
   - Daemon proxy/runtime code must treat dotted `message.*` events as legacy `message_received` for inbox buffering, freshness tracking, and runtime delivery. When a dotted message event has `payload.message`, flatten that nested message before buffering.
   - Daemon proxy/runtime code must accept both snake-case task events (`task_created`) and dotted task events (`task.created`) and deliver them as non-message runtime events without touching pending-message freshness state.
-  - Tasks created from chat messages must preserve source linkage (`Task.message_id`, event `messageId`, and `payload.source`) and stay in the source channel/DM. `assigneeId` / `targetAgentId` is assignment metadata only; it must not bypass channel or DM membership visibility to deliver a task to an agent that cannot see that conversation.
+  - Tasks created from chat messages must preserve source linkage (`Task.message_id`, event `messageId`, and `payload.source`) and stay in the source channel/DM. `assigneeId` / `targetAgentId` is assignment metadata that controls both event delivery and claim eligibility. When `targetAgentId` is set, the event is delivered directly to that agent regardless of channel membership, and only that agent may claim the task. When `targetAgentId` is not set, the event follows normal channel visibility rules and any channel member may claim the task.
   - An assigned `task.created` / `task_created` event is actionable runtime work for the assigned visible agent, not a passive notification. Runtime formatting and prompts must tell the model to claim/start the task, do the work, reply to the source target/thread, and move the task to `in_review` when ready.
   - Agent task status transitions are intentionally narrower than supervisor transitions: an agent assigned to the task may move `todo -> in_progress` by claiming/starting it, `in_progress -> in_review` when submitting work, and `in_progress -> todo` when unclaiming. Agents must not set `done`; human/supervisor review owns approval.
   - Daemon proxy/runtime code must accept thread events such as `thread.summary_requested` and deliver them as non-message runtime events. Targeted thread events must preserve `targetAgentId` so only the selected runtime receives the request.
@@ -185,6 +187,100 @@ Future environment support must validate:
   - optional target guard: `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`
 - `thread summary --thread-id <id> --summary <text>` is write-capable and maps to `POST /threads/{id}/summary` with body `{summary}`.
 - Attachment upload resolves `--channel` through `/resolve-channel`, then forwards multipart form data (`file`, `channelId`, optional `mimeType`) to `/upload`.
+
+## Scenario: Daemon-Local Runtime Provider Selection
+
+### 1. Scope / Trigger
+
+- Trigger: users can select a local Claude provider/profile for a runtime, while provider credentials and launch details must remain local to the daemon machine.
+- This is a cross-layer contract: daemon local capability detection -> backend capability display/storage -> `start_runtime` provider selection -> daemon-local runtime launch.
+
+### 2. Signatures
+
+- Daemon CLI:
+  - `aaa-daemon start --runtime-provider <providerName>`
+- Daemon local provider launcher:
+  - default command discovery order: `SLOCK_CCS_CLAUDE_COMMAND`, `CCS_CLAUDE_COMMAND`, `/Users/lee/.local/bin/ccs-claude`, `ccs-claude`
+  - discovery: `<ccsClaudeCommand> list`
+  - launch: `<ccsClaudeCommand> <providerName> <model>`
+- Public/backend payload fields:
+  - `Member.config.runtimeProvider?: string`
+  - `AgentWorkspace.runtimeProvider?: string` in serialized responses
+  - `Computer.detectedRuntimes[]` may include `{type:"claude_code", status:"available", provider, runtimeProvider, model, source:"cc-switch"}`
+  - `start_runtime.command.config.runtimeProvider?: string`
+
+### 3. Contracts
+
+- `runtimeProvider` is a provider/profile name, not an API key, shell command, or serialized credential.
+- The backend may store and return `runtimeProvider`, but it must not store API keys, CC Switch provider config, generated Claude settings files, command args, or auth headers.
+- The daemon owns provider detection and launch resolution. If local CC Switch/`ccs-claude` is unavailable, `detectedRuntimes` still includes the default runtime capability and existing default runtime launch behavior continues.
+- Detected CC Switch providers are reported as sanitized capabilities only: `type`, `status`, `provider`, `runtimeProvider`, `model`, and `source`. Do not include `ccs-claude` path, provider config JSON, tokens, request headers, or command args.
+- `backend` is a legacy/old display field. Do not infer `runtimeProvider` from `backend` during serialization or runtime start command construction.
+- Creating or updating an agent may set `runtimeProvider` explicitly. Old `backend` values remain old data and must not silently become provider selections.
+- If a `start_runtime` command includes `runtimeProvider` and omits `runtimeCommand`, the daemon resolves the provider locally and starts Claude Code via the local provider launcher.
+- If `runtimeCommand` is explicitly supplied, it takes precedence over provider resolution for test/custom-launch paths.
+- Daemon workspace register/heartbeat payloads for provider-launched runtimes include `runtimeProvider`, but omit `runtimeCommand` and `runtimeModel` unless those were explicitly configured outside provider launch.
+- Reconnect/re-register currently re-arms expected-running workspaces that are missing from daemon heartbeat, including last observed `stopped`, `offline`, `exited`, or `crashed` states. A future desired-state controller may narrow this once explicit stop/reset controls exist.
+
+### 4. Validation & Error Matrix
+
+- No local `ccs-claude` available -> report no CC Switch provider capabilities; keep default runtime path usable.
+- `runtimeProvider` supplied but not found in local provider inventory -> daemon logs a sanitized warning and does not start that runtime.
+- `runtimeProvider` supplied with `runtimeCommand` -> daemon uses the explicit command and does not try to resolve the provider locally.
+- Provider launch exits or crashes -> runtime follows normal runtime exit/crash reporting and restart policy.
+- Backend receives `backend` only -> keep it as legacy/display data; do not create `config.runtimeProvider` from it.
+- Daemon heartbeat contains provider runtime -> backend persists provider name only; command path/args must remain absent from public serialized workspace payloads.
+
+### 5. Good/Base/Bad Cases
+
+- Good: `create_agent` receives `{runtimeProvider:"Kimi"}`; backend stores `Member.config.runtimeProvider`; daemon receives `start_runtime.config.runtimeProvider:"Kimi"` and launches `ccs-claude Kimi kimi-for-coding` locally.
+- Base: no CC Switch on the machine; the daemon reports only the base runtime capability and starts the default Claude runtime when no provider is selected.
+- Base: daemon reports `Kimi` and `Zhipu GLM` in `detectedRuntimes`; UI lists provider names/models but cannot see API keys or launcher arguments.
+- Bad: storing `CCS_PROVIDER_DEFAULTS`, provider tokens, or provider command args on the backend.
+- Bad: treating `backend:"Claude"` as `runtimeProvider:"Claude"`; that can block default Claude startup when no such CC Switch provider exists.
+- Bad: sending `/Users/.../ccs-claude` or generated Claude settings paths through server APIs.
+
+### 6. Tests Required
+
+- Backend unit tests:
+  - `runtime_start_command` includes explicit `runtimeProvider` and does not require `runtimeCommand`/`runtimeModel`.
+  - `backend` alone does not become `runtimeProvider`.
+  - missing expected-running workspaces are re-armed to `pending_start`, but `runtimeDesiredStatus:"stopped"` is not re-armed.
+- Daemon unit/integration tests:
+  - parse `ccs-claude list` output into sanitized providers.
+  - fake `ccs-claude` launches the selected provider/model from `start_runtime.config.runtimeProvider`.
+  - daemon register/heartbeat reports provider capabilities and provider workspace state without command args.
+- Real test:
+  - create a marker agent with `runtimeProvider:"Kimi"`.
+  - verify browser `/computers` shows the provider and running workspace.
+  - verify API state shows `runtimeProvider:"Kimi"`, `runtimeCommand:null`, `runtimeModel:null`.
+  - verify `smallkhoj-trace` contains `CC Switch provider: Kimi` and the selected model line.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```json
+{
+  "backend": "Claude",
+  "runtimeProvider": "Claude",
+  "runtimeCommand": "/Users/lee/.local/bin/ccs-claude",
+  "runtimeCommandArgs": ["Kimi", "kimi-for-coding"]
+}
+```
+
+#### Correct
+
+```json
+{
+  "backend": null,
+  "runtimeProvider": "Kimi",
+  "runtimeCommand": null,
+  "runtimeModel": null
+}
+```
+
+The daemon resolves `Kimi` to the local launcher and model from its own machine-local inventory.
 
 ### 4. Validation & Error Matrix
 

@@ -156,6 +156,7 @@ test('daemon normalizes dotted backend message events for Claude runtime deliver
     legacyType: 'message_received',
     seq: 12,
     eventSeq: 99,
+    traceId: 'trace-99',
     target: '#general',
     messageId: 'msg-12',
     shortId: 'm12',
@@ -168,6 +169,7 @@ test('daemon normalizes dotted backend message events for Claude runtime deliver
   assert.deepEqual(message, {
     eventType: 'message.created',
     eventSeq: '99',
+    traceId: 'trace-99',
     target: '#general',
     channelId: 'channel-1',
     messageId: 'msg-12',
@@ -177,7 +179,7 @@ test('daemon normalizes dotted backend message events for Claude runtime deliver
   });
   assert.equal(
     formatRuntimeIncomingMessage(message),
-    '[event=message.created eventSeq=99 target=#general channel=channel-1 msg=msg-12 time=2026-06-05T10:00:00.000Z type=message.created] from dotted event',
+    '[event=message.created eventSeq=99 trace=trace-99 target=#general channel=channel-1 msg=msg-12 time=2026-06-05T10:00:00.000Z type=message.created] from dotted event',
   );
 });
 

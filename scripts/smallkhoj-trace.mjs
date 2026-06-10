@@ -18,6 +18,7 @@ function usage() {
 
 Usage:
   smallkhoj-trace summary [--json]
+  smallkhoj-trace latency [--tail N] [--json]
   smallkhoj-trace logs [--tail N] [--json]
   smallkhoj-trace daemon [--json]
   smallkhoj-trace follow [--tail N]
@@ -172,6 +173,17 @@ function readTail(file, lines) {
 }
 
 function parseDevLine(service, line, index) {
+  const latency = parseLatencyTraceMessage(line);
+  if (latency) {
+    return {
+      at: latency.at ?? null,
+      source: service,
+      kind: 'latency_trace',
+      message: line,
+      detail: latency,
+      order: index,
+    };
+  }
   return {
     at: null,
     source: service,
@@ -193,6 +205,7 @@ function normalizeDaemonLog(entry, index) {
   const message = String(entry.message ?? '');
   let kind = 'daemon_log';
   if (message.startsWith('Runtime trace: ')) kind = 'runtime_trace';
+  else if (message.startsWith('Latency trace: ')) kind = 'latency_trace';
   else if (message.startsWith('Claude runtime ')) kind = 'runtime_line';
   else if (message.startsWith('Runtime message ')) kind = 'runtime_delivery';
   else if (message.startsWith('Inbox poll ')) kind = 'inbox';
@@ -205,6 +218,8 @@ function normalizeDaemonLog(entry, index) {
     } catch {
       detail = raw;
     }
+  } else if (kind === 'latency_trace') {
+    detail = parseLatencyTraceMessage(message);
   }
 
   return {
@@ -216,6 +231,20 @@ function normalizeDaemonLog(entry, index) {
     detail,
     order: index,
   };
+}
+
+function parseLatencyTraceMessage(message) {
+  const prefix = 'Latency trace: ';
+  const index = String(message).indexOf(prefix);
+  if (index < 0) return null;
+  const raw = String(message).slice(index + prefix.length);
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !parsed.traceId || !parsed.span) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 async function loadDaemonState(daemonUrl) {
@@ -271,13 +300,40 @@ async function buildSummary(tail) {
   };
 }
 
+async function buildLatency(tail) {
+  const daemonUrl = await resolveDaemonUrl();
+  const [backend, frontend, daemonEndpoint, daemonState] = await Promise.all([
+    checkHttp('backend', new URL('/docs', defaults.backend)),
+    checkHttp('frontend', defaults.frontend),
+    checkHttp('daemon', new URL('/internal/daemon/jsonrpc', daemonUrl)),
+    loadDaemonState(daemonUrl),
+  ]);
+  const events = sortTimeline([...loadDevLogs(tail), ...daemonState.logs.slice(-tail)])
+    .filter((event) => event.kind === 'latency_trace' && event.detail?.traceId);
+  const traces = new Map();
+  for (const event of events) {
+    const traceId = String(event.detail.traceId);
+    const list = traces.get(traceId) ?? [];
+    list.push(event);
+    traces.set(traceId, list);
+  }
+  return {
+    services: [backend, frontend, daemonEndpoint],
+    daemonUrl,
+    traces: Array.from(traces.entries()).map(([traceId, traceEvents]) => ({
+      traceId,
+      events: traceEvents,
+    })),
+  };
+}
+
 const args = parseArgs(process.argv);
 if (args.help || args.command === 'help') {
   usage();
   process.exit(0);
 }
 
-if (!['summary', 'logs', 'daemon', 'follow'].includes(args.command)) {
+if (!['summary', 'latency', 'logs', 'daemon', 'follow'].includes(args.command)) {
   usage();
   process.exit(2);
 }
@@ -307,8 +363,52 @@ const render = (data) => {
   printTable(data.timeline ?? data.logs ?? []);
 };
 
+const renderLatency = (data) => {
+  if (args.json) {
+    console.log(JSON.stringify(data, null, 2));
+    return;
+  }
+  if (!data.traces?.length) {
+    console.log('No latency traces found in the selected tail window.');
+    return;
+  }
+  for (const trace of data.traces) {
+    console.log(`Trace ${trace.traceId}`);
+    const firstAt = firstTimestamp(trace.events);
+    for (const event of trace.events) {
+      const detail = event.detail ?? {};
+      const elapsed = typeof detail.elapsedMs === 'number'
+        ? detail.elapsedMs
+        : firstAt && detail.at
+          ? Date.parse(detail.at) - firstAt
+          : null;
+      const duration = typeof detail.durationMs === 'number' ? ` (${formatMs(detail.durationMs)})` : '';
+      const source = String(event.source ?? '').padEnd(9).slice(0, 9);
+      const prefix = elapsed === null ? '  +?      ' : `  +${formatMs(elapsed).padStart(8)}`;
+      console.log(`${prefix} ${source} ${detail.span}${duration}`);
+    }
+    console.log('');
+  }
+};
+
+function firstTimestamp(events) {
+  const values = events
+    .map((event) => event.detail?.at ?? event.at)
+    .map((value) => value ? Date.parse(value) : NaN)
+    .filter(Number.isFinite);
+  return values.length ? Math.min(...values) : null;
+}
+
+function formatMs(value) {
+  if (!Number.isFinite(value)) return '?ms';
+  if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(2)}s`;
+  return `${Math.round(value)}ms`;
+}
+
 if (args.command === 'logs') {
   render({ logs: loadDevLogs(args.tail) });
+} else if (args.command === 'latency') {
+  renderLatency(await buildLatency(args.tail));
 } else if (args.command === 'daemon') {
   const daemonUrl = await resolveDaemonUrl();
   const daemon = await loadDaemonState(daemonUrl);

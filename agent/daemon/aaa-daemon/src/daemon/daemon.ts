@@ -24,6 +24,12 @@ import { SessionManager } from './session-manager.js';
 import { type SlockWrapperResult, writeSlockWrapper } from '../runtime/slock-wrapper.js';
 import { ClaudeRuntimeDriver } from '../runtime/claude-runtime.js';
 import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
+import {
+  detectedRuntimesForInventory,
+  detectRuntimeProviders,
+  resolveRuntimeProviderLaunch,
+  type RuntimeProviderInventory,
+} from '../runtime/runtime-provider.js';
 
 interface LogEntry {
   timestamp: string;
@@ -32,6 +38,7 @@ interface LogEntry {
 }
 
 export interface RuntimeIncomingMessage {
+  traceId?: string;
   eventType?: string;
   eventSeq?: string;
   target?: string;
@@ -59,6 +66,7 @@ export interface DaemonControlCommand {
     runtimeModel?: string;
     runtimeCommand?: string;
     runtimeCommandArgs?: string[];
+    runtimeProvider?: string;
     workspacePath?: string;
     workspaceId?: string;
     backend?: string;
@@ -78,7 +86,11 @@ interface RuntimeRecord {
   runtimeCommand?: string;
   runtimeCommandArgs?: string[];
   runtimeModel?: string;
+  runtimeProvider?: string;
   sessionId: string | null;
+  activeTraceId?: string;
+  activeTraceStartedAt?: number;
+  activeTraceFirstOutputSeen?: boolean;
   restartAttempts: number;
   restartTimer: ReturnType<typeof setTimeout> | null;
   stallTimer: ReturnType<typeof setInterval> | null;
@@ -105,10 +117,12 @@ export class DaemonCore extends EventEmitter {
   private daemonRegistrationEnabled = false;
   private daemonId: string = randomUUID();
   private machineId: string | null = null;
+  private runtimeProviderInventory: RuntimeProviderInventory;
 
   constructor(config: DaemonConfig) {
     super();
     this.config = config;
+    this.runtimeProviderInventory = detectRuntimeProviders();
     this.proxy = new AgentProxy();
     this.clientHandler = new ClientHandler(this);
     this.proxy.setDaemonRpcHandler((message) => this.clientHandler.handleMessage(message as never));
@@ -160,7 +174,32 @@ export class DaemonCore extends EventEmitter {
       return false;
     }
 
+    if (message.traceId) {
+      runtime.activeTraceId = message.traceId;
+      runtime.activeTraceStartedAt = Date.now();
+      runtime.activeTraceFirstOutputSeen = false;
+      this.proxy.setActiveTrace(runtime.agentId, message.traceId);
+      this.emitLatencyTrace(message.traceId, 'daemon.runtime_delivery.attempt', {
+        flow: 'message_to_agent_reply',
+        source,
+        agentId: runtime.agentId,
+        target: message.target,
+        messageId: message.messageId,
+        eventSeq: message.eventSeq,
+      });
+    }
+    const deliveryStarted = Date.now();
     const delivered = runtime.driver.sendUserMessage(formatRuntimeIncomingMessage(message));
+    if (message.traceId) {
+      this.emitLatencyTrace(message.traceId, 'daemon.runtime_delivery.sent_or_queued', {
+        flow: 'message_to_agent_reply',
+        source,
+        agentId: runtime.agentId,
+        delivered,
+        queued: !delivered,
+        durationMs: Date.now() - deliveryStarted,
+      });
+    }
     this.log(
       `Runtime message ${delivered ? 'delivered' : 'queued'} from ${source}: agent=${runtime.agentId} target=${message.target ?? 'unknown'}`,
       delivered ? 'info' : 'debug',
@@ -252,6 +291,7 @@ export class DaemonCore extends EventEmitter {
         runtimeCommand: this.config.runtimeCommand,
         runtimeCommandArgs: this.config.runtimeCommandArgs,
         runtimeModel: this.config.runtimeModel,
+        runtimeProvider: this.config.runtimeProvider,
         workspacePath: this.config.workspacePath,
       });
     }
@@ -268,6 +308,14 @@ export class DaemonCore extends EventEmitter {
         this.startInboxPolling();
       }
       if (event.type === 'message') {
+        const traceId = traceIdOf(event.message);
+        if (traceId) {
+          this.emitLatencyTrace(traceId, 'daemon.websocket.message_received', {
+            flow: 'message_to_agent_reply',
+            agentId: findAgentId(event.message),
+            eventSeq: eventSeqOf(event.message),
+          });
+        }
         if (isRecord(event.message)) {
           this.proxy.recordIncomingMessage(event.message, false);
         }
@@ -310,7 +358,7 @@ export class DaemonCore extends EventEmitter {
 
   // ── Stop ───────────────────────────────────────────────────
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (!this.isRunning) return;
 
     console.log('[Daemon] Shutting down...');
@@ -325,7 +373,8 @@ export class DaemonCore extends EventEmitter {
     for (const agentId of Array.from(this.runtimes.keys())) {
       this.stopRuntimeForAgent(agentId);
     }
-    void this.mcpBridge?.stop();
+    await this.shutdownDaemonLifecycle();
+    await this.mcpBridge?.stop();
     this.proxy.stop();
     this.removePidFile();
 
@@ -415,13 +464,7 @@ export class DaemonCore extends EventEmitter {
         os: `${platform()} ${release()} ${arch()}`,
         daemonVersion: '0.2.0',
         status: 'online',
-        detectedRuntimes: [
-          {
-            type: this.config.runtime ?? 'daemon',
-            status: this.config.runtime === 'claude_code' ? 'available' : 'idle',
-            command: this.config.runtimeCommand,
-          },
-        ],
+        detectedRuntimes: detectedRuntimesForInventory(this.config, this.runtimeProviderInventory),
       }),
     });
     if (!response.ok) {
@@ -481,6 +524,14 @@ export class DaemonCore extends EventEmitter {
       this.log(`Unsupported runtime ${runtimeConfig.runtime} for agent ${agentId}`, 'warn');
       return;
     }
+    const runtimeProvider = runtimeConfig.runtimeProvider ?? this.config.runtimeProvider;
+    const providerLaunch = runtimeConfig.runtimeCommand
+      ? {}
+      : resolveRuntimeProviderLaunch(runtimeProvider, this.runtimeProviderInventory);
+    if (providerLaunch.error) {
+      this.log(providerLaunch.error, 'warn');
+      return;
+    }
 
     const workspacePath = runtimeConfig.workspacePath
       ?? this.defaultRuntimeWorkspacePath(agentId);
@@ -509,9 +560,9 @@ export class DaemonCore extends EventEmitter {
       slockHome: wrapper.slockHome,
       launchId: wrapper.launchId,
       resumeSessionId: resumeSessionId ?? undefined,
-      model: runtimeConfig.runtimeModel ?? this.config.runtimeModel,
-      command: runtimeConfig.runtimeCommand ?? this.config.runtimeCommand,
-      commandArgs: runtimeConfig.runtimeCommandArgs ?? this.config.runtimeCommandArgs,
+      model: runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel,
+      command: runtimeConfig.runtimeCommand ?? providerLaunch.command ?? this.config.runtimeCommand,
+      commandArgs: runtimeConfig.runtimeCommandArgs ?? providerLaunch.commandArgs ?? this.config.runtimeCommandArgs,
     });
     const runtime: RuntimeRecord = {
       agentId,
@@ -523,10 +574,14 @@ export class DaemonCore extends EventEmitter {
       driver,
       workspacePath,
       status: 'running',
-      runtimeCommand: runtimeConfig.runtimeCommand ?? this.config.runtimeCommand,
-      runtimeCommandArgs: runtimeConfig.runtimeCommandArgs ?? this.config.runtimeCommandArgs,
-      runtimeModel: runtimeConfig.runtimeModel ?? this.config.runtimeModel,
+      runtimeCommand: runtimeConfig.runtimeCommand ?? providerLaunch.command ?? this.config.runtimeCommand,
+      runtimeCommandArgs: runtimeConfig.runtimeCommandArgs ?? providerLaunch.commandArgs ?? this.config.runtimeCommandArgs,
+      runtimeModel: runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel,
+      runtimeProvider: providerLaunch.runtimeProvider ?? runtimeProvider,
       sessionId: resumeSessionId ?? null,
+      activeTraceId: undefined,
+      activeTraceStartedAt: undefined,
+      activeTraceFirstOutputSeen: false,
       restartAttempts: 0,
       restartTimer: null,
       stallTimer: null,
@@ -545,10 +600,29 @@ export class DaemonCore extends EventEmitter {
     });
     driver.on('stream_event', (event) => {
       this.markRuntimeProgress(runtime);
+      const eventType = typeof event.type === 'string' ? event.type : undefined;
+      if (runtime.activeTraceId) {
+        if (!runtime.activeTraceFirstOutputSeen) {
+          runtime.activeTraceFirstOutputSeen = true;
+          this.emitLatencyTrace(runtime.activeTraceId, 'daemon.runtime.first_output', {
+            flow: 'message_to_agent_reply',
+            agentId,
+            runtimeEventType: eventType,
+            elapsedMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
+          });
+        }
+        if (eventType === 'result') {
+          this.emitLatencyTrace(runtime.activeTraceId, 'daemon.runtime.result', {
+            flow: 'message_to_agent_reply',
+            agentId,
+            elapsedMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
+          });
+        }
+      }
       this.emitRuntimeTrace({
         type: 'stream_event',
         agentId,
-        eventType: typeof event.type === 'string' ? event.type : undefined,
+        eventType,
         subtype: typeof event.subtype === 'string' ? event.subtype : undefined,
         sessionId: driver.sessionId,
       });
@@ -569,10 +643,18 @@ export class DaemonCore extends EventEmitter {
       });
       this.emitRuntimeTrace({ type: 'session', agentId, sessionId });
       this.emit('runtime_session', { agentId, sessionId });
-      void this.registerDaemonLifecycle('heartbeat');
+      if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
     });
     driver.on('message_sent', (payload) => {
       this.markRuntimeProgress(runtime);
+      if (runtime.activeTraceId) {
+        this.emitLatencyTrace(runtime.activeTraceId, 'daemon.runtime.stdin_write', {
+          flow: 'message_to_agent_reply',
+          agentId,
+          hasSessionId: isRecord(payload) && typeof payload.session_id === 'string',
+          elapsedMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
+        });
+      }
       this.emitRuntimeTrace({
         type: 'message_sent',
         agentId,
@@ -589,7 +671,7 @@ export class DaemonCore extends EventEmitter {
       runtime.status = event.intentional ? 'stopped' : 'exited';
       this.emit('runtime_exit', { ...event, agentId });
       this.emitRuntimeTrace({ type: 'exit', agentId, ...event });
-      void this.registerDaemonLifecycle('heartbeat');
+      if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
 
       if (this.runtimes.get(agentId) === runtime) {
         this.runtimes.delete(agentId);
@@ -617,7 +699,7 @@ export class DaemonCore extends EventEmitter {
       pid: driver.pid,
       resumeSessionId: resumeSessionId ?? undefined,
     });
-    void this.registerDaemonLifecycle('heartbeat');
+    if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
   }
 
   stopRuntimeForAgent(agentId: string): void {
@@ -630,7 +712,7 @@ export class DaemonCore extends EventEmitter {
     runtime.status = 'stopped';
     this.stopRuntimeStallWatchdog(runtime);
     runtime.driver.stop();
-    void this.registerDaemonLifecycle('heartbeat');
+    if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
     this.runtimes.delete(agentId);
     this.proxy.unregister(runtime.proxyToken);
   }
@@ -781,13 +863,13 @@ export class DaemonCore extends EventEmitter {
       agentId: runtime.agentId,
       workspaceId: runtime.workspaceId,
       runtime: runtime.runtime,
-      runtimeCommand: runtime.runtimeCommand ?? runtimeCommand,
-      runtimeModel: runtime.runtimeModel ?? this.config.runtimeModel,
+      runtimeCommand: runtime.runtimeProvider ? undefined : runtime.runtimeCommand ?? runtimeCommand,
+      runtimeModel: runtime.runtimeProvider ? undefined : runtime.runtimeModel ?? this.config.runtimeModel,
+      runtimeProvider: runtime.runtimeProvider,
       status: runtime.status,
       sessionId: runtime.sessionId,
       cwd: runtime.workspacePath,
       pid: runtime.driver.pid,
-      backend: this.config.runtime === 'claude_code' ? 'Claude' : undefined,
     }));
     const body = {
       daemonId: this.daemonId,
@@ -795,13 +877,7 @@ export class DaemonCore extends EventEmitter {
       os: `${platform()} ${release()} ${arch()}`,
       daemonVersion: '0.2.0',
       status: 'online',
-      detectedRuntimes: [
-        {
-          type: this.config.runtime ?? 'daemon',
-          status: this.config.runtime === 'claude_code' ? 'available' : 'idle',
-          command: runtimeCommand,
-        },
-      ],
+      detectedRuntimes: detectedRuntimesForInventory(this.config, this.runtimeProviderInventory),
       workspaces,
     };
 
@@ -829,6 +905,33 @@ export class DaemonCore extends EventEmitter {
     }
   }
 
+  private async shutdownDaemonLifecycle(): Promise<void> {
+    if (!this.credential || !this.daemonRegistrationEnabled) return;
+    const serverUrl = this.credential.serverUrl || this.config.serverUrl;
+    try {
+      const response = await fetch(new URL('/internal/agent-api/daemon/shutdown', serverUrl), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.credential.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          daemonId: this.daemonId,
+          status: 'offline',
+        }),
+        signal: AbortSignal.timeout(2500),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        this.log(`Daemon shutdown failed: ${response.status} ${text.slice(0, 200)}`, 'warn');
+        return;
+      }
+      this.log(`Daemon shutdown synced to ${serverUrl}`, 'debug');
+    } catch (err) {
+      this.log(`Daemon shutdown failed: ${(err as Error).message}`, 'warn');
+    }
+  }
+
   private markRuntimeProgress(runtime: RuntimeRecord): void {
     runtime.lastProgressAt = Date.now();
   }
@@ -851,6 +954,7 @@ export class DaemonCore extends EventEmitter {
           runtimeCommand: runtime.runtimeCommand,
           runtimeCommandArgs: runtime.runtimeCommandArgs,
           runtimeModel: runtime.runtimeModel,
+          runtimeProvider: runtime.runtimeProvider,
           workspacePath: runtime.workspacePath,
           workspaceId: runtime.workspaceId,
         });
@@ -870,16 +974,37 @@ export class DaemonCore extends EventEmitter {
     this.emit('runtime_trace', payload);
   }
 
+  private emitLatencyTrace(traceId: string, span: string, event: Record<string, unknown> = {}): void {
+    const durationMs = typeof event.durationMs === 'number' ? event.durationMs : undefined;
+    const elapsedMs = typeof event.elapsedMs === 'number' ? event.elapsedMs : undefined;
+    const attrs = { ...event };
+    delete attrs.flow;
+    delete attrs.durationMs;
+    delete attrs.elapsedMs;
+    const payload = {
+      at: new Date().toISOString(),
+      traceId,
+      flow: typeof event.flow === 'string' ? event.flow : 'message_to_agent_reply',
+      span,
+      ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+      status: 'ok',
+      attrs,
+    };
+    this.log(`Latency trace: ${JSON.stringify(payload)}`, 'debug');
+    this.emit('latency_trace', payload);
+  }
+
   // ── Signal handling ────────────────────────────────────────
 
   private setupSignalHandlers(): void {
     process.on('SIGINT', () => {
       console.log('[Daemon] Received SIGINT');
-      this.stop();
+      void this.stop();
     });
     process.on('SIGTERM', () => {
       console.log('[Daemon] Received SIGTERM');
-      this.stop();
+      void this.stop();
     });
   }
 
@@ -916,6 +1041,7 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
   assignIfPresent(message, 'target', firstString(value.target, value.channel, value.channelName));
   assignIfPresent(message, 'messageId', firstString(value.msg, value.messageId, value.message_id, value.id, value.shortId));
   assignIfPresent(message, 'eventSeq', firstString(value.eventSeq, value.eventLogCursor, value.eventCursor));
+  assignIfPresent(message, 'traceId', firstString(value.traceId, value.trace_id, isRecord(value.details) ? value.details.traceId : undefined));
   assignIfPresent(message, 'channelId', firstString(value.channelId, value.channel_id));
   assignIfPresent(message, 'taskId', firstString(value.taskId, value.task_id));
   assignIfPresent(message, 'taskNumber', firstString(value.taskNumber, value.task_number, value.number));
@@ -939,6 +1065,7 @@ export function formatRuntimeIncomingMessage(message: RuntimeIncomingMessage): s
   const header = [
     message.eventType ? `event=${message.eventType}` : undefined,
     message.eventSeq ? `eventSeq=${message.eventSeq}` : undefined,
+    message.traceId ? `trace=${message.traceId}` : undefined,
     message.target ? `target=${message.target}` : undefined,
     message.channelId ? `channel=${message.channelId}` : undefined,
     message.messageId ? `msg=${message.messageId}` : undefined,
@@ -996,6 +1123,7 @@ export function parseDaemonControlCommand(input: unknown): DaemonControlCommand 
   assignDefined(runtimeConfig, 'runtime', firstString(config.runtime, value.runtime));
   assignDefined(runtimeConfig, 'runtimeModel', firstString(config.runtimeModel, config.runtime_model, value.runtimeModel, value.runtime_model));
   assignDefined(runtimeConfig, 'runtimeCommand', firstString(config.runtimeCommand, config.runtime_command, value.runtimeCommand, value.runtime_command));
+  assignDefined(runtimeConfig, 'runtimeProvider', firstString(config.runtimeProvider, config.runtime_provider, config.provider, value.runtimeProvider, value.runtime_provider, value.provider));
   assignDefined(runtimeConfig, 'workspacePath', firstString(config.workspacePath, config.workspace_path, value.workspacePath, value.cwd));
   assignDefined(runtimeConfig, 'workspaceId', command.workspaceId);
   assignDefined(runtimeConfig, 'backend', firstString(config.backend, value.backend));
@@ -1035,6 +1163,19 @@ function findAgentId(input: unknown): string | undefined {
     isRecord(value.payload) ? value.payload.agentId : undefined,
     isRecord(value.payload) ? value.payload.agent_id : undefined,
   );
+}
+
+function traceIdOf(input: unknown): string | undefined {
+  const value = unwrapMessagePayload(input);
+  if (!isRecord(value)) return undefined;
+  const details = isRecord(value.details) ? value.details : undefined;
+  return firstString(value.traceId, value.trace_id, details?.traceId, details?.trace_id);
+}
+
+function eventSeqOf(input: unknown): string | undefined {
+  const value = unwrapMessagePayload(input);
+  if (!isRecord(value)) return undefined;
+  return firstString(value.eventSeq, value.eventLogCursor, value.eventCursor, value.seq);
 }
 
 function arrayOfStrings(input: unknown): string[] {

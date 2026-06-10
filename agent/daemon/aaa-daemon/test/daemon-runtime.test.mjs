@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+import { parseCcsClaudeListOutput } from '../dist/runtime/runtime-provider.js';
 
 function startServer(handler) {
   const requests = [];
@@ -95,6 +96,56 @@ if (${includeSend ? 'true' : 'false'}) {
 writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
 `, 'utf-8');
 }
+
+function writeFakeCcsClaudeScript(path, marker) {
+  writeFileSync(path, `#!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+if (args[0] === 'list') {
+  process.stdout.write('current  name       id        model\\n');
+  process.stdout.write('*        Kimi       kimi-id   kimi-for-coding\\n');
+  process.stdout.write('         Zhipu GLM  glm-id    glm-5.1\\n');
+  process.exit(0);
+}
+const slockCommand = process.platform === 'win32' ? 'slock.cmd' : 'slock';
+const serverInfo = spawnSync(slockCommand, ['server', 'info'], {
+  encoding: 'utf-8',
+  env: process.env,
+  shell: process.platform === 'win32',
+});
+const result = {
+  provider: args[0],
+  model: args[1],
+  managedArgs: args.slice(2),
+  serverStatus: serverInfo.status,
+  serverStdout: (serverInfo.stdout || '').trim(),
+  serverStderr: (serverInfo.stderr || '').trim(),
+  agentId: process.env.SLOCK_AGENT_ID,
+};
+writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
+`, 'utf-8');
+  chmodSync(path, 0o755);
+}
+
+test('ccs-claude provider list output is parsed into sanitized providers', () => {
+  const providers = parseCcsClaudeListOutput([
+    'current  name         id                                    model',
+    '*        Kimi         960d8ddd-b880-4af0-8544-e1412b4772c7  kimi-for-coding',
+    '         Zhipu GLM    15955baf-aff7-42cb-afbd-bb561752f081  glm-5.1',
+  ].join('\n'));
+
+  assert.deepEqual(providers.map(item => ({
+    id: item.id,
+    name: item.name,
+    runtime: item.runtime,
+    model: item.model,
+    source: item.source,
+  })), [
+    { id: 'Kimi', name: 'Kimi', runtime: 'claude_code', model: 'kimi-for-coding', source: 'cc-switch' },
+    { id: 'Zhipu GLM', name: 'Zhipu GLM', runtime: 'claude_code', model: 'glm-5.1', source: 'cc-switch' },
+  ]);
+});
 
 test('daemon runtime starts fake Claude with slock wrapper on PATH', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-runtime-'));
@@ -189,6 +240,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
   const marker = join(root, 'runtime-marker.json');
   const fakeClaude = join(root, 'fake-claude-control.mjs');
   const registerBodies = [];
+  const shutdownBodies = [];
   const upstream = await startServer((req, res, body) => {
     const url = new URL(req.url, 'http://upstream.test');
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -218,6 +270,11 @@ test('daemon handles backend start_runtime control command dynamically', async (
     if (url.pathname === '/internal/agent-api/daemon/heartbeat') {
       registerBodies.push(JSON.parse(body));
       res.end(JSON.stringify({ ok: true, controlCommands: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      shutdownBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
     if (url.pathname === '/internal/agent-api/server') {
@@ -284,6 +341,123 @@ test('daemon handles backend start_runtime control command dynamically', async (
     await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
     const serverRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/server');
     assert.equal(serverRequest.req.headers['x-agent-id'], 'agent-dynamic');
+  } catch (err) {
+    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await waitFor(() => shutdownBodies.length > 0);
+    assert.equal(shutdownBodies.at(-1).status, 'offline');
+    await upstream.close();
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
+  }
+});
+
+test('daemon resolves selected runtimeProvider locally through ccs-claude', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-provider-runtime-'));
+  const runtimeWorkspace = join(root, 'provider-agent-workspace');
+  const marker = join(root, 'provider-runtime-marker.json');
+  const fakeCcsClaude = join(root, 'fake-ccs-claude.mjs');
+  const registerBodies = [];
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/register') {
+      registerBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({
+        registered: true,
+        controlCommands: [
+          {
+            type: 'control',
+            command: {
+              type: 'start_runtime',
+              agentId: 'agent-provider',
+              workspaceId: 'workspace-provider',
+              config: {
+                runtime: 'claude_code',
+                runtimeProvider: 'Kimi',
+                workspacePath: runtimeWorkspace,
+              },
+            },
+          },
+        ],
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      registerBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({ ok: true, controlCommands: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/server') {
+      res.end(JSON.stringify({ id: 'server-provider', channels: [{ name: 'general' }] }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeFakeCcsClaudeScript(fakeCcsClaude, marker);
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'none',
+    '--agent-id', 'bootstrap-agent',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'none',
+    '--register-daemon',
+  ], {
+    cwd: resolve('.'),
+    env: {
+      ...process.env,
+      SLOCK_AGENT_TOKEN: 'sk_machine_real',
+      SLOCK_CCS_CLAUDE_COMMAND: fakeCcsClaude,
+      SLOCK_ALLOW_WRITES: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => existsSync(marker));
+    const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
+    assert.equal(runtime.provider, 'Kimi');
+    assert.equal(runtime.model, 'kimi-for-coding');
+    assert.equal(runtime.agentId, 'agent-provider');
+    assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
+    assert.match(runtime.serverStdout, /"server-provider"/);
+    assert.equal(runtime.managedArgs.includes('--append-system-prompt-file'), true);
+
+    await waitFor(() => registerBodies.length > 0);
+    const detected = registerBodies[0].detectedRuntimes ?? [];
+    assert.ok(detected.some(item => item.runtimeProvider === 'Kimi' && item.provider === 'Kimi'));
+    assert.equal(detected.some(item => 'runtimeCommandArgs' in item), false);
+
+    await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-provider')));
+    const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-provider'));
+    const workspace = runtimeHeartbeat.workspaces.find(item => item.agentId === 'agent-provider');
+    assert.equal(workspace.runtimeProvider, 'Kimi');
+    assert.equal('runtimeCommand' in workspace, false);
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {

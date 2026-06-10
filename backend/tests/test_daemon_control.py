@@ -5,13 +5,20 @@ import uuid
 from fastapi import HTTPException
 import pytest
 
-from routers.agent_api import _apply_agent_status_transition, _daemon_lease_conflicts
+from routers.agent_api import (
+    ACTIVITY_EVENT_TYPES,
+    _apply_agent_status_transition,
+    _daemon_lease_conflicts,
+    _daemon_shutdown_can_release,
+)
 from routers.public_api import compact_activity_feed
 from services.daemon_control import (
     DaemonControlHub,
     initial_daemon_event_cursor,
+    mark_missing_runtimes_pending_start,
     parse_positive_event_cursor,
     pending_visible_events_for_computer,
+    runtime_start_command,
 )
 
 
@@ -51,6 +58,30 @@ class _FakeSession:
 
 def _member(member_id, *, computer_id=None):
     return SimpleNamespace(id=member_id, computer_id=computer_id, kind="agent")
+
+
+def _runtime_member(*, config=None, backend=None, status="offline"):
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        computer_id=uuid.uuid4(),
+        kind="agent",
+        config=config or {},
+        backend=backend,
+        status=status,
+    )
+
+
+def _workspace(*, status="stopped"):
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        runtime="claude_code",
+        runtime_command=None,
+        runtime_model=None,
+        cwd=None,
+        status=status,
+        pid=1234,
+        stopped_at=datetime.now(timezone.utc),
+    )
 
 
 def _task(*, assignee_id, status="todo"):
@@ -108,6 +139,66 @@ def test_parse_positive_event_cursor():
     assert parse_positive_event_cursor(7) == 7
 
 
+def test_runtime_start_command_uses_runtime_provider_without_command_args():
+    workspace = _workspace(status="pending_start")
+    agent = _runtime_member(config={"runtimeProvider": "Kimi"})
+
+    command = runtime_start_command(workspace, agent)
+
+    config = command["command"]["config"]
+    assert config["runtimeProvider"] == "Kimi"
+    assert "runtimeCommandArgs" not in config
+    assert "runtimeCommand" not in config
+
+
+def test_runtime_start_command_does_not_infer_provider_from_legacy_fields():
+    workspace = _workspace(status="pending_start")
+    agent = _runtime_member(config={"provider": "Kimi", "backend": "Claude"}, backend="Claude")
+
+    command = runtime_start_command(workspace, agent)
+
+    config = command["command"]["config"]
+    assert "runtimeProvider" not in config
+    assert config["backend"] == "Claude"
+
+
+@pytest.mark.asyncio
+async def test_missing_stopped_workspace_is_rearmed_when_autostart_enabled():
+    workspace = _workspace(status="stopped")
+    agent = _runtime_member(config={"runtimeDesiredStatus": "running"}, status="active")
+    db = _FakeSession(_ExecuteResult(rows=[(workspace, agent)]))
+
+    stale = await mark_missing_runtimes_pending_start(
+        db,
+        server_id=uuid.uuid4(),
+        computer_id=uuid.uuid4(),
+        reported_workspace_ids=set(),
+    )
+
+    assert stale == [(workspace, agent)]
+    assert workspace.status == "pending_start"
+    assert workspace.pid is None
+    assert workspace.stopped_at is None
+    assert agent.status == "offline"
+
+
+@pytest.mark.asyncio
+async def test_missing_workspace_is_not_rearmed_when_desired_stopped():
+    workspace = _workspace(status="stopped")
+    agent = _runtime_member(config={"runtimeDesiredStatus": "stopped"}, status="offline")
+    db = _FakeSession(_ExecuteResult(rows=[(workspace, agent)]))
+
+    await mark_missing_runtimes_pending_start(
+        db,
+        server_id=uuid.uuid4(),
+        computer_id=uuid.uuid4(),
+        reported_workspace_ids=set(),
+    )
+
+    assert workspace.status == "stopped"
+    assert workspace.pid == 1234
+
+
 def test_agent_can_start_assigned_todo_task():
     agent_id = uuid.uuid4()
     member = _member(agent_id)
@@ -143,6 +234,19 @@ def test_active_daemon_lease_blocks_different_daemon():
 
     assert _daemon_lease_conflicts(computer, "new-daemon", now) is True
     assert _daemon_lease_conflicts(computer, "old-daemon", now) is False
+
+
+def test_daemon_shutdown_only_releases_matching_active_daemon():
+    computer = _computer(active_daemon_id="new-daemon")
+
+    assert _daemon_shutdown_can_release(computer, "new-daemon") is True
+    assert _daemon_shutdown_can_release(computer, "old-daemon") is False
+
+
+def test_workspace_heartbeat_does_not_create_event_record_type():
+    assert ACTIVITY_EVENT_TYPES.get("workspace_heartbeat") is None
+    assert ACTIVITY_EVENT_TYPES["workspace_registered"] == "workspace.registered"
+    assert ACTIVITY_EVENT_TYPES["workspace_updated"] == "workspace.updated"
 
 
 def test_compact_activity_feed_collapses_heartbeats_by_agent():

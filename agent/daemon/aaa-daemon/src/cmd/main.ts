@@ -55,6 +55,7 @@ program
   .option('--runtime-command <command>', 'Runtime executable command')
   .option('--runtime-command-arg <arg>', 'Runtime executable argument (repeatable)', collect, [])
   .option('--runtime-model <model>', 'Claude runtime model')
+  .option('--runtime-provider <provider>', 'Local runtime provider/profile name resolved by the daemon')
   .option('--runtime-resume-session-id <id>', 'Resume an existing Claude Code session id')
   .option('--runtime-restart-on-crash', 'Restart Claude runtime once after an unexpected exit')
   .option('--runtime-stall-timeout-ms <ms>', 'Busy runtime inactivity timeout before stall recovery')
@@ -103,6 +104,7 @@ program
       runtimeCommand: options.runtimeCommand,
       runtimeCommandArgs: options.runtimeCommandArg,
       runtimeModel: options.runtimeModel,
+      runtimeProvider: options.runtimeProvider,
       runtimeResumeSessionId: options.runtimeResumeSessionId,
       runtimeRestartOnCrash: options.runtimeRestartOnCrash === true,
       runtimeStallTimeoutMs: options.runtimeStallTimeoutMs ? parseInt(options.runtimeStallTimeoutMs, 10) : undefined,

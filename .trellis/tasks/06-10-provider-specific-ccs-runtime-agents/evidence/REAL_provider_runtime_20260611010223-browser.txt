@@ -1,0 +1,117 @@
+
+
+SmallKhojProduct workbench
+SearchChatTasksMembersComputersActivitySettings
+
+张岩.ean
+Slock Server
+
+
+
+
+SmallKhoj Control Plane
+Computers
+Daemon onboarding, reconnect commands, detected runtimes, and agent workspace status.
+MembersTasks
+
+
+
+
+Registered
+11 online
+
+
+Workspaces
+4
+
+
+Running
+3
+
+
+Connect New Computer
+Generate a one-time connect command; the computer is created after the daemon connects.
+
+Computer Name
+[INPUT #computer-name name=name type=text "my-computer"]
+Generate Connect Command
+
+
+
+unregistered-computer在线
+
+darwin 24.5.0 arm64daemon 0.2.006/11 01:03Reconnect
+
+
+
+computerId
+c2b630e2
+
+machineId
+07b94a44
+
+serverId
+3893c518
+
+apiKey
+sk_machine_M5kDY8pHz
+
+lease
+06/11 01:04
+
+Detected runtimes
+claude_code / available42 / available / deepseek-v4-proDeepSeek / available / glm-5.1Kimi / available / kimi-for-codingMiniMax / available / MiniMax-M3Zhipu GLM / available / glm-5.1cc / available / claude-sonnet-4-6yier-gongyi / available / FILL_ME_AFTER_ADD
+
+Agent workspaces
+
+AgentRuntimeStatusPIDCWD
+
+
+@cctv
+1384eb29 · Claude
+
+claude_code
+default provider待启动
+none
+/Users/code/project/smallkhoj/agent/daemon/aaa-daemon/.slock-runtimes/1ba92096-44f6-4dfc-bcff-987c12a8a6e7
+
+
+@kimi
+3548e4d6 · Kimi
+
+claude_code
+Kimi运行中
+30299
+/Users/code/project/smallkhoj/agent/daemon/aaa-daemon/.slock-runtimes/b9d845dd-3dee-4bc1-817f-b7971b8d3156
+
+
+@glm1
+92ffb2d6 · Zhipu GLM
+
+claude_code
+Zhipu GLM运行中
+30298
+/Users/code/project/smallkhoj/agent/daemon/aaa-daemon/.slock-runtimes/5a7ea587-3b95-4057-a5ba-5d34c7e39938
+
+
+@REAL_provider_runtime_20260611010223
+f2f97cc2 · Kimi
+
+claude_code
+Kimi运行中
+30619
+/Users/code/project/smallkhoj/.slock-runtimes/8bd77997-acf4-490e-a595-49be7c32c732
+
+
+Runtime Snapshot
+Live counts from the connected control plane.
+
+
+Registered
+1
+
+Online
+1
+
+Running workspaces
+3

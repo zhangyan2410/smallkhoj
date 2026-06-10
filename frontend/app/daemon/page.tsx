@@ -61,6 +61,7 @@ type AgentWorkspace = {
   agentName?: string | null
   runtime?: string | null
   runtimeModel?: string | null
+  runtimeProvider?: string | null
   status: string
   cwd?: string | null
   pid?: number | null
@@ -74,7 +75,7 @@ type Computer = {
   os?: string | null
   daemonVersion?: string | null
   status: string
-  detectedRuntimes: Array<string | { type?: string; status?: string; command?: string }>
+  detectedRuntimes: Array<string | { type?: string; status?: string; command?: string; provider?: string; runtimeProvider?: string; model?: string }>
   agentWorkspaces: AgentWorkspace[]
   lastHeartbeatAt?: string | null
 }
@@ -107,7 +108,8 @@ type Reminder = {
 
 type Member = {
   id: string
-  name: string
+  displayName: string
+  handle?: string
   kind: string
   status: string
   config?: {
@@ -367,9 +369,9 @@ function EmptyState({ label }: { label: string }) {
   return <div className="py-8 text-center text-sm text-muted-foreground">{label}</div>
 }
 
-function runtimeLabel(runtime: string | { type?: string; status?: string; command?: string }) {
+function runtimeLabel(runtime: string | { type?: string; status?: string; command?: string; provider?: string; runtimeProvider?: string; model?: string }) {
   if (typeof runtime === "string") return runtime
-  return [runtime.type ?? "runtime", runtime.status, runtime.command].filter(Boolean).join(" / ")
+  return [runtime.runtimeProvider ?? runtime.provider ?? runtime.type ?? "runtime", runtime.status, runtime.model].filter(Boolean).join(" / ")
 }
 
 export default async function DaemonPage() {
@@ -443,7 +445,7 @@ export default async function DaemonPage() {
                 <Input name="title" placeholder="Title" required />
                 <Input name="description" placeholder="Description" />
                 <ControlSelect name="channel" items={data.channels.map((item) => item.name)} fallback="#all" />
-                <ControlSelect name="assignee" items={data.members.filter((item) => item.kind === "agent").map((item) => item.name)} fallback="" />
+                <ControlSelect name="assignee" items={data.members.filter((item) => item.kind === "agent").map((item) => item.displayName)} fallback="" />
                 <ControlSelect name="status" items={["todo", "in_progress", "in_review", "done"]} fallback="todo" />
                 <Button size="sm" className="w-full" type="submit">
                   <CheckSquare className="size-4" />
@@ -460,7 +462,7 @@ export default async function DaemonPage() {
                   splitValue
                 />
                 <ControlSelect name="status" items={["todo", "in_progress", "in_review", "done", "closed"]} fallback="in_review" />
-                <ControlSelect name="assignee" items={data.members.filter((item) => item.kind === "agent").map((item) => item.name)} fallback="" />
+                <ControlSelect name="assignee" items={data.members.filter((item) => item.kind === "agent").map((item) => item.displayName)} fallback="" />
                 <Button size="sm" variant="outline" className="w-full" type="submit">
                   Update
                 </Button>
@@ -500,7 +502,7 @@ export default async function DaemonPage() {
             <CardContent className="grid gap-4 pt-4 lg:grid-cols-2">
               <form action={updateMemberAction} className="space-y-2">
                 <ControlLabel text="Permissions" />
-                <ControlSelect name="memberId" items={data.members.filter((item) => item.kind === "agent").map((item) => `${item.id}|@${item.name}`)} fallback="" splitValue />
+                <ControlSelect name="memberId" items={data.members.filter((item) => item.kind === "agent").map((item) => `${item.id}|${item.handle}`)} fallback="" splitValue />
                 <ControlSelect name="status" items={["active", "idle", "offline"]} fallback="active" />
                 <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                   {[
@@ -525,7 +527,7 @@ export default async function DaemonPage() {
               <form action={createReminderAction} className="space-y-2">
                 <ControlLabel text="Reminder" />
                 <Input name="title" placeholder="Title" required />
-                <ControlSelect name="agent" items={data.members.filter((item) => item.kind === "agent").map((item) => item.name)} fallback="aaa" />
+                <ControlSelect name="agent" items={data.members.filter((item) => item.kind === "agent").map((item) => item.displayName)} fallback="aaa" />
                 <ControlSelect name="channel" items={data.channels.map((item) => item.name)} fallback="#all" />
                 <Input name="delaySeconds" type="number" min="1" defaultValue="300" />
                 <Button size="sm" variant="secondary" className="w-full" type="submit">
@@ -579,7 +581,7 @@ export default async function DaemonPage() {
                             <div className="min-w-0">
                               <div className="truncate text-sm">
                                 @{workspace.agentName ?? workspace.agentId} · {workspace.runtime ?? "runtime"}
-                                {workspace.runtimeModel ? `/${workspace.runtimeModel}` : ""}
+                                {workspace.runtimeProvider ? `/${workspace.runtimeProvider}` : workspace.runtimeModel ? `/${workspace.runtimeModel}` : ""}
                               </div>
                               <div className="truncate text-xs text-muted-foreground">
                                 {workspace.cwd ?? "no cwd"} {workspace.pid ? `· pid ${workspace.pid}` : ""}

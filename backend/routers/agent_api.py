@@ -26,12 +26,15 @@ from models import (
 )
 from routers.auth import resolve_agent, resolve_machine
 from services.daemon_control import (
+    PENDING_RUNTIME_START_STATUS,
+    RUNTIME_ACTIVE_STATUSES,
     daemon_control_hub,
     initial_daemon_event_cursor,
     mark_missing_runtimes_pending_start,
     pending_runtime_commands,
     push_latest_events_for_server,
 )
+from services.latency_trace import LatencyTrace, trace_id_from_request
 from services.thread_summary import (
     SUMMARY_MAX_CHARS,
     serialize_thread_summary,
@@ -52,6 +55,7 @@ class SendRequest(BaseModel):
     threadId: str | None = None
     parentId: str | None = None
     seenUpToSeq: int | None = None
+    traceId: str | None = None
 
 
 class TaskClaimRequest(BaseModel):
@@ -72,6 +76,7 @@ class DaemonWorkspacePayload(BaseModel):
     runtime: str = "claude_code"
     runtimeCommand: str | None = None
     runtimeModel: str | None = None
+    runtimeProvider: str | None = None
     status: str = "running"
     sessionId: str | None = None
     cwd: str | None = None
@@ -96,6 +101,11 @@ class DaemonHeartbeatRequest(BaseModel):
     status: str = "online"
     detectedRuntimes: list | None = None
     workspaces: list[DaemonWorkspacePayload] = []
+
+
+class DaemonShutdownRequest(BaseModel):
+    daemonId: str | None = None
+    status: str = "offline"
 
 
 class DaemonConnectRequest(BaseModel):
@@ -143,6 +153,10 @@ def _daemon_lease_conflicts(computer: Computer, daemon_id: str | None, now: date
         and computer.active_daemon_id != daemon_id
         and _lease_active(computer, now)
     )
+
+
+def _daemon_shutdown_can_release(computer: Computer, daemon_id: str | None) -> bool:
+    return not computer.active_daemon_id or not daemon_id or computer.active_daemon_id == daemon_id
 
 
 def _new_machine_token() -> str:
@@ -678,7 +692,6 @@ ACTIVITY_EVENT_TYPES = {
     "channel_left": "channel.member_left",
     "workspace_registered": "workspace.registered",
     "workspace_updated": "workspace.updated",
-    "workspace_heartbeat": "workspace.heartbeat",
     "reminder_fired": "reminder.fired",
     "profile_updated": "member.profile_updated",
     "integration_connected": "integration.connected",
@@ -890,6 +903,7 @@ def _serialize_member(member: Member) -> dict:
         "computerId": str(member.computer_id) if member.computer_id else config.get("computerId"),
         "workspaceId": workspace_id,
         "backend": member.backend or config.get("backend"),
+        "runtimeProvider": config.get("runtimeProvider"),
         "permissions": config.get("permissions") or {},
         "actions": config.get("actions") or {},
     }
@@ -906,6 +920,7 @@ async def _serialize_workspace(db: AsyncSession, workspace: AgentWorkspace) -> d
         "runtime": workspace.runtime,
         "runtimeCommand": workspace.runtime_command,
         "runtimeModel": workspace.runtime_model,
+        "runtimeProvider": (agent.config or {}).get("runtimeProvider") if agent else None,
         "status": workspace.status,
         "sessionId": workspace.session_id,
         "cwd": workspace.cwd,
@@ -1013,6 +1028,8 @@ async def _upsert_daemon_workspace(
     }
     if item.backend:
         config["backend"] = item.backend
+    if item.runtimeProvider:
+        config["runtimeProvider"] = item.runtimeProvider
     agent_member.config = config
     agent_member.computer_id = computer.id
     if item.backend:
@@ -1422,6 +1439,51 @@ async def daemon_heartbeat(
     }
 
 
+@router.post("/daemon/shutdown")
+async def daemon_shutdown(
+    body: DaemonShutdownRequest,
+    machine: tuple[Computer, Server, object] = Depends(resolve_machine),
+    db: AsyncSession = Depends(get_db),
+):
+    computer, server, _api_key = machine
+    now = _utcnow_aware()
+    if not _daemon_shutdown_can_release(computer, body.daemonId):
+        return {
+            "ok": True,
+            "ignored": True,
+            "reason": "active_daemon_id_mismatch",
+            "computer": await _serialize_computer(db, computer),
+        }
+
+    computer.status = body.status or "offline"
+    computer.active_daemon_id = None
+    computer.daemon_lease_expires_at = now
+    computer.last_heartbeat_at = now
+
+    workspace_result = await db.execute(
+        select(AgentWorkspace, Member)
+        .join(Member, Member.id == AgentWorkspace.agent_id)
+        .where(AgentWorkspace.computer_id == computer.id)
+    )
+    workspaces = []
+    for workspace, agent_member in workspace_result.all():
+        if workspace.status in {"running", "active", "idle", PENDING_RUNTIME_START_STATUS}:
+            workspace.status = "stopped"
+            workspace.pid = None
+            workspace.stopped_at = now
+        if agent_member.status in RUNTIME_ACTIVE_STATUSES or agent_member.status in {"active", "idle"}:
+            agent_member.status = "offline"
+        workspaces.append(await _serialize_workspace(db, workspace))
+
+    await db.commit()
+    await db.refresh(computer)
+    return {
+        "ok": True,
+        "computer": await _serialize_computer(db, computer),
+        "workspaces": workspaces,
+    }
+
+
 @router.websocket("/ws")
 async def daemon_websocket(
     websocket: WebSocket,
@@ -1478,83 +1540,99 @@ async def daemon_websocket(
 @router.post("/send")
 async def send_message(
     body: SendRequest,
+    request: Request,
     agent: tuple[Member, Server] = Depends(resolve_agent),
     db: AsyncSession = Depends(get_db),
 ):
     member, server = agent
+    trace = LatencyTrace(
+        trace_id_from_request(request, {"traceId": body.traceId}, prefix="agent-send"),
+        "agent_message_send",
+        agentId=str(member.id),
+        target=body.target,
+    )
+    trace.mark("backend.agent_send.request_received")
     _require_permission(member, "sendMessage")
     target = body.target
-    base_target, target_thread_ref = _split_thread_target(target)
-    thread_ref = body.threadId or body.parentId or target_thread_ref
+    with trace.time("backend.agent_send.resolve"):
+        base_target, target_thread_ref = _split_thread_target(target)
+        thread_ref = body.threadId or body.parentId or target_thread_ref
 
-    channel = await _resolve_channel(db, server, base_target, member=member, create_dm=True)
+        channel = await _resolve_channel(db, server, base_target, member=member, create_dm=True)
 
-    parent_id = None
-    thread_target_short_id = None
-    if thread_ref:
-        parent = await _resolve_message_ref(db, server, thread_ref)
-        if parent.channel_id != channel.id:
-            raise HTTPException(400, "Thread root belongs to a different channel")
-        parent_id = parent.parent_id or parent.id
-        root = parent
-        if parent.parent_id:
-            root = await _resolve_message_ref(db, server, str(parent.parent_id))
-        thread_target_short_id = root.short_id
+        parent_id = None
+        thread_target_short_id = None
+        if thread_ref:
+            parent = await _resolve_message_ref(db, server, thread_ref)
+            if parent.channel_id != channel.id:
+                raise HTTPException(400, "Thread root belongs to a different channel")
+            parent_id = parent.parent_id or parent.id
+            root = parent
+            if parent.parent_id:
+                root = await _resolve_message_ref(db, server, str(parent.parent_id))
+            thread_target_short_id = root.short_id
 
-    # Get next seq (global)
-    seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
-    last_seq = seq_result.scalar() or 0
+    with trace.time("backend.agent_send.db_flush"):
+        # Get next seq (global)
+        seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
+        last_seq = seq_result.scalar() or 0
 
-    # Generate short_id
-    short_id = uuid.uuid4().hex[:8]
+        # Generate short_id
+        short_id = uuid.uuid4().hex[:8]
 
-    msg = Message(
-        short_id=short_id,
-        channel_id=channel.id,
-        sender_id=member.id,
-        parent_id=parent_id,
-        content=body.content,
-        channel_type="thread" if parent_id else channel.kind,
-        mentions=await _parse_mentions(db, server, body.content),
-        seq=last_seq + 1,
-    )
-    db.add(msg)
-    await db.flush()
+        msg = Message(
+            short_id=short_id,
+            channel_id=channel.id,
+            sender_id=member.id,
+            parent_id=parent_id,
+            content=body.content,
+            channel_type="thread" if parent_id else channel.kind,
+            mentions=await _parse_mentions(db, server, body.content),
+            seq=last_seq + 1,
+        )
+        db.add(msg)
+        await db.flush()
     event_target = await _message_target_for_member(
         db,
         channel,
         member,
         thread_ref=thread_target_short_id,
     )
-    await _record_activity(
-        db,
-        server,
-        member,
-        "message_sent",
-        f"@{member.display_name} sent a message to {target}",
-        {
-            "messageId": str(msg.id),
-            "shortId": msg.short_id,
-            "seq": msg.seq,
-            "messageSeq": msg.seq,
-            "senderId": str(member.id),
-            "content": msg.content,
-            "messageSnippet": body.content[:200],
-            "target": event_target,
-            "channel": event_target,
-            "channelType": msg.channel_type,
-            "mentions": [str(item) for item in (msg.mentions or [])],
-            "parentId": str(parent_id) if parent_id else None,
-            "threadId": str(parent_id or msg.id),
-        },
-        channel_id=channel.id,
-    )
-    await db.commit()
-    await db.refresh(msg)
-    await push_latest_events_for_server(db, server_id=server.id)
+    with trace.time("backend.agent_send.event_record", messageId=str(msg.id), shortId=msg.short_id):
+        await _record_activity(
+            db,
+            server,
+            member,
+            "message_sent",
+            f"@{member.display_name} sent a message to {target}",
+            {
+                "traceId": trace.trace_id,
+                "messageId": str(msg.id),
+                "shortId": msg.short_id,
+                "seq": msg.seq,
+                "messageSeq": msg.seq,
+                "senderId": str(member.id),
+                "content": msg.content,
+                "messageSnippet": body.content[:200],
+                "target": event_target,
+                "channel": event_target,
+                "channelType": msg.channel_type,
+                "mentions": [str(item) for item in (msg.mentions or [])],
+                "parentId": str(parent_id) if parent_id else None,
+                "threadId": str(parent_id or msg.id),
+            },
+            channel_id=channel.id,
+        )
+    with trace.time("backend.agent_send.commit", messageId=str(msg.id), shortId=msg.short_id):
+        await db.commit()
+        await db.refresh(msg)
+    with trace.time("backend.agent_send.push_events", messageId=str(msg.id), shortId=msg.short_id):
+        delivered = await push_latest_events_for_server(db, server_id=server.id)
+    trace.finish("backend.agent_send.response_ready", messageId=str(msg.id), shortId=msg.short_id, delivered=delivered)
 
     return {
         "state": "sent",
+        "traceId": trace.trace_id,
         "messageId": str(msg.id),
         "messageSeq": msg.seq,
         "shortId": msg.short_id,

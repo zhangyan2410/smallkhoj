@@ -86,6 +86,7 @@ export interface ProxyRegistration {
   token: string;
   credential: Credential;
   activeCapabilities: string;
+  activeTraceId?: string;
 }
 
 export type DaemonRpcHandler = (message: unknown) => Promise<unknown>;
@@ -116,6 +117,15 @@ export class AgentProxy extends EventEmitter {
 
   unregister(token: string): boolean {
     return this.registrations.delete(token);
+  }
+
+  setActiveTrace(agentId: string, traceId: string | undefined): void {
+    if (!traceId) return;
+    for (const reg of this.registrations.values()) {
+      if (reg.credential.agentId === agentId) {
+        reg.activeTraceId = traceId;
+      }
+    }
   }
 
   setDaemonRpcHandler(handler: DaemonRpcHandler | null): void {
@@ -264,6 +274,14 @@ export class AgentProxy extends EventEmitter {
       }
 
       const rewrittenPathname = new URL(rewritten, reg.credential.serverUrl).pathname;
+      if (
+        method === 'POST'
+        && rewrittenPathname === '/internal/agent-api/send'
+        && reg.activeTraceId
+        && !hasHeader(upstreamHeaders, 'x-smallkhoj-trace-id')
+      ) {
+        upstreamHeaders['X-SmallKhoj-Trace-Id'] = reg.activeTraceId;
+      }
       if (method === 'POST' && rewrittenPathname === '/internal/agent-api/send') {
         const hold = this.buildFreshnessHold(body);
         if (hold) {

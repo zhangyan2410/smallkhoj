@@ -45,6 +45,10 @@ export interface DetectedRuntime {
   version?: string;
   executablePath?: string;
   status: 'available' | 'running' | 'error';
+  provider?: string;
+  runtimeProvider?: string;
+  model?: string;
+  source?: string;
 }
 
 export type RuntimeType = 'claude_code' | 'codex_cli' | 'opencode' | 'kimi_cli' | 'custom';
@@ -57,6 +61,7 @@ export interface AgentWorkspace {
   runtime: RuntimeType;
   runtimeCommand?: string;
   runtimeModel?: string;
+  runtimeProvider?: string;
   status: AgentWorkspaceStatus;
   sessionId?: string;                // Runtime session ID
   cwd?: string;                      // Working directory
@@ -663,6 +668,8 @@ export interface DaemonConfig {
   runtimeCommandArgs?: string[];
   /** Optional model alias/name for Claude runtime */
   runtimeModel?: string;
+  /** Local runtime provider/profile selection. Resolved by the daemon, not the server. */
+  runtimeProvider?: string;
   /** Resume an existing Claude Code session id */
   runtimeResumeSessionId?: string;
   /** Restart Claude runtime once after an unexpected exit */

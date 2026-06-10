@@ -8,6 +8,9 @@ export type RuntimeInfo = string | {
   command?: string
   model?: string
   version?: string
+  provider?: string
+  runtimeProvider?: string
+  source?: string
 }
 
 export type MemberProfile = {
@@ -32,10 +35,12 @@ export type Member = {
     permissions?: Record<string, boolean>
     actions?: Record<string, boolean>
     backend?: string
+    runtimeProvider?: string
   }
   computerId?: string | null
   workspaceId?: string | null
   backend?: string | null
+  runtimeProvider?: string | null
   permissions?: Record<string, boolean>
   actions?: Record<string, boolean>
 }
@@ -83,6 +88,7 @@ export type AgentWorkspace = {
   runtime?: string | null
   runtimeCommand?: string | null
   runtimeModel?: string | null
+  runtimeProvider?: string | null
   status: string
   sessionId?: string | null
   cwd?: string | null
@@ -236,7 +242,12 @@ export function badgeClass(status: string) {
 
 export function runtimeLabel(runtime: RuntimeInfo) {
   if (typeof runtime === "string") return runtime
-  return [runtime.type ?? "runtime", runtime.status, runtime.model, runtime.version, runtime.command]
+  return [
+    runtime.runtimeProvider ?? runtime.provider ?? runtime.type ?? "runtime",
+    runtime.status,
+    runtime.model,
+    runtime.version,
+  ]
     .filter(Boolean)
     .join(" / ")
 }

@@ -26,6 +26,7 @@ from services.daemon_control import (
     push_latest_events_for_server,
     runtime_start_command,
 )
+from services.latency_trace import LatencyTrace, trace_id_from_request
 from services.thread_summary import (
     load_thread_metadata,
     resolve_thread_root,
@@ -438,6 +439,7 @@ def _serialize_workspace(
             "type": agent.kind,
             "status": agent.status,
             "backend": member_backend(agent),
+            "runtimeProvider": (agent.config or {}).get("runtimeProvider"),
             "computerId": member_computer_id(agent) or str(workspace.computer_id),
             "workspaceId": str(workspace.id),
             "profile": {
@@ -459,6 +461,7 @@ def _serialize_workspace(
         "runtime": workspace.runtime,
         "runtimeCommand": workspace.runtime_command,
         "runtimeModel": workspace.runtime_model,
+        "runtimeProvider": (agent.config or {}).get("runtimeProvider") if agent else None,
         "status": status,
         "sessionId": workspace.session_id,
         "cwd": workspace.cwd,
@@ -831,81 +834,96 @@ async def create_channel_message(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
     body = await request.json()
+    trace = LatencyTrace(
+        trace_id_from_request(request, body, prefix="message"),
+        "public_message_create",
+        channel=channel_name,
+    )
+    trace.mark("backend.public_message.request_received")
+    server = await _get_server(db)
     content = body.get("content")
     if not content:
         raise HTTPException(400, "Missing content")
-    channel = await _resolve_channel(db, server, channel_name)
-    sender = await _resolve_human_actor(db, server, request, body.get("sender"), role="message sender")
-    parent_id = None
-    thread_target_short_id = None
-    thread_ref = body.get("threadId") or body.get("parentId")
-    if thread_ref:
-        try:
-            parsed_thread_id = uuid.UUID(thread_ref)
-        except ValueError:
-            parsed_thread_id = None
-        if parsed_thread_id:
-            result = await db.execute(
-                select(Message).where(Message.id == parsed_thread_id, Message.channel_id == channel.id)
-            )
-        else:
-            result = await db.execute(
-                select(Message).where(Message.short_id == thread_ref, Message.channel_id == channel.id)
-            )
-        parent = result.scalar_one_or_none()
-        if not parent:
-            raise HTTPException(404, "Thread root not found")
-        parent_id = parent.parent_id or parent.id
-        root = parent
-        if parent.parent_id:
-            root_result = await db.execute(select(Message).where(Message.id == parent.parent_id))
-            root = root_result.scalar_one_or_none() or parent
-        thread_target_short_id = root.short_id
+    with trace.time("backend.public_message.resolve"):
+        channel = await _resolve_channel(db, server, channel_name)
+        sender = await _resolve_human_actor(db, server, request, body.get("sender"), role="message sender")
+        parent_id = None
+        thread_target_short_id = None
+        thread_ref = body.get("threadId") or body.get("parentId")
+        if thread_ref:
+            try:
+                parsed_thread_id = uuid.UUID(thread_ref)
+            except ValueError:
+                parsed_thread_id = None
+            if parsed_thread_id:
+                result = await db.execute(
+                    select(Message).where(Message.id == parsed_thread_id, Message.channel_id == channel.id)
+                )
+            else:
+                result = await db.execute(
+                    select(Message).where(Message.short_id == thread_ref, Message.channel_id == channel.id)
+                )
+            parent = result.scalar_one_or_none()
+            if not parent:
+                raise HTTPException(404, "Thread root not found")
+            parent_id = parent.parent_id or parent.id
+            root = parent
+            if parent.parent_id:
+                root_result = await db.execute(select(Message).where(Message.id == parent.parent_id))
+                root = root_result.scalar_one_or_none() or parent
+            thread_target_short_id = root.short_id
 
-    seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
-    msg = Message(
-        short_id=uuid.uuid4().hex[:8],
-        channel_id=channel.id,
-        sender_id=sender.id,
-        parent_id=parent_id,
-        content=content,
-        channel_type="thread" if parent_id else channel.kind,
-        mentions=await _parse_mentions(db, server, content),
-        seq=int(seq_result.scalar() or 0) + 1,
-    )
-    db.add(msg)
-    await db.flush()
+    with trace.time("backend.public_message.db_flush"):
+        seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
+        msg = Message(
+            short_id=uuid.uuid4().hex[:8],
+            channel_id=channel.id,
+            sender_id=sender.id,
+            parent_id=parent_id,
+            content=content,
+            channel_type="thread" if parent_id else channel.kind,
+            mentions=await _parse_mentions(db, server, content),
+            seq=int(seq_result.scalar() or 0) + 1,
+        )
+        db.add(msg)
+        await db.flush()
+
     event_target = _message_target_for_runtime(channel, sender, thread_ref=thread_target_short_id)
-    await _record_activity(
-        db,
-        server,
-        sender,
-        "supervisor_message_sent",
-        f"@{sender.display_name} sent supervisor message to #{channel.name}",
-        {
-            "messageId": str(msg.id),
-            "shortId": msg.short_id,
-            "seq": msg.seq,
-            "messageSeq": msg.seq,
-            "senderId": str(sender.id),
-            "content": msg.content,
-            "messageSnippet": content[:200],
-            "target": event_target,
-            "channel": event_target,
-            "channelType": msg.channel_type,
-            "mentions": [str(item) for item in (msg.mentions or [])],
-            "parentId": str(parent_id) if parent_id else None,
-            "threadId": str(parent_id or msg.id),
-        },
-        channel_id=channel.id,
-    )
-    await db.commit()
-    await db.refresh(msg)
-    await push_latest_events_for_server(db, server_id=server.id)
+    with trace.time("backend.public_message.event_record", messageId=str(msg.id), shortId=msg.short_id):
+        await _record_activity(
+            db,
+            server,
+            sender,
+            "supervisor_message_sent",
+            f"@{sender.display_name} sent supervisor message to #{channel.name}",
+            {
+                "traceId": trace.trace_id,
+                "messageId": str(msg.id),
+                "shortId": msg.short_id,
+                "seq": msg.seq,
+                "messageSeq": msg.seq,
+                "senderId": str(sender.id),
+                "content": msg.content,
+                "messageSnippet": content[:200],
+                "target": event_target,
+                "channel": event_target,
+                "channelType": msg.channel_type,
+                "mentions": [str(item) for item in (msg.mentions or [])],
+                "parentId": str(parent_id) if parent_id else None,
+                "threadId": str(parent_id or msg.id),
+            },
+            channel_id=channel.id,
+        )
+    with trace.time("backend.public_message.commit", messageId=str(msg.id), shortId=msg.short_id):
+        await db.commit()
+        await db.refresh(msg)
+    with trace.time("backend.public_message.push_events", messageId=str(msg.id), shortId=msg.short_id):
+        delivered = await push_latest_events_for_server(db, server_id=server.id)
+    trace.finish("backend.public_message.response_ready", messageId=str(msg.id), shortId=msg.short_id, delivered=delivered)
     return {
         "created": True,
+        "traceId": trace.trace_id,
         "message": {
             "id": str(msg.id),
             "shortId": msg.short_id,
@@ -969,13 +987,15 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
     task_data = body.get("data") or {}
     if source_payload:
         task_data = {**task_data, "source": source_payload}
+    status = body.get("status") or "todo"
+
     task = Task(
         task_number=await _next_task_number(db, channel.id),
         channel_id=channel.id,
         message_id=parsed_message_id,
         title=title,
         description=body.get("description"),
-        status=body.get("status") or "todo",
+        status=status,
         creator_id=creator.id,
         assignee_id=assignee.id if assignee else None,
         data=task_data,
@@ -984,6 +1004,7 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
     await db.flush()
     channel_target = f"#{channel.name}" if channel.kind == "public" else channel.name
     assignee_handle = f"@{assignee.display_name}" if assignee else None
+
     await _record_activity(
         db,
         server,
@@ -1005,6 +1026,7 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
         channel_id=channel.id,
         task_id=task.id,
     )
+
     await db.commit()
     await db.refresh(task)
     await push_latest_events_for_server(db, server_id=server.id)
@@ -1092,6 +1114,7 @@ async def list_computers(_auth: None = Depends(verify_public_api_key), db: Async
 @router.get("/activity")
 async def list_activity(
     agent_id: str | None = Query(None, alias="agentId"),
+    task_id: str | None = Query(None, alias="taskId"),
     limit: int = Query(50),
     compact: bool = Query(False),
     db: AsyncSession = Depends(get_db),
@@ -1110,6 +1133,12 @@ async def list_activity(
         except ValueError:
             raise HTTPException(400, "Invalid agentId")
         q = q.where(ActivityLog.agent_id == parsed_agent_id)
+    if task_id:
+        try:
+            parsed_task_id = uuid.UUID(task_id)
+        except ValueError:
+            raise HTTPException(400, "Invalid taskId")
+        q = q.where(ActivityLog.task_id == parsed_task_id)
     q = q.order_by(ActivityLog.occurred_at.desc()).limit(query_limit)
 
     result = await db.execute(q)
@@ -1180,8 +1209,19 @@ async def list_members(_auth: None = Depends(verify_public_api_key), db: AsyncSe
     result = await db.execute(select(Member).where(Member.server_id == server.id))
     members = result.scalars().all()
 
+    agent_computer_ids = [m.computer_id for m in members if m.kind == "agent" and m.computer_id]
+    computers_map: dict[uuid.UUID, Computer] = {}
+    if agent_computer_ids:
+        comp_result = await db.execute(
+            select(Computer).where(Computer.id.in_(agent_computer_ids))
+        )
+        computers_map = {c.id: c for c in comp_result.scalars().all()}
+
     return {
-        "members": [await serialize_member(db, member) for member in members],
+        "members": [
+            await serialize_member(db, member, _computer=computers_map.get(member.computer_id))
+            for member in members
+        ],
         "count": len(members),
     }
 
@@ -1206,6 +1246,9 @@ async def update_member(member_id: str, request: Request, _auth: None = Depends(
     if "backend" in body:
         config["backend"] = body["backend"]
         member.backend = body["backend"]
+    if "runtimeProvider" in body:
+        runtime_provider = str(body["runtimeProvider"]).strip() if body["runtimeProvider"] is not None else ""
+        config["runtimeProvider"] = runtime_provider or None
     member.config = config
 
     actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="member actor")
@@ -1468,6 +1511,10 @@ async def create_agent(
     runtime = body.get("runtime", "claude_code")
     runtime_command = body.get("runtimeCommand")
     runtime_model = body.get("runtimeModel")
+    raw_runtime_provider = body.get("runtimeProvider")
+    runtime_provider = str(raw_runtime_provider).strip() if raw_runtime_provider is not None else None
+    if not runtime_provider:
+        runtime_provider = None
 
     agent = Member(
         server_id=server.id,
@@ -1479,6 +1526,8 @@ async def create_agent(
         config={
             "computerId": str(computer_id),
             "backend": body.get("backend"),
+            "runtimeProvider": runtime_provider,
+            "runtimeDesiredStatus": "running",
         },
     )
     db.add(agent)
@@ -1684,12 +1733,24 @@ async def list_channel_members(
         select(ChannelMember).where(ChannelMember.channel_id == parsed_channel_id)
     )
     cms = result.scalars().all()
-    member_list = []
-    for cm in cms:
-        m_result = await db.execute(select(Member).where(Member.id == cm.member_id))
-        m = m_result.scalar_one_or_none()
-        if m:
-            member_list.append(await serialize_member(db, m))
+    member_ids = [cm.member_id for cm in cms]
+    members_result = await db.execute(
+        select(Member).where(Member.id.in_(member_ids))
+    )
+    members = members_result.scalars().all()
+
+    agent_computer_ids = [m.computer_id for m in members if m.kind == "agent" and m.computer_id]
+    computers_map: dict[uuid.UUID, Computer] = {}
+    if agent_computer_ids:
+        comp_result = await db.execute(
+            select(Computer).where(Computer.id.in_(agent_computer_ids))
+        )
+        computers_map = {c.id: c for c in comp_result.scalars().all()}
+
+    member_list = [
+        await serialize_member(db, member, _computer=computers_map.get(member.computer_id))
+        for member in members
+    ]
     return {"members": member_list}
 
 

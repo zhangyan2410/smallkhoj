@@ -1,0 +1,89 @@
+{
+  "computers": [
+    {
+      "id": "c2b630e2-85a3-4b2a-ae0f-54cfff7e8f86",
+      "name": "unregistered-computer",
+      "status": "online",
+      "detectedRuntimes": [
+        {
+          "type": "claude_code",
+          "status": "available",
+          "provider": null,
+          "runtimeProvider": null,
+          "model": null,
+          "source": null
+        },
+        {
+          "type": "claude_code",
+          "status": "available",
+          "provider": "42",
+          "runtimeProvider": "42",
+          "model": "deepseek-v4-pro",
+          "source": "cc-switch"
+        },
+        {
+          "type": "claude_code",
+          "status": "available",
+          "provider": "DeepSeek",
+          "runtimeProvider": "DeepSeek",
+          "model": "glm-5.1",
+          "source": "cc-switch"
+        },
+        {
+          "type": "claude_code",
+          "status": "available",
+          "provider": "Kimi",
+          "runtimeProvider": "Kimi",
+          "model": "kimi-for-coding",
+          "source": "cc-switch"
+        },
+        {
+          "type": "claude_code",
+          "status": "available",
+          "provider": "MiniMax",
+          "runtimeProvider": "MiniMax",
+          "model": "MiniMax-M3",
+          "source": "cc-switch"
+        },
+        {
+          "type": "claude_code",
+          "status": "available",
+          "provider": "Zhipu GLM",
+          "runtimeProvider": "Zhipu GLM",
+          "model": "glm-5.1",
+          "source": "cc-switch"
+        },
+        {
+          "type": "claude_code",
+          "status": "available",
+          "provider": "cc",
+          "runtimeProvider": "cc",
+          "model": "claude-sonnet-4-6",
+          "source": "cc-switch"
+        },
+        {
+          "type": "claude_code",
+          "status": "available",
+          "provider": "yier-gongyi",
+          "runtimeProvider": "yier-gongyi",
+          "model": "FILL_ME_AFTER_ADD",
+          "source": "cc-switch"
+        }
+      ],
+      "agentWorkspaces": [
+        {
+          "id": "f2f97cc2-19ec-427a-81b4-2042912637e2",
+          "agentId": "8bd77997-acf4-490e-a595-49be7c32c732",
+          "agentName": "REAL_provider_runtime_20260611010223",
+          "runtime": "claude_code",
+          "status": "running",
+          "pid": 30619,
+          "runtimeProvider": "Kimi",
+          "runtimeCommand": null,
+          "runtimeModel": null
+        }
+      ]
+    }
+  ],
+  "marker": "REAL_provider_runtime_20260611010223"
+}

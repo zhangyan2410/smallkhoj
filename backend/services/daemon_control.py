@@ -15,10 +15,38 @@ from models import AgentWorkspace, Channel, ChannelMember, Computer, EventRecord
 
 PENDING_RUNTIME_START_STATUS = "pending_start"
 RUNTIME_ACTIVE_STATUSES = {"running", "active", "idle"}
+RUNTIME_REARMABLE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"stopped", "offline", "exited", "crashed"}
+
+
+def _falsey_config(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"0", "false", "no", "off", "stopped", "disabled"}
+    return value is False
+
+
+def runtime_provider_for_agent(agent: Member) -> str | None:
+    config = agent.config or {}
+    provider = config.get("runtimeProvider")
+    if provider:
+        value = str(provider).strip()
+        if value:
+            return value
+    return None
+
+
+def runtime_should_autostart(agent: Member) -> bool:
+    config = agent.config or {}
+    desired_status = config.get("runtimeDesiredStatus")
+    if desired_status and str(desired_status).strip().lower() in {"stopped", "disabled"}:
+        return False
+    if _falsey_config(config.get("runtimeAutostart", True)):
+        return False
+    return True
 
 
 def runtime_start_command(workspace: AgentWorkspace, agent: Member) -> dict[str, Any]:
     """Build the daemon control envelope for a workspace runtime launch."""
+    agent_config = agent.config or {}
     config: dict[str, Any] = {
         "runtime": workspace.runtime,
         "workspaceId": str(workspace.id),
@@ -29,7 +57,10 @@ def runtime_start_command(workspace: AgentWorkspace, agent: Member) -> dict[str,
         config["runtimeModel"] = workspace.runtime_model
     if workspace.cwd:
         config["workspacePath"] = workspace.cwd
-    backend = agent.backend or (agent.config or {}).get("backend")
+    runtime_provider = runtime_provider_for_agent(agent)
+    if runtime_provider:
+        config["runtimeProvider"] = runtime_provider
+    backend = agent.backend or agent_config.get("backend")
     if backend:
         config["backend"] = backend
 
@@ -90,7 +121,7 @@ async def mark_missing_runtimes_pending_start(
             AgentWorkspace.computer_id == computer_id,
             Member.server_id == server_id,
             Member.kind == "agent",
-            AgentWorkspace.status.in_(RUNTIME_ACTIVE_STATUSES),
+            AgentWorkspace.status.in_(RUNTIME_REARMABLE_STATUSES),
         )
         .order_by(AgentWorkspace.updated_at, AgentWorkspace.id)
     )
@@ -100,6 +131,8 @@ async def mark_missing_runtimes_pending_start(
     result = await db.execute(query)
     stale = result.all()
     for workspace, agent in stale:
+        if not runtime_should_autostart(agent):
+            continue
         workspace.status = PENDING_RUNTIME_START_STATUS
         workspace.pid = None
         workspace.stopped_at = None
@@ -294,6 +327,8 @@ def _event_visible_to_agent(record: EventRecord, agent: Member, channel_ids: set
     target_agent_id = (record.payload or {}).get("targetAgentId")
     if target_agent_id and str(target_agent_id) != str(agent.id):
         return False
+    if target_agent_id and str(target_agent_id) == str(agent.id):
+        return True
     event_type = _dotted_event_type(record.event_type)
     if event_type == "thread.summary_updated":
         return False

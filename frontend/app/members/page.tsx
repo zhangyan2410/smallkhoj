@@ -14,6 +14,7 @@ import {
   dotClass,
   type Computer,
   type Member,
+  runtimeLabel,
   shortId,
   statusLabel,
 } from "@/lib/control-plane"
@@ -34,12 +35,12 @@ async function createAgentAction(formData: FormData) {
   const name = formData.get("name") as string
   const computerId = formData.get("computerId") as string
   const runtime = formData.get("runtime") as string || "claude_code"
-  const backend = formData.get("backend") as string
+  const runtimeProvider = formData.get("runtimeProvider") as string
   if (!name || !computerId) redirect("/members?error=Missing%20name%20or%20computer")
   const response = await fetch(`${API_BASE}/api/v1/members/agents`, {
     method: "POST",
     headers: await serverApiHeaders(true),
-    body: JSON.stringify({ name, computerId, runtime, backend }),
+    body: JSON.stringify({ name, computerId, runtime, runtimeProvider }),
   })
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
@@ -51,7 +52,7 @@ async function createAgentAction(formData: FormData) {
 }
 
 function profileName(member: Member) {
-  return member.profile?.displayName || member.displayName || member.name
+  return member.profile?.displayName || member.displayName
 }
 
 function profileDescription(member: Member) {
@@ -79,6 +80,19 @@ function searchValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
 }
 
+function detectedProviderOptions(computers: Computer[]) {
+  const options = new Map<string, string>()
+  for (const computer of computers) {
+    for (const runtime of computer.detectedRuntimes) {
+      if (typeof runtime === "string") continue
+      const provider = runtime.runtimeProvider ?? runtime.provider
+      if (!provider) continue
+      options.set(provider, runtimeLabel(runtime))
+    }
+  }
+  return Array.from(options, ([value, label]) => ({ value, label }))
+}
+
 export default async function MembersPage({
   searchParams,
 }: {
@@ -92,6 +106,7 @@ export default async function MembersPage({
   const humans = members.filter((member) => member.kind === "human").length
   const agents = members.filter((member) => member.kind === "agent").length
   const boundAgents = members.filter((member) => member.kind === "agent" && member.computerId).length
+  const providerOptions = detectedProviderOptions(computers)
 
   return (
     <ProductShell
@@ -202,10 +217,19 @@ export default async function MembersPage({
                 </select>
               </div>
               <div>
-                <label htmlFor="agent-backend" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Backend
+                <label htmlFor="agent-provider" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Provider
                 </label>
-                <Input id="agent-backend" name="backend" placeholder="Claude" className="w-28" />
+                <select
+                  id="agent-provider"
+                  name="runtimeProvider"
+                  className="h-9 min-w-36 rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">Default</option>
+                  {providerOptions.map((provider) => (
+                    <option key={provider.value} value={provider.value}>{provider.label}</option>
+                  ))}
+                </select>
               </div>
               <Button type="submit" size="sm">Create Agent</Button>
             </form>
@@ -236,9 +260,13 @@ export default async function MembersPage({
                     <StatusBadge status={member.status} />
                   </CardTitle>
                   <CardDescription className="flex flex-wrap items-center gap-2">
-                    <span>{member.handle || `@${member.name}`}</span>
+                    <span>{member.handle || `@${member.displayName}`}</span>
                     <span className="rounded-md bg-muted px-2 py-0.5 text-xs">{member.kind}</span>
-                    {member.backend && <span className="rounded-md bg-muted px-2 py-0.5 text-xs">{member.backend}</span>}
+                    {(member.runtimeProvider || member.backend) && (
+                      <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
+                        {member.runtimeProvider || member.backend}
+                      </span>
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4 pt-4">
