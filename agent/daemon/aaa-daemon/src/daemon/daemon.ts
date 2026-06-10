@@ -45,6 +45,8 @@ export interface RuntimeIncomingMessage {
   sender?: string;
   actor?: string;
   senderType?: string;
+  assignee?: string;
+  assigneeId?: string;
   content: string;
 }
 
@@ -923,6 +925,9 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
   assignIfPresent(message, 'sender', firstString(value.sender, value.author, value.user, value.username));
   assignIfPresent(message, 'actor', firstString(value.actor, value.actorId, value.actor_id, value.memberId, value.agentId));
   assignIfPresent(message, 'senderType', firstString(value.senderType, value.sender_type, value.type));
+  const details = isRecord(value.details) ? value.details : undefined;
+  assignIfPresent(message, 'assignee', firstString(value.assignee, value.assigneeHandle, value.assigneeName, details?.assignee));
+  assignIfPresent(message, 'assigneeId', firstString(value.assigneeId, value.assignee_id, details?.assigneeId));
   if (eventType && eventType !== 'message_received') {
     message.eventType = eventType;
   }
@@ -930,6 +935,7 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
 }
 
 export function formatRuntimeIncomingMessage(message: RuntimeIncomingMessage): string {
+  const content = formatRuntimeIncomingContent(message);
   const header = [
     message.eventType ? `event=${message.eventType}` : undefined,
     message.eventSeq ? `eventSeq=${message.eventSeq}` : undefined,
@@ -942,12 +948,33 @@ export function formatRuntimeIncomingMessage(message: RuntimeIncomingMessage): s
     message.timestamp ? `time=${message.timestamp}` : undefined,
     message.sender ? `sender=${message.sender}` : undefined,
     message.actor ? `actor=${message.actor}` : undefined,
+    message.assignee ? `assignee=${message.assignee}` : undefined,
     message.senderType ? `type=${message.senderType}` : undefined,
   ].filter(Boolean).join(' ');
 
-  if (!header) return message.content;
+  if (!header) return content;
   const senderPrefix = message.sender ? `${message.sender}: ` : '';
-  return `[${header}] ${senderPrefix}${message.content}`;
+  return `[${header}] ${senderPrefix}${content}`;
+}
+
+function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
+  if (!isTaskCreatedEvent(message.eventType)) {
+    return message.content;
+  }
+
+  const lines = [
+    'You have been assigned this Slock task. Treat this event as an actionable work request, not as a passive system notification.',
+    'Use `slock task claim` for this task if it is still todo, do the requested work, then use `slock task update --status in_review` when ready for human review.',
+  ];
+
+  if (message.target) {
+    lines.push(`Post progress and the final result back to ${message.target} with \`slock message send --target "${message.target}"\`.`);
+  } else {
+    lines.push('Post progress and the final result back to the source task thread or visible source conversation.');
+  }
+
+  lines.push('', message.content);
+  return lines.join('\n');
 }
 
 export function parseDaemonControlCommand(input: unknown): DaemonControlCommand | null {
@@ -1145,6 +1172,10 @@ function summarizeRuntimeEvent(value: Record<string, unknown>, eventType?: strin
   }
 
   return fields.length ? fields.join('\n') : `Received Slock event: ${eventType}`;
+}
+
+function isTaskCreatedEvent(type?: string): boolean {
+  return type === 'task_created' || type === 'task.created';
 }
 
 function isMessageEventType(type: string): boolean {

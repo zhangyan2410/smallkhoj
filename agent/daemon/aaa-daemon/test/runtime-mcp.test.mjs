@@ -205,6 +205,7 @@ test('daemon formats non-message Slock events for Claude runtime delivery', () =
     title: 'Implement delegated slice',
     actor: 'supervisor',
     senderType: 'task_created',
+    assignee: '@aaa',
     content: [
       'title=Implement delegated slice',
       'status=todo',
@@ -215,10 +216,61 @@ test('daemon formats non-message Slock events for Claude runtime delivery', () =
   assert.equal(
     formatRuntimeIncomingMessage(message),
     [
-      '[event=task_created eventSeq=7 target=#general task=#3 status=todo actor=supervisor type=task_created] title=Implement delegated slice',
+      '[event=task_created eventSeq=7 target=#general task=#3 status=todo actor=supervisor assignee=@aaa type=task_created] You have been assigned this Slock task. Treat this event as an actionable work request, not as a passive system notification.',
+      'Use `slock task claim` for this task if it is still todo, do the requested work, then use `slock task update --status in_review` when ready for human review.',
+      'Post progress and the final result back to #general with `slock message send --target "#general"`.',
+      '',
+      'title=Implement delegated slice',
       'status=todo',
       'assignee=@aaa',
       'priority=high',
+    ].join('\n'),
+  );
+});
+
+test('daemon formats dotted assigned task creation as actionable runtime work', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'task.created',
+    eventSeq: 52,
+    payload: {
+      taskId: 'task-9',
+      taskNumber: 9,
+      channel: 'dm:@zy-ean',
+      targetAgentId: 'agent-123',
+      assignee: '@glm1',
+      assigneeId: 'agent-123',
+      creator: '@zy-ean',
+      title: 'Write a short update',
+      status: 'todo',
+    },
+  });
+
+  assert.deepEqual(message, {
+    eventType: 'task.created',
+    eventSeq: '52',
+    target: 'dm:@zy-ean',
+    taskId: 'task-9',
+    taskNumber: '9',
+    status: 'todo',
+    title: 'Write a short update',
+    actor: 'agent-123',
+    senderType: 'task.created',
+    assignee: '@glm1',
+    assigneeId: 'agent-123',
+    content: [
+      'title=Write a short update',
+      'status=todo',
+    ].join('\n'),
+  });
+  assert.equal(
+    formatRuntimeIncomingMessage(message),
+    [
+      '[event=task.created eventSeq=52 target=dm:@zy-ean task=#9 status=todo actor=agent-123 assignee=@glm1 type=task.created] You have been assigned this Slock task. Treat this event as an actionable work request, not as a passive system notification.',
+      'Use `slock task claim` for this task if it is still todo, do the requested work, then use `slock task update --status in_review` when ready for human review.',
+      'Post progress and the final result back to dm:@zy-ean with `slock message send --target "dm:@zy-ean"`.',
+      '',
+      'title=Write a short update',
+      'status=todo',
     ].join('\n'),
   );
 });
@@ -250,6 +302,7 @@ test('daemon normalizes dotted task events from backend payloads', () => {
     timestamp: '2026-06-05T10:05:00.000Z',
     actor: 'supervisor',
     senderType: 'task.claimed',
+    assigneeId: 'agent-123',
     content: [
       'title=Pick up worker slice',
       'status=in_progress',

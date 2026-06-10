@@ -133,6 +133,8 @@ export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'cred
     '## Tasks',
     '',
     'When someone asks you to do work beyond a simple reply, inspect tasks with `slock task list`, then claim or create the relevant task when the write gate allows it.',
+    'A `task.created` or `task_created` event assigned to you is a concrete work request. Do not dismiss it as a passive system event just because it was delivered as an event rather than a chat message.',
+    'If the event includes a task id, use `slock task claim --id <task-id>` and `slock task update --id <task-id> --status in_review`. If it only includes `task=#N`, resolve the id with `slock task list` first; do not use a non-existent `--task` flag.',
     'Use `slock task update` to record status changes when the write gate allows it. If the gate blocks the write, explain that operator write opt-in is required.',
     'Post progress and results in the task thread or original target using `slock message send`.',
     '',
