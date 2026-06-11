@@ -43,7 +43,6 @@ from services.thread_summary import (
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
 PUBLIC_API_KEY = "sk_public_local"
-DEFAULT_LOCAL_AGENT_ID = "aaaa0000-0000-0000-0000-000000000001"
 DEFAULT_LOCAL_DAEMON_DIR = Path(__file__).resolve().parents[2] / "agent" / "daemon" / "aaa-daemon"
 DEFAULT_DAEMON_LAUNCHER = Path(__file__).resolve().parents[2] / "smallkhoj-daemon"
 CONNECT_TICKET_TTL_SECONDS = 300
@@ -92,11 +91,10 @@ EVENT_TYPE_ALIASES = {
 def _computer_connection_command(
     token: str,
     server_url: str,
-    agent_id: str = DEFAULT_LOCAL_AGENT_ID,
     daemon_dir: Path = DEFAULT_LOCAL_DAEMON_DIR,
 ) -> str:
-    """Command shown in the UI for connecting this repo's local aaa-daemon."""
-    del agent_id, daemon_dir
+    """Command shown in the UI for connecting this repo's local daemon."""
+    del daemon_dir
     return " ".join(
         [
             shlex.quote(str(DEFAULT_DAEMON_LAUNCHER)),
@@ -2102,7 +2100,10 @@ async def create_public_reminder(request: Request, _auth: None = Depends(verify_
     title = body.get("title")
     if not title:
         raise HTTPException(400, "Missing title")
-    agent = await _resolve_member(db, server, body.get("agent") or body.get("agentId") or "aaa")
+    agent_ref = body.get("agent") or body.get("agentId")
+    if not agent_ref:
+        raise HTTPException(400, "Missing agent")
+    agent = await _resolve_member(db, server, agent_ref)
     if not agent or agent.kind != "agent":
         raise HTTPException(400, "Reminder owner must be an agent")
     if body.get("fireAt"):

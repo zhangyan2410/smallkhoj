@@ -47,7 +47,8 @@ Questions to answer:
 - Explicit columns are the source of truth for query/auth paths.
 - Serializers still emit `computerId`, `workspaceId`, and `backend` for agents.
 - Startup table creation must use `ADD COLUMN IF NOT EXISTS` for local existing DBs.
-- Seed/backfill must keep local `aaa` and `deepseek` rows populated in both explicit columns and compatibility config keys.
+- Startup migration must not create demo servers, members, computers, channels, messages, tasks, API keys, or activity logs.
+- Startup migration may only backfill existing rows from compatibility config keys into explicit columns.
 
 ### 4. Validation & Error Matrix
 - Missing `members.computer_id` on an old DB -> startup adds it.
@@ -62,7 +63,7 @@ Questions to answer:
 
 ### 6. Tests Required
 - Assert DB startup exposes `members.computer_id` and `members.backend`.
-- Assert seeded agents have explicit `computer_id/backend` and compatibility `config.workspaceId`.
+- Assert startup does not insert demo agents such as `aaa` or `deepseek`.
 - Assert `/api/v1/members`, `/api/v1/computers`, `/internal/agent-api/profile`, and `/internal/agent-api/channel-members` return agent binding fields.
 - Assert machine-token auth works for an agent bound through `members.computer_id`.
 

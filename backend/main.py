@@ -6,16 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from routers import health, chat, agent_api, public_api, hello
-from models.seed import create_tables, seed
+from models.seed import create_tables
 from services.reminder_scheduler import start_reminder_scheduler, stop_reminder_scheduler
 from services.thread_summary import start_thread_summary_scheduler, stop_thread_summary_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：创建表并初始化种子数据。"""
+    """应用生命周期：创建或升级数据库表。"""
     await create_tables()
-    await seed()
     reminder_task = start_reminder_scheduler()
     thread_summary_task = (
         start_thread_summary_scheduler()

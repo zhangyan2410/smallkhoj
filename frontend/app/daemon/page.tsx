@@ -682,7 +682,7 @@ export default async function DaemonPage({
                       </div>
                     </div>
                   ))}
-                  {data.computers.length === 0 && <EmptyState label="暂无 computer 数据；确认 backend 已启动并完成 seed。" />}
+                  {data.computers.length === 0 && <EmptyState label="暂无 computer 数据；确认 backend 已启动并完成数据库迁移。" />}
                 </div>
               </ScrollArea>
             </CardContent>

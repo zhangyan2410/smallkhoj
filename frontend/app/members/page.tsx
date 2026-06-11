@@ -926,7 +926,7 @@ export default async function MembersPage({
               <EmptyState
                 title="No members found"
                 description={kindFilter === "all"
-                  ? "Create or seed a human/agent member to start."
+                  ? "Create a human/agent member to start."
                   : `No ${kindFilter}s registered yet.`}
               />
             )}

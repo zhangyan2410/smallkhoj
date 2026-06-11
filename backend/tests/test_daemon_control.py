@@ -5,6 +5,7 @@ import uuid
 from fastapi import HTTPException
 import pytest
 
+import routers.public_api as public_api
 from routers.agent_api import (
     ACTIVITY_EVENT_TYPES,
     _apply_agent_status_transition,
@@ -55,6 +56,14 @@ class _FakeSession:
     async def execute(self, _statement):
         self.execute_count += 1
         return self._results.pop(0)
+
+
+class _JsonRequest:
+    def __init__(self, body):
+        self._body = body
+
+    async def json(self):
+        return self._body
 
 
 def _member(member_id, *, computer_id=None):
@@ -190,6 +199,21 @@ def test_runtime_control_command_reuses_start_config_for_restart():
     assert config["workspaceId"] == str(workspace.id)
     assert config["runtimeModel"] == "glm-5.1"
     assert config["workspacePath"] == "/tmp/runtime-workspace"
+
+
+@pytest.mark.asyncio
+async def test_create_public_reminder_requires_explicit_agent(monkeypatch):
+    async def fake_get_server(_db):
+        return SimpleNamespace(id=uuid.uuid4())
+
+    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    request = _JsonRequest({"title": "Follow up", "delaySeconds": 60})
+
+    with pytest.raises(HTTPException) as exc:
+        await public_api.create_public_reminder(request, _auth=None, db=object())
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Missing agent"
 
 
 @pytest.mark.asyncio
