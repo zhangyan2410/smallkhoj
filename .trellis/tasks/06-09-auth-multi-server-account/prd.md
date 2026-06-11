@@ -15,10 +15,10 @@ Productize authentication, account identity, and server selection so SmallKhoj c
 
 ## Acceptance Criteria
 
-* [ ] User can log in/out or dev-auth is explicitly scoped.
-* [ ] Current account/server are visible in the app shell.
-* [ ] API calls use consistent auth/session headers.
-* [ ] Multi-server behavior is specified even if first implementation supports one server.
+* [x] User can log in/out or dev-auth is explicitly scoped.
+* [x] Current account/server are visible in the app shell.
+* [x] API calls use consistent auth/session headers.
+* [x] Multi-server behavior is specified even if first implementation supports one server.
 
 ## Real Test SOP
 

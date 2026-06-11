@@ -131,6 +131,21 @@ type DashboardData = {
   backendOnline: boolean
 }
 
+type DebugSearchResult = {
+  id: string
+  type: string
+  title: string
+  excerpt?: string
+  href?: string
+  metadata?: Record<string, unknown>
+}
+
+type DebugSearchData = {
+  q: string
+  count: number
+  results: DebugSearchResult[]
+}
+
 async function apiGet<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${API_BASE}${path}`, { cache: "no-store", headers: await serverApiHeaders() })
@@ -139,6 +154,10 @@ async function apiGet<T>(path: string, fallback: T): Promise<T> {
   } catch {
     return fallback
   }
+}
+
+function searchParamValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
 }
 
 async function apiWrite(path: string, body: Record<string, unknown>, method = "POST") {
@@ -374,9 +393,22 @@ function runtimeLabel(runtime: string | { type?: string; status?: string; comman
   return [runtime.runtimeProvider ?? runtime.provider ?? runtime.type ?? "runtime", runtime.status, runtime.model].filter(Boolean).join(" / ")
 }
 
-export default async function DaemonPage() {
+export default async function DaemonPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   await requireCurrentAccount()
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const marker = (searchParamValue(resolvedSearchParams.marker) || "").trim()
   const data = await getDashboardData()
+  const markerResults = marker
+    ? await apiGet<DebugSearchData>(`/api/v1/search?q=${encodeURIComponent(marker)}&limit=12`, {
+        q: marker,
+        count: 0,
+        results: [],
+      })
+    : null
   const workspaces = data.computers.flatMap((computer) => computer.agentWorkspaces)
   const runningWorkspaces = workspaces.filter((workspace) => workspace.status === "running").length
   const pendingReminders = data.reminders.filter((reminder) => reminder.status === "pending").length
@@ -429,6 +461,60 @@ export default async function DaemonPage() {
           <MetricCard icon={FileText} label="Files" value={data.files.length} detail="recent" />
           <MetricCard icon={MessageSquare} label="Channels" value={data.channels.length} />
         </div>
+
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-2">
+              <Database className="size-5" />
+              Marker Debug Workbench
+            </CardTitle>
+            <CardDescription>Search one marker, then follow browser, API, DB, trace, and task evidence links.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 pt-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="space-y-3">
+              <form method="get" action="/daemon" className="flex gap-2">
+                <Input name="marker" defaultValue={marker} placeholder="REAL_debug_workbench_..." />
+                <Button type="submit" variant="outline">
+                  Search
+                </Button>
+              </form>
+              <div className="rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
+                <div className="font-medium text-foreground">Next checks</div>
+                <div className="mt-2 grid gap-1">
+                  <span>1. Open the source message/task/file from results.</span>
+                  <span>2. Run trace summary for the same marker.</span>
+                  <span>3. Save concise notes under the task evidence directory.</span>
+                </div>
+              </div>
+              <code className="block whitespace-pre-wrap break-all rounded-md border bg-background p-3 text-xs">
+                {marker ? `./smallkhoj-trace summary --json | rg '${marker}'` : "./smallkhoj-trace summary --json"}
+              </code>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-medium uppercase text-muted-foreground">Linked Evidence</div>
+                <div className="text-xs text-muted-foreground">{markerResults ? `${markerResults.count} matches` : "enter marker"}</div>
+              </div>
+              <div className="overflow-hidden rounded-md border">
+                {markerResults?.results.map((result) => (
+                  <Link
+                    key={`${result.type}-${result.id}`}
+                    href={result.href || "/daemon"}
+                    className="block border-b px-3 py-2 last:border-b-0 hover:bg-accent"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md border px-1.5 py-0.5 text-[11px] uppercase text-muted-foreground">{result.type}</span>
+                      <span className="min-w-0 truncate text-sm font-medium">{result.title}</span>
+                    </div>
+                    {result.excerpt && <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{result.excerpt}</div>}
+                  </Link>
+                ))}
+                {marker && markerResults?.results.length === 0 && <EmptyState label="No marker evidence found in API search." />}
+                {!marker && <EmptyState label="Enter a unique REAL_* marker to start." />}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
           <Card>

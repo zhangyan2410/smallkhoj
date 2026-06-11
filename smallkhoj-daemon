@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DAEMON_DIR="$ROOT_DIR/agent/daemon/aaa-daemon"
+SERVER_URL="http://localhost:8000"
+CONNECT_TOKEN=""
+MACHINE_TOKEN=""
+PROXY_PORT="0"
+
+usage() {
+  cat <<'USAGE'
+smallkhoj-daemon 0.1.0
+
+Usage:
+  smallkhoj-daemon connect --token sk_connect_... [--server http://localhost:8000]
+  smallkhoj-daemon start --machine-token sk_machine_... [--server http://localhost:8000]
+  smallkhoj-daemon --version
+
+This wrapper starts the local aaa-daemon without requiring users to navigate
+into agent/daemon/aaa-daemon.
+USAGE
+}
+
+if [[ "${1:-}" == "--version" || "${1:-}" == "version" ]]; then
+  echo "smallkhoj-daemon 0.1.0"
+  exit 0
+fi
+
+MODE="${1:-}"
+if [[ -z "$MODE" || "$MODE" == "--help" || "$MODE" == "-h" ]]; then
+  usage
+  exit 0
+fi
+shift || true
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --token)
+      CONNECT_TOKEN="${2:-}"
+      shift 2
+      ;;
+    --machine-token)
+      MACHINE_TOKEN="${2:-}"
+      shift 2
+      ;;
+    --server)
+      SERVER_URL="${2:-}"
+      shift 2
+      ;;
+    --proxy-port)
+      PROXY_PORT="${2:-}"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ ! -f "$DAEMON_DIR/dist/cmd/main.js" ]]; then
+  echo "Daemon build missing at $DAEMON_DIR/dist/cmd/main.js" >&2
+  echo "Run: cd $DAEMON_DIR && npm install && npm run build" >&2
+  exit 1
+fi
+
+cd "$DAEMON_DIR"
+
+case "$MODE" in
+  connect)
+    if [[ -z "$CONNECT_TOKEN" ]]; then
+      echo "Missing --token sk_connect_..." >&2
+      exit 2
+    fi
+    SLOCK_CONNECT_TOKEN="$CONNECT_TOKEN" SLOCK_ALLOW_WRITES=1 \
+      node dist/cmd/main.js start --foreground \
+        --runtime none \
+        --server "$SERVER_URL" \
+        --ws auto \
+        --proxy-port "$PROXY_PORT" \
+        --register-daemon
+    ;;
+  start)
+    if [[ -z "$MACHINE_TOKEN" ]]; then
+      echo "Missing --machine-token sk_machine_..." >&2
+      exit 2
+    fi
+    SLOCK_AGENT_TOKEN="$MACHINE_TOKEN" SLOCK_ALLOW_WRITES=1 \
+      node dist/cmd/main.js start --foreground \
+        --runtime none \
+        --server "$SERVER_URL" \
+        --ws auto \
+        --agent-id aaaa0000-0000-0000-0000-000000000001 \
+        --register-daemon
+    ;;
+  *)
+    echo "Unknown mode: $MODE" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

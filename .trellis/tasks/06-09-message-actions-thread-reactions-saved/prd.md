@@ -15,11 +15,11 @@ Make message-level actions feel product-grade: reply in thread, react, save/book
 
 ## Acceptance Criteria
 
-* [ ] Message action controls are visible on hover/focus and accessible by keyboard.
-* [ ] Reply in thread works for root messages.
-* [ ] Save/bookmark changes visible saved state.
-* [ ] Reaction action persists or records a documented backend gap.
-* [ ] As Task links to task creation with message context.
+* [x] Message action controls are visible on hover/focus and accessible by keyboard.
+* [x] Reply in thread works for root messages.
+* [x] Save/bookmark changes visible saved state.
+* [x] Reaction action persists or records a documented backend gap.
+* [x] As Task links to task creation with message context.
 
 ## Real Test SOP
 

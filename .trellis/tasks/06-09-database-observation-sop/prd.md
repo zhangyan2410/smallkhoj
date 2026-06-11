@@ -14,9 +14,9 @@ Create a low-density DB observation SOP so the human supervisor can inspect Smal
 
 ## Acceptance Criteria
 
-* [ ] SOP doc exists and is linked from the parent/debug workbench task.
-* [ ] User can follow a marker from browser message to DB row to event record.
-* [ ] SOP clearly separates safe read-only observation from mutation.
+* [x] SOP doc exists and is linked from the parent/debug workbench task.
+* [x] User can follow a marker from browser message to DB row to event record.
+* [x] SOP clearly separates safe read-only observation from mutation.
 
 ## Real Test SOP
 

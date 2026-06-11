@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend public API endpoint conventions and linked specs."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"FileEntry persistence and transaction/retry lessons for backend writes."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Public API validation and error response conventions."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend quality checklist before implementation."}
+{"file":".trellis/spec/guides/index.md","reason":"Shared thinking guide index for cross-layer and reuse checks."}

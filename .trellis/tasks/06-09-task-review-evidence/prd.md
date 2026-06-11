@@ -14,10 +14,10 @@ Add a task evidence chain so tasks can carry proof: screenshots, trace snippets,
 
 ## Acceptance Criteria
 
-* [ ] Task detail shows evidence entries.
-* [ ] A real test marker can be attached or referenced.
-* [ ] Evidence is visible after refresh.
-* [ ] Review status and reopen reason are captured or documented as backend follow-up.
+* [x] Task detail shows evidence entries.
+* [x] A real test marker can be attached or referenced.
+* [x] Evidence is visible after refresh.
+* [x] Review status and reopen reason are captured or documented as backend follow-up.
 
 ## Real Test SOP
 

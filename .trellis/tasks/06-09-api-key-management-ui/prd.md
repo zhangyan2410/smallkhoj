@@ -14,10 +14,10 @@ Add human-facing API key management for machine/agent/admin tokens with safe dis
 
 ## Acceptance Criteria
 
-* [ ] API key list shows prefixes, type, owner, created/revoked state.
-* [ ] New secret is shown only once when created.
-* [ ] Revocation/rotation updates backend state.
-* [ ] Browser never leaks machine token via URL.
+* [x] API key list shows prefixes, type, owner, created/revoked state.
+* [x] New secret is shown only once when created.
+* [x] Revocation/rotation updates backend state.
+* [x] Browser never leaks machine token via URL.
 
 ## Real Test SOP
 

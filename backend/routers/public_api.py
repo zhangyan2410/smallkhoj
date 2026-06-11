@@ -1,21 +1,26 @@
 """Public API routes — frontend-facing endpoints under /api/v1/."""
 
 import hashlib
+import hmac
+import json
 import re
 import secrets
 import shlex
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import HTTPException
-from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi.responses import FileResponse
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
     get_db, Account, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
-    Computer, ConnectTicket, Member, Message, EventRecord, FileEntry, Reminder,
+    Computer, ConnectTicket, Member, Message, MessageReaction, EventRecord, FileEntry, Reminder, SavedItem,
     Server, Task, ThreadSummary,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
@@ -24,6 +29,7 @@ from services.daemon_control import (
     RUNTIME_ACTIVE_STATUSES,
     daemon_control_hub,
     push_latest_events_for_server,
+    runtime_control_command,
     runtime_start_command,
 )
 from services.latency_trace import LatencyTrace, trace_id_from_request
@@ -39,11 +45,27 @@ router = APIRouter(prefix="/api/v1", tags=["public"])
 PUBLIC_API_KEY = "sk_public_local"
 DEFAULT_LOCAL_AGENT_ID = "aaaa0000-0000-0000-0000-000000000001"
 DEFAULT_LOCAL_DAEMON_DIR = Path(__file__).resolve().parents[2] / "agent" / "daemon" / "aaa-daemon"
+DEFAULT_DAEMON_LAUNCHER = Path(__file__).resolve().parents[2] / "smallkhoj-daemon"
 CONNECT_TICKET_TTL_SECONDS = 300
 DEFAULT_SERVER_ID = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
 DEFAULT_SERVER_NAME = "Slock Server"
 SESSION_COOKIE_NAME = "smallkhoj_session"
+UPLOAD_ROOT = Path(__file__).resolve().parents[1] / ".data" / "uploads"
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+DANGEROUS_MIME_TYPES = {
+    "application/x-msdownload",
+    "application/x-executable",
+    "application/x-sh",
+    "text/x-shellscript",
+    "application/x-msdos-program",
+    "application/x-dosexec",
+    "application/x-php",
+    "application/x-python-code",
+    "application/javascript",
+    "text/javascript",
+}
 ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+TASK_NUMBER_RETRY_LIMIT = 5
 
 PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_message_sent": "message.created",
@@ -52,6 +74,7 @@ PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_member_updated": "member.updated",
     "supervisor_reminder_created": "reminder.created",
     "supervisor_reminder_updated": "reminder.updated",
+    "workspace_lifecycle": "workspace.updated",
 }
 
 HEARTBEAT_ACTIVITY_TYPES = {"workspace_heartbeat"}
@@ -73,52 +96,30 @@ def _computer_connection_command(
     daemon_dir: Path = DEFAULT_LOCAL_DAEMON_DIR,
 ) -> str:
     """Command shown in the UI for connecting this repo's local aaa-daemon."""
+    del agent_id, daemon_dir
     return " ".join(
         [
-            "cd",
-            shlex.quote(str(daemon_dir)),
-            "&&",
-            f"SLOCK_AGENT_TOKEN={shlex.quote(token)}",
-            "SLOCK_ALLOW_WRITES=1",
-            "node",
-            "dist/cmd/main.js",
+            shlex.quote(str(DEFAULT_DAEMON_LAUNCHER)),
             "start",
-            "--foreground",
-            "--runtime",
-            "none",
+            "--machine-token",
+            shlex.quote(token),
             "--server",
             shlex.quote(server_url),
-            "--ws",
-            "auto",
-            "--agent-id",
-            shlex.quote(agent_id),
-            "--register-daemon",
         ]
     )
 
 
 def _computer_connect_command(connect_token: str, server_url: str, daemon_dir: Path = DEFAULT_LOCAL_DAEMON_DIR) -> str:
     """Command shown in the UI for connecting a daemon with a one-time ticket."""
+    del daemon_dir
     return " ".join(
         [
-            "cd",
-            shlex.quote(str(daemon_dir)),
-            "&&",
-            f"SLOCK_CONNECT_TOKEN={shlex.quote(connect_token)}",
-            "SLOCK_ALLOW_WRITES=1",
-            "node",
-            "dist/cmd/main.js",
-            "start",
-            "--foreground",
-            "--runtime",
-            "none",
+            shlex.quote(str(DEFAULT_DAEMON_LAUNCHER)),
+            "connect",
+            "--token",
+            shlex.quote(connect_token),
             "--server",
             shlex.quote(server_url),
-            "--ws",
-            "auto",
-            "--proxy-port",
-            "0",
-            "--register-daemon",
         ]
     )
 
@@ -148,9 +149,11 @@ async def verify_public_api_key(request: Request, db: AsyncSession = Depends(get
     # Check against seed public key
     if key == PUBLIC_API_KEY:
         return
-    # Check against hashed api_keys table
     token_hash = hashlib.sha256(key.encode()).hexdigest()
-    result = await db.execute(select(Member).limit(1))
+    result = await db.execute(select(ApiKey).where(ApiKey.key_prefix == key[:20], ApiKey.revoked_at.is_(None)))
+    for api_key in result.scalars().all():
+        if api_key.token_hash and hmac.compare_digest(api_key.token_hash, token_hash):
+            return
     raise HTTPException(401, "Invalid API key")
 
 
@@ -326,6 +329,33 @@ async def _serialize_account(db: AsyncSession, account: Account, server: Server,
     }
 
 
+async def _api_key_owner(db: AsyncSession, api_key: ApiKey) -> dict | None:
+    if api_key.resource_type == "computer":
+        result = await db.execute(select(Computer).where(Computer.id == api_key.resource_id))
+        computer = result.scalar_one_or_none()
+        if computer:
+            return {"id": str(computer.id), "name": computer.name, "type": "computer"}
+    if api_key.resource_type in {"agent", "human", "admin"}:
+        result = await db.execute(select(Member).where(Member.id == api_key.resource_id))
+        member = result.scalar_one_or_none()
+        if member:
+            return {"id": str(member.id), "name": member.display_name, "type": member.kind}
+    return None
+
+
+async def _serialize_api_key(db: AsyncSession, api_key: ApiKey) -> dict:
+    return {
+        "id": str(api_key.id),
+        "prefix": api_key.key_prefix,
+        "resourceType": api_key.resource_type,
+        "resourceId": str(api_key.resource_id),
+        "owner": await _api_key_owner(db, api_key),
+        "createdAt": api_key.created_at.isoformat() if api_key.created_at else None,
+        "revokedAt": api_key.revoked_at.isoformat() if api_key.revoked_at else None,
+        "revoked": api_key.revoked_at is not None,
+    }
+
+
 async def _parse_mentions(db: AsyncSession, server: Server, content: str) -> list[uuid.UUID]:
     handles = sorted({match.group(1) for match in MENTION_RE.finditer(content or "")})
     if not handles:
@@ -361,6 +391,36 @@ async def _resolve_channel(db: AsyncSession, server: Server, channel_name: str) 
     if not channel:
         raise HTTPException(404, f"Channel {channel_name} not found")
     return channel
+
+
+async def _resolve_message_ref(db: AsyncSession, server: Server, message_ref: str) -> Message:
+    try:
+        parsed_id = uuid.UUID(message_ref)
+    except ValueError:
+        parsed_id = None
+
+    if parsed_id:
+        result = await db.execute(
+            select(Message).join(Channel).where(
+                Channel.server_id == server.id,
+                Message.id == parsed_id,
+            )
+        )
+        message = result.scalar_one_or_none()
+        if message:
+            return message
+
+    result = await db.execute(
+        select(Message).join(Channel).where(
+            Channel.server_id == server.id,
+            Message.short_id == message_ref,
+        )
+    )
+    message = result.scalar_one_or_none()
+    if message:
+        return message
+
+    raise HTTPException(404, f"Message {message_ref} not found")
 
 
 @router.post("/auth/register")
@@ -412,6 +472,88 @@ async def logout_account(request: Request, _auth: None = Depends(verify_public_a
         account.session_token_hash = None
         await db.commit()
     return {"ok": True}
+
+
+@router.get("/api-keys")
+async def list_api_keys(
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    account = await _current_account(db, request)
+    if not account or account.server_id != server.id:
+        raise HTTPException(401, "Login required for API key management")
+    result = await db.execute(
+        select(ApiKey)
+        .where(ApiKey.server_id == server.id)
+        .order_by(ApiKey.created_at.desc(), ApiKey.id)
+    )
+    keys = result.scalars().all()
+    return {"apiKeys": [await _serialize_api_key(db, api_key) for api_key in keys], "count": len(keys)}
+
+
+@router.post("/api-keys")
+async def create_api_key(
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    account = await _current_account(db, request)
+    if not account or account.server_id != server.id:
+        raise HTTPException(401, "Login required for API key management")
+    body = await request.json()
+    resource_type = str(body.get("resourceType") or "human").strip().lower()
+    if resource_type not in {"human", "admin"}:
+        raise HTTPException(400, "Only human or admin API keys can be created from Settings")
+
+    token = f"sk_{resource_type}_{secrets.token_urlsafe(32)}"
+    api_key = ApiKey(
+        key_prefix=token[:20],
+        token_hash=_hash_token(token),
+        resource_type=resource_type,
+        resource_id=account.member_id,
+        server_id=server.id,
+    )
+    db.add(api_key)
+    await db.commit()
+    await db.refresh(api_key)
+    return {
+        "created": True,
+        "secret": token,
+        "apiKey": await _serialize_api_key(db, api_key),
+    }
+
+
+@router.post("/api-keys/{key_id}/revoke")
+async def revoke_api_key(
+    key_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    account = await _current_account(db, request)
+    if not account or account.server_id != server.id:
+        raise HTTPException(401, "Login required for API key management")
+    try:
+        parsed_key_id = uuid.UUID(key_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid API key id")
+
+    result = await db.execute(
+        select(ApiKey).where(ApiKey.id == parsed_key_id, ApiKey.server_id == server.id)
+    )
+    api_key = result.scalar_one_or_none()
+    if not api_key:
+        raise HTTPException(404, "API key not found")
+    if api_key.revoked_at is None:
+        api_key.revoked_at = _utcnow_aware()
+        api_key.token_hash = None
+    await db.commit()
+    await db.refresh(api_key)
+    return {"revoked": True, "apiKey": await _serialize_api_key(db, api_key)}
 
 
 async def _next_task_number(db: AsyncSession, channel_id: uuid.UUID) -> int:
@@ -560,11 +702,21 @@ def _serialize_file(file_entry: FileEntry) -> dict:
         "originalName": file_entry.original_name,
         "mimeType": file_entry.mime_type,
         "size": file_entry.size,
-        "url": f"/api/attachments/{file_entry.id}/download",
-        "previewUrl": f"/api/attachments/{file_entry.id}" if file_entry.mime_type.startswith("image/") else None,
+        "url": f"/api/v1/attachments/{file_entry.id}/download",
+        "previewUrl": f"/api/v1/attachments/{file_entry.id}" if file_entry.mime_type.startswith("image/") else None,
         "metadata": file_entry.metadata_json or {},
         "createdAt": file_entry.created_at.isoformat() if file_entry.created_at else None,
     }
+
+
+def _safe_attachment_path(entry: FileEntry) -> Path:
+    path = Path(entry.storage_path).resolve()
+    upload_root = UPLOAD_ROOT.resolve()
+    if path != upload_root and not str(path).startswith(str(upload_root) + "/"):
+        raise HTTPException(403, "Invalid file path")
+    if not path.exists():
+        raise HTTPException(404, "Attachment file missing")
+    return path
 
 
 async def _serialize_reminder(db: AsyncSession, reminder: Reminder) -> dict:
@@ -600,6 +752,7 @@ async def _serialize_public_message(
     sender_member = await serialize_member(db, sender) if sender else None
     root_id = msg.parent_id or msg.id
     metadata = (thread_metadata or {}).get(root_id, {})
+    reactions = await _serialize_public_reactions(db, msg.id)
     return {
         "seq": msg.seq,
         "id": str(msg.id),
@@ -617,9 +770,36 @@ async def _serialize_public_message(
         "channelType": msg.channel_type,
         "replyCount": int(metadata.get("replyCount") or 0) if not msg.parent_id else 0,
         "threadSummary": metadata.get("threadSummary") if not msg.parent_id else None,
+        "reactions": reactions["items"],
+        "reactionCounts": reactions["counts"],
         "time": msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else "",
         "createdAt": msg.created_at.isoformat() if msg.created_at else None,
     }
+
+
+async def _serialize_public_reactions(db: AsyncSession, message_id: uuid.UUID) -> dict:
+    reactions_result = await db.execute(
+        select(MessageReaction)
+        .where(MessageReaction.message_id == message_id)
+        .order_by(MessageReaction.created_at)
+    )
+    reactions = reactions_result.scalars().all()
+
+    items = []
+    counts: dict[str, int] = {}
+    for reaction in reactions:
+        member_result = await db.execute(select(Member).where(Member.id == reaction.member_id))
+        member = member_result.scalar_one_or_none()
+        counts[reaction.reaction] = counts.get(reaction.reaction, 0) + 1
+        items.append({
+            "id": str(reaction.id),
+            "reaction": reaction.reaction,
+            "memberId": str(reaction.member_id),
+            "member": f"@{member.display_name}" if member else None,
+            "createdAt": reaction.created_at.isoformat() if reaction.created_at else None,
+        })
+
+    return {"items": items, "counts": counts}
 
 
 async def _dm_channel_payload(db: AsyncSession, channel: Channel, viewer: Member) -> dict:
@@ -943,6 +1123,339 @@ async def create_channel_message(
     }
 
 
+@router.post("/messages/{message_ref}/reactions")
+async def add_public_message_reaction(
+    message_ref: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    reaction_text = (body.get("reaction") or body.get("emoji") or "").strip()
+    if not reaction_text:
+        raise HTTPException(400, "Missing reaction")
+
+    actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="message reaction actor")
+    message = await _resolve_message_ref(db, server, message_ref)
+    existing_result = await db.execute(
+        select(MessageReaction).where(
+            MessageReaction.message_id == message.id,
+            MessageReaction.member_id == actor.id,
+            MessageReaction.reaction == reaction_text,
+        )
+    )
+    reaction = existing_result.scalar_one_or_none()
+    created = reaction is None
+    if reaction is None:
+        reaction = MessageReaction(
+            message_id=message.id,
+            member_id=actor.id,
+            reaction=reaction_text,
+        )
+        db.add(reaction)
+        await db.flush()
+        await _record_activity(
+            db,
+            server,
+            actor,
+            "message_reaction_added",
+            f"@{actor.display_name} reacted {reaction_text} to message {message.short_id}",
+            {"messageId": str(message.id), "shortId": message.short_id, "reaction": reaction_text},
+            channel_id=message.channel_id,
+        )
+
+    await db.commit()
+    return {
+        "created": created,
+        "messageId": str(message.id),
+        "shortId": message.short_id,
+        "reaction": reaction_text,
+        "reactions": await _serialize_public_reactions(db, message.id),
+    }
+
+
+@router.delete("/messages/{message_ref}/reactions")
+async def remove_public_message_reaction(
+    message_ref: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    reaction_text = (body.get("reaction") or body.get("emoji") or "").strip()
+    if not reaction_text:
+        raise HTTPException(400, "Missing reaction")
+
+    actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="message reaction actor")
+    message = await _resolve_message_ref(db, server, message_ref)
+    result = await db.execute(
+        select(MessageReaction).where(
+            MessageReaction.message_id == message.id,
+            MessageReaction.member_id == actor.id,
+            MessageReaction.reaction == reaction_text,
+        )
+    )
+    reaction = result.scalar_one_or_none()
+    removed = reaction is not None
+    if reaction:
+        await db.delete(reaction)
+        await _record_activity(
+            db,
+            server,
+            actor,
+            "message_reaction_removed",
+            f"@{actor.display_name} removed {reaction_text} from message {message.short_id}",
+            {"messageId": str(message.id), "shortId": message.short_id, "reaction": reaction_text},
+            channel_id=message.channel_id,
+        )
+
+    await db.commit()
+    return {
+        "removed": removed,
+        "messageId": str(message.id),
+        "shortId": message.short_id,
+        "reaction": reaction_text,
+        "reactions": await _serialize_public_reactions(db, message.id),
+    }
+
+
+async def _saved_message_context(db: AsyncSession, server: Server, item_id: uuid.UUID) -> dict:
+    result = await db.execute(
+        select(Message, Channel)
+        .join(Channel, Message.channel_id == Channel.id)
+        .where(Channel.server_id == server.id, Message.id == item_id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(404, "Message not found")
+    message, channel = row
+    sender_result = await db.execute(select(Member).where(Member.id == message.sender_id))
+    sender = sender_result.scalar_one_or_none()
+    channel_segment = quote(channel.name, safe="")
+    message_query = f"thread={message.parent_id}&message={message.id}" if message.parent_id else f"message={message.id}"
+    return {
+        "type": "message",
+        "itemId": str(message.id),
+        "title": (message.content or "")[:120],
+        "content": message.content,
+        "href": f"/chat/{channel_segment}?{message_query}",
+        "channel": _display_channel_target(channel),
+        "channelId": str(channel.id),
+        "sender": sender.display_name if sender else None,
+        "timestamp": message.created_at.isoformat() if message.created_at else None,
+    }
+
+
+async def _saved_task_context(db: AsyncSession, server: Server, item_id: uuid.UUID) -> dict:
+    result = await db.execute(
+        select(Task)
+        .join(Channel, Task.channel_id == Channel.id)
+        .where(Channel.server_id == server.id, Task.id == item_id)
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    serialized = await _serialize_task(db, task)
+    return {
+        "type": "task",
+        "itemId": str(task.id),
+        "title": task.title,
+        "description": task.description,
+        "href": f"/tasks?task={task.id}",
+        "channel": serialized.get("channel"),
+        "status": task.status,
+        "taskNumber": task.task_number,
+        "timestamp": task.created_at.isoformat() if task.created_at else None,
+    }
+
+
+async def _saved_file_context(db: AsyncSession, server: Server, item_id: uuid.UUID) -> dict:
+    result = await db.execute(
+        select(FileEntry, Channel)
+        .outerjoin(Channel, FileEntry.channel_id == Channel.id)
+        .where(FileEntry.server_id == server.id, FileEntry.id == item_id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(404, "File not found")
+    file_entry, channel = row
+    serialized = _serialize_file(file_entry)
+    return {
+        "type": "file",
+        "itemId": str(file_entry.id),
+        "title": file_entry.original_name or file_entry.file_name,
+        "href": serialized["url"],
+        "downloadUrl": serialized["url"],
+        "previewUrl": serialized["previewUrl"],
+        "channel": _display_channel_target(channel) if channel else None,
+        "channelId": str(channel.id) if channel else None,
+        "mimeType": file_entry.mime_type,
+        "size": file_entry.size,
+        "timestamp": file_entry.created_at.isoformat() if file_entry.created_at else None,
+    }
+
+
+async def _saved_item_context(db: AsyncSession, server: Server, item_type: str, item_id: uuid.UUID) -> dict:
+    if item_type == "message":
+        return await _saved_message_context(db, server, item_id)
+    if item_type == "task":
+        return await _saved_task_context(db, server, item_id)
+    if item_type == "file":
+        return await _saved_file_context(db, server, item_id)
+    raise HTTPException(400, "Unsupported saved item type")
+
+
+async def _serialize_saved_item(db: AsyncSession, server: Server, item: SavedItem) -> dict:
+    context = await _saved_item_context(db, server, item.item_type, item.item_id)
+    return {
+        **context,
+        "id": str(item.id),
+        "serverId": str(item.server_id),
+        "accountId": str(item.account_id),
+        "memberId": str(item.member_id),
+        "itemType": item.item_type,
+        "itemId": str(item.item_id),
+        "createdAt": item.created_at.isoformat() if item.created_at else None,
+    }
+
+
+@router.get("/saved")
+async def list_saved_items(
+    request: Request,
+    limit: int = Query(20),
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    account = await _current_account(db, request)
+    if not account or account.server_id != server.id:
+        raise HTTPException(401, "Login required")
+    requested_limit = max(1, min(limit, 50))
+    result = await db.execute(
+        select(SavedItem)
+        .where(SavedItem.server_id == server.id, SavedItem.account_id == account.id)
+        .order_by(SavedItem.created_at.desc())
+        .limit(requested_limit)
+    )
+    items = result.scalars().all()
+    return {
+        "saved": [await _serialize_saved_item(db, server, item) for item in items],
+        "count": len(items),
+    }
+
+
+@router.post("/saved")
+async def create_saved_item(
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    account = await _current_account(db, request)
+    if not account or account.server_id != server.id:
+        raise HTTPException(401, "Login required")
+    body = await request.json()
+    item_type = str(body.get("itemType") or body.get("type") or "").strip().lower()
+    if item_type not in {"message", "task", "file"}:
+        raise HTTPException(400, "Unsupported saved item type")
+    try:
+        item_id = uuid.UUID(str(body.get("itemId") or body.get("id") or ""))
+    except ValueError:
+        raise HTTPException(400, "Invalid itemId")
+
+    await _saved_item_context(db, server, item_type, item_id)
+    existing_result = await db.execute(
+        select(SavedItem).where(
+            SavedItem.account_id == account.id,
+            SavedItem.item_type == item_type,
+            SavedItem.item_id == item_id,
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+    if existing:
+        return {"created": False, "saved": await _serialize_saved_item(db, server, existing)}
+
+    item = SavedItem(
+        server_id=server.id,
+        account_id=account.id,
+        member_id=account.member_id,
+        item_type=item_type,
+        item_id=item_id,
+    )
+    db.add(item)
+    await db.flush()
+    await db.commit()
+    await db.refresh(item)
+    return {"created": True, "saved": await _serialize_saved_item(db, server, item)}
+
+
+@router.delete("/saved/{saved_id}")
+async def delete_saved_item(
+    saved_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    account = await _current_account(db, request)
+    if not account or account.server_id != server.id:
+        raise HTTPException(401, "Login required")
+    try:
+        parsed_id = uuid.UUID(saved_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid saved id")
+    result = await db.execute(
+        select(SavedItem).where(
+            SavedItem.server_id == server.id,
+            SavedItem.account_id == account.id,
+            SavedItem.id == parsed_id,
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(404, "Saved item not found")
+    await db.delete(item)
+    await db.commit()
+    return {"removed": True, "id": saved_id}
+
+
+@router.delete("/saved")
+async def delete_saved_item_by_target(
+    request: Request,
+    item_type: str = Query(..., alias="itemType"),
+    item_id: str = Query(..., alias="itemId"),
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    account = await _current_account(db, request)
+    if not account or account.server_id != server.id:
+        raise HTTPException(401, "Login required")
+    normalized_type = item_type.strip().lower()
+    if normalized_type not in {"message", "task", "file"}:
+        raise HTTPException(400, "Unsupported saved item type")
+    try:
+        parsed_item_id = uuid.UUID(item_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid itemId")
+    result = await db.execute(
+        select(SavedItem).where(
+            SavedItem.server_id == server.id,
+            SavedItem.account_id == account.id,
+            SavedItem.item_type == normalized_type,
+            SavedItem.item_id == parsed_item_id,
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        return {"removed": False}
+    await db.delete(item)
+    await db.commit()
+    return {"removed": True, "id": str(item.id)}
+
+
 @router.get("/tasks")
 async def list_tasks(_auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Task).order_by(Task.task_number))
@@ -953,16 +1466,51 @@ async def list_tasks(_auth: None = Depends(verify_public_api_key), db: AsyncSess
     return {"tasks": task_list}
 
 
+@router.get("/tasks/{task_id}")
+async def get_task(task_id: str, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    server = await _get_server(db)
+    try:
+        parsed_task_id = uuid.UUID(task_id)
+    except ValueError:
+        parsed_task_id = None
+
+    q = select(Task).join(Channel).where(Channel.server_id == server.id)
+    if parsed_task_id:
+        q = q.where(Task.id == parsed_task_id)
+    else:
+        try:
+            q = q.where(Task.task_number == int(task_id))
+        except ValueError:
+            raise HTTPException(400, "Invalid task id")
+
+    result = await db.execute(q)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(404, "Task not found")
+
+    return await _serialize_task(db, task)
+
+
 @router.post("/tasks")
 async def create_task(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     server = await _get_server(db)
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON body")
     title = body.get("title")
     if not title:
         raise HTTPException(400, "Missing title")
     channel = await _resolve_channel(db, server, body.get("channel") or "#all")
     creator = await _resolve_human_actor(db, server, request, body.get("creator"), role="task creator")
     assignee = await _resolve_member(db, server, body.get("assignee"))
+    channel_id = channel.id
+    channel_target = f"#{channel.name}" if channel.kind == "public" else channel.name
+    creator_id = creator.id
+    creator_name = creator.display_name
+    assignee_id = assignee.id if assignee else None
+    assignee_name = assignee.display_name if assignee else None
+    assignee_kind = assignee.kind if assignee else None
     parsed_message_id = None
     source_payload = None
     if body.get("messageId"):
@@ -971,7 +1519,7 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
         except ValueError:
             raise HTTPException(400, "Invalid messageId")
         message_result = await db.execute(
-            select(Message).where(Message.id == parsed_message_id, Message.channel_id == channel.id)
+            select(Message).where(Message.id == parsed_message_id, Message.channel_id == channel_id)
         )
         source_message = message_result.scalar_one_or_none()
         if not source_message:
@@ -981,49 +1529,72 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
             "messageId": str(source_message.id),
             "messageShortId": source_message.short_id,
             "threadId": str(source_message.parent_id or source_message.id),
-            "channelId": str(channel.id),
-            "channel": f"#{channel.name}" if channel.kind == "public" else channel.name,
+            "channelId": str(channel_id),
+            "channel": channel_target,
         }
     task_data = body.get("data") or {}
     if source_payload:
         task_data = {**task_data, "source": source_payload}
     status = body.get("status") or "todo"
 
-    task = Task(
-        task_number=await _next_task_number(db, channel.id),
-        channel_id=channel.id,
-        message_id=parsed_message_id,
-        title=title,
-        description=body.get("description"),
-        status=status,
-        creator_id=creator.id,
-        assignee_id=assignee.id if assignee else None,
-        data=task_data,
-    )
-    db.add(task)
-    await db.flush()
-    channel_target = f"#{channel.name}" if channel.kind == "public" else channel.name
-    assignee_handle = f"@{assignee.display_name}" if assignee else None
+    task = None
+    rolled_back = False
+    for attempt in range(TASK_NUMBER_RETRY_LIMIT):
+        task = Task(
+            task_number=await _next_task_number(db, channel_id),
+            channel_id=channel_id,
+            message_id=parsed_message_id,
+            title=title,
+            description=body.get("description"),
+            status=status,
+            creator_id=creator_id,
+            assignee_id=assignee_id,
+            data=task_data,
+        )
+        db.add(task)
+        try:
+            await db.flush()
+            break
+        except IntegrityError as exc:
+            await db.rollback()
+            rolled_back = True
+            if "tasks_channel_id_task_number_key" not in str(exc) or attempt == TASK_NUMBER_RETRY_LIMIT - 1:
+                raise
+    if task is None:
+        raise HTTPException(500, "Task creation failed")
+
+    if rolled_back:
+        server = await _get_server(db)
+        channel_result = await db.execute(select(Channel).where(Channel.id == channel_id))
+        channel = channel_result.scalar_one()
+        creator_result = await db.execute(select(Member).where(Member.id == creator_id))
+        creator = creator_result.scalar_one()
+        if assignee_id:
+            assignee_result = await db.execute(select(Member).where(Member.id == assignee_id))
+            assignee = assignee_result.scalar_one_or_none()
+        channel_target = f"#{channel.name}" if channel.kind == "public" else channel.name
+
+    assignee_handle = f"@{assignee_name}" if assignee_name else None
 
     await _record_activity(
         db,
         server,
         creator,
         "supervisor_task_created",
-        f"@{creator.display_name} created task #{task.task_number}",
+        f"@{creator_name} created task #{task.task_number}",
         {
             "taskNumber": task.task_number,
             "title": task.title,
             "status": task.status,
             "assignee": assignee_handle,
-            "assigneeId": str(assignee.id) if assignee else None,
-            "targetAgentId": str(assignee.id) if assignee and assignee.kind == "agent" else None,
+            "assigneeId": str(assignee_id) if assignee_id else None,
+            "targetAgentId": str(assignee_id) if assignee_id and assignee_kind == "agent" else None,
             "target": channel_target,
             "channel": channel_target,
             "messageId": str(parsed_message_id) if parsed_message_id else None,
             "source": source_payload,
         },
-        channel_id=channel.id,
+        channel_id=channel_id,
         task_id=task.id,
     )
 
@@ -1151,6 +1722,139 @@ async def list_activity(
     }
 
 
+@router.get("/search")
+async def global_search(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(20),
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    if not server:
+        return {"results": [], "count": 0}
+
+    requested_limit = max(1, min(limit, 50))
+    safe_term = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{safe_term}%"
+    results = []
+
+    msg_stmt = (
+        select(Message, Channel)
+        .join(Channel, Message.channel_id == Channel.id)
+        .where(Channel.server_id == server.id, Message.content.ilike(pattern, escape="\\"))
+        .order_by(Message.created_at.desc())
+        .limit(requested_limit)
+    )
+    for msg, ch in (await db.execute(msg_stmt)).all():
+        sender = (await db.execute(select(Member).where(Member.id == msg.sender_id))).scalar_one_or_none()
+        channel_segment = quote(ch.name if ch else "", safe="")
+        message_query = f"thread={msg.parent_id}&message={msg.id}" if msg.parent_id else f"message={msg.id}"
+        results.append({
+            "type": "message",
+            "id": str(msg.id),
+            "title": (msg.content or "")[:120],
+            "content": msg.content,
+            "href": f"/chat/{channel_segment}?{message_query}" if ch else None,
+            "channel": _display_channel_target(ch) if ch else None,
+            "channelId": str(ch.id) if ch else None,
+            "sender": sender.display_name if sender else None,
+            "timestamp": msg.created_at.isoformat() if msg.created_at else None,
+        })
+
+    task_stmt = (
+        select(Task, Channel)
+        .join(Channel, Task.channel_id == Channel.id)
+        .where(
+            Channel.server_id == server.id,
+            or_(
+                Task.title.ilike(pattern, escape="\\"),
+                Task.description.ilike(pattern, escape="\\"),
+            ),
+        )
+        .order_by(Task.created_at.desc())
+        .limit(requested_limit)
+    )
+    for task, ch in (await db.execute(task_stmt)).all():
+        results.append({
+            "type": "task",
+            "id": str(task.id),
+            "taskNumber": task.task_number,
+            "title": task.title,
+            "description": task.description,
+            "status": task.status,
+            "channel": _display_channel_target(ch),
+            "href": f"/tasks?task={task.id}",
+        })
+
+    member_stmt = select(Member).where(
+        Member.server_id == server.id,
+        or_(
+            Member.display_name.ilike(pattern, escape="\\"),
+            Member.description.ilike(pattern, escape="\\"),
+        ),
+    ).limit(requested_limit)
+    for member in (await db.execute(member_stmt)).scalars().all():
+        results.append({
+            "type": "member",
+            "id": str(member.id),
+            "title": member.display_name,
+            "description": member.description,
+            "handle": f"@{member.display_name}",
+            "kind": member.kind,
+            "href": f"/members?member={member.id}",
+        })
+
+    channel_stmt = select(Channel).where(
+        Channel.server_id == server.id,
+        or_(
+            Channel.name.ilike(pattern, escape="\\"),
+            Channel.description.ilike(pattern, escape="\\"),
+        ),
+    ).limit(requested_limit)
+    for ch in (await db.execute(channel_stmt)).scalars().all():
+        channel_segment = quote(ch.name, safe="")
+        results.append({
+            "type": "channel",
+            "id": str(ch.id),
+            "title": _display_channel_target(ch),
+            "description": ch.description,
+            "channelType": ch.kind,
+            "href": f"/chat/{channel_segment}",
+        })
+
+    file_stmt = (
+        select(FileEntry, Channel)
+        .outerjoin(Channel, FileEntry.channel_id == Channel.id)
+        .where(
+            FileEntry.server_id == server.id,
+            or_(
+                FileEntry.original_name.ilike(pattern, escape="\\"),
+                FileEntry.file_name.ilike(pattern, escape="\\"),
+            ),
+        )
+        .order_by(FileEntry.created_at.desc())
+        .limit(requested_limit)
+    )
+    for f, ch in (await db.execute(file_stmt)).all():
+        serialized = _serialize_file(f)
+        channel_segment = quote(ch.name, safe="") if ch else ""
+        results.append({
+            "type": "file",
+            "id": str(f.id),
+            "title": f.original_name or f.file_name,
+            "mimeType": f.mime_type,
+            "size": f.size,
+            "channel": _display_channel_target(ch) if ch else None,
+            "channelId": str(ch.id) if ch else None,
+            "href": serialized["url"],
+            "downloadUrl": serialized["url"],
+            "previewUrl": serialized["previewUrl"],
+            "createdAt": serialized["createdAt"],
+        })
+
+    return {"results": results, "count": len(results), "query": q}
+
+
 @router.get("/files")
 async def list_files(
     channel_id: str | None = Query(None, alias="channelId"),
@@ -1174,6 +1878,127 @@ async def list_files(
     result = await db.execute(q)
     files = result.scalars().all()
     return {"files": [_serialize_file(item) for item in files], "count": len(files)}
+
+
+@router.post("/files")
+async def upload_file(
+    request: Request,
+    file: UploadFile = File(...),
+    channel_id: str = Query(..., alias="channelId"),
+    message_id: str | None = Query(None, alias="messageId"),
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    if not server:
+        raise HTTPException(500, "Server not initialized")
+
+    try:
+        parsed_channel_id = uuid.UUID(channel_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid channelId")
+
+    channel_result = await db.execute(
+        select(Channel).where(Channel.id == parsed_channel_id, Channel.server_id == server.id)
+    )
+    channel = channel_result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+
+    parsed_message_id = None
+    if message_id:
+        try:
+            parsed_message_id = uuid.UUID(message_id)
+        except ValueError:
+            raise HTTPException(400, "Invalid messageId")
+        message_result = await db.execute(
+            select(Message).where(Message.id == parsed_message_id, Message.channel_id == parsed_channel_id)
+        )
+        if not message_result.scalar_one_or_none():
+            raise HTTPException(404, "Message not found in channel")
+
+    member = await _resolve_human_actor(db, server, request, None, role="file upload")
+    if not member:
+        raise HTTPException(401, "Login required")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if len(data) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, f"File exceeds {MAX_UPLOAD_SIZE // (1024 * 1024)} MB limit")
+
+    mime_type = file.content_type or "application/octet-stream"
+    if mime_type in DANGEROUS_MIME_TYPES:
+        raise HTTPException(400, f"File type '{mime_type}' is not allowed")
+
+    file_id = uuid.uuid4()
+    safe_name = Path(file.filename or "attachment").name
+    storage_dir = UPLOAD_ROOT / str(server.id)
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    storage_path = storage_dir / f"{file_id}-{safe_name}"
+    storage_path.write_bytes(data)
+
+    entry = FileEntry(
+        id=file_id,
+        server_id=server.id,
+        channel_id=parsed_channel_id,
+        message_id=parsed_message_id,
+        uploaded_by=member.id,
+        file_name=safe_name,
+        original_name=safe_name,
+        mime_type=mime_type,
+        size=len(data),
+        storage_path=str(storage_path),
+        metadata_json={},
+    )
+    db.add(entry)
+    await db.flush()
+    await db.commit()
+    await db.refresh(entry)
+
+    return _serialize_file(entry)
+
+
+async def _get_public_attachment(db: AsyncSession, server: Server, attachment_id: str) -> FileEntry:
+    try:
+        parsed_id = uuid.UUID(attachment_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid attachment id")
+    result = await db.execute(
+        select(FileEntry).where(FileEntry.id == parsed_id, FileEntry.server_id == server.id)
+    )
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(404, "Attachment not found")
+    return entry
+
+
+@router.get("/attachments/{attachment_id}")
+async def preview_attachment(
+    attachment_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    await _resolve_human_actor(db, server, request, None, role="attachment viewer")
+    entry = await _get_public_attachment(db, server, attachment_id)
+    path = _safe_attachment_path(entry)
+    return FileResponse(path, media_type=entry.mime_type)
+
+
+@router.get("/attachments/{attachment_id}/download")
+async def download_public_attachment(
+    attachment_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    await _resolve_human_actor(db, server, request, None, role="attachment viewer")
+    entry = await _get_public_attachment(db, server, attachment_id)
+    path = _safe_attachment_path(entry)
+    return FileResponse(path, media_type=entry.mime_type, filename=entry.original_name)
 
 
 @router.get("/reminders")
@@ -1240,9 +2065,9 @@ async def update_member(member_id: str, request: Request, _auth: None = Depends(
         member.description = body["description"]
     config = dict(member.config or {})
     if "permissions" in body:
-        config["permissions"] = {**(config.get("permissions") or {}), **(body.get("permissions") or {})}
+        config["permissions"] = body.get("permissions") or {}
     if "actions" in body:
-        config["actions"] = {**(config.get("actions") or {}), **(body.get("actions") or {})}
+        config["actions"] = body.get("actions") or {}
     if "backend" in body:
         config["backend"] = body["backend"]
         member.backend = body["backend"]
@@ -1424,6 +2249,108 @@ async def generate_computer_reconnect_command(
         "name": computer.name,
         "command": _computer_connect_command(token, server_url),
         "expiresAt": expires_at.isoformat(),
+    }
+
+
+@router.post("/workspaces/{workspace_id}/lifecycle")
+async def control_workspace_lifecycle(
+    workspace_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    try:
+        parsed_workspace_id = uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid workspace id")
+
+    body = await request.json()
+    action = str(body.get("action") or "").strip().lower()
+    command_by_action = {
+        "start": "start_runtime",
+        "stop": "stop_runtime",
+        "restart": "restart_runtime",
+    }
+    command_type = command_by_action.get(action)
+    if command_type is None:
+        raise HTTPException(400, "Unsupported lifecycle action")
+
+    result = await db.execute(
+        select(AgentWorkspace, Member, Computer)
+        .join(Member, Member.id == AgentWorkspace.agent_id)
+        .join(Computer, Computer.id == AgentWorkspace.computer_id)
+        .where(
+            AgentWorkspace.id == parsed_workspace_id,
+            Member.server_id == server.id,
+            Computer.server_id == server.id,
+        )
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(404, "Workspace not found")
+    workspace, agent, computer = row
+
+    if computer.status not in {"online", "active"} or _lease_expired(computer.daemon_lease_expires_at):
+        raise HTTPException(409, "Daemon is offline; reconnect the computer before controlling runtimes")
+
+    config = dict(agent.config or {})
+    now = _utcnow_aware()
+    if action == "start":
+        config["runtimeDesiredStatus"] = "running"
+        workspace.status = PENDING_RUNTIME_START_STATUS
+        workspace.pid = None
+        workspace.stopped_at = None
+        if agent.status == "offline":
+            agent.status = "idle"
+    elif action == "stop":
+        config["runtimeDesiredStatus"] = "stopped"
+        workspace.status = "stopped"
+        workspace.pid = None
+        workspace.stopped_at = now
+        agent.status = "offline"
+    else:
+        config["runtimeDesiredStatus"] = "running"
+        workspace.status = PENDING_RUNTIME_START_STATUS
+        workspace.pid = None
+        workspace.stopped_at = now
+        if agent.status == "offline":
+            agent.status = "idle"
+    agent.config = config
+
+    event = runtime_control_command(workspace, agent, command_type)
+    delivered = await daemon_control_hub.push(computer.id, event)
+    await _record_activity(
+        db,
+        server,
+        agent,
+        "workspace_lifecycle",
+        f"@{agent.display_name} runtime {action} requested on {computer.name}",
+        {
+            "computerId": str(computer.id),
+            "workspaceId": str(workspace.id),
+            "runtime": workspace.runtime,
+            "status": workspace.status,
+            "action": action,
+            "delivered": delivered,
+        },
+    )
+
+    await db.commit()
+    await db.refresh(workspace)
+    await db.refresh(computer)
+    await push_latest_events_for_server(db, server_id=server.id)
+    return {
+        "ok": True,
+        "action": action,
+        "delivered": delivered,
+        "message": (
+            "Command delivered to the connected daemon"
+            if delivered
+            else "Command queued in workspace state; daemon heartbeat is required to observe it"
+        ),
+        "workspace": _serialize_workspace(workspace, agent),
+        "computer": await _serialize_computer(db, computer),
     }
 
 

@@ -14,10 +14,10 @@ Make "As Task" from message/thread reliable, visible, and traceable across Chat 
 
 ## Acceptance Criteria
 
-* [ ] User can create a task from a channel message.
-* [ ] User can create a task from a DM/thread context.
-* [ ] The resulting task links back to source.
-* [ ] Source link opens the correct conversation/thread.
+* [x] User can create a task from a channel message.
+* [x] User can create a task from a DM/thread context.
+* [x] The resulting task links back to source.
+* [x] Source link opens the correct conversation/thread.
 
 ## Real Test SOP
 

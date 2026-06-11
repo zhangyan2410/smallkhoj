@@ -170,7 +170,7 @@ In `get_events` (agent_api.py line 1087-1133), the SSE stream generator (`event_
 
 ### Broken or manual links
 
-**Gap I: No automatic task-to-worker routing.** When a supervisor creates a task with `assignee: "aaa"`, the task is stored with `assignee_id` set, but no `task_assigned` event is explicitly generated. The `task_created` event includes assignee info, but the worker's daemon inbox polling does not filter events by "tasks assigned to me." The worker receives ALL events for channels it belongs to. If multiple workers share a channel, each receives every task event.
+**Gap I (RESOLVED): Task-to-worker routing now uses `targetAgentId`.** When a supervisor creates a task with an agent `assignee`, the `task_created` event sets `targetAgentId` to the assigned agent's id. The daemon's `_event_visible_to_agent` filter delivers targeted events directly to the matching agent, bypassing channel membership checks. Non-targeted events (no `targetAgentId`) remain channel-scoped and are visible to all channel members, allowing any agent to claim them.
 
 **Gap J: Worker must know to poll events or check tasks.** There is no push mechanism from daemon to Claude runtime when a new task event arrives. The daemon's event polling (via `slock message check`) buffers events, and the daemon injects them into Claude's stdin as formatted text envelopes. But Claude must be actively running a turn to process them. If Claude has completed its turn and is idle, the daemon's inbox events wait until the next human prompt or daemon restart.
 

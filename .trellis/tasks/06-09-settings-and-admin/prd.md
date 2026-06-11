@@ -15,10 +15,10 @@ Build Settings/Admin surfaces for server, user, runtime defaults, feature flags,
 
 ## Acceptance Criteria
 
-* [ ] Settings route renders product-grade sections.
-* [ ] At least one setting is persisted or all unsupported settings are explicitly scoped.
-* [ ] Links to API keys/onboarding/debug docs are available.
-* [ ] Admin/destructive controls require confirmation.
+* [x] Settings route renders product-grade sections.
+* [x] At least one setting is persisted or all unsupported settings are explicitly scoped.
+* [x] Links to API keys/onboarding/debug docs are available.
+* [x] Admin/destructive controls require confirmation.
 
 ## Real Test SOP
 

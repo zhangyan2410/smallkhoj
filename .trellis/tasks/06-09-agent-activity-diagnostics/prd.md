@@ -15,10 +15,10 @@ Build a human-readable activity diagnostics panel for agents that summarizes run
 
 ## Acceptance Criteria
 
-* [ ] Agent Activity tab renders meaningful status without raw-log overload.
-* [ ] Recent lifecycle and delivery events are visible.
-* [ ] Errors/stopped states show human-readable explanations.
-* [ ] Trace links or references are available when relevant.
+* [x] Agent Activity tab renders meaningful status without raw-log overload.
+* [x] Recent lifecycle and delivery events are visible.
+* [x] Errors/stopped states show human-readable explanations.
+* [x] Trace links or references are available when relevant.
 
 ## Real Test SOP
 

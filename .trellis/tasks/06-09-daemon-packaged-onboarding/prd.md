@@ -14,10 +14,10 @@ Replace repo-path daemon commands with a product-grade packaged daemon onboardin
 
 ## Acceptance Criteria
 
-* [ ] Computer onboarding command does not require navigating repo internals.
-* [ ] Token safety invariant is preserved.
-* [ ] User sees expiration and troubleshooting guidance.
-* [ ] Real connect/reconnect path is verified or blocked gaps are documented.
+* [x] Computer onboarding command does not require navigating repo internals.
+* [x] Token safety invariant is preserved.
+* [x] User sees expiration and troubleshooting guidance.
+* [x] Real connect/reconnect path is verified or blocked gaps are documented.
 
 ## Real Test SOP
 

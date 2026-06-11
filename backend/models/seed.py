@@ -21,6 +21,7 @@ async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(text("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS token_hash VARCHAR(64)"))
+        await conn.execute(text("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP WITH TIME ZONE"))
         await conn.execute(text("ALTER TABLE computers ADD COLUMN IF NOT EXISTS machine_id VARCHAR(80)"))
         await conn.execute(text("ALTER TABLE computers ADD COLUMN IF NOT EXISTS active_daemon_id VARCHAR(80)"))
         await conn.execute(text("ALTER TABLE computers ADD COLUMN IF NOT EXISTS daemon_lease_expires_at TIMESTAMP WITH TIME ZONE"))
@@ -95,6 +96,21 @@ async def create_tables():
             "ALTER TABLE messages "
             "ADD COLUMN IF NOT EXISTS mentions UUID[] NOT NULL DEFAULT '{}'::uuid[]"
         ))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS saved_items (
+                id UUID PRIMARY KEY,
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                item_type VARCHAR(20) NOT NULL,
+                item_id UUID NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT uq_saved_items_account_item UNIQUE (account_id, item_type, item_id)
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_saved_items_account ON saved_items(account_id, created_at)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_saved_items_server ON saved_items(server_id, created_at)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_saved_items_item ON saved_items(item_type, item_id)"))
         await conn.execute(text("ALTER TABLE event_records DROP COLUMN IF EXISTS activity_id"))
         await conn.execute(text("""
             DO $$

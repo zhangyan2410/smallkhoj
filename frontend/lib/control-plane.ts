@@ -182,6 +182,8 @@ export function statusLabel(status: string) {
     running: "运行中",
     idle: "空闲",
     busy: "忙碌",
+    stopping: "停止中",
+    restarting: "重启中",
     stopped: "已停止",
     failed: "失败",
   }
@@ -201,6 +203,8 @@ export function dotClass(status: string) {
     case "pending_start":
     case "in_review":
     case "busy":
+    case "stopping":
+    case "restarting":
       return "bg-amber-500"
     case "in_progress":
       return "bg-sky-500"
@@ -227,6 +231,8 @@ export function badgeClass(status: string) {
     case "pending_start":
     case "in_review":
     case "busy":
+    case "stopping":
+    case "restarting":
       return "border-amber-200 bg-amber-50 text-amber-700"
     case "in_progress":
       return "border-sky-200 bg-sky-50 text-sky-700"

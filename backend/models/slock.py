@@ -34,6 +34,7 @@ class Server(Base):
     files = relationship("FileEntry", back_populates="server", lazy="selectin")
     reminders = relationship("Reminder", back_populates="server", lazy="selectin")
     api_keys = relationship("ApiKey", back_populates="server", lazy="selectin")
+    saved_items = relationship("SavedItem", back_populates="server", lazy="selectin")
 
 
 # ── Accounts ─────────────────────────────────────────────────
@@ -381,6 +382,30 @@ class FileEntry(Base):
     uploader = relationship("Member")
 
 
+# ── Saved Items ──────────────────────────────────────────────
+
+class SavedItem(Base):
+    __tablename__ = "saved_items"
+    __table_args__ = (
+        UniqueConstraint("account_id", "item_type", "item_id", name="uq_saved_items_account_item"),
+        Index("idx_saved_items_account", "account_id", "created_at"),
+        Index("idx_saved_items_server", "server_id", "created_at"),
+        Index("idx_saved_items_item", "item_type", "item_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    item_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    item_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+    server = relationship("Server", back_populates="saved_items")
+    account = relationship("Account")
+    member = relationship("Member")
+
+
 # ── Message Reactions ────────────────────────────────────────
 
 class MessageReaction(Base):
@@ -448,6 +473,7 @@ class ApiKey(Base):
     resource_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     server = relationship("Server", back_populates="api_keys")
 

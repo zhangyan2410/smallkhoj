@@ -33,10 +33,23 @@ function decodeChannelParam(value: string) {
   }
 }
 
-export default async function ChannelPage({ params }: { params: Promise<{ channel: string }> }) {
-  await requireCurrentAccount()
+type SearchParams = Promise<Record<string, string | string[] | undefined>>
+
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
+}
+
+export default async function ChannelPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ channel: string }>
+  searchParams: SearchParams
+}) {
+  const session = await requireCurrentAccount()
   const sessionToken = await getSessionToken()
   const { channel } = await params
+  const query = await searchParams
   const initialChannel = decodeChannelParam(channel)
   const encodedChannel = encodeURIComponent(initialChannel)
   const headers = await serverApiHeaders()
@@ -69,6 +82,9 @@ export default async function ChannelPage({ params }: { params: Promise<{ channe
       initialDms={dms}
       initialChannelId={matchedChannelId}
       sessionToken={sessionToken}
+      currentMemberId={session.member.id}
+      initialThreadId={firstParam(query.thread)}
+      initialMessageId={firstParam(query.message)}
     />
   )
 }

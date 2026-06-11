@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "06-11-06-11-saved-items-persistence"
+  ],
   "parent": "06-09-product-maturity-gap-decomposition",
   "relatedFiles": [],
   "notes": "",

@@ -1,13 +1,18 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import {
+  Camera,
   CheckSquare,
   Columns3,
+  Database,
   ExternalLink,
+  FileText,
   Filter,
   ListChecks,
+  MessageSquare,
   PanelRight,
   Plus,
+  Shield,
 } from "lucide-react"
 
 import { ProductShell } from "@/components/product-shell"
@@ -27,9 +32,20 @@ type Channel = {
   type: string
 }
 
+type EvidenceEntry = {
+  type: "screenshot" | "trace" | "api_proof" | "note" | "reviewer_decision" | "review_note"
+  path?: string
+  content?: string
+  note?: string
+  reviewer?: string
+  decision?: string
+  timestamp?: string
+}
+
 type TaskEvidence = {
   notes?: string[]
   links?: Array<{ label?: string; href?: string }>
+  entries?: EvidenceEntry[]
 }
 
 type TaskSource = {
@@ -61,6 +77,14 @@ type Task = {
   updatedAt?: string | null
 }
 
+type ActivityItem = {
+  id: string
+  agentName?: string | null
+  type: string
+  description: string
+  timestamp?: string | null
+}
+
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
 async function getTasks() {
@@ -73,6 +97,10 @@ async function getChannels() {
 
 async function getMembers() {
   return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] })
+}
+
+async function getTaskActivity(taskId: string) {
+  return apiGet<{ activity: ActivityItem[] }>(`/api/v1/activity?taskId=${encodeURIComponent(taskId)}&limit=20`, { activity: [] })
 }
 
 async function writeTask(path: string, body: Record<string, unknown>, method = "POST") {
@@ -126,6 +154,60 @@ async function updateTaskAction(formData: FormData) {
   )
   revalidatePath("/tasks")
   revalidatePath("/daemon")
+}
+
+async function addEvidenceAction(formData: FormData) {
+  "use server"
+  const taskId = String(formData.get("taskId") || "")
+  if (!taskId) return
+  const entryType = String(formData.get("entryType") || "note")
+  const entry: EvidenceEntry = {
+    type: entryType as EvidenceEntry["type"],
+    timestamp: new Date().toISOString(),
+  }
+  const path = String(formData.get("entryPath") || "").trim()
+  const content = String(formData.get("entryContent") || "").trim()
+  if (path) entry.path = path
+  if (content) entry.content = content
+  const existingData = JSON.parse(String(formData.get("currentData") || "{}")) as Record<string, unknown>
+  const existingEvidence = (existingData.evidence ?? { notes: [], links: [], entries: [] }) as TaskEvidence
+  const existingEntries = existingEvidence.entries ?? []
+  const mergedData = {
+    ...existingData,
+    evidence: {
+      ...existingEvidence,
+      entries: [...existingEntries, entry],
+    },
+  }
+  await writeTask(`/api/v1/tasks/${taskId}`, { data: mergedData }, "PATCH")
+  revalidatePath("/tasks")
+}
+
+async function addReviewNoteAction(formData: FormData) {
+  "use server"
+  const taskId = String(formData.get("taskId") || "")
+  if (!taskId) return
+  const decision = String(formData.get("reviewDecision") || "").trim()
+  const note = String(formData.get("reviewNote") || "").trim()
+  if (!decision && !note) return
+  const entry: EvidenceEntry = {
+    type: decision ? "reviewer_decision" : "review_note",
+    timestamp: new Date().toISOString(),
+  }
+  if (decision) entry.decision = decision
+  if (note) entry.note = note
+  const existingData = JSON.parse(String(formData.get("currentData") || "{}")) as Record<string, unknown>
+  const existingEvidence = (existingData.evidence ?? { notes: [], links: [], entries: [] }) as TaskEvidence
+  const existingEntries = existingEvidence.entries ?? []
+  const mergedData = {
+    ...existingData,
+    evidence: {
+      ...existingEvidence,
+      entries: [...existingEntries, entry],
+    },
+  }
+  await writeTask(`/api/v1/tasks/${taskId}`, { data: mergedData }, "PATCH")
+  revalidatePath("/tasks")
 }
 
 function firstParam(value: string | string[] | undefined, fallback = "") {
@@ -201,6 +283,16 @@ function taskHref(task: Task, filters: Record<string, string>) {
   return `/tasks?${params.toString()}`
 }
 
+function sourceHref(source: TaskSource) {
+  if (!source.channel) return null
+  const params = new URLSearchParams()
+  if (source.threadId) params.set("thread", source.threadId)
+  if (source.messageId) params.set("message", source.messageId)
+  const query = params.toString()
+  const path = `/chat/${encodeURIComponent(source.channel.replace(/^#/, ""))}`
+  return query ? `${path}?${query}` : path
+}
+
 function TaskCard({ task, filters }: { task: Task; filters: Record<string, string> }) {
   const source = task.data?.source
   return (
@@ -224,7 +316,8 @@ function TaskCard({ task, filters }: { task: Task; filters: Record<string, strin
           {source && (
             <div className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
               <ExternalLink className="size-3" />
-              {source.type || "source"} {source.messageShortId || source.messageId?.slice(0, 8)}
+              {source.channel || source.type || "source"}
+              {source.messageShortId || source.messageId ? ` · ${source.messageShortId || source.messageId?.slice(0, 8)}` : ""}
             </div>
           )}
         </CardContent>
@@ -233,12 +326,106 @@ function TaskCard({ task, filters }: { task: Task; filters: Record<string, strin
   )
 }
 
-function TaskDetail({ task }: { task?: Task }) {
+function dotClass(status: string) {
+  switch (status) {
+    case "online":
+    case "active":
+    case "running":
+    case "done":
+    case "fired":
+      return "bg-emerald-500"
+    case "idle":
+    case "pending":
+    case "in_review":
+      return "bg-amber-500"
+    case "in_progress":
+      return "bg-sky-500"
+    case "failed":
+    case "cancelled":
+    case "offline":
+    case "stopped":
+      return "bg-rose-500"
+    default:
+      return "bg-muted-foreground"
+  }
+}
+
+function EvidenceIcon({ type }: { type: EvidenceEntry["type"] }) {
+  switch (type) {
+    case "screenshot":
+      return <Camera className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+    case "trace":
+      return <FileText className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+    case "api_proof":
+      return <Database className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+    case "reviewer_decision":
+      return <Shield className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+    case "note":
+    case "review_note":
+      return <MessageSquare className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+  }
+}
+
+function entryLabel(type: EvidenceEntry["type"]) {
+  switch (type) {
+    case "screenshot": return "Screenshot"
+    case "trace": return "Trace"
+    case "api_proof": return "API/DB proof"
+    case "note": return "Note"
+    case "reviewer_decision": return "Review decision"
+    case "review_note": return "Review note"
+  }
+}
+
+function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border bg-background px-2.5 py-2">
+      <EvidenceIcon type={entry.type} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium">{entryLabel(entry.type)}</span>
+          {entry.timestamp && (
+            <span className="text-[0.65rem] text-muted-foreground">{formatTime(entry.timestamp)}</span>
+          )}
+        </div>
+        {entry.path && (
+          <div className="mt-1 truncate font-mono text-xs text-cyan-700">{entry.path}</div>
+        )}
+        {entry.content && (
+          <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{entry.content}</p>
+        )}
+        {entry.decision && (
+          <div className="mt-1">
+            <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium ${
+              entry.decision === "approved" || entry.decision === "pass"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : entry.decision === "rejected" || entry.decision === "fail"
+                  ? "border-rose-200 bg-rose-50 text-rose-700"
+                  : "border-border bg-muted text-muted-foreground"
+            }`}>
+              {entry.decision}
+            </span>
+          </div>
+        )}
+        {entry.note && (
+          <p className="mt-1 text-xs text-muted-foreground">{entry.note}</p>
+        )}
+        {entry.reviewer && (
+          <div className="mt-1 text-[0.65rem] text-muted-foreground">by @{entry.reviewer}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TaskDetail({ task, activity = [] }: { task?: Task; activity?: ActivityItem[] }) {
   if (!task) {
     return <EmptyState title="No task selected" description="Open a task from board or list to inspect source and evidence." />
   }
   const source = task.data?.source
   const evidence = task.data?.evidence
+  const entries = evidence?.entries ?? []
+  const sourceLink = source ? sourceHref(source) : null
   return (
     <div className="space-y-4">
       <div>
@@ -263,12 +450,53 @@ function TaskDetail({ task }: { task?: Task }) {
         </div>
       </div>
       <div className="rounded-md border bg-background p-3">
+        <h3 className="text-sm font-medium">Activity</h3>
+        {activity.length > 0 ? (
+          <div className="mt-2 space-y-2">
+            {activity.map((item) => (
+              <div key={item.id} className="flex items-start gap-2 text-xs">
+                <span className={`mt-0.5 size-1.5 rounded-full ${dotClass(item.type)}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="font-medium">{item.type}</span>
+                    {item.agentName && <span className="text-muted-foreground">@{item.agentName}</span>}
+                  </div>
+                  <p className="text-muted-foreground line-clamp-2">{item.description}</p>
+                  <span className="text-[0.65rem] text-muted-foreground">{formatTime(item.timestamp)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">No activity recorded yet.</p>
+        )}
+      </div>
+      <div className="rounded-md border bg-background p-3">
         <h3 className="text-sm font-medium">Source</h3>
         {source ? (
-          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-            <div>Type: {source.type || "message"}</div>
-            <div>Message: {source.messageShortId || source.messageId}</div>
-            <div>Thread: {source.threadId?.slice(0, 8) || "none"}</div>
+          <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <span className="font-medium">Type:</span> {source.type || "message"}
+            </div>
+            {source.messageId && (
+              <div className="flex items-center gap-1">
+                <span className="font-medium">Message:</span> {source.messageShortId || source.messageId.slice(0, 8)}
+              </div>
+            )}
+            {source.threadId && (
+              <div className="flex items-center gap-1">
+                <span className="font-medium">Thread:</span> {source.threadId.slice(0, 8)}
+              </div>
+            )}
+            {source.channel && sourceLink && (
+              <Link
+                href={sourceLink}
+                className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-100"
+              >
+                <MessageSquare className="size-3" />
+                Open {source.channel}
+              </Link>
+            )}
           </div>
         ) : (
           <p className="mt-2 text-xs text-muted-foreground">No source message linked yet.</p>
@@ -277,14 +505,69 @@ function TaskDetail({ task }: { task?: Task }) {
       <div className="rounded-md border bg-background p-3">
         <h3 className="text-sm font-medium">Evidence</h3>
         <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-          {(evidence?.notes || []).map((note) => <div key={note}>{note}</div>)}
-          {(evidence?.links || []).map((link) => (
-            <div key={`${link.label}-${link.href}`}>{link.label || link.href || "Evidence link"}</div>
+          {(evidence?.notes || []).map((note) => (
+            <div key={note} className="rounded-md border border-dashed bg-muted/30 px-2 py-1.5">{note}</div>
           ))}
-          {(!evidence?.notes?.length && !evidence?.links?.length) && (
-            <div>Evidence starts as task data notes/links; file-backed evidence belongs in the upcoming Files surface.</div>
+          {(evidence?.links || []).map((link) => (
+            <div key={`${link.label}-${link.href}`} className="flex items-center gap-1.5 rounded-md border border-dashed bg-muted/30 px-2 py-1.5">
+              <ExternalLink className="size-3" />
+              {link.label || link.href || "Evidence link"}
+            </div>
+          ))}
+          {entries.length > 0 && (
+            <div className="space-y-1.5">
+              {entries.map((entry, i) => (
+                <EvidenceEntryRow key={`${entry.type}-${entry.timestamp}-${i}`} entry={entry} />
+              ))}
+            </div>
+          )}
+          {(evidence?.notes?.length || 0) + (evidence?.links?.length || 0) + entries.length === 0 && (
+            <p className="text-muted-foreground">No evidence entries yet. Add screenshots, traces, API proofs, or notes below.</p>
           )}
         </div>
+        <form action={addEvidenceAction} className="mt-3 space-y-2 border-t pt-3">
+          <input type="hidden" name="taskId" value={task.id} />
+          <input type="hidden" name="currentData" value={JSON.stringify(task.data ?? {})} />
+          <div className="flex gap-2">
+            <select
+              name="entryType"
+              className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs"
+              defaultValue="note"
+            >
+              <option value="note">Note</option>
+              <option value="screenshot">Screenshot</option>
+              <option value="trace">Trace</option>
+              <option value="api_proof">API/DB proof</option>
+            </select>
+            <Input name="entryPath" placeholder="Path or reference" className="h-7 text-xs" />
+          </div>
+          <Input name="entryContent" placeholder="Evidence content or description" className="h-7 text-xs" />
+          <Button type="submit" size="sm" variant="outline" className="w-full text-xs">
+            <Plus className="size-3" />
+            Add Evidence
+          </Button>
+        </form>
+      </div>
+      <div className="rounded-md border bg-background p-3">
+        <h3 className="text-sm font-medium">Review</h3>
+        <form action={addReviewNoteAction} className="mt-2 space-y-2">
+          <input type="hidden" name="taskId" value={task.id} />
+          <input type="hidden" name="currentData" value={JSON.stringify(task.data ?? {})} />
+          <select
+            name="reviewDecision"
+            className="h-7 w-full rounded-md border bg-background px-2 text-xs"
+          >
+            <option value="">Select decision...</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="needs_work">Needs work</option>
+            <option value="reopened">Reopened</option>
+          </select>
+          <Input name="reviewNote" placeholder="Review or reopen note" className="h-7 text-xs" />
+          <Button type="submit" size="sm" variant="outline" className="w-full text-xs">
+            Submit Review
+          </Button>
+        </form>
       </div>
     </div>
   )
@@ -307,6 +590,11 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   const visibleTasks = filteredTasks(tasks, filters)
   const openTasks = tasks.filter((task) => task.status !== "done" && task.status !== "closed")
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? visibleTasks[0]
+  let activity: ActivityItem[] = []
+  if (selectedTask?.id) {
+    const result = await getTaskActivity(selectedTask.id)
+    activity = result.activity
+  }
   const creators = Array.from(new Set(tasks.map((task) => task.creator).filter((value): value is string => Boolean(value)))).sort()
   const assignees = Array.from(new Set(tasks.map((task) => task.assignee).filter((value): value is string => Boolean(value)))).sort()
 
@@ -326,7 +614,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
       session={session}
       sidebarTitle="Task Detail"
       sidebarDescription="Source and evidence for the selected work item."
-      sidebar={<TaskDetail task={selectedTask} />}
+      sidebar={<TaskDetail task={selectedTask} activity={activity} />}
       actions={
         <Link href="/daemon">
           <Button variant="outline" size="sm">
@@ -402,7 +690,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
                 </div>
                 <div>
                   <FieldLabel htmlFor="task-assignee">Assignee</FieldLabel>
-                  <Select id="task-assignee" name="assignee" items={agents.map((agent) => agent.handle ?? `@${agent.name}`)} />
+                  <Select id="task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} />
                 </div>
                 <div>
                   <FieldLabel htmlFor="task-status">Status</FieldLabel>
@@ -450,7 +738,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
                 </div>
                 <div>
                   <FieldLabel htmlFor="update-task-assignee">Assignee</FieldLabel>
-                  <Select id="update-task-assignee" name="assignee" items={agents.map((agent) => agent.handle ?? `@${agent.name}`)} />
+                  <Select id="update-task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} />
                 </div>
                 <div className="sm:col-span-2">
                   <Button type="submit" size="sm" variant="outline" className="w-full">

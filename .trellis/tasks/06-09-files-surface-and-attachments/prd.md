@@ -15,10 +15,10 @@ Build the Files product surface and attachment workflows for chat/conversation c
 
 ## Acceptance Criteria
 
-* [ ] Files tab renders for a conversation.
-* [ ] Attachment controls are visible and accessible.
-* [ ] A supported upload path persists and appears in Files, or backend gaps are documented with a child task.
-* [ ] Source message links work.
+* [x] Files tab renders for a conversation.
+* [x] Attachment controls are visible and accessible.
+* [x] A supported upload path persists and appears in Files, or backend gaps are documented with a child task.
+* [x] Source message links work.
 
 ## Real Test SOP
 

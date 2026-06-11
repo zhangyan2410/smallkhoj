@@ -17,11 +17,11 @@ Upgrade Computers into a product-grade operational surface for daemon connection
 
 ## Acceptance Criteria
 
-* [ ] Computers page can select a computer and render detail.
-* [ ] Connect/reconnect commands still work and hide machine tokens from browser.
-* [ ] Agent workspace rows show status, runtime, pid/session/cwd where available.
-* [ ] Lifecycle controls are visible only when supported or clearly disabled with reason.
-* [ ] Real WebDriver + API/trace evidence verifies at least one connect/reconnect or runtime status path.
+* [x] Computers page can select a computer and render detail.
+* [x] Connect/reconnect commands still work and hide machine tokens from browser.
+* [x] Agent workspace rows show status, runtime, pid/session/cwd where available.
+* [x] Lifecycle controls are visible only when supported or clearly disabled with reason.
+* [x] Real WebDriver + API/trace evidence verifies at least one connect/reconnect or runtime status path.
 
 ## Real Test SOP
 

@@ -1,12 +1,12 @@
 import Link from "next/link"
-import { AtSign, Hash, MessageSquare, Plus } from "lucide-react"
+import { Hash, MessageSquare } from "lucide-react"
 
 import { ProductShell } from "@/components/product-shell"
 import { EmptyState, RuntimeChip } from "@/components/product-ui"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { apiGet, type Member } from "@/lib/control-plane"
 import { requireCurrentAccount } from "@/lib/server-auth"
+import { DmStarter } from "./dm-starter"
 
 type Channel = {
   id: string
@@ -29,10 +29,14 @@ function channelPathSegment(name: string) {
 
 export default async function ChatPage() {
   const session = await requireCurrentAccount()
-  const [{ channels }, { dms }] = await Promise.all([
+  const [{ channels }, { dms }, { members: allMembers }] = await Promise.all([
     apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] }),
     apiGet<{ dms: DmInfo[] }>("/api/v1/dms", { dms: [] }),
+    apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }),
   ])
+  const agents = (allMembers || []).filter((m: Member) => m.kind === "agent").sort(
+    (a: Member, b: Member) => (a.displayName || a.name).localeCompare(b.displayName || b.name)
+  )
 
   return (
     <ProductShell
@@ -90,20 +94,14 @@ export default async function ChatPage() {
                 href={`/chat/${channelPathSegment(dm.name)}`}
                 className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-accent"
               >
-                <AtSign className="size-4 text-cyan-700" />
                 <span className="min-w-0 flex-1 truncate font-medium">
-                  {dm.peer?.displayName || dm.peer?.name || dm.displayName}
+                  {dm.peer?.displayName || dm.displayName}
                 </span>
                 <span className="text-xs text-muted-foreground">DM</span>
               </Link>
             ))}
             {dms.length === 0 && <EmptyState title="No DMs" description="Start a DM from the workbench quick start." />}
-            <Link href="/">
-              <Button variant="outline" size="sm">
-                <Plus className="size-4" />
-                Start from Workbench
-              </Button>
-            </Link>
+            <DmStarter agents={agents} />
           </CardContent>
         </Card>
       </div>

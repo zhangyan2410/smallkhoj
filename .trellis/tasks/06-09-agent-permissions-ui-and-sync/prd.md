@@ -14,10 +14,10 @@ Productize agent permissions so humans can view/edit what an agent may do, and a
 
 ## Acceptance Criteria
 
-* [ ] Agent permissions are visible and editable.
-* [ ] Refresh preserves edited permission config.
-* [ ] Runtime/daemon-facing config includes the updated permissions or backend follow-up is created.
-* [ ] UI communicates enforcement status honestly.
+* [x] Agent permissions are visible and editable.
+* [x] Refresh preserves edited permission config.
+* [x] Runtime/daemon-facing config includes the updated permissions or backend follow-up is created.
+* [x] UI communicates enforcement status honestly.
 
 ## Real Test SOP
 

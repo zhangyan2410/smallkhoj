@@ -14,10 +14,10 @@ Make threads a first-class collaboration surface with root context, replies, sta
 
 ## Acceptance Criteria
 
-* [ ] Opening a thread shows the root and replies.
-* [ ] Sending a reply updates the thread and root reply count.
-* [ ] API fields agree with visible state.
-* [ ] DM thread and channel thread paths both work.
+* [x] Opening a thread shows the root and replies.
+* [x] Sending a reply updates the thread and root reply count.
+* [x] API fields agree with visible state.
+* [x] DM thread and channel thread paths both work.
 
 ## Real Test SOP
 

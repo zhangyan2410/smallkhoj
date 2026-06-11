@@ -81,6 +81,31 @@ def runtime_start_command(workspace: AgentWorkspace, agent: Member) -> dict[str,
     }
 
 
+def runtime_control_command(workspace: AgentWorkspace, agent: Member, command_type: str) -> dict[str, Any]:
+    """Build a daemon control envelope for a supported workspace lifecycle action."""
+    if command_type == "start_runtime":
+        return runtime_start_command(workspace, agent)
+    if command_type not in {"stop_runtime", "restart_runtime"}:
+        raise ValueError(f"Unsupported runtime control command: {command_type}")
+
+    config = runtime_start_command(workspace, agent)["command"]["config"]
+    command = {
+        "type": command_type,
+        "agentId": str(agent.id),
+        "workspaceId": str(workspace.id),
+        "config": config,
+    }
+    return {
+        "type": "control",
+        "event_type": "control",
+        "eventType": "control",
+        "controlType": command_type,
+        "agentId": str(agent.id),
+        "workspaceId": str(workspace.id),
+        "command": command,
+    }
+
+
 async def pending_runtime_commands(
     db: AsyncSession,
     *,

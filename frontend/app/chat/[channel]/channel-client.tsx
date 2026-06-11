@@ -1,10 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   Activity,
-  AtSign,
   Bookmark,
   CheckSquare,
   Clipboard,
@@ -13,7 +12,6 @@ import {
   ImageIcon,
   ListChecks,
   MessageCircle,
-  MoreHorizontal,
   Paperclip,
   Plus,
   Send,
@@ -26,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { RuntimeChip } from "@/components/product-ui"
+import { MarkdownMessage } from "@/components/markdown-message"
 import {
   apiGet,
   apiPost,
@@ -49,6 +48,14 @@ type ThreadSummary = {
   summary?: string | null
   status?: string | null
 }
+type ReactionItem = {
+  id: string
+  reaction: string
+  memberId: string
+  member: string | null
+  createdAt?: string | null
+}
+
 type ChannelMessage = {
   id: string
   shortId?: string
@@ -62,6 +69,8 @@ type ChannelMessage = {
   threadShortId?: string | null
   replyCount?: number
   threadSummary?: ThreadSummary | null
+  reactions?: ReactionItem[]
+  reactionCounts?: Record<string, number>
 }
 type ThreadData = {
   thread?: ChannelMessage
@@ -69,6 +78,27 @@ type ThreadData = {
   messages?: ChannelMessage[]
   replyCount?: number
   threadSummary?: ThreadSummary | null
+}
+type FileItem = {
+  id: string
+  attachmentId: string
+  serverId: string
+  channelId: string | null
+  messageId: string | null
+  uploadedBy: string
+  fileName: string
+  originalName: string
+  mimeType: string
+  size: number
+  url: string
+  previewUrl: string | null
+  metadata: Record<string, unknown>
+  createdAt: string | null
+}
+type SavedItem = {
+  id: string
+  itemType: string
+  itemId: string
 }
 
 const conversationTabs = [
@@ -81,6 +111,20 @@ function channelPathSegment(value: string) {
   return encodeURIComponent(value)
 }
 
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function createLatencyTraceId(prefix = "chat") {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().slice(0, 12)
+      : Math.random().toString(36).slice(2, 14)
+  return `${prefix}:${Date.now().toString(36)}:${random}`
+}
+
 export function ChannelClient({
   initialChannel,
   initialMessages = [],
@@ -90,6 +134,9 @@ export function ChannelClient({
   initialDms = [],
   initialChannelId = "",
   sessionToken,
+  currentMemberId,
+  initialThreadId,
+  initialMessageId,
 }: {
   initialChannel: string
   initialMessages?: ChannelMessage[]
@@ -99,6 +146,9 @@ export function ChannelClient({
   initialDms?: DmInfo[]
   initialChannelId?: string
   sessionToken?: string | null
+  currentMemberId?: string | null
+  initialThreadId?: string
+  initialMessageId?: string
 }) {
   const [channelName, setChannelName] = useState(initialChannel)
   const [messages, setMessages] = useState<ChannelMessage[]>(initialMessages)
@@ -108,20 +158,29 @@ export function ChannelClient({
   const [dms, setDms] = useState<DmInfo[]>(initialDms)
   const [input, setInput] = useState("")
   const [threadInput, setThreadInput] = useState("")
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null)
   const [threadData, setThreadData] = useState<ThreadData | null>(null)
   const [threadLoading, setThreadLoading] = useState(false)
   const [showMembers, setShowMembers] = useState(true)
   const [channelId, setChannelId] = useState(initialChannelId)
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(() => new Set())
-  const [reactedMessageIds, setReactedMessageIds] = useState<Set<string>>(() => new Set())
   const [taskMessageIds, setTaskMessageIds] = useState<Set<string>>(() => new Set())
+  const [taskLinks, setTaskLinks] = useState<Record<string, string>>({})
+  const [asTask, setAsTask] = useState(false)
+  const [activeTab, setActiveTab] = useState<"chat" | "tasks" | "files">("chat")
+  const [files, setFiles] = useState<FileItem[]>([])
+  const [filesLoading, setFilesLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
+  const dmAgentSelectRef = useRef<HTMLSelectElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const currentChannel = channels.find((c) => c.name.replace("#", "") === channelName)
   const currentDm = dms.find((dm) => dm.name === channelName)
   const currentTitle = currentDm?.displayName ?? (currentChannel?.name ?? `#${channelName}`)
   const currentIsDm = Boolean(currentDm)
+  const didReact = (message: ChannelMessage, emoji: string) =>
+    Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
 
   useEffect(() => {
     let cancelled = false
@@ -129,7 +188,7 @@ export function ChannelClient({
       const decodedChannel = initialChannel
       const encodedChannel = channelPathSegment(decodedChannel)
       setChannelName(decodedChannel)
-      setActiveThreadId(null)
+      setActiveThreadId(initialThreadId ?? null)
       setThreadData(null)
       const h = apiHeaders(sessionToken)
       const msgsRes = await fetch(`${API_BASE}/api/v1/channels/${encodedChannel}/messages?limit=50&threadMode=roots`, { headers: h })
@@ -158,10 +217,102 @@ export function ChannelClient({
       }
       const membersRes = await fetch(`${API_BASE}/api/v1/members`, { headers: h })
       if (membersRes.ok) { const d = await membersRes.json(); if (!cancelled) setAllMembers(d.members || []) }
+      if (initialThreadId && !cancelled) {
+        setThreadLoading(true)
+        try {
+          const data = await apiGet<ThreadData>(`/api/v1/threads/${encodeURIComponent(initialThreadId)}`, {}, sessionToken)
+          if (!cancelled) setThreadData(data)
+        } finally {
+          if (!cancelled) setThreadLoading(false)
+        }
+      }
     }
     void loadChannel()
     return () => { cancelled = true }
-  }, [initialChannel, sessionToken])
+  }, [initialChannel, initialThreadId, sessionToken])
+
+  useEffect(() => {
+    if (!initialMessageId) return
+    const timer = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(`[data-testid="message-${initialMessageId}"]`)
+      target?.scrollIntoView({ block: "center" })
+      target?.focus()
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [initialMessageId, messages])
+
+  const refreshFiles = useCallback(async () => {
+    if (!channelId) return
+    setFilesLoading(true)
+    try {
+      const data = await apiGet<{ files: FileItem[]; count: number }>(
+        `/api/v1/files?channelId=${encodeURIComponent(channelId)}`,
+        { files: [], count: 0 },
+        sessionToken,
+      )
+      setFiles(data.files || [])
+    } catch (e) {
+      console.error("Refresh files failed:", e)
+      setFiles([])
+    } finally {
+      setFilesLoading(false)
+    }
+  }, [channelId, sessionToken])
+
+  const refreshSavedItems = useCallback(async () => {
+    const data = await apiGet<{ saved: SavedItem[] }>(
+      "/api/v1/saved?limit=50",
+      { saved: [] },
+      sessionToken,
+    )
+    setSavedMessageIds(new Set((data.saved || []).filter((item) => item.itemType === "message").map((item) => item.itemId)))
+  }, [sessionToken])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void refreshSavedItems()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [refreshSavedItems])
+
+  async function handleFileUpload(file: File) {
+    if (!channelId || !file) return
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const h = apiHeaders(sessionToken)
+      const url = `${API_BASE}/api/v1/files?channelId=${encodeURIComponent(channelId)}`
+      const response = await fetch(url, {
+        method: "POST",
+        headers: h,
+        body: formData,
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error((error as { detail?: string }).detail || `HTTP ${response.status}`)
+      }
+      await refreshFiles()
+      if (activeTab !== "files") {
+        setActiveTab("files")
+      }
+    } catch (e) {
+      console.error("Upload failed:", e)
+      alert(`Upload failed: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function openFilePicker(accept?: string) {
+    if (!fileInputRef.current || uploading) return
+    if (accept) {
+      fileInputRef.current.accept = accept
+    } else {
+      fileInputRef.current.removeAttribute("accept")
+    }
+    fileInputRef.current.click()
+  }
 
   async function refreshMessages() {
     const encodedChannel = channelPathSegment(channelName)
@@ -216,8 +367,16 @@ export function ChannelClient({
     if (!input.trim()) return
     try {
       const encodedChannel = channelPathSegment(channelName)
-      await apiPost(`/api/v1/channels/${encodedChannel}/messages`, { content: input.trim() }, sessionToken)
+      const traceId = createLatencyTraceId("chat-send")
+      const result = await apiPost<{ id: string }>(`/api/v1/channels/${encodedChannel}/messages`, { content: input.trim(), traceId }, sessionToken)
       setInput("")
+      if (asTask) {
+        setAsTask(false)
+        await createTaskFromContent(input.trim(), result?.id)
+        if (result?.id) {
+          setTaskMessageIds((previous) => new Set(previous).add(result.id))
+        }
+      }
       await refreshMessages()
     } catch (e) {
       console.error("Send failed:", e)
@@ -228,9 +387,11 @@ export function ChannelClient({
     if (!threadInput.trim() || !activeThreadId) return
     try {
       const encodedChannel = channelPathSegment(channelName)
+      const traceId = createLatencyTraceId("thread-send")
       await apiPost(`/api/v1/channels/${encodedChannel}/messages`, {
         content: threadInput.trim(),
         threadId: activeThreadId,
+        traceId,
       }, sessionToken)
       setThreadInput("")
       await Promise.all([refreshMessages(), refreshThread(activeThreadId)])
@@ -239,34 +400,58 @@ export function ChannelClient({
     }
   }
 
+  async function createTaskFromContent(content: string, messageId?: string) {
+    const mentionPattern = /@([A-Za-z0-9_\-]+)/g
+    const mentions = Array.from(content.matchAll(mentionPattern)).map((m) => m[1])
+    const agentPool = allMembers.length > 0 ? allMembers : members
+    const mentionedAgent = mentions
+      .map((handle) => {
+        const clean = handle.startsWith("@") ? handle.slice(1) : handle
+        return agentPool.find(
+          (m) => m.kind === "agent" && (m.displayName === clean || m.handle === `@${clean}` || m.handle === clean)
+        )
+      })
+      .find(Boolean)
+
+    const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
+    const assignee = mentionedAgent?.handle
+      ?? mentionedAgent?.displayName
+      ?? dmAgent?.handle
+      ?? dmAgent?.displayName
+      ?? null
+
+    const taskTitle = content.length > 72 ? `${content.slice(0, 69)}...` : content
+    const sourceChannel = currentDm?.name ?? currentChannel?.name ?? `#${channelName}`
+    const result = await apiPost<{ task?: { id?: string } }>("/api/v1/tasks", {
+      channel: sourceChannel,
+      title: taskTitle || "New task",
+      description: `Created from ${currentTitle} message.`,
+      assignee,
+      status: "todo",
+      messageId,
+      data: {
+        source: {
+          type: "message",
+          channel: sourceChannel,
+          messageId,
+        },
+        evidence: {
+          notes: ["Created from chat message."],
+          links: [],
+        },
+      },
+    }, sessionToken)
+    return result.task?.id ?? null
+  }
+
   async function handleCreateTaskFromMessage(message: ChannelMessage) {
     if (taskMessageIds.has(message.id)) return
-    const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
-    const channelAgent = !currentIsDm ? members.find((member) => member.kind === "agent") : null
-    const assignee = dmAgent?.handle
-      ?? dmAgent?.name
-      ?? channelAgent?.handle
-      ?? channelAgent?.name
-      ?? null
-    const taskTitle = message.content.length > 72
-      ? `${message.content.slice(0, 69)}...`
-      : message.content
     try {
-      await apiPost("/api/v1/tasks", {
-        channel: currentDm?.name ?? currentChannel?.name ?? `#${channelName}`,
-        title: taskTitle || `Follow up ${message.shortId ?? message.id.slice(0, 8)}`,
-        description: `Created from ${currentTitle} message ${message.shortId ?? message.id.slice(0, 8)}.`,
-        assignee,
-        status: "todo",
-        messageId: message.id,
-        data: {
-          evidence: {
-            notes: ["Created from chat message action."],
-            links: [],
-          },
-        },
-      }, sessionToken)
+      const taskId = await createTaskFromContent(message.content, message.id)
       setTaskMessageIds((previous) => new Set(previous).add(message.id))
+      if (taskId) {
+        setTaskLinks((previous) => ({ ...previous, [message.id]: taskId }))
+      }
     } catch (e) {
       console.error("Create task from message failed:", e)
     }
@@ -280,90 +465,108 @@ export function ChannelClient({
     }
   }
 
-  function toggleSaved(messageId: string) {
+  async function toggleSaved(messageId: string) {
+    const isSaved = savedMessageIds.has(messageId)
     setSavedMessageIds((previous) => {
       const next = new Set(previous)
-      if (next.has(messageId)) next.delete(messageId)
+      if (isSaved) next.delete(messageId)
       else next.add(messageId)
       return next
     })
+    try {
+      if (isSaved) {
+        await apiDelete(`/api/v1/saved?itemType=message&itemId=${encodeURIComponent(messageId)}`, sessionToken)
+      } else {
+        await apiPost("/api/v1/saved", { itemType: "message", itemId: messageId }, sessionToken)
+      }
+    } catch (e) {
+      console.error("Save message failed:", e)
+      await refreshSavedItems()
+    }
   }
 
-  function toggleReaction(messageId: string) {
-    setReactedMessageIds((previous) => {
-      const next = new Set(previous)
-      if (next.has(messageId)) next.delete(messageId)
-      else next.add(messageId)
-      return next
-    })
+  async function toggleReaction(message: ChannelMessage, emoji = "👍") {
+    const hasReacted = didReact(message, emoji)
+    try {
+      const h = apiHeaders(sessionToken)
+      const url = `${API_BASE}/api/v1/messages/${encodeURIComponent(message.id)}/reactions`
+      if (hasReacted) {
+        await fetch(url, {
+          method: "DELETE",
+          headers: { ...h, "Content-Type": "application/json" },
+          body: JSON.stringify({ reaction: emoji }),
+        })
+      } else {
+        await fetch(url, {
+          method: "POST",
+          headers: { ...h, "Content-Type": "application/json" },
+          body: JSON.stringify({ reaction: emoji }),
+        })
+      }
+      await refreshMessages()
+      if (activeThreadId) await refreshThread(activeThreadId)
+    } catch (e) {
+      console.error("Reaction failed:", e)
+    }
   }
 
-  function renderMessageActions(message: ChannelMessage, compact = false) {
+  function renderMessageActions(message: ChannelMessage) {
+    const hasReacted = didReact(message, "👍")
+    const isSaved = savedMessageIds.has(message.id)
+    const isTasked = taskMessageIds.has(message.id)
     return (
-      <div className={`${compact ? "mt-2" : "mt-3 border-t pt-2"} flex flex-wrap items-center gap-1`}>
-        {!compact && (
-          <button
-            type="button"
-            onClick={() => openThread(message)}
-            aria-label="Reply in thread"
-            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <MessageCircle className="size-3" />
-            Reply
-          </button>
-        )}
+      <div className="flex items-center gap-0.5">
         <button
           type="button"
-          onClick={() => toggleReaction(message.id)}
-          aria-label="React to message"
-          className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium ${
-            reactedMessageIds.has(message.id) ? "bg-amber-50 text-amber-700" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
+          onClick={() => openThread(message)}
+          aria-label="Reply in thread"
+          title="Reply"
+          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Smile className="size-3" />
-          {reactedMessageIds.has(message.id) ? "+1" : "React"}
+          <MessageCircle className="size-3.5" />
         </button>
         <button
           type="button"
-          onClick={() => toggleSaved(message.id)}
-          aria-label="Save message"
-          className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium ${
-            savedMessageIds.has(message.id) ? "bg-cyan-50 text-cyan-800" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={() => toggleReaction(message, "👍")}
+          aria-label="React to message"
+          title="React"
+          className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
+            hasReacted ? "text-amber-600" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Bookmark className="size-3" />
-          {savedMessageIds.has(message.id) ? "Saved" : "Save"}
+          <Smile className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => void toggleSaved(message.id)}
+          aria-label="Save message"
+          title="Save"
+          className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
+            isSaved ? "text-cyan-600" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Bookmark className="size-3.5" />
         </button>
         <button
           type="button"
           onClick={() => handleCreateTaskFromMessage(message)}
           aria-label="Create task from message"
-          className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium ${
-            taskMessageIds.has(message.id) ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="As Task"
+          className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
+            isTasked ? "text-emerald-600" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <CheckSquare className="size-3" />
-          {taskMessageIds.has(message.id) ? "Task" : "As Task"}
+          <CheckSquare className="size-3.5" />
         </button>
         <button
           type="button"
           onClick={() => handleCopyMessage(message)}
           aria-label="Copy message"
-          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="Copy"
+          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Clipboard className="size-3" />
-          Copy
+          <Clipboard className="size-3.5" />
         </button>
-        {!compact && (
-          <button
-            type="button"
-            aria-label="Open message menu"
-            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <MoreHorizontal className="size-3" />
-            More
-          </button>
-        )}
       </div>
     )
   }
@@ -376,6 +579,29 @@ export function ChannelClient({
     } catch (e) {
       console.error("Remove member failed:", e)
     }
+  }
+
+  async function handleCreateDm() {
+    const peerName = dmAgentSelectRef.current?.value
+    if (!peerName) return
+    try {
+      const data = await apiPost<{ channel: DmInfo }>("/api/v1/dm", { peer: peerName }, sessionToken)
+      if (data?.channel) {
+        if (dmAgentSelectRef.current) dmAgentSelectRef.current.value = ""
+        await refreshDms()
+        const dmName = data.channel.name
+        if (dmName) {
+          window.location.href = `/chat/${channelPathSegment(dmName)}`
+        }
+      }
+    } catch (e) {
+      console.error("Create DM failed:", e)
+    }
+  }
+
+  async function refreshDms() {
+    const data = await apiGet<{ dms: DmInfo[] }>("/api/v1/dms", { dms: [] }, sessionToken)
+    setDms(data.dms || [])
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -435,6 +661,31 @@ export function ChannelClient({
             ))}
           </div>
           <h3 className="mb-2 mt-5 text-xs font-medium uppercase text-muted-foreground">DMs</h3>
+          <div className="mb-2 flex gap-2">
+            <select
+              aria-label="Start DM with agent"
+              ref={dmAgentSelectRef}
+              className="flex-1 rounded-md border bg-background px-2 py-1 text-sm"
+            >
+              <option value="">Select agent...</option>
+              {allMembers
+                .filter((m) => m.kind === "agent")
+                .sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name))
+                .map((m) => (
+                  <option key={m.id} value={m.displayName}>
+                    {m.displayName}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="button"
+              aria-label="Start DM"
+              onClick={handleCreateDm}
+              className="inline-flex h-7 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-[0.8rem] font-medium text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <Plus className="size-3" />
+            </button>
+          </div>
           <div className="space-y-1">
             {[...dms].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((dm) => (
               <Link
@@ -445,8 +696,7 @@ export function ChannelClient({
                 }`}
               >
                 <span className="inline-flex min-w-0 items-center gap-1">
-                  <AtSign className="size-3" />
-                  <span className="truncate">{dm.peer?.displayName || dm.peer?.name || dm.displayName.replace(/^DM @/, "")}</span>
+                  <span className="truncate">{dm.peer?.displayName || dm.displayName.replace(/^DM @/, "")}</span>
                   <span className={`ml-auto size-1.5 rounded-full ${dotClass(dm.peer?.status || "offline")}`} />
                 </span>
               </Link>
@@ -458,7 +708,7 @@ export function ChannelClient({
           {members.map((m) => (
             <div key={m.id} className="flex items-center gap-2 py-0.5 text-sm">
               <span className={`size-2 rounded-full ${dotClass(m.status)}`} />
-              <span className="truncate">{m.name}</span>
+              <span className="truncate">{m.displayName}</span>
               <span className="text-xs text-muted-foreground">{m.kind}</span>
             </div>
           ))}
@@ -486,56 +736,199 @@ export function ChannelClient({
             </Button>
           </div>
           <div className="mt-3 flex gap-1">
-            {conversationTabs.map(({ label, icon: Icon }) => (
-              <button
-                key={String(label)}
-                type="button"
-                className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium ${
-                  label === "Chat" ? "border-cyan-200 bg-cyan-50 text-cyan-800" : "bg-background text-muted-foreground"
-                }`}
-              >
-                <Icon className="size-3.5" />
-                {label}
-              </button>
-            ))}
+            {conversationTabs.map(({ label, icon: Icon }) => {
+              const tabKey = label.toLowerCase() as "chat" | "tasks" | "files"
+              const isActive = activeTab === tabKey
+              return (
+                <button
+                  key={String(label)}
+                  type="button"
+                  onClick={() => {
+                    if (tabKey === "tasks") {
+                      window.location.href = `/tasks?channel=${encodeURIComponent(currentChannel?.name ?? currentDm?.name ?? channelName)}`
+                      return
+                    }
+                    setActiveTab(tabKey)
+                    if (tabKey === "files") {
+                      void refreshFiles()
+                    }
+                  }}
+                  className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
+                    isActive
+                      ? "border-cyan-200 bg-cyan-50 text-cyan-800"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </header>
 
         <div className="flex flex-1 overflow-hidden">
           <div className="flex flex-1 flex-col">
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="mx-auto max-w-3xl space-y-3">
-                {messages.map((msg) => (
-                  <div key={msg.id} className="rounded-lg border bg-card p-3 shadow-sm shadow-slate-200/40">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span
-                        className={`font-semibold ${
-                          msg.senderType === "agent" ? "text-blue-600" : "text-green-600"
-                        }`}
-                      >
-                        {msg.sender}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{msg.time}</span>
-                    </div>
-                    <p className="mt-1 whitespace-pre-wrap">{msg.content}</p>
-                    {(msg.replyCount || msg.threadSummary) && (
-                      <div className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                        {msg.threadSummary?.summary && (
-                          <p className="mb-2 text-muted-foreground">{msg.threadSummary.summary}</p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => openThread(msg)}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-foreground hover:underline"
-                        >
-                          <MessageCircle className="size-3" />
-                          {msg.replyCount ? `${msg.replyCount} replies` : "Reply"}
-                        </button>
-                      </div>
-                    )}
-                    {renderMessageActions(msg)}
+            {activeTab === "files" ? (
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="mx-auto max-w-3xl">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold">Files</h2>
+                    <span className="text-xs text-muted-foreground">{files.length} file{files.length === 1 ? "" : "s"}</span>
                   </div>
-                ))}
+                  {filesLoading && <p className="py-12 text-center text-sm text-muted-foreground">Loading files...</p>}
+                  {!filesLoading && files.length === 0 && (
+                    <div className="rounded-lg border border-dashed py-12 text-center">
+                      <Files className="mx-auto size-8 text-muted-foreground/50" />
+                      <p className="mt-2 text-sm text-muted-foreground">No files in {currentTitle} yet.</p>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {files.map((file) => {
+                      const uploader = allMembers.find((m) => m.id === file.uploadedBy) ?? members.find((m) => m.id === file.uploadedBy)
+                      const isImage = file.mimeType.startsWith("image/")
+                      return (
+                        <div key={file.id} className="group/file flex items-start gap-3 rounded-lg border bg-card p-3 shadow-sm shadow-slate-200/40">
+                          <div className={`flex size-10 shrink-0 items-center justify-center rounded-md border ${isImage ? "bg-sky-50 border-sky-200" : "bg-muted border-border"}`}>
+                            {isImage ? <ImageIcon className="size-5 text-sky-600" /> : <Files className="size-5 text-muted-foreground" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-sm font-medium">{file.originalName}</span>
+                              <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>{uploader?.displayName || "Unknown"}</span>
+                              <span>·</span>
+                              <span>{file.createdAt ? new Date(file.createdAt).toLocaleString() : ""}</span>
+                            </div>
+                            <div className="mt-1.5 flex items-center gap-2">
+                              {file.messageId && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab("chat")
+                                    const timer = window.setTimeout(() => {
+                                      const target = document.querySelector<HTMLElement>(`[data-testid="message-${file.messageId}"]`)
+                                      target?.scrollIntoView({ block: "center" })
+                                      target?.focus()
+                                    }, 150)
+                                    window.setTimeout(() => window.clearTimeout(timer), 5000)
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-700 hover:bg-cyan-100"
+                                >
+                                  <MessageCircle className="size-3" />
+                                  Open message
+                                </button>
+                              )}
+                              {file.previewUrl && (
+                                <a
+                                  href={`${API_BASE}${file.previewUrl}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
+                                >
+                                  <ImageIcon className="size-3" />
+                                  Preview
+                                </a>
+                              )}
+                              <a
+                                href={`${API_BASE}${file.url}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
+                              >
+                                Download
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex-1 overflow-y-auto p-4">
+              <div className="mx-auto max-w-3xl space-y-3">
+                {messages.map((msg) => {
+                  const isSaved = savedMessageIds.has(msg.id)
+                  return (
+                    <div
+                      key={msg.id}
+                      data-testid={`message-${msg.id}`}
+                      className={`group/message relative rounded-lg border bg-card p-3 shadow-sm shadow-slate-200/40 focus-within:ring-1 focus-within:ring-ring ${
+                        isSaved ? "border-cyan-300 bg-cyan-50/30" : ""
+                      }`}
+                      tabIndex={0}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span
+                            className={`font-semibold ${
+                              msg.senderType === "agent" ? "text-blue-600" : "text-green-600"
+                            }`}
+                          >
+                            {msg.sender}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{msg.time}</span>
+                  {isSaved && (
+                    <Bookmark className="size-3 text-cyan-600" aria-label="Saved" />
+                  )}
+                  {taskLinks[msg.id] && (
+                    <Link
+                      href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
+                      className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[0.7rem] font-medium text-emerald-700 hover:bg-emerald-100"
+                    >
+                      <CheckSquare className="size-3" />
+                      Task
+                    </Link>
+                  )}
+                </div>
+                        <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+                          {renderMessageActions(msg)}
+                        </div>
+                      </div>
+                      <MarkdownMessage content={msg.content} />
+                      {(msg.replyCount || msg.threadSummary) && (
+                        <div className="mt-3 rounded-md border border-slate-200 bg-muted/30 px-3 py-2 text-sm">
+                          {msg.threadSummary?.summary && (
+                            <p className="mb-2 text-muted-foreground">{msg.threadSummary.summary}</p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => openThread(msg)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-foreground hover:underline"
+                          >
+                            <MessageCircle className="size-3" />
+                            {msg.replyCount ? `${msg.replyCount} replies` : "Reply"}
+                          </button>
+                        </div>
+                      )}
+                      {msg.reactionCounts && Object.keys(msg.reactionCounts).length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {Object.entries(msg.reactionCounts).map(([emoji, count]) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => toggleReaction(msg, emoji)}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                                didReact(msg, emoji)
+                                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                                  : "border-slate-200 bg-background text-muted-foreground hover:bg-muted"
+                              }`}
+                              aria-label={`${count} ${emoji} reactions`}
+                            >
+                              <span>{emoji}</span>
+                              <span className="text-[0.7rem] font-medium">{count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
                 {messages.length === 0 && (
                   <p className="py-20 text-center text-muted-foreground">No messages in {currentTitle} yet.</p>
                 )}
@@ -543,22 +936,44 @@ export function ChannelClient({
             </div>
 
             <div className="border-t p-4">
-              <div className="mx-auto flex max-w-3xl gap-2">
+              <div className="mx-auto flex max-w-3xl items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="sr-only"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) void handleFileUpload(file)
+                    e.target.value = ""
+                  }}
+                />
                 <button
                   type="button"
-                  aria-label="Attach file coming soon"
-                  disabled
-                  title="File attachments are queued for the Files surface."
-                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 text-muted-foreground opacity-60"
+                  aria-label="Attach file"
+                  title="Attach file"
+                  disabled={uploading || !channelId}
+                  onClick={() => openFilePicker()}
+                  className={`inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 ${
+                    uploading || !channelId
+                      ? "text-muted-foreground opacity-60"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
                 >
                   <Paperclip className="size-4" />
                 </button>
                 <button
                   type="button"
-                  aria-label="Attach image coming soon"
-                  disabled
-                  title="Image attachments are queued for the Files surface."
-                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 text-muted-foreground opacity-60"
+                  aria-label="Attach image"
+                  title="Attach image"
+                  disabled={uploading || !channelId}
+                  onClick={() => openFilePicker("image/*")}
+                  className={`inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 ${
+                    uploading || !channelId
+                      ? "text-muted-foreground opacity-60"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
                 >
                   <ImageIcon className="size-4" />
                 </button>
@@ -570,6 +985,18 @@ export function ChannelClient({
                   placeholder="Type a message..."
                   className="flex-1"
                 />
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground select-none">
+                  <button
+                    type="button"
+                    onClick={() => setAsTask(!asTask)}
+                    className="inline-flex size-5 items-center justify-center rounded border"
+                    aria-pressed={asTask}
+                    aria-label="Send as task"
+                  >
+                    {asTask && <CheckSquare className="size-3.5 text-primary" />}
+                  </button>
+                  As Task
+                </label>
                 <button
                   type="button"
                   aria-label="Send message"
@@ -581,17 +1008,24 @@ export function ChannelClient({
                 </button>
               </div>
             </div>
+          </>
+          )}
           </div>
 
           {activeThreadId && (
             <aside aria-label="Thread" className="w-96 shrink-0 border-l bg-background p-4">
               <div className="flex h-full flex-col">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="truncate text-sm font-semibold">Thread</h2>
-                    {activeRoot && <p className="truncate text-xs text-muted-foreground">{activeRoot.sender}</p>}
-                  </div>
-                  <button
+                <div className="mb-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-sm font-semibold">Thread</h2>
+                      {activeRoot && (
+                        <p className="truncate text-xs text-muted-foreground">
+                          {activeRoot.sender} · {threadData?.replyCount ?? 0} {threadData?.replyCount === 1 ? "reply" : "replies"}
+                        </p>
+                      )}
+                    </div>
+                    <button
                     type="button"
                     aria-label="Close thread"
                     onClick={() => {
@@ -603,37 +1037,109 @@ export function ChannelClient({
                     <X className="size-4" />
                   </button>
                 </div>
+                {threadData?.threadSummary?.summary && (
+                  <div className="rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2 text-xs text-sky-800">
+                    <span className="font-medium">Summary:</span> {threadData.threadSummary.summary}
+                  </div>
+                )}
+                </div>
 
                 <div className="flex-1 space-y-3 overflow-y-auto pr-1">
                   {activeRoot && (
-                    <div className="rounded-md border bg-card p-3">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className={`font-semibold ${activeRoot.senderType === "agent" ? "text-blue-600" : "text-green-600"}`}>
-                          {activeRoot.sender}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{activeRoot.time}</span>
+                    <div className="group/message relative rounded-md border bg-card p-3 focus-within:ring-1 focus-within:ring-ring" tabIndex={0}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className={`font-semibold ${activeRoot.senderType === "agent" ? "text-blue-600" : "text-green-600"}`}>
+                            {activeRoot.sender}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{activeRoot.time}</span>
+                        </div>
+                        <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+                          {renderMessageActions(activeRoot)}
+                        </div>
                       </div>
-                      <p className="mt-1 whitespace-pre-wrap text-sm">{activeRoot.content}</p>
+                      {taskLinks[activeRoot.id] && (
+                        <Link
+                          href={`/tasks?task=${encodeURIComponent(taskLinks[activeRoot.id])}`}
+                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[0.7rem] font-medium text-emerald-700 hover:bg-emerald-100"
+                        >
+                          <CheckSquare className="size-3" />
+                          Open task
+                        </Link>
+                      )}
+                      <MarkdownMessage content={activeRoot.content} compact />
+                      {activeRoot.reactionCounts && Object.keys(activeRoot.reactionCounts).length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {Object.entries(activeRoot.reactionCounts).map(([emoji, count]) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => toggleReaction(activeRoot, emoji)}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                                didReact(activeRoot, emoji)
+                                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                                  : "border-slate-200 bg-background text-muted-foreground hover:bg-muted"
+                              }`}
+                              aria-label={`${count} ${emoji} reactions`}
+                            >
+                              <span>{emoji}</span>
+                              <span className="text-[0.7rem] font-medium">{count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {threadData?.threadSummary?.summary && (
-                        <p className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                        <p className="mt-3 rounded-md border border-slate-200 bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                           {threadData.threadSummary.summary}
                         </p>
                       )}
-                      {renderMessageActions(activeRoot, true)}
                     </div>
                   )}
 
                   {threadLoading && <p className="py-8 text-center text-sm text-muted-foreground">Loading...</p>}
                   {activeReplies.map((msg) => (
-                    <div key={msg.id} className="rounded-md border bg-card p-3">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className={`font-semibold ${msg.senderType === "agent" ? "text-blue-600" : "text-green-600"}`}>
-                          {msg.sender}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{msg.time}</span>
+                    <div key={msg.id} className="group/message relative rounded-md border bg-card p-3 focus-within:ring-1 focus-within:ring-ring" tabIndex={0}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className={`font-semibold ${msg.senderType === "agent" ? "text-blue-600" : "text-green-600"}`}>
+                            {msg.sender}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{msg.time}</span>
+                        </div>
+                        <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+                          {renderMessageActions(msg)}
+                        </div>
                       </div>
-                      <p className="mt-1 whitespace-pre-wrap text-sm">{msg.content}</p>
-                      {renderMessageActions(msg, true)}
+                      {taskLinks[msg.id] && (
+                        <Link
+                          href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
+                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[0.7rem] font-medium text-emerald-700 hover:bg-emerald-100"
+                        >
+                          <CheckSquare className="size-3" />
+                          Open task
+                        </Link>
+                      )}
+                      <MarkdownMessage content={msg.content} compact />
+                      {msg.reactionCounts && Object.keys(msg.reactionCounts).length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {Object.entries(msg.reactionCounts).map(([emoji, count]) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => toggleReaction(msg, emoji)}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                                didReact(msg, emoji)
+                                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                                  : "border-slate-200 bg-background text-muted-foreground hover:bg-muted"
+                              }`}
+                              aria-label={`${count} ${emoji} reactions`}
+                            >
+                              <span>{emoji}</span>
+                              <span className="text-[0.7rem] font-medium">{count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                   {!threadLoading && activeReplies.length === 0 && (
@@ -672,17 +1178,17 @@ export function ChannelClient({
               {members.map((m) => (
                 <div
                   key={m.id}
-                  data-testid={`channel-member-${m.name}`}
+                  data-testid={`channel-member-${m.displayName}`}
                   className="flex items-center justify-between gap-2"
                 >
                   <div className="flex items-center gap-2 text-sm">
                     <span className={`size-2 rounded-full ${dotClass(m.status)}`} />
-                    <span>{m.name}</span>
+                    <span>{m.displayName}</span>
                     <span className="text-xs text-muted-foreground">{statusLabel(m.status)}</span>
                   </div>
                   {m.kind === "agent" && !currentIsDm && (
                     <button
-                      aria-label={`Remove ${m.name}`}
+                      aria-label={`Remove ${m.displayName}`}
                       onClick={() => handleRemoveMember(m.id)}
                       className="text-muted-foreground hover:text-destructive"
                     >
@@ -708,7 +1214,7 @@ export function ChannelClient({
                       .filter((m) => !members.some((cm) => cm.id === m.id))
                       .map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.name} ({m.kind})
+                          {m.displayName} ({m.kind})
                         </option>
                       ))}
                   </select>

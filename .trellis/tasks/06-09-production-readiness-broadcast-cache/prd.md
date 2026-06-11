@@ -14,10 +14,10 @@ Plan and implement production readiness for multi-process/backend scaling: broad
 
 ## Acceptance Criteria
 
-* [ ] Architecture gap analysis exists.
-* [ ] Required backend changes are specified or implemented.
-* [ ] Multi-instance event/control delivery behavior is testable.
-* [ ] Local development remains simple.
+* [x] Architecture gap analysis exists.
+* [x] Required backend changes are specified or implemented.
+* [x] Multi-instance event/control delivery behavior is testable.
+* [x] Local development remains simple.
 
 ## Real Test SOP
 

@@ -15,11 +15,11 @@ Build the supervisor attention layer: notification center, activity inbox, saved
 
 ## Acceptance Criteria
 
-* [ ] Notification center opens and shows recent events or empty state.
-* [ ] Activity inbox can filter at least all/unread/mentions if data exists.
-* [ ] Saved items surface shows saved marker message/task.
-* [ ] Search can find a marker and open the result.
-* [ ] Backend gaps are documented as child tasks if needed.
+* [x] Notification center opens and shows recent events or empty state.
+* [x] Activity inbox can filter at least all/unread/mentions if data exists.
+* [x] Saved items surface shows saved marker message/task.
+* [x] Search can find a marker and open the result.
+* [x] Backend gaps are documented as child tasks if needed.
 
 ## Real Test SOP
 

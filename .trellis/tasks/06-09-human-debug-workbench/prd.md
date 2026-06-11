@@ -14,10 +14,10 @@ Create a human supervisor debug workbench that helps the user inspect a real wor
 
 ## Acceptance Criteria
 
-* [ ] User can enter/search a marker and see linked evidence.
-* [ ] Workbench explains what to check next.
-* [ ] At least one real workflow is proven end-to-end.
-* [ ] Evidence can be attached to a Trellis/task record or copied into notes.
+* [x] User can enter/search a marker and see linked evidence.
+* [x] Workbench explains what to check next.
+* [x] At least one real workflow is proven end-to-end.
+* [x] Evidence can be attached to a Trellis/task record or copied into notes.
 
 ## Real Test SOP
 

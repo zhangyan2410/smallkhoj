@@ -1,0 +1,4 @@
+{"file":".trellis/tasks/06-09-notifications-inbox-saved-search/prd.md","reason":"Parent attention-layer requirements and saved-items gap"}
+{"file":".trellis/tasks/06-09-notifications-inbox-saved-search/evidence/REAL_attention_supervisor_20260610T211000Z-notes.md","reason":"Supervisor evidence documenting the missing saved-items persistence contract"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser-facing UI requires project WebDriver real-test evidence"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Persistence endpoint should follow backend database/session conventions"}

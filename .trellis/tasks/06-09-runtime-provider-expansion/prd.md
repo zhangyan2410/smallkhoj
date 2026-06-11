@@ -14,10 +14,10 @@ Expand runtime provider UX and backend/daemon support beyond Claude Code, includ
 
 ## Acceptance Criteria
 
-* [ ] Provider choices align with detected runtimes.
-* [ ] Agent creation can select supported providers.
-* [ ] Unsupported providers are clearly disabled/explained.
-* [ ] Backend/daemon contract for provider config is documented.
+* [x] Provider choices align with detected runtimes.
+* [x] Agent creation can select supported providers.
+* [x] Unsupported providers are clearly disabled/explained.
+* [x] Backend/daemon contract for provider config is documented.
 
 ## Real Test SOP
 

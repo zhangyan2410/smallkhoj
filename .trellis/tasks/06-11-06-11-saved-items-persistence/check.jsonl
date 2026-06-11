@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check UI evidence and product behavior"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check persistence and transaction behavior"}

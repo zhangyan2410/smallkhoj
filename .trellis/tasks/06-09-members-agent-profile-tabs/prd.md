@@ -16,11 +16,11 @@ Turn Members into a selected-member product surface with profile, permissions, a
 
 ## Acceptance Criteria
 
-* [ ] Members page can select a human and an agent.
-* [ ] Agent detail shows runtime/computer/workspace status.
-* [ ] Tabs render stable layouts with useful empty states.
-* [ ] Create Agent flow still works and the new agent appears in the list.
-* [ ] Real WebDriver evidence verifies selected agent detail and API state.
+* [x] Members page can select a human and an agent.
+* [x] Agent detail shows runtime/computer/workspace status.
+* [x] Tabs render stable layouts with useful empty states.
+* [x] Create Agent flow still works and the new agent appears in the list.
+* [x] Real WebDriver evidence verifies selected agent detail and API state.
 
 ## Real Test SOP
 

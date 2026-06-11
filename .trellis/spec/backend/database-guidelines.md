@@ -75,6 +75,51 @@ Write `members.computer_id` and `members.backend` first, keep `config.computerId
 
 ---
 
+## Scenario: Per-Channel Task Number Allocation
+
+### 1. Scope / Trigger
+- Trigger: Public and agent task creation assign `tasks.task_number` from `max(task_number) + 1` under the unique key `tasks_channel_id_task_number_key`.
+- Use this whenever code creates tasks or other channel-scoped sequence-like records without a database sequence.
+
+### 2. Signatures
+- DB unique key: `UNIQUE (channel_id, task_number)`.
+- Public API: `POST /api/v1/tasks`.
+- Internal API: any agent task creation path that writes `Task(task_number=...)`.
+
+### 3. Contracts
+- Treat `max(task_number) + 1` as optimistic allocation only.
+- On `IntegrityError` for `tasks_channel_id_task_number_key`, rollback the failed transaction, recompute the next number, and retry a bounded number of times.
+- After `AsyncSession.rollback()`, do not read attributes from previously loaded ORM instances such as `server.id`, `channel.name`, or `creator.display_name`. Rollback expires ORM state; direct attribute access can trigger async lazy I/O outside `greenlet_spawn`.
+- Cache primitive IDs/display values before the retry loop, or reload ORM instances after rollback before passing them to helpers that read attributes.
+
+### 4. Validation & Error Matrix
+- Missing `title` -> `400 Missing title`.
+- Malformed JSON body -> `400 Invalid JSON body`.
+- Invalid `messageId` -> `400 Invalid messageId`.
+- Source message outside the task channel -> `404 Source message not found in task channel`.
+- Duplicate `(channel_id, task_number)` during concurrent create -> retry, then return a normal `200` response when a later number succeeds.
+- Duplicate key after retry limit -> re-raise the database error so the caller sees the real operational failure.
+
+### 5. Good/Base/Bad Cases
+- Good: five concurrent `POST /api/v1/tasks` calls for one channel return unique contiguous task numbers and no 500 responses.
+- Base: a single task create still inserts once, records activity, commits, refreshes the task, and publishes latest events.
+- Bad: create task #N with `max + 1`, catch no `IntegrityError`, and let one worker receive `500 Internal Server Error` when another worker created #N first.
+- Bad: call `await db.rollback()` and then use a previously loaded ORM object's expired attributes inside `_record_activity`.
+
+### 6. Tests Required
+- API concurrency smoke: run 4-5 parallel `POST /api/v1/tasks` calls against the same channel and assert all status codes are 200 with distinct task numbers.
+- API malformed JSON smoke: send invalid JSON to `POST /api/v1/tasks` and assert `400 Invalid JSON body`.
+- Activity/event assertion: after a retried create, assert the task exists and a `task.created` event/activity row references the final task id and task number.
+
+### 7. Wrong vs Correct
+#### Wrong
+Allocate `task_number = await _next_task_number(...)`, flush once, and rely on the unique constraint to never collide.
+
+#### Correct
+Allocate optimistically, catch only the task-number unique constraint, rollback, reload or use cached primitive values, recompute, and retry with a small bounded limit.
+
+---
+
 ## Naming Conventions
 
 <!-- Table names, column names, index names -->

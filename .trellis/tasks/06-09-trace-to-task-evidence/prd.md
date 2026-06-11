@@ -14,10 +14,10 @@ Make `smallkhoj-trace` output usable as task evidence for review and debugging.
 
 ## Acceptance Criteria
 
-* [ ] A marker trace can be saved under a task evidence directory.
-* [ ] Task evidence UI can reference the trace summary.
-* [ ] Raw trace remains available.
-* [ ] Human-readable summary is concise.
+* [x] A marker trace can be saved under a task evidence directory.
+* [x] Task evidence UI can reference the trace summary.
+* [x] Raw trace remains available.
+* [x] Human-readable summary is concise.
 
 ## Real Test SOP
 

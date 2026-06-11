@@ -18,6 +18,7 @@ from services.daemon_control import (
     mark_missing_runtimes_pending_start,
     parse_positive_event_cursor,
     pending_visible_events_for_computer,
+    runtime_control_command,
     runtime_start_command,
 )
 
@@ -160,6 +161,35 @@ def test_runtime_start_command_does_not_infer_provider_from_legacy_fields():
     config = command["command"]["config"]
     assert "runtimeProvider" not in config
     assert config["backend"] == "Claude"
+
+
+def test_runtime_control_command_builds_stop_envelope_without_provider_leakage():
+    workspace = _workspace(status="running")
+    agent = _runtime_member(config={"runtimeProvider": "Kimi"})
+
+    command = runtime_control_command(workspace, agent, "stop_runtime")
+
+    assert command["controlType"] == "stop_runtime"
+    assert command["command"]["type"] == "stop_runtime"
+    assert command["command"]["agentId"] == str(agent.id)
+    assert command["command"]["workspaceId"] == str(workspace.id)
+    assert command["command"]["config"]["runtimeProvider"] == "Kimi"
+    assert "runtimeCommand" not in command["command"]["config"]
+
+
+def test_runtime_control_command_reuses_start_config_for_restart():
+    workspace = _workspace(status="running")
+    workspace.runtime_model = "glm-5.1"
+    workspace.cwd = "/tmp/runtime-workspace"
+    agent = _runtime_member(config={})
+
+    command = runtime_control_command(workspace, agent, "restart_runtime")
+
+    config = command["command"]["config"]
+    assert command["controlType"] == "restart_runtime"
+    assert config["workspaceId"] == str(workspace.id)
+    assert config["runtimeModel"] == "glm-5.1"
+    assert config["workspacePath"] == "/tmp/runtime-workspace"
 
 
 @pytest.mark.asyncio

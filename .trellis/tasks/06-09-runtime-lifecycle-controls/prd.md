@@ -15,10 +15,10 @@ Add product controls and backend support for runtime stop, restart, kill, and st
 
 ## Acceptance Criteria
 
-* [ ] Runtime controls are visible with correct enabled/disabled states.
-* [ ] At least one lifecycle action is verified end-to-end.
-* [ ] Workspace status updates after action.
-* [ ] Offline daemon case is handled with a useful message.
+* [x] Runtime controls are visible with correct enabled/disabled states.
+* [x] At least one lifecycle action is verified end-to-end.
+* [x] Workspace status updates after action.
+* [x] Offline daemon case is handled with a useful message.
 
 ## Real Test SOP
 
