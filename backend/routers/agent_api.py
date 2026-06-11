@@ -1400,21 +1400,22 @@ async def daemon_heartbeat(
         workspace, agent_member, created = await _upsert_daemon_workspace(db, server, computer, item)
         reported_workspace_ids.add(workspace.id)
         await db.flush()
-        await _record_activity(
-            db,
-            server,
-            agent_member,
-            "workspace_registered" if created else "workspace_heartbeat",
-            f"@{agent_member.display_name} workspace heartbeat: {workspace.status}",
-            {
-                "computerId": str(computer.id),
-                "workspaceId": str(workspace.id),
-                "runtime": workspace.runtime,
-                "status": workspace.status,
-                "sessionId": workspace.session_id,
-                "pid": workspace.pid,
-            },
-        )
+        if created:
+            await _record_activity(
+                db,
+                server,
+                agent_member,
+                "workspace_registered",
+                f"@{agent_member.display_name} workspace registered on {computer.name}",
+                {
+                    "computerId": str(computer.id),
+                    "workspaceId": str(workspace.id),
+                    "runtime": workspace.runtime,
+                    "status": workspace.status,
+                    "sessionId": workspace.session_id,
+                    "pid": workspace.pid,
+                },
+            )
         upserted.append(await _serialize_workspace(db, workspace))
 
     await mark_missing_runtimes_pending_start(
@@ -3397,13 +3398,5 @@ async def heartbeat(
             if workspace.started_at is None:
                 workspace.started_at = _utcnow()
 
-    await _record_activity(
-        db,
-        server,
-        member,
-        "custom",
-        f"@{member.display_name} heartbeat: {status}",
-        body,
-    )
     await db.commit()
     return {"ok": True, "status": status}

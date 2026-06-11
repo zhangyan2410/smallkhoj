@@ -158,6 +158,7 @@ Future environment support must validate:
   - dynamic runtime workspaces must be isolated. If a command omits `workspacePath`, use a per-agent path under the daemon workspace instead of sharing the daemon root `.slock` wrapper.
   - heartbeat/register workspace payloads for active runtimes use `status:"running"` and include `workspaceId`, `runtime`, `runtimeCommand`, `runtimeModel`, `sessionId`, `cwd`, and `pid` when known.
   - On daemon register/heartbeat, the `workspaces` array is the authoritative list of runtimes currently managed by that daemon process. Any workspace on the same computer that was previously `running`, `active`, or `idle` but is missing from the payload must be treated as stale and re-armed as `pending_start` so the next control response can send `start_runtime` again.
+  - Daemon and legacy agent heartbeat endpoints update current-state fields such as `computers.last_heartbeat_at`, `computers.status`, `agent_workspaces.status`, `agent_workspaces.session_id`, and `agent_workspaces.pid`, but must not create high-volume `ActivityLog(kind="workspace_heartbeat")`, heartbeat-like `ActivityLog(kind="custom")`, or `EventRecord(event_type="workspace.heartbeat")` rows. Registration/update events remain valid when a workspace is first registered or explicitly updated.
   - explicit stops report `status:"stopped"`; unexpected exits report `status:"exited"` before the runtime record is removed, so backend state does not stay falsely running.
   - daemon records captured Claude session ids in `SessionManager`
   - runtime trace events are emitted for start, stream events, session capture, message send, exit, error, restart scheduling, and stall detection
@@ -373,6 +374,7 @@ For product-facing runtime/control-plane changes, also use the task-local Real T
   - assert `thread.summary_requested` is classified as a runtime event and formatted with target/thread context
   - assert raw `control` payloads and JSON-RPC `daemon.command.*` payloads classify as control events and preserve command type, agent id, workspace id, and runtime config
   - assert backend daemon WS sends committed `message.created` records to connected computer peers with `agentId`/`targetAgentId` set to the receiving agent, and advances its per-connection event cursor past invisible events
+  - assert daemon heartbeat for an existing workspace updates state without writing `ActivityLog(kind="workspace_heartbeat")` or `EventRecord(event_type="workspace.heartbeat")`.
   - assert DM `message.created` events delivered to an agent include `target:"dm:@<human>"`, while `/internal/agent-api/send` accepts both that target and the raw DM `channelId`
   - assert a DM thread `message.created` event still returns `target:"dm:@<human>:<rootShortId>"` when the persisted event payload has had `target`/`channel` removed before replay
   - live smoke: start backend and `aaa-daemon start --ws auto` with a fake Claude runtime that records stdin; post `POST /api/v1/channels/{name}/messages`; assert the marker appears in runtime stdin without waiting for polling

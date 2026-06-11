@@ -5,6 +5,7 @@ import uuid
 from fastapi import HTTPException
 import pytest
 
+import routers.agent_api as agent_api
 import routers.public_api as public_api
 from routers.agent_api import (
     ACTIVITY_EVENT_TYPES,
@@ -56,6 +57,15 @@ class _FakeSession:
     async def execute(self, _statement):
         self.execute_count += 1
         return self._results.pop(0)
+
+    async def flush(self):
+        return None
+
+    async def commit(self):
+        return None
+
+    async def refresh(self, _item):
+        return None
 
 
 class _JsonRequest:
@@ -301,6 +311,62 @@ def test_workspace_heartbeat_does_not_create_event_record_type():
     assert ACTIVITY_EVENT_TYPES.get("workspace_heartbeat") is None
     assert ACTIVITY_EVENT_TYPES["workspace_registered"] == "workspace.registered"
     assert ACTIVITY_EVENT_TYPES["workspace_updated"] == "workspace.updated"
+
+
+@pytest.mark.asyncio
+async def test_daemon_heartbeat_does_not_record_existing_workspace_activity(monkeypatch):
+    recorded_activity_kinds = []
+    computer_id = uuid.uuid4()
+    workspace_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    server = SimpleNamespace(id=uuid.uuid4())
+    computer = SimpleNamespace(
+        id=computer_id,
+        name="local-dev",
+        status="online",
+        active_daemon_id="daemon-a",
+        daemon_lease_expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
+        last_heartbeat_at=None,
+        detected_runtimes=[],
+    )
+    workspace = SimpleNamespace(id=workspace_id)
+    agent = SimpleNamespace(id=agent_id, display_name="agent", kind="agent")
+
+    async def fake_upsert(_db, _server, _computer, _item):
+        return workspace, agent, False
+
+    async def fake_record_activity(_db, _server, _agent, kind, *_args, **_kwargs):
+        recorded_activity_kinds.append(kind)
+
+    async def fake_mark_missing(*_args, **_kwargs):
+        return []
+
+    async def fake_pending_runtime_commands(*_args, **_kwargs):
+        return []
+
+    async def fake_serialize_workspace(_db, item):
+        return {"id": str(item.id)}
+
+    async def fake_serialize_computer(_db, item):
+        return {"id": str(item.id)}
+
+    monkeypatch.setattr(agent_api, "_upsert_daemon_workspace", fake_upsert)
+    monkeypatch.setattr(agent_api, "_record_activity", fake_record_activity)
+    monkeypatch.setattr(agent_api, "mark_missing_runtimes_pending_start", fake_mark_missing)
+    monkeypatch.setattr(agent_api, "pending_runtime_commands", fake_pending_runtime_commands)
+    monkeypatch.setattr(agent_api, "_serialize_workspace", fake_serialize_workspace)
+    monkeypatch.setattr(agent_api, "_serialize_computer", fake_serialize_computer)
+
+    body = agent_api.DaemonHeartbeatRequest(
+        daemonId="daemon-a",
+        status="online",
+        workspaces=[agent_api.DaemonWorkspacePayload(workspaceId=str(workspace_id), agentId=str(agent_id))],
+    )
+
+    result = await agent_api.daemon_heartbeat(body, machine=(computer, server, object()), db=_FakeSession())
+
+    assert result["ok"] is True
+    assert recorded_activity_kinds == []
 
 
 def test_compact_activity_feed_collapses_heartbeats_by_agent():
