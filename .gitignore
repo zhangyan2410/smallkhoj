@@ -25,6 +25,10 @@ toremove/
 .slock/
 agent/daemon/aaa-daemon/.slock/
 agent/daemon/aaa-daemon/aaa-daemon.pid
+backend/.data/
+
+# CodeGraph knowledge-graph index (generated, ~8MB SQLite + WAL; per-machine)
+.codegraph/
 
 # Locally installed Claude skill bundles
 .claude/skills/gh-fix-ci/
