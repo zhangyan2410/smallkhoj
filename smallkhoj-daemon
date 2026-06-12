@@ -65,12 +65,32 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! -f "$DAEMON_DIR/dist/cmd/main.js" ]]; then
-  echo "Daemon build missing at $DAEMON_DIR/dist/cmd/main.js" >&2
-  echo "Run: cd $DAEMON_DIR && npm install && npm run build" >&2
-  exit 1
+  echo "Daemon build missing — running npm install && npm run build ..." >&2
+  cd "$DAEMON_DIR"
+  npm install --silent 2>&1
+  npm run build 2>&1
+  if [[ ! -f "dist/cmd/main.js" ]]; then
+    echo "Build failed: dist/cmd/main.js still missing" >&2
+    exit 1
+  fi
+  echo "Build succeeded." >&2
+  cd "$ROOT_DIR"
 fi
 
+# Always rebuild to ensure dist matches current source (fast if already up-to-date)
 cd "$DAEMON_DIR"
+npm run build 2>&1 || {
+  echo "Warning: incremental build failed, proceeding with existing dist" >&2
+}
+cd "$ROOT_DIR"
+
+cd "$DAEMON_DIR"
+
+# Derive WebSocket URL from server URL (http -> ws, https -> wss, with correct path)
+WS_URL="${SERVER_URL/#http:/ws:}"
+WS_URL="${WS_URL/#https:/wss:}"
+# Ensure the WS path includes the agent API route prefix
+WS_URL="${WS_URL%/}/internal/agent-api/ws"
 
 case "$MODE" in
   connect)
@@ -82,9 +102,8 @@ case "$MODE" in
       node dist/cmd/main.js start --foreground \
         --runtime none \
         --server "$SERVER_URL" \
-        --ws auto \
-        --proxy-port "$PROXY_PORT" \
-        --register-daemon
+        --ws "$WS_URL" \
+        --proxy-port "$PROXY_PORT"
     ;;
   start)
     if [[ -z "$MACHINE_TOKEN" ]]; then
@@ -95,9 +114,8 @@ case "$MODE" in
       node dist/cmd/main.js start --foreground \
         --runtime none \
         --server "$SERVER_URL" \
-        --ws auto \
-        --agent-id aaaa0000-0000-0000-0000-000000000001 \
-        --register-daemon
+        --ws "$WS_URL" \
+        --agent-id aaaa0000-0000-0000-0000-000000000001
     ;;
   *)
     echo "Unknown mode: $MODE" >&2

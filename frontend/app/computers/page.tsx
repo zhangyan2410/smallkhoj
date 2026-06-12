@@ -521,7 +521,7 @@ function ComputerListRow({ computer, selectedId }: { computer: Computer; selecte
 
   return (
     <Link href={`/computers?computer=${computer.id}`}>
-      <Card className={`cursor-pointer transition-colors hover:border-cyan-300 ${isSelected ? "border-cyan-400 ring-1 ring-cyan-200" : ""}`}>
+      <Card className={`cursor-pointer transition-colors hover:border-primary/40 ${isSelected ? "border-primary/50 ring-1 ring-primary/30" : ""}`}>
         <CardContent className="flex items-center gap-3 p-3">
           <span className={`size-2 shrink-0 rounded-full ${dotClass(computer.status)}`} />
           <div className="min-w-0 flex-1">

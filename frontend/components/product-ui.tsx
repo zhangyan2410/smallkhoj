@@ -51,7 +51,7 @@ export function RuntimeChip({
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 max-w-full items-center rounded-md border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-800",
+        "inline-flex min-h-6 max-w-full items-center rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary",
         className
       )}
     >

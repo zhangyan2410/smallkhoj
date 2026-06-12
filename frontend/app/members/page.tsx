@@ -787,12 +787,12 @@ function KindFilter({ active, counts }: { active: string; counts: { all: number;
             href={href}
             className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors ${
               isActive
-                ? "border-cyan-200 bg-cyan-50 text-cyan-800"
+                ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-transparent bg-background text-muted-foreground hover:bg-accent"
             }`}
           >
             {label}
-            <span className={`ml-0.5 rounded px-1.5 py-0.5 text-[11px] ${isActive ? "bg-cyan-100" : "bg-muted"}`}>
+            <span className={`ml-0.5 rounded px-1.5 py-0.5 text-[11px] ${isActive ? "bg-primary/15" : "bg-muted"}`}>
               {count}
             </span>
           </Link>

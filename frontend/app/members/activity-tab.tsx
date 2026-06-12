@@ -102,7 +102,7 @@ function ActivityTypeBadge({ type }: { type: string }) {
     Reaction: "border-pink-200 bg-pink-50 text-pink-700",
     Channel: "border-violet-200 bg-violet-50 text-violet-700",
     Reminder: "border-orange-200 bg-orange-50 text-orange-700",
-    Profile: "border-cyan-200 bg-cyan-50 text-cyan-700",
+    Profile: "border-primary/30 bg-primary/10 text-primary",
     Integration: "border-teal-200 bg-teal-50 text-teal-700",
     Thread: "border-indigo-200 bg-indigo-50 text-indigo-700",
     Error: "border-rose-200 bg-rose-50 text-rose-700",

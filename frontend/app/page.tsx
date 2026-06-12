@@ -154,7 +154,7 @@ function activityIcon(type: string) {
 }
 
 function activityColor(type: string) {
-  if (type.includes("message_sent")) return "text-cyan-600"
+  if (type.includes("message_sent")) return "text-primary"
   if (type.includes("task_claimed") || type.includes("task_updated")) return "text-sky-600"
   if (type.includes("workspace_heartbeat")) return "text-muted-foreground"
   return "text-muted-foreground"
@@ -211,7 +211,7 @@ function SearchResults({ query, results }: {
               href={href}
               className="flex items-start gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
             >
-              <Icon className="mt-0.5 size-4 shrink-0 text-cyan-700" />
+              <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{result.title}</span>
                 {(result.content || result.description) && (
@@ -382,7 +382,7 @@ export default async function Home({
                       href={`/chat/${channelPathSegment(ch.name)}`}
                       className="flex min-h-10 items-center gap-2 rounded-md border bg-background px-3 text-sm transition-colors hover:bg-accent"
                     >
-                      <Hash className="size-4 text-cyan-700" />
+                      <Hash className="size-4 text-primary" />
                       <span className="min-w-0 flex-1 truncate font-medium">{ch.name}</span>
                       <span className="text-xs text-muted-foreground">{ch.type}</span>
                     </Link>
@@ -469,7 +469,7 @@ export default async function Home({
                               href={item.href || item.downloadUrl || "/"}
                               className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
                             >
-                              <Icon className="mt-0.5 size-4 shrink-0 text-cyan-700" />
+                              <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-medium">{item.title}</span>
                                 <span className="block truncate text-xs text-muted-foreground">

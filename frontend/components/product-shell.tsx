@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils"
 
 type NavKey = "search" | "chat" | "tasks" | "members" | "computers" | "activity" | "settings"
 
-const navItems: Array<{
+const railItems: Array<{
   key: NavKey
   href: string
   label: string
@@ -29,7 +29,6 @@ const navItems: Array<{
   { key: "members", href: "/members", label: "Members", icon: Bot },
   { key: "computers", href: "/computers", label: "Computers", icon: HardDrive },
   { key: "activity", href: "/daemon", label: "Activity", icon: Bell },
-  { key: "settings", href: "/settings", label: "Settings", icon: Settings },
 ]
 
 export function ProductShell({
@@ -56,76 +55,92 @@ export function ProductShell({
   className?: string
 }) {
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="grid min-h-screen lg:grid-cols-[13.5rem_1fr]">
-        <aside className="border-b bg-sidebar/95 lg:border-b-0 lg:border-r">
-          <div className="flex h-full flex-col gap-4 p-3">
-            <Link href="/" className="flex items-center gap-2 rounded-md px-2 py-1.5">
-              <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <Sparkles className="size-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold">SmallKhoj</span>
-                <span className="block truncate text-xs text-muted-foreground">Product workbench</span>
-              </span>
-            </Link>
+    <main className="flex h-screen bg-background text-foreground">
+      {/* Col 0 — icon rail */}
+      <nav
+        aria-label="Primary"
+        className="hidden w-14 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-3 sm:flex"
+      >
+        <Link
+          href="/"
+          aria-label="Home"
+          className="mb-1 flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.66_0.14_262)] text-primary-foreground"
+        >
+          <Sparkles className="size-4" />
+        </Link>
+        {railItems.map(({ key, href, label, icon: Icon }) => (
+          <Link
+            key={key}
+            href={href}
+            aria-label={label}
+            title={label}
+            aria-current={active === key ? "page" : undefined}
+            className={cn(
+              "flex size-9 items-center justify-center rounded-xl transition-colors",
+              active === key
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            )}
+          >
+            <Icon className="size-[18px]" />
+          </Link>
+        ))}
+        <div className="mt-auto flex flex-col items-center gap-1">
+          {session?.account && (
+            <span
+              title={session.account.displayName || session.account.name || "Account"}
+              className="flex size-9 items-center justify-center rounded-xl bg-muted text-xs font-semibold text-muted-foreground"
+            >
+              {(session.account.displayName || session.account.name || "?")[0].toUpperCase()}
+            </span>
+          )}
+          <Link
+            href="/settings"
+            aria-label="Settings"
+            title="Settings"
+            className="flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            <Settings className="size-[18px]" />
+          </Link>
+        </div>
+      </nav>
 
-            <nav aria-label="Primary" className="grid gap-1">
-              {navItems.map((item) => {
-                const Icon = item.icon
-                const selected = active === item.key
-                return (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    aria-current={selected ? "page" : undefined}
-                    className={cn(
-                      "flex h-9 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                      selected && "bg-primary/10 text-primary"
-                    )}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </Link>
-                )
-              })}
-            </nav>
-
-            <div className="mt-auto rounded-md border bg-background/70 p-2 text-xs">
-              <div className="truncate font-medium">{session?.account.displayName || session?.account.name || "Local account"}</div>
-              <div className="mt-1 truncate text-muted-foreground">{session?.server.name || "default server"}</div>
-            </div>
-          </div>
-        </aside>
-
-        <section className="grid min-w-0 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className={cn("min-w-0 px-4 py-4 sm:px-6", className)}>
-            <header className="mb-4 flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs font-medium uppercase text-cyan-700">
-                  <Activity className="size-3.5" />
-                  SmallKhoj Control Plane
-                </div>
-                <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight">{title}</h1>
-                {description && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>}
+      {/* Content area */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="border-b px-4 py-3 sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+                <Activity className="size-3.5" />
+                SmallKhoj
               </div>
-              {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
-            </header>
+              <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight">{title}</h1>
+              {description && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>}
+            </div>
+            {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
+          </div>
+        </header>
+
+        {/* Body: content + optional right sidebar */}
+        <div className="grid min-w-0 flex-1 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className={cn("min-w-0 overflow-y-auto p-4 sm:p-6", className)}>
             {children}
           </div>
 
-          <aside className="hidden min-w-0 border-l bg-sidebar/55 p-4 lg:block">
-            <div className="sticky top-4">
-              {sidebarTitle && (
-                <div className="mb-3">
-                  <h2 className="text-sm font-semibold">{sidebarTitle}</h2>
-                  {sidebarDescription && <p className="mt-1 text-xs text-muted-foreground">{sidebarDescription}</p>}
-                </div>
-              )}
-              {sidebar}
-            </div>
-          </aside>
-        </section>
+          {sidebar && (
+            <aside className="hidden min-w-0 border-l bg-sidebar/55 p-4 lg:block">
+              <div className="sticky top-4">
+                {sidebarTitle && (
+                  <div className="mb-3">
+                    <h2 className="text-sm font-semibold">{sidebarTitle}</h2>
+                    {sidebarDescription && <p className="mt-1 text-xs text-muted-foreground">{sidebarDescription}</p>}
+                  </div>
+                )}
+                {sidebar}
+              </div>
+            </aside>
+          )}
+        </div>
       </div>
     </main>
   )

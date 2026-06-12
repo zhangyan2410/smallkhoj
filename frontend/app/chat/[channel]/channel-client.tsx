@@ -4,23 +4,31 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   Activity,
+  Bell,
   Bookmark,
+  Bot,
   CheckSquare,
   Clipboard,
   Files,
+  HardDrive,
   Hash,
   ImageIcon,
   ListChecks,
   MessageCircle,
+  MessageSquare,
   Paperclip,
   Plus,
+  Search,
   Send,
+  Settings,
   Smile,
+  Sparkles,
   Trash2,
   Users,
   X,
 } from "lucide-react"
 
+import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { RuntimeChip } from "@/components/product-ui"
@@ -32,7 +40,6 @@ import {
   apiHeaders,
   type Member,
   statusLabel,
-  dotClass,
   API_BASE,
 } from "@/lib/control-plane"
 
@@ -542,7 +549,7 @@ export function ChannelClient({
           aria-label="Save message"
           title="Save"
           className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
-            isSaved ? "text-cyan-600" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            isSaved ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
           <Bookmark className="size-3.5" />
@@ -623,6 +630,49 @@ export function ChannelClient({
 
   return (
     <div className="flex h-screen bg-background">
+      <nav
+        aria-label="Primary"
+        className="hidden w-14 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-3 sm:flex"
+      >
+        <Link
+          href="/"
+          aria-label="Home"
+          className="mb-1 flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.66_0.14_262)] text-primary-foreground"
+        >
+          <Sparkles className="size-4" />
+        </Link>
+        {[
+          { href: "/?focus=search", label: "Search", icon: Search },
+          { href: "/chat", label: "Chat", icon: MessageSquare, active: true },
+          { href: "/tasks", label: "Tasks", icon: CheckSquare },
+          { href: "/members", label: "Members", icon: Bot },
+          { href: "/computers", label: "Computers", icon: HardDrive },
+          { href: "/daemon", label: "Activity", icon: Bell },
+        ].map(({ href, label, icon: Icon, active }) => (
+          <Link
+            key={label}
+            href={href}
+            aria-label={label}
+            title={label}
+            className={`flex size-9 items-center justify-center rounded-xl transition-colors ${
+              active
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            }`}
+          >
+            <Icon className="size-[18px]" />
+          </Link>
+        ))}
+        <Link
+          href="/settings"
+          aria-label="Settings"
+          title="Settings"
+          className="mt-auto flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        >
+          <Settings className="size-[18px]" />
+        </Link>
+      </nav>
+
       <aside className="w-60 shrink-0 border-r bg-sidebar/80 flex flex-col">
         <div className="border-b p-3">
           <Link href="/" className="block rounded-md px-2 py-1.5 text-sm font-semibold hover:bg-sidebar-accent">
@@ -695,9 +745,13 @@ export function ChannelClient({
                   dm.name === channelName ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
                 }`}
               >
-                <span className="inline-flex min-w-0 items-center gap-1">
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <Avatar
+                    size="sm"
+                    name={dm.peer?.displayName || dm.displayName.replace(/^DM @/, "")}
+                    status={dm.peer?.status === "online" ? "online" : "offline"}
+                  />
                   <span className="truncate">{dm.peer?.displayName || dm.displayName.replace(/^DM @/, "")}</span>
-                  <span className={`ml-auto size-1.5 rounded-full ${dotClass(dm.peer?.status || "offline")}`} />
                 </span>
               </Link>
             ))}
@@ -706,10 +760,10 @@ export function ChannelClient({
         <div className="mt-auto border-t p-3">
           <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Members Online</h3>
           {members.map((m) => (
-            <div key={m.id} className="flex items-center gap-2 py-0.5 text-sm">
-              <span className={`size-2 rounded-full ${dotClass(m.status)}`} />
+            <div key={m.id} className="flex items-center gap-2 py-1 text-sm">
+              <Avatar size="xs" name={m.displayName} status={m.status === "online" ? "online" : "offline"} />
               <span className="truncate">{m.displayName}</span>
-              <span className="text-xs text-muted-foreground">{m.kind}</span>
+              <span className="ml-auto text-xs text-muted-foreground">{m.kind}</span>
             </div>
           ))}
         </div>
@@ -718,11 +772,14 @@ export function ChannelClient({
       <div className="flex flex-1 flex-col">
         <header className="border-b px-4 py-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold">{currentTitle}</h1>
-              <div className="mt-1 flex items-center gap-2">
-                <RuntimeChip>{currentIsDm ? "Direct message" : "Channel"}</RuntimeChip>
-                <span className="text-xs text-muted-foreground">{messages.length} root messages</span>
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar size="xl" name={currentTitle} />
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-semibold">{currentTitle}</h1>
+                <div className="mt-1 flex items-center gap-2">
+                  <RuntimeChip>{currentIsDm ? "Direct message" : "Channel"}</RuntimeChip>
+                  <span className="text-xs text-muted-foreground">{messages.length} root messages</span>
+                </div>
               </div>
             </div>
             <Button
@@ -755,7 +812,7 @@ export function ChannelClient({
                   }}
                   className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
                     isActive
-                      ? "border-cyan-200 bg-cyan-50 text-cyan-800"
+                      ? "border-primary/30 bg-primary/10 text-primary"
                       : "bg-background text-muted-foreground hover:bg-muted"
                   }`}
                 >
@@ -788,9 +845,9 @@ export function ChannelClient({
                       const uploader = allMembers.find((m) => m.id === file.uploadedBy) ?? members.find((m) => m.id === file.uploadedBy)
                       const isImage = file.mimeType.startsWith("image/")
                       return (
-                        <div key={file.id} className="group/file flex items-start gap-3 rounded-lg border bg-card p-3 shadow-sm shadow-slate-200/40">
-                          <div className={`flex size-10 shrink-0 items-center justify-center rounded-md border ${isImage ? "bg-sky-50 border-sky-200" : "bg-muted border-border"}`}>
-                            {isImage ? <ImageIcon className="size-5 text-sky-600" /> : <Files className="size-5 text-muted-foreground" />}
+                        <div key={file.id} className="group/file flex items-start gap-3 rounded-lg border bg-card p-3 shadow-sm">
+                          <div className={`flex size-10 shrink-0 items-center justify-center rounded-md border ${isImage ? "bg-primary/10 border-primary/20" : "bg-muted border-border"}`}>
+                            {isImage ? <ImageIcon className="size-5 text-primary" /> : <Files className="size-5 text-muted-foreground" />}
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
@@ -815,7 +872,7 @@ export function ChannelClient({
                                     }, 150)
                                     window.setTimeout(() => window.clearTimeout(timer), 5000)
                                   }}
-                                  className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-700 hover:bg-cyan-100"
+                                  className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
                                 >
                                   <MessageCircle className="size-3" />
                                   Open message
@@ -826,7 +883,7 @@ export function ChannelClient({
                                   href={`${API_BASE}${file.previewUrl}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
+                                  className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
                                 >
                                   <ImageIcon className="size-3" />
                                   Preview
@@ -836,7 +893,7 @@ export function ChannelClient({
                                 href={`${API_BASE}${file.url}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
+                                className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
                               >
                                 Download
                               </a>
@@ -858,23 +915,28 @@ export function ChannelClient({
                     <div
                       key={msg.id}
                       data-testid={`message-${msg.id}`}
-                      className={`group/message relative rounded-lg border bg-card p-3 shadow-sm shadow-slate-200/40 focus-within:ring-1 focus-within:ring-ring ${
-                        isSaved ? "border-cyan-300 bg-cyan-50/30" : ""
+                      className={`group/message relative flex gap-3 rounded-lg p-2.5 transition-colors focus-within:bg-muted/60 hover:bg-muted/60 ${
+                        isSaved ? "bg-primary/5" : ""
                       }`}
                       tabIndex={0}
                     >
+                      <Avatar size="lg" name={msg.sender} className="mt-0.5" />
+                      <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 text-sm">
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <span className="font-semibold text-foreground">{msg.sender}</span>
                           <span
-                            className={`font-semibold ${
-                              msg.senderType === "agent" ? "text-blue-600" : "text-green-600"
+                            className={`rounded px-1.5 py-0.5 text-[0.65rem] font-medium ${
+                              msg.senderType === "agent"
+                                ? "bg-primary/10 text-primary"
+                                : "bg-muted text-muted-foreground"
                             }`}
                           >
-                            {msg.sender}
+                            {msg.senderType === "agent" ? "assistant" : "member"}
                           </span>
                           <span className="text-xs text-muted-foreground">{msg.time}</span>
                   {isSaved && (
-                    <Bookmark className="size-3 text-cyan-600" aria-label="Saved" />
+                    <Bookmark className="size-3 text-primary" aria-label="Saved" />
                   )}
                   {taskLinks[msg.id] && (
                     <Link
@@ -892,7 +954,7 @@ export function ChannelClient({
                       </div>
                       <MarkdownMessage content={msg.content} />
                       {(msg.replyCount || msg.threadSummary) && (
-                        <div className="mt-3 rounded-md border border-slate-200 bg-muted/30 px-3 py-2 text-sm">
+                        <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
                           {msg.threadSummary?.summary && (
                             <p className="mb-2 text-muted-foreground">{msg.threadSummary.summary}</p>
                           )}
@@ -916,7 +978,7 @@ export function ChannelClient({
                               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
                                 didReact(msg, emoji)
                                   ? "border-amber-200 bg-amber-50 text-amber-700"
-                                  : "border-slate-200 bg-background text-muted-foreground hover:bg-muted"
+                                  : "border-border bg-background text-muted-foreground hover:bg-muted"
                               }`}
                               aria-label={`${count} ${emoji} reactions`}
                             >
@@ -926,6 +988,7 @@ export function ChannelClient({
                           ))}
                         </div>
                       )}
+                      </div>
                     </div>
                   )
                 })}
@@ -1038,7 +1101,7 @@ export function ChannelClient({
                   </button>
                 </div>
                 {threadData?.threadSummary?.summary && (
-                  <div className="rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2 text-xs text-sky-800">
+                  <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-foreground">
                     <span className="font-medium">Summary:</span> {threadData.threadSummary.summary}
                   </div>
                 )}
@@ -1049,9 +1112,8 @@ export function ChannelClient({
                     <div className="group/message relative rounded-md border bg-card p-3 focus-within:ring-1 focus-within:ring-ring" tabIndex={0}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 text-sm">
-                          <span className={`font-semibold ${activeRoot.senderType === "agent" ? "text-blue-600" : "text-green-600"}`}>
-                            {activeRoot.sender}
-                          </span>
+                          <Avatar size="sm" name={activeRoot.sender} />
+                          <span className="font-semibold text-foreground">{activeRoot.sender}</span>
                           <span className="text-xs text-muted-foreground">{activeRoot.time}</span>
                         </div>
                         <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
@@ -1078,7 +1140,7 @@ export function ChannelClient({
                               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
                                 didReact(activeRoot, emoji)
                                   ? "border-amber-200 bg-amber-50 text-amber-700"
-                                  : "border-slate-200 bg-background text-muted-foreground hover:bg-muted"
+                                  : "border-border bg-background text-muted-foreground hover:bg-muted"
                               }`}
                               aria-label={`${count} ${emoji} reactions`}
                             >
@@ -1089,7 +1151,7 @@ export function ChannelClient({
                         </div>
                       )}
                       {threadData?.threadSummary?.summary && (
-                        <p className="mt-3 rounded-md border border-slate-200 bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                        <p className="mt-3 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                           {threadData.threadSummary.summary}
                         </p>
                       )}
@@ -1101,9 +1163,8 @@ export function ChannelClient({
                     <div key={msg.id} className="group/message relative rounded-md border bg-card p-3 focus-within:ring-1 focus-within:ring-ring" tabIndex={0}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 text-sm">
-                          <span className={`font-semibold ${msg.senderType === "agent" ? "text-blue-600" : "text-green-600"}`}>
-                            {msg.sender}
-                          </span>
+                          <Avatar size="sm" name={msg.sender} />
+                          <span className="font-semibold text-foreground">{msg.sender}</span>
                           <span className="text-xs text-muted-foreground">{msg.time}</span>
                         </div>
                         <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
@@ -1130,7 +1191,7 @@ export function ChannelClient({
                               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
                                 didReact(msg, emoji)
                                   ? "border-amber-200 bg-amber-50 text-amber-700"
-                                  : "border-slate-200 bg-background text-muted-foreground hover:bg-muted"
+                                  : "border-border bg-background text-muted-foreground hover:bg-muted"
                               }`}
                               aria-label={`${count} ${emoji} reactions`}
                             >
@@ -1182,8 +1243,8 @@ export function ChannelClient({
                   className="flex items-center justify-between gap-2"
                 >
                   <div className="flex items-center gap-2 text-sm">
-                    <span className={`size-2 rounded-full ${dotClass(m.status)}`} />
-                    <span>{m.displayName}</span>
+                    <Avatar size="sm" name={m.displayName} status={m.status === "online" ? "online" : "offline"} />
+                    <span className="truncate">{m.displayName}</span>
                     <span className="text-xs text-muted-foreground">{statusLabel(m.status)}</span>
                   </div>
                   {m.kind === "agent" && !currentIsDm && (

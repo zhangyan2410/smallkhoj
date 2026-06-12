@@ -70,7 +70,7 @@ export default async function ChatPage() {
                 href={`/chat/${channelPathSegment(channel.name)}`}
                 className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-accent"
               >
-                <Hash className="size-4 text-cyan-700" />
+                <Hash className="size-4 text-primary" />
                 <span className="min-w-0 flex-1 truncate font-medium">{channel.name}</span>
                 <span className="text-xs text-muted-foreground">{channel.type}</span>
               </Link>

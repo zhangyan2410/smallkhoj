@@ -33,7 +33,14 @@
       "Bash(npm list *)",
       "Read(//c/Users/zhangyan.ean/AppData/**)",
       "Bash(node test/claude-spawn-e2e.mjs)",
-      "Skill(trellis-brainstorm)"
+      "Skill(trellis-brainstorm)",
+      "Bash(cat C:\\\\\\\\Users\\\\\\\\zhangyan.ean\\\\\\\\.claude\\\\\\\\projects\\\\\\\\D--ai-khoj-smallkhoj\\\\\\\\memory\\\\\\\\MEMORY.md)",
+      "Bash(sed -n '120,260p' app/globals.css)",
+      "Bash(sed -n '1,80p' components/product-shell.tsx)",
+      "Skill(kimi-webbridge)",
+      "Bash(~/.kimi-webbridge/bin/kimi-webbridge status *)",
+      "Bash(python3 *)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

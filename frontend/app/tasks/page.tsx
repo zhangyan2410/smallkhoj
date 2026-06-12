@@ -297,7 +297,7 @@ function TaskCard({ task, filters }: { task: Task; filters: Record<string, strin
   const source = task.data?.source
   return (
     <Link href={taskHref(task, filters)} className="block">
-      <Card size="sm" className="transition-colors hover:border-cyan-300">
+      <Card size="sm" className="transition-colors hover:border-primary/40">
         <CardContent className="space-y-2">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -389,7 +389,7 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
           )}
         </div>
         {entry.path && (
-          <div className="mt-1 truncate font-mono text-xs text-cyan-700">{entry.path}</div>
+          <div className="mt-1 truncate font-mono text-xs text-primary">{entry.path}</div>
         )}
         {entry.content && (
           <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{entry.content}</p>
@@ -491,7 +491,7 @@ function TaskDetail({ task, activity = [] }: { task?: Task; activity?: ActivityI
             {source.channel && sourceLink && (
               <Link
                 href={sourceLink}
-                className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-100"
+                className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/15"
               >
                 <MessageSquare className="size-3" />
                 Open {source.channel}
