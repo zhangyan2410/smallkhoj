@@ -161,7 +161,7 @@ async def mark_missing_runtimes_pending_start(
         workspace.status = PENDING_RUNTIME_START_STATUS
         workspace.pid = None
         workspace.stopped_at = None
-        if agent.status in RUNTIME_ACTIVE_STATUSES:
+        if agent.status in {"online", "active", "running", "idle"}:
             agent.status = "offline"
     return list(stale)
 

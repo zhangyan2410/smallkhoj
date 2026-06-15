@@ -36,6 +36,7 @@ export type Member = {
     actions?: Record<string, boolean>
     backend?: string
     runtimeProvider?: string
+    provider?: string
   }
   computerId?: string | null
   workspaceId?: string | null
@@ -174,6 +175,7 @@ export function statusLabel(status: string) {
     closed: "关闭",
     pending: "待触发",
     pending_start: "待启动",
+    starting: "启动中",
     fired: "已触发",
     cancelled: "已取消",
     online: "在线",
@@ -201,6 +203,7 @@ export function dotClass(status: string) {
     case "idle":
     case "pending":
     case "pending_start":
+    case "starting":
     case "in_review":
     case "busy":
     case "stopping":
@@ -229,6 +232,7 @@ export function badgeClass(status: string) {
     case "idle":
     case "pending":
     case "pending_start":
+    case "starting":
     case "in_review":
     case "busy":
     case "stopping":
@@ -249,13 +253,33 @@ export function badgeClass(status: string) {
 export function runtimeLabel(runtime: RuntimeInfo) {
   if (typeof runtime === "string") return runtime
   return [
-    runtime.runtimeProvider ?? runtime.provider ?? runtime.type ?? "runtime",
+    runtime.provider ?? runtime.runtimeProvider ?? runtime.type ?? "runtime",
     runtime.status,
     runtime.model,
     runtime.version,
   ]
     .filter(Boolean)
     .join(" / ")
+}
+
+export type ChannelMessage = {
+  id: string
+  sender: string
+  senderType: "human" | "agent"
+  time?: string
+  createdAt?: string
+  seq?: number
+  content: string
+}
+
+export type Channel = {
+  id: string
+  name: string
+  rawName?: string
+  description?: string | null
+  type?: "public" | "private" | string
+  joined?: boolean
+  unreadCount?: number
 }
 
 export function shortId(value?: string | null) {

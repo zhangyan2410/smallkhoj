@@ -1035,7 +1035,7 @@ async def _upsert_daemon_workspace(
     if item.backend:
         agent_member.backend = item.backend
     if item.status in {"running", "active", "idle"}:
-        agent_member.status = "active" if item.status == "running" else item.status
+        agent_member.status = "online"
     elif item.status in {"stopped", "offline", "exited"}:
         agent_member.status = "offline"
 
@@ -1472,7 +1472,7 @@ async def daemon_shutdown(
             workspace.status = "stopped"
             workspace.pid = None
             workspace.stopped_at = now
-        if agent_member.status in RUNTIME_ACTIVE_STATUSES or agent_member.status in {"active", "idle"}:
+        if agent_member.status in {"online", "active", "running", "idle"}:
             agent_member.status = "offline"
         workspaces.append(await _serialize_workspace(db, workspace))
 
@@ -1527,8 +1527,10 @@ async def daemon_websocket(
                 message = {"type": "raw", "content": raw_message}
             message_type = message.get("type") if isinstance(message, dict) else None
             if message_type in {"activity", "ack"}:
-                computer.last_heartbeat_at = _utcnow_aware()
+                now = _utcnow_aware()
+                computer.last_heartbeat_at = now
                 computer.status = "online"
+                computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
                 await db.commit()
     except WebSocketDisconnect:
         pass

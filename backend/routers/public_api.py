@@ -2443,6 +2443,10 @@ async def create_agent(
     runtime_provider = str(raw_runtime_provider).strip() if raw_runtime_provider is not None else None
     if not runtime_provider:
         runtime_provider = None
+    raw_provider_name = body.get("provider")
+    provider_name = str(raw_provider_name).strip() if raw_provider_name is not None else None
+    if not provider_name:
+        provider_name = None
 
     agent = Member(
         server_id=server.id,
@@ -2455,6 +2459,7 @@ async def create_agent(
             "computerId": str(computer_id),
             "backend": body.get("backend"),
             "runtimeProvider": runtime_provider,
+            "provider": provider_name,
             "runtimeDesiredStatus": "running",
         },
     )

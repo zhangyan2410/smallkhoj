@@ -177,6 +177,7 @@ function ActivityEventCard({ item }: { item: ActivityItem }) {
 function RuntimeStateSummary({ member, workspace }: { member: Member; workspace?: AgentWorkspace }) {
   const lifecycleStates = [
     { key: "pending_start", label: "Starting", active: workspace?.status === "pending_start" || (!workspace && member.kind === "agent") },
+    { key: "starting", label: "Initializing", active: workspace?.status === "starting" },
     { key: "running", label: "Running", active: workspace?.status === "running" },
     { key: "idle", label: "Idle", active: workspace?.status === "idle" },
     { key: "busy", label: "Thinking", active: workspace?.status === "busy" },

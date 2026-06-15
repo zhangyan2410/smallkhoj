@@ -426,7 +426,7 @@ export class ClaudeRuntimeDriver extends EventEmitter {
       this.compacting = true;
       return;
     }
-    if (subtype === 'compact_complete' || subtype === 'compacted' || subtype === 'session_init') {
+    if (subtype === 'compact_complete' || subtype === 'compacted' || subtype === 'session_init' || subtype === 'init') {
       this.compacting = false;
     }
   }
@@ -472,7 +472,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function getContentBlocks(event: ClaudeStreamEvent): Array<Record<string, unknown>> {
+export function getContentBlocks(event: ClaudeStreamEvent): Array<Record<string, unknown>> {
   const message = event.message;
   if (!isRecord(message)) return [];
   const content = message.content;

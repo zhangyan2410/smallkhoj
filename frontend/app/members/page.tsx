@@ -19,6 +19,7 @@ import ActivityTab from "./activity-tab"
 
 import { ProductShell } from "@/components/product-shell"
 import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
+import { ProviderSelect } from "./provider-select"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -52,11 +53,12 @@ async function createAgentAction(formData: FormData) {
   const computerId = formData.get("computerId") as string
   const runtime = formData.get("runtime") as string || "claude_code"
   const runtimeProvider = formData.get("runtimeProvider") as string
+  const provider = formData.get("provider") as string
   if (!name || !computerId) redirect("/members?error=Missing%20name%20or%20computer")
   const response = await fetch(`${API_BASE}/api/v1/members/agents`, {
     method: "POST",
     headers: await serverApiHeaders(true),
-    body: JSON.stringify({ name, computerId, runtime, runtimeProvider }),
+    body: JSON.stringify({ name, computerId, runtime, runtimeProvider, provider }),
   })
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
@@ -214,9 +216,9 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
             <span className="text-sm text-muted-foreground">{member.handle || `@${member.displayName}`}</span>
             <StatusBadge status={member.status} />
             <span className="rounded-md bg-muted px-2 py-0.5 text-xs">{member.kind}</span>
-            {(member.runtimeProvider || member.backend) && (
+            {(member.config?.provider || member.runtimeProvider || member.backend) && (
               <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
-                {member.runtimeProvider || member.backend}
+                {member.config?.provider || member.runtimeProvider || member.backend}
               </span>
             )}
           </div>
@@ -240,7 +242,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
             <Field label="computer" value={computer.name} />
             <Field label="computer status" value={computer.status} />
             <Field label="runtime" value={workspace?.runtime ?? "unbound"} />
-            <Field label="provider" value={workspace?.runtimeProvider ?? member.runtimeProvider ?? "default"} />
+            <Field label="provider" value={workspace?.runtimeProvider ?? member.config?.provider ?? member.runtimeProvider ?? "default"} />
             <Field label="pid" value={workspace?.pid?.toString() ?? "none"} />
             <Field label="session" value={shortId(workspace?.sessionId)} />
           </div>
@@ -745,22 +747,7 @@ function CreateAgentCard({
             <label htmlFor="agent-provider" className="mb-1.5 block text-xs font-medium text-muted-foreground">
               Provider
             </label>
-            <select
-              id="agent-provider"
-              name="runtimeProvider"
-              className="h-9 min-w-36 rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="">Default</option>
-              {providerOptions.map((provider) => (
-                <option key={provider.value} value={provider.value}>{provider.label}</option>
-              ))}
-              {unavailableProviders.length > 0 && (
-                <option value="" disabled>Unavailable providers</option>
-              )}
-              {unavailableProviders.map((provider) => (
-                <option key={provider.value} value={provider.value} disabled>{provider.label}</option>
-              ))}
-            </select>
+            <ProviderSelect options={providerOptions} unavailableOptions={unavailableProviders} />
           </div>
           <Button type="submit" size="sm">Create Agent</Button>
         </form>

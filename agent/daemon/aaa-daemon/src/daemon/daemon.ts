@@ -22,7 +22,7 @@ import { MCPBridge } from '../mcp-bridge.js';
 import { ClientHandler } from './client-handler.js';
 import { SessionManager } from './session-manager.js';
 import { type SlockWrapperResult, writeSlockWrapper } from '../runtime/slock-wrapper.js';
-import { ClaudeRuntimeDriver } from '../runtime/claude-runtime.js';
+import { ClaudeRuntimeDriver, getContentBlocks } from '../runtime/claude-runtime.js';
 import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
 import {
   detectedRuntimesForInventory,
@@ -82,7 +82,7 @@ interface RuntimeRecord {
   wrapper: SlockWrapperResult;
   driver: ClaudeRuntimeDriver;
   workspacePath: string;
-  status: 'running' | 'stopped' | 'exited';
+  status: 'starting' | 'running' | 'stopped' | 'exited';
   runtimeCommand?: string;
   runtimeCommandArgs?: string[];
   runtimeModel?: string;
@@ -95,6 +95,14 @@ interface RuntimeRecord {
   restartTimer: ReturnType<typeof setTimeout> | null;
   stallTimer: ReturnType<typeof setInterval> | null;
   lastProgressAt: number;
+  /** Startup warmup gate: true once a slock tool call has completed successfully */
+  ready: boolean;
+  /** Timestamp the warmup probe was injected, for timeout / duration reporting */
+  warmupStartedAt?: number;
+  /** slock tool_use ids emitted during warmup, awaiting their tool_result */
+  pendingWarmupResult: Set<string>;
+  /** Timer that degrades the runtime to ready if warmup never completes */
+  warmupTimer: ReturnType<typeof setTimeout> | null;
 }
 
 export class DaemonCore extends EventEmitter {
@@ -573,7 +581,7 @@ export class DaemonCore extends EventEmitter {
       wrapper,
       driver,
       workspacePath,
-      status: 'running',
+      status: 'starting',
       runtimeCommand: runtimeConfig.runtimeCommand ?? providerLaunch.command ?? this.config.runtimeCommand,
       runtimeCommandArgs: runtimeConfig.runtimeCommandArgs ?? providerLaunch.commandArgs ?? this.config.runtimeCommandArgs,
       runtimeModel: runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel,
@@ -586,6 +594,10 @@ export class DaemonCore extends EventEmitter {
       restartTimer: null,
       stallTimer: null,
       lastProgressAt: Date.now(),
+      ready: false,
+      warmupStartedAt: undefined,
+      pendingWarmupResult: new Set(),
+      warmupTimer: null,
     };
     this.runtimes.set(agentId, runtime);
     this.startRuntimeStallWatchdog(runtime);
@@ -601,6 +613,41 @@ export class DaemonCore extends EventEmitter {
     driver.on('stream_event', (event) => {
       this.markRuntimeProgress(runtime);
       const eventType = typeof event.type === 'string' ? event.type : undefined;
+
+      // ── Warmup gate: detect a successful slock tool call ──
+      // The runtime is seeded with a warmup probe at startup. It must call a
+      // `slock` tool (via Bash with a `slock` command, or an MCP tool whose
+      // name mentions slock) and the tool_result must not be an error. Until
+      // that happens the runtime stays in 'starting' status and is not
+      // advertised as ready/online.
+      if (!runtime.ready) {
+        if (eventType === 'assistant') {
+          for (const block of getContentBlocks(event)) {
+            if (block.type !== 'tool_use' || typeof block.id !== 'string') continue;
+            const name = typeof block.name === 'string' ? block.name : '';
+            const input = isRecord(block.input) ? block.input : {};
+            const cmd = typeof input.command === 'string' ? input.command : '';
+            if ((name === 'Bash' && /\bslock\b/.test(cmd)) || /slock/i.test(name)) {
+              runtime.pendingWarmupResult.add(block.id);
+            }
+          }
+        }
+        if (eventType === 'user') {
+          for (const block of getContentBlocks(event)) {
+            if (block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') continue;
+            if (!runtime.pendingWarmupResult.has(block.tool_use_id)) continue;
+            runtime.pendingWarmupResult.delete(block.tool_use_id);
+            const content = typeof block.content === 'string' ? block.content : '';
+            const isError = block.is_error === true
+              || /"ok"\s*:\s*false/i.test(content)
+              || /\berror\b/i.test(content) && !/"ok"\s*:\s*true/i.test(content);
+            if (!isError) {
+              this.markRuntimeReady(runtime, 'warmup_slock_ok');
+            }
+          }
+        }
+      }
+
       if (runtime.activeTraceId) {
         if (!runtime.activeTraceFirstOutputSeen) {
           runtime.activeTraceFirstOutputSeen = true;
@@ -612,10 +659,35 @@ export class DaemonCore extends EventEmitter {
           });
         }
         if (eventType === 'result') {
+          const resultData = isRecord(event) ? event : undefined;
+          const resultUsage = isRecord(resultData?.usage) ? resultData.usage : undefined;
+          const modelUsage = isRecord(resultData?.modelUsage) ? resultData.modelUsage : undefined;
+          const modelName = modelUsage ? Object.keys(modelUsage).find((k) => k !== 'total') : undefined;
+          const modelUsageEntry = modelName && modelUsage && isRecord(modelUsage[modelName]) ? modelUsage[modelName] : undefined;
+          const cacheRead = typeof resultUsage?.cache_read_input_tokens === 'number' ? resultUsage.cache_read_input_tokens : undefined;
+          const modelCacheRead = typeof modelUsageEntry?.cacheReadInputTokens === 'number' ? modelUsageEntry.cacheReadInputTokens : undefined;
+          // Provider-reported token counts can be inflated by some Anthropic-compat
+          // adapters (observed: MiniMax reports cache_read ~2x in usage and ~8x in
+          // modelUsage vs. the session jsonl ground truth). Flag the suspect value
+          // so consumers know not to trust it for optimization decisions.
+          const providerReportedInflated = cacheRead !== undefined && modelCacheRead !== undefined
+            ? modelCacheRead > cacheRead * 3
+            : false;
           this.emitLatencyTrace(runtime.activeTraceId, 'daemon.runtime.result', {
             flow: 'message_to_agent_reply',
             agentId,
             elapsedMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
+            durationApiMs: typeof resultData?.duration_api_ms === 'number' ? resultData.duration_api_ms : undefined,
+            inputTokens: typeof resultUsage?.input_tokens === 'number' ? resultUsage.input_tokens : undefined,
+            outputTokens: typeof resultUsage?.output_tokens === 'number' ? resultUsage.output_tokens : undefined,
+            cacheReadInputTokens: cacheRead,
+            model: typeof modelName === 'string' ? modelName : undefined,
+            // Daemon-measured wall-clock for the whole turn, not provider-reported.
+            wallClockMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
+            // Also capture modelUsage cache read, which some providers inflate further.
+            modelUsageCacheReadInputTokens: modelCacheRead,
+            usageSource: 'provider-stream-json',
+            providerReportedInflated,
           });
         }
       }
@@ -669,6 +741,7 @@ export class DaemonCore extends EventEmitter {
         this.sessionManager.update(event.sessionId, { status: 'dead' });
       }
       runtime.status = event.intentional ? 'stopped' : 'exited';
+      this.stopWarmupTimer(runtime);
       this.emit('runtime_exit', { ...event, agentId });
       this.emitRuntimeTrace({ type: 'exit', agentId, ...event });
       if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
@@ -691,14 +764,30 @@ export class DaemonCore extends EventEmitter {
     });
 
     driver.start();
-    this.log(`Claude runtime started for agent ${agentId}: pid=${driver.pid ?? 'unknown'}`, 'info');
+    this.log(`Claude runtime started for agent ${agentId}: pid=${driver.pid ?? 'unknown'} (status=starting, awaiting warmup)`, 'info');
     console.error(`[Daemon] Claude runtime started for agent ${agentId}: pid=${driver.pid ?? 'unknown'}`);
     this.emitRuntimeTrace({
       type: 'start',
       agentId,
       pid: driver.pid,
       resumeSessionId: resumeSessionId ?? undefined,
+      status: 'starting',
     });
+
+    // Inject a startup warmup probe. The message is queued inside the driver
+    // (pendingUserMessages) and self-drains once the child is writable.
+    // The runtime must call a `slock` tool successfully for the daemon to flip
+    // the status to 'running'; otherwise the warmup timer degrades it to ready.
+    const warmupText = [
+      '[event=system.warmup type=system]',
+      'This is a startup readiness check, not a user message.',
+      'Run `slock server info` once to confirm Slock connectivity and your agent identity,',
+      'then stop and wait for real messages. Do not send any chat message during this check.',
+    ].join('\n');
+    runtime.driver.sendUserMessage(warmupText);
+    runtime.warmupStartedAt = Date.now();
+    this.startWarmupTimer(runtime);
+
     if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
   }
 
@@ -709,6 +798,7 @@ export class DaemonCore extends EventEmitter {
       clearTimeout(runtime.restartTimer);
       runtime.restartTimer = null;
     }
+    this.stopWarmupTimer(runtime);
     runtime.status = 'stopped';
     this.stopRuntimeStallWatchdog(runtime);
     runtime.driver.stop();
@@ -934,6 +1024,58 @@ export class DaemonCore extends EventEmitter {
 
   private markRuntimeProgress(runtime: RuntimeRecord): void {
     runtime.lastProgressAt = Date.now();
+  }
+
+  /**
+   * Flip a runtime from 'starting' to 'running' once the warmup slock tool call
+   * has completed (or the warmup timer degraded it). Idempotent.
+   */
+  private markRuntimeReady(runtime: RuntimeRecord, reason: string): void {
+    if (runtime.ready) return;
+    runtime.ready = true;
+    runtime.status = 'running';
+    runtime.pendingWarmupResult.clear();
+    this.stopWarmupTimer(runtime);
+    this.emitRuntimeTrace({
+      type: 'ready',
+      agentId: runtime.agentId,
+      reason,
+      warmupDurationMs: runtime.warmupStartedAt ? Date.now() - runtime.warmupStartedAt : undefined,
+      sessionId: runtime.driver.sessionId,
+    });
+    this.log(
+      `Runtime ${runtime.agentId} ready (reason=${reason}, warmupMs=${runtime.warmupStartedAt ? Date.now() - runtime.warmupStartedAt : 'unknown'})`,
+      reason === 'warmup_timeout' ? 'warn' : 'info',
+    );
+    if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
+  }
+
+  private startWarmupTimer(runtime: RuntimeRecord): void {
+    this.stopWarmupTimer(runtime);
+    const timeoutMs = this.config.runtimeWarmupTimeoutMs ?? 120_000;
+    if (timeoutMs <= 0) return;
+    runtime.warmupTimer = setTimeout(() => {
+      runtime.warmupTimer = null;
+      if (this.runtimes.get(runtime.agentId) !== runtime || runtime.ready) return;
+      this.log(
+        `Runtime ${runtime.agentId} warmup timed out after ${timeoutMs}ms; degrading to ready`,
+        'warn',
+      );
+      this.emitRuntimeTrace({
+        type: 'warmup_timeout',
+        agentId: runtime.agentId,
+        timeoutMs,
+        sessionId: runtime.driver.sessionId,
+      });
+      this.markRuntimeReady(runtime, 'warmup_timeout');
+    }, timeoutMs);
+  }
+
+  private stopWarmupTimer(runtime?: RuntimeRecord): void {
+    if (!runtime) return;
+    if (!runtime.warmupTimer) return;
+    clearTimeout(runtime.warmupTimer);
+    runtime.warmupTimer = null;
   }
 
   private scheduleRuntimeRestart(runtime: RuntimeRecord, sessionId?: string): void {
