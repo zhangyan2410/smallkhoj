@@ -1,0 +1,43 @@
+{
+  "id": "06-15-minimax-agent-reply-latency",
+  "name": "minimax-agent-reply-latency",
+  "title": "MiniMax Agent Reply Latency & Context Bloat Investigation",
+  "description": "Investigate why @minimax-test replies take 15-25s and why cacheReadInputTokens reaches ~95k. Capture root cause and candidate fixes so the team can decide on the optimization approach.",
+  "status": "completed",
+  "dev_type": "research",
+  "scope": "daemon,runtime,control-plane",
+  "package": "aaa-daemon",
+  "priority": "P1",
+  "creator": "张岩.ean",
+  "assignee": null,
+  "createdAt": "2026-06-15",
+  "completedAt": "2026-06-15",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "agent/daemon/aaa-daemon/src/daemon/daemon.ts",
+    "agent/daemon/aaa-daemon/src/runtime/claude-runtime.ts",
+    "agent/daemon/aaa-daemon/src/types.ts",
+    "agent/daemon/aaa-daemon/src/cmd/main.ts"
+  ],
+  "notes": "Initial diagnosis (large cache due to MiniMax prompt size/session reuse) was partially wrong. Another agent found that MiniMax's Anthropic-compat adapter inflates reported cache_read tokens by ~3x in usage and ~8x in modelUsage vs. session ground truth. The real fix adds a runtime warmup gate and flags providerReportedInflated in latency traces.",
+  "meta": {
+    "model": "MiniMax-M3",
+    "observed_duration_api_ms": [
+      19537,
+      22144,
+      25226
+    ],
+    "observed_cache_read_input_tokens": [
+      26264,
+      95494,
+      97850
+    ]
+  }
+}

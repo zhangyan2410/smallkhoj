@@ -1,0 +1,6 @@
+{"file": "agent/daemon/aaa-daemon/src/daemon/daemon.ts", "reason": "Session reuse logic and runtime message delivery"}
+{"file": "agent/daemon/aaa-daemon/src/runtime/claude-runtime.ts", "reason": "--resume argument, system prompt generation, command args"}
+{"file": "agent/daemon/aaa-daemon/src/slock-cli.ts", "reason": "message check/read command parsing and default limits"}
+{"file": "agent/daemon/aaa-daemon/src/proxy/agent-proxy.ts", "reason": "receive/history proxy paths and response shaping"}
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "Backend/runtime integration conventions"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer design guidance"}

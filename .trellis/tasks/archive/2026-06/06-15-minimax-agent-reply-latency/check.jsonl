@@ -1,0 +1,4 @@
+{"check": "Latency trace shows reduced durationApiMs or cacheReadInputTokens", "how": "Send a DM to @minimax-test and inspect daemon.runtime.result trace"}
+{"check": "Agent still replies correctly", "how": "Verify the DM response is visible in the channel"}
+{"check": "No regression in session management", "how": "Restart daemon and confirm agent reconnects with correct session behavior"}
+{"check": "Evidence saved", "how": "Before/after traces stored in evidence/ with timestamps"}
