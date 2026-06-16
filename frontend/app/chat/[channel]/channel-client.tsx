@@ -33,6 +33,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { RuntimeChip } from "@/components/product-ui"
 import { MarkdownMessage } from "@/components/markdown-message"
+import { AgentActivityList } from "@/components/agent-activity-list"
+import { TaskBoard } from "@/components/task-board"
 import {
   apiGet,
   apiPost,
@@ -112,6 +114,7 @@ const conversationTabs = [
   { label: "Chat", icon: MessageCircle },
   { label: "Tasks", icon: ListChecks },
   { label: "Files", icon: Files },
+  { label: "Activity", icon: Activity },
 ]
 
 function channelPathSegment(value: string) {
@@ -174,7 +177,7 @@ export function ChannelClient({
   const [taskMessageIds, setTaskMessageIds] = useState<Set<string>>(() => new Set())
   const [taskLinks, setTaskLinks] = useState<Record<string, string>>({})
   const [asTask, setAsTask] = useState(false)
-  const [activeTab, setActiveTab] = useState<"chat" | "tasks" | "files">("chat")
+  const [activeTab, setActiveTab] = useState<"chat" | "tasks" | "files" | "activity">("chat")
   const [files, setFiles] = useState<FileItem[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -186,6 +189,7 @@ export function ChannelClient({
   const currentDm = dms.find((dm) => dm.name === channelName)
   const currentTitle = currentDm?.displayName ?? (currentChannel?.name ?? `#${channelName}`)
   const currentIsDm = Boolean(currentDm)
+  const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
   const didReact = (message: ChannelMessage, emoji: string) =>
     Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
 
@@ -538,7 +542,7 @@ export function ChannelClient({
           aria-label="React to message"
           title="React"
           className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
-            hasReacted ? "text-amber-600" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            hasReacted ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
           <Smile className="size-3.5" />
@@ -560,7 +564,7 @@ export function ChannelClient({
           aria-label="Create task from message"
           title="As Task"
           className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
-            isTasked ? "text-emerald-600" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            isTasked ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
           <CheckSquare className="size-3.5" />
@@ -673,7 +677,7 @@ export function ChannelClient({
         </Link>
       </nav>
 
-      <aside className="w-60 shrink-0 border-r bg-sidebar/80 flex flex-col">
+      <aside className="w-60 shrink-0 border-r bg-sidebar flex flex-col">
         <div className="border-b p-3">
           <Link href="/" className="block rounded-md px-2 py-1.5 text-sm font-semibold hover:bg-sidebar-accent">
             SmallKhoj
@@ -761,7 +765,7 @@ export function ChannelClient({
           <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Members Online</h3>
           {members.map((m) => (
             <div key={m.id} className="flex items-center gap-2 py-1 text-sm">
-              <Avatar size="xs" name={m.displayName} status={m.status === "online" ? "online" : "offline"} />
+              <Avatar size="xs" name={m.displayName || m.name} status={m.status === "online" ? "online" : "offline"} />
               <span className="truncate">{m.displayName}</span>
               <span className="ml-auto text-xs text-muted-foreground">{m.kind}</span>
             </div>
@@ -794,17 +798,13 @@ export function ChannelClient({
           </div>
           <div className="mt-3 flex gap-1">
             {conversationTabs.map(({ label, icon: Icon }) => {
-              const tabKey = label.toLowerCase() as "chat" | "tasks" | "files"
+              const tabKey = label.toLowerCase() as "chat" | "tasks" | "files" | "activity"
               const isActive = activeTab === tabKey
               return (
                 <button
                   key={String(label)}
                   type="button"
                   onClick={() => {
-                    if (tabKey === "tasks") {
-                      window.location.href = `/tasks?channel=${encodeURIComponent(currentChannel?.name ?? currentDm?.name ?? channelName)}`
-                      return
-                    }
                     setActiveTab(tabKey)
                     if (tabKey === "files") {
                       void refreshFiles()
@@ -826,7 +826,30 @@ export function ChannelClient({
 
         <div className="flex flex-1 overflow-hidden">
           <div className="flex flex-1 flex-col">
-            {activeTab === "files" ? (
+            {activeTab === "activity" ? (
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="mx-auto max-w-3xl">
+                  {dmAgent ? (
+                    <AgentActivityList agentId={dmAgent.id} runtimeOnly limit={40} />
+                  ) : (
+                    <div className="rounded-lg border border-dashed py-10 text-center">
+                      <Activity className="mx-auto size-7 text-muted-foreground/50" />
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Activity is only available for agent conversations.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : activeTab === "tasks" ? (
+              <div className="flex-1 overflow-y-auto p-4">
+                  <TaskBoard
+                    channelName={currentChannel?.name ?? currentDm?.name ?? channelName}
+                    initialView="board"
+                    showDetail
+                  />
+              </div>
+            ) : activeTab === "files" ? (
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="mx-auto max-w-3xl">
                   <div className="mb-3 flex items-center justify-between">
@@ -915,7 +938,7 @@ export function ChannelClient({
                     <div
                       key={msg.id}
                       data-testid={`message-${msg.id}`}
-                      className={`group/message relative flex gap-3 rounded-lg p-2.5 transition-colors focus-within:bg-muted/60 hover:bg-muted/60 ${
+                      className={`group/message relative flex gap-3 rounded-lg p-2.5 transition-colors focus-within:bg-accent hover:bg-accent ${
                         isSaved ? "bg-primary/5" : ""
                       }`}
                       tabIndex={0}
@@ -941,7 +964,7 @@ export function ChannelClient({
                   {taskLinks[msg.id] && (
                     <Link
                       href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                      className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[0.7rem] font-medium text-emerald-700 hover:bg-emerald-100"
+                      className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
                     >
                       <CheckSquare className="size-3" />
                       Task
@@ -977,7 +1000,7 @@ export function ChannelClient({
                               onClick={() => toggleReaction(msg, emoji)}
                               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
                                 didReact(msg, emoji)
-                                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                                  ? "border-primary/30 bg-primary/10 text-primary"
                                   : "border-border bg-background text-muted-foreground hover:bg-muted"
                               }`}
                               aria-label={`${count} ${emoji} reactions`}
@@ -1048,18 +1071,18 @@ export function ChannelClient({
                   placeholder="Type a message..."
                   className="flex-1"
                 />
-                <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground select-none">
-                  <button
-                    type="button"
-                    onClick={() => setAsTask(!asTask)}
-                    className="inline-flex size-5 items-center justify-center rounded border"
-                    aria-pressed={asTask}
-                    aria-label="Send as task"
-                  >
-                    {asTask && <CheckSquare className="size-3.5 text-primary" />}
-                  </button>
+                <button
+                  type="button"
+                  onClick={() => setAsTask(!asTask)}
+                  aria-pressed={asTask}
+                  aria-label="Send as task"
+                  className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground select-none hover:text-foreground"
+                >
+                  <span className={`inline-flex size-5 items-center justify-center rounded border ${asTask ? "border-primary" : "border-muted-foreground/30"}`}>
+                    {asTask && <CheckSquare className="size-3.5 text-primary pointer-events-none" />}
+                  </span>
                   As Task
-                </label>
+                </button>
                 <button
                   type="button"
                   aria-label="Send message"
@@ -1123,7 +1146,7 @@ export function ChannelClient({
                       {taskLinks[activeRoot.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[activeRoot.id])}`}
-                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[0.7rem] font-medium text-emerald-700 hover:bg-emerald-100"
+                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
                         >
                           <CheckSquare className="size-3" />
                           Open task
@@ -1139,7 +1162,7 @@ export function ChannelClient({
                               onClick={() => toggleReaction(activeRoot, emoji)}
                               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
                                 didReact(activeRoot, emoji)
-                                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                                  ? "border-primary/30 bg-primary/10 text-primary"
                                   : "border-border bg-background text-muted-foreground hover:bg-muted"
                               }`}
                               aria-label={`${count} ${emoji} reactions`}
@@ -1151,7 +1174,7 @@ export function ChannelClient({
                         </div>
                       )}
                       {threadData?.threadSummary?.summary && (
-                        <p className="mt-3 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                        <p className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
                           {threadData.threadSummary.summary}
                         </p>
                       )}
@@ -1174,7 +1197,7 @@ export function ChannelClient({
                       {taskLinks[msg.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[0.7rem] font-medium text-emerald-700 hover:bg-emerald-100"
+                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
                         >
                           <CheckSquare className="size-3" />
                           Open task
@@ -1190,7 +1213,7 @@ export function ChannelClient({
                               onClick={() => toggleReaction(msg, emoji)}
                               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
                                 didReact(msg, emoji)
-                                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                                  ? "border-primary/30 bg-primary/10 text-primary"
                                   : "border-border bg-background text-muted-foreground hover:bg-muted"
                               }`}
                               aria-label={`${count} ${emoji} reactions`}
@@ -1233,7 +1256,7 @@ export function ChannelClient({
           {!activeThreadId && showMembers && (
             <aside
               aria-label="Channel members"
-              className="w-64 shrink-0 border-l bg-muted/30 p-4 space-y-4 overflow-y-auto"
+              className="w-64 shrink-0 border-l bg-background p-4 space-y-4 overflow-y-auto"
             >
               <h3 className="text-sm font-semibold">Members ({members.length})</h3>
               {members.map((m) => (
@@ -1243,7 +1266,7 @@ export function ChannelClient({
                   className="flex items-center justify-between gap-2"
                 >
                   <div className="flex items-center gap-2 text-sm">
-                    <Avatar size="sm" name={m.displayName} status={m.status === "online" ? "online" : "offline"} />
+                    <Avatar size="sm" name={m.displayName || m.name} status={m.status === "online" ? "online" : "offline"} />
                     <span className="truncate">{m.displayName}</span>
                     <span className="text-xs text-muted-foreground">{statusLabel(m.status)}</span>
                   </div>

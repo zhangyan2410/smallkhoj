@@ -67,7 +67,7 @@ function Avatar({
           aria-label={status}
           className={cn(
             "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background",
-            status === "online" ? "bg-emerald-500" : "bg-muted-foreground/40"
+            status === "online" ? "bg-success" : "bg-muted-foreground/40"
           )}
         />
       ) : null}

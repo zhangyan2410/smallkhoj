@@ -276,7 +276,7 @@ async function getDashboardData(): Promise<DashboardData> {
     members: membersData.members,
     computers: computersData.computers,
     tasks: tasksData.tasks,
-    activity: activityData.activity,
+    activity: activityData.activity.filter((item) => !item.type.startsWith("runtime_")),
     files: filesData.files,
     reminders: remindersData.reminders,
     messages,
@@ -694,7 +694,7 @@ export default async function DaemonPage({
                 <Activity className="size-5" />
                 Activity Feed
               </CardTitle>
-              <CardDescription>agent、任务、提醒和文件相关事件</CardDescription>
+              <CardDescription>消息流转、任务状态、成员和文件事件</CardDescription>
             </CardHeader>
             <CardContent className="pt-4">
               <ScrollArea className="h-[382px]">

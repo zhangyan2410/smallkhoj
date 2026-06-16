@@ -103,6 +103,10 @@ interface RuntimeRecord {
   pendingWarmupResult: Set<string>;
   /** Timer that degrades the runtime to ready if warmup never completes */
   warmupTimer: ReturnType<typeof setTimeout> | null;
+  /** Current activity state for the four-state timeline (Working/Thinking/Output/Idle) */
+  activityTurnState: 'idle' | 'working' | 'thinking' | 'output';
+  /** tool_use ids already reported as Output activity this turn (dedup) */
+  recordedToolUseIds: Set<string>;
 }
 
 export class DaemonCore extends EventEmitter {
@@ -206,6 +210,17 @@ export class DaemonCore extends EventEmitter {
         delivered,
         queued: !delivered,
         durationMs: Date.now() - deliveryStarted,
+      });
+    }
+    // Working state: a message reached the runtime, reset per-turn dedup sets
+    // and report the start of a new turn to the Activity timeline.
+    if (delivered) {
+      runtime.activityTurnState = 'working';
+      runtime.recordedToolUseIds.clear();
+      void this.reportRuntimeActivity(runtime, 'runtime_working', 'Working on message', {
+        messageId: message.messageId ?? undefined,
+        sourceChannel: message.channelId ?? undefined,
+        target: message.target ?? undefined,
       });
     }
     this.log(
@@ -598,6 +613,8 @@ export class DaemonCore extends EventEmitter {
       warmupStartedAt: undefined,
       pendingWarmupResult: new Set(),
       warmupTimer: null,
+      activityTurnState: 'idle',
+      recordedToolUseIds: new Set(),
     };
     this.runtimes.set(agentId, runtime);
     this.startRuntimeStallWatchdog(runtime);
@@ -691,6 +708,67 @@ export class DaemonCore extends EventEmitter {
           });
         }
       }
+
+      // ── Four-state activity translation (Working/Thinking/Output/Idle) ──
+      // Only report after the runtime has finished warming up; warmup itself
+      // would otherwise flood the timeline with Thinking/Output entries.
+      if (runtime.ready) {
+        if (eventType === 'assistant' && runtime.activityTurnState !== 'thinking') {
+          runtime.activityTurnState = 'thinking';
+          // Extract a short prefix of the model's thinking/reasoning text so
+          // the Activity timeline shows what the runtime is reasoning about,
+          // not just a bare "thinking" label.
+          let thoughtPreview: string | undefined;
+          if (Array.isArray((event as Record<string, unknown>)?.message)) {
+            for (const block of getContentBlocks(event)) {
+              if (block.type === 'thinking' && typeof block.thinking === 'string') {
+                thoughtPreview = block.thinking.slice(0, 200);
+                break;
+              }
+              // Some providers expose reasoning as a text block before tool_use.
+              if (block.type === 'text' && typeof block.text === 'string' && !thoughtPreview) {
+                thoughtPreview = block.text.slice(0, 200);
+              }
+            }
+          }
+          void this.reportRuntimeActivity(runtime, 'runtime_thinking', 'Thinking', {
+            sessionId: driver.sessionId ?? undefined,
+            thought: thoughtPreview,
+          });
+        }
+        if (eventType === 'assistant') {
+          for (const block of getContentBlocks(event)) {
+            if (block.type !== 'tool_use' || typeof block.id !== 'string') continue;
+            if (runtime.recordedToolUseIds.has(block.id)) continue;
+            runtime.recordedToolUseIds.add(block.id);
+            runtime.activityTurnState = 'output';
+            const name = typeof block.name === 'string' ? block.name : 'tool';
+            const input = isRecord(block.input) ? block.input : {};
+            const cmd = typeof input.command === 'string' ? input.command : '';
+            void this.reportRuntimeActivity(runtime, 'runtime_output', `Ran ${name}`, {
+              toolName: name,
+              commandPreview: cmd,
+            });
+          }
+        }
+        if (eventType === 'result') {
+          const resultData = isRecord(event) ? event : undefined;
+          const resultUsage = isRecord(resultData?.usage) ? resultData.usage : undefined;
+          runtime.activityTurnState = 'idle';
+          runtime.recordedToolUseIds.clear();
+          void this.reportRuntimeActivity(runtime, 'runtime_idle', 'Idle', {
+            durationMs: typeof resultData?.duration_ms === 'number' ? resultData.duration_ms : undefined,
+            wallClockMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
+            tokens: {
+              input: typeof resultUsage?.input_tokens === 'number' ? resultUsage.input_tokens : undefined,
+              output: typeof resultUsage?.output_tokens === 'number' ? resultUsage.output_tokens : undefined,
+              cacheRead: typeof resultUsage?.cache_read_input_tokens === 'number' ? resultUsage.cache_read_input_tokens : undefined,
+            },
+            usageSource: 'provider-stream-json',
+          });
+        }
+      }
+
       this.emitRuntimeTrace({
         type: 'stream_event',
         agentId,
@@ -1078,6 +1156,37 @@ export class DaemonCore extends EventEmitter {
     runtime.warmupTimer = null;
   }
 
+  /**
+   * Report a runtime-state activity (Working/Thinking/Output/Idle) to the
+   * backend so it shows up in the Activity tab timeline. Truncates all string
+   * values to keep network payload small. Fire-and-forget with a short timeout;
+   * failures are logged at debug level and never block the stream loop.
+   */
+  private async reportRuntimeActivity(
+    runtime: RuntimeRecord,
+    kind: string,
+    description: string,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.credential || this.stopping) return;
+    const truncated = truncateDetails(details, 200);
+    const serverUrl = this.credential.serverUrl || this.config.serverUrl;
+    try {
+      await fetch(new URL('/internal/agent-api/activity', serverUrl), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.credential.token}`,
+          'X-Agent-Id': runtime.agentId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: kind, description, details: truncated }),
+        signal: AbortSignal.timeout(3000),
+      });
+    } catch (err) {
+      this.log(`Activity report failed (${kind}): ${(err as Error).message}`, 'debug');
+    }
+  }
+
   private scheduleRuntimeRestart(runtime: RuntimeRecord, sessionId?: string): void {
     if (this.stopping || this.config.runtime !== 'claude_code' || !this.config.runtimeRestartOnCrash) return;
     if (runtime.restartAttempts >= 1 || runtime.restartTimer) return;
@@ -1333,6 +1442,25 @@ function assignDefined<T extends object, K extends keyof T>(
   if (value !== undefined) {
     target[key] = value;
   }
+}
+
+/**
+ * Recursively truncate all string values in an object to `maxLen` characters,
+ * appending an ellipsis when truncated. Keeps the payload small for activity
+ * reporting (network-bandwidth friendly; NoSQL-ready flat structure).
+ */
+function truncateDetails(obj: Record<string, unknown>, maxLen: number): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'string') {
+      out[k] = v.length > maxLen ? v.slice(0, maxLen) + '…' : v;
+    } else if (v && typeof v === 'object' && !Array.isArray(v)) {
+      out[k] = truncateDetails(v as Record<string, unknown>, maxLen);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
 }
 
 function unwrapMessagePayload(input: unknown): unknown {

@@ -217,4 +217,5 @@ Still incomplete:
 - `total-design.md`：产品能力、页面和用户工作流总览。
 - `slock-design-spec.md`：当前数据模型、auth、API、daemon/runtime 协议。
 - `current-architecture.md`：全局架构归档入口。
+- `daemon-architecture.md`：**daemon 内部架构、runtime 生命周期、排查地图**。
 - `_archived-*.md`：历史草稿和旧决策记录，不作为当前实现依据。
