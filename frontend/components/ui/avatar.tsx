@@ -20,15 +20,19 @@ const avatarVariants = cva(
 )
 
 function initials(name: string): string {
-  const parts = name.trim().split(/[\s_\-./]+/).filter(Boolean)
+  // Strip leading @ (handles like "@zy-ean" should show "zy" not "@E")
+  const clean = name.trim().replace(/^@+/, "")
+  const parts = clean.split(/[\s_\-./@]+/).filter(Boolean)
   if (parts.length === 0) return "?"
   if (parts.length === 1) return parts[0].slice(0, 2)
   return (parts[0][0] ?? "") + (parts[parts.length - 1][0] ?? "")
 }
 
 function hashHue(name: string): number {
+  // Use the cleaned name (without @) for consistent color hashing
+  const clean = name.trim().replace(/^@+/, "")
   let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  for (let i = 0; i < clean.length; i++) h = (h * 31 + clean.charCodeAt(i)) >>> 0
   return h % 360
 }
 

@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "agent/daemon/aaa-daemon/src/runtime/claude-runtime.ts", "reason": "System prompt definition — buildSlockSystemPrompt (line 49+), authoritative prompt sent to all runtimes"}
+{"file": "agent/daemon/aaa-daemon/src/slock-cli.ts", "reason": "slock CLI implementation — parseRequest, all command routing"}

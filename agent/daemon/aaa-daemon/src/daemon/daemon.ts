@@ -107,6 +107,13 @@ interface RuntimeRecord {
   activityTurnState: 'idle' | 'working' | 'thinking' | 'output';
   /** tool_use ids already reported as Output activity this turn (dedup) */
   recordedToolUseIds: Set<string>;
+  /** Ground-truth token usage from the last completed turn (session-jsonl or provider) */
+  lastTurnUsage?: {
+    source: 'session-jsonl' | 'provider-stream-json';
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadInputTokens?: number;
+  };
 }
 
 export class DaemonCore extends EventEmitter {
@@ -181,6 +188,17 @@ export class DaemonCore extends EventEmitter {
     if (!runtime) {
       this.log(
         `Runtime delivery skipped because target runtime is not running: source=${source} agent=${agentId ?? 'unknown'}`,
+        'debug',
+      );
+      return false;
+    }
+
+    // Skip self-echo: if the message actor is the runtime's own agent, the
+    // agent sent this message and should not receive it back as a new event.
+    // This prevents unnecessary token consumption from self-message echoes.
+    if (message.actor && message.actor === runtime.agentId) {
+      this.log(
+        `Runtime delivery skipped self-echo: agent=${runtime.agentId} msg=${message.messageId ?? 'unknown'}`,
         'debug',
       );
       return false;
@@ -681,29 +699,40 @@ export class DaemonCore extends EventEmitter {
           const modelUsage = isRecord(resultData?.modelUsage) ? resultData.modelUsage : undefined;
           const modelName = modelUsage ? Object.keys(modelUsage).find((k) => k !== 'total') : undefined;
           const modelUsageEntry = modelName && modelUsage && isRecord(modelUsage[modelName]) ? modelUsage[modelName] : undefined;
-          const cacheRead = typeof resultUsage?.cache_read_input_tokens === 'number' ? resultUsage.cache_read_input_tokens : undefined;
+          const providerCacheRead = typeof resultUsage?.cache_read_input_tokens === 'number' ? resultUsage.cache_read_input_tokens : undefined;
           const modelCacheRead = typeof modelUsageEntry?.cacheReadInputTokens === 'number' ? modelUsageEntry.cacheReadInputTokens : undefined;
-          // Provider-reported token counts can be inflated by some Anthropic-compat
-          // adapters (observed: MiniMax reports cache_read ~2x in usage and ~8x in
-          // modelUsage vs. the session jsonl ground truth). Flag the suspect value
-          // so consumers know not to trust it for optimization decisions.
-          const providerReportedInflated = cacheRead !== undefined && modelCacheRead !== undefined
-            ? modelCacheRead > cacheRead * 3
+
+          // Ground truth: read the real (billed) usage from the Claude Code
+          // session jsonl. Provider-reported numbers via stream-json can be
+          // inflated by Anthropic-compat adapters (MiniMax ~2-8x).
+          const sessionUsage = readSessionUsage(runtime.workspacePath, driver.sessionId);
+          const realCacheRead = sessionUsage?.cacheReadInputTokens;
+          const realInputTokens = sessionUsage?.inputTokens;
+          const realOutputTokens = sessionUsage?.outputTokens;
+
+          // Prefer session-grounded numbers; fall back to provider-reported.
+          const cacheRead = realCacheRead ?? providerCacheRead;
+          const providerReportedInflated = providerCacheRead !== undefined && realCacheRead !== undefined
+            ? providerCacheRead > realCacheRead * 2
             : false;
+
+          // Store on the runtime record so the Idle activity can use real values.
+          runtime.lastTurnUsage = sessionUsage
+            ? { source: 'session-jsonl', ...sessionUsage }
+            : { source: 'provider-stream-json', inputTokens: realInputTokens, outputTokens: realOutputTokens, cacheReadInputTokens: providerCacheRead };
+
           this.emitLatencyTrace(runtime.activeTraceId, 'daemon.runtime.result', {
             flow: 'message_to_agent_reply',
             agentId,
             elapsedMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
             durationApiMs: typeof resultData?.duration_api_ms === 'number' ? resultData.duration_api_ms : undefined,
-            inputTokens: typeof resultUsage?.input_tokens === 'number' ? resultUsage.input_tokens : undefined,
-            outputTokens: typeof resultUsage?.output_tokens === 'number' ? resultUsage.output_tokens : undefined,
+            inputTokens: realInputTokens ?? (typeof resultUsage?.input_tokens === 'number' ? resultUsage.input_tokens : undefined),
+            outputTokens: realOutputTokens ?? (typeof resultUsage?.output_tokens === 'number' ? resultUsage.output_tokens : undefined),
             cacheReadInputTokens: cacheRead,
             model: typeof modelName === 'string' ? modelName : undefined,
-            // Daemon-measured wall-clock for the whole turn, not provider-reported.
             wallClockMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
-            // Also capture modelUsage cache read, which some providers inflate further.
             modelUsageCacheReadInputTokens: modelCacheRead,
-            usageSource: 'provider-stream-json',
+            usageSource: sessionUsage ? 'session-jsonl' : 'provider-stream-json',
             providerReportedInflated,
           });
         }
@@ -719,16 +748,14 @@ export class DaemonCore extends EventEmitter {
           // the Activity timeline shows what the runtime is reasoning about,
           // not just a bare "thinking" label.
           let thoughtPreview: string | undefined;
-          if (Array.isArray((event as Record<string, unknown>)?.message)) {
-            for (const block of getContentBlocks(event)) {
-              if (block.type === 'thinking' && typeof block.thinking === 'string') {
-                thoughtPreview = block.thinking.slice(0, 200);
-                break;
-              }
-              // Some providers expose reasoning as a text block before tool_use.
-              if (block.type === 'text' && typeof block.text === 'string' && !thoughtPreview) {
-                thoughtPreview = block.text.slice(0, 200);
-              }
+          for (const block of getContentBlocks(event)) {
+            if (block.type === 'thinking' && typeof block.thinking === 'string') {
+              thoughtPreview = block.thinking.slice(0, 200);
+              break;
+            }
+            // Some providers expose reasoning as a text block before tool_use.
+            if (block.type === 'text' && typeof block.text === 'string' && !thoughtPreview) {
+              thoughtPreview = block.text.slice(0, 200);
             }
           }
           void this.reportRuntimeActivity(runtime, 'runtime_thinking', 'Thinking', {
@@ -753,18 +780,19 @@ export class DaemonCore extends EventEmitter {
         }
         if (eventType === 'result') {
           const resultData = isRecord(event) ? event : undefined;
-          const resultUsage = isRecord(resultData?.usage) ? resultData.usage : undefined;
           runtime.activityTurnState = 'idle';
           runtime.recordedToolUseIds.clear();
+          // Use the ground-truth usage (set above in the result trace block).
+          const u = runtime.lastTurnUsage;
           void this.reportRuntimeActivity(runtime, 'runtime_idle', 'Idle', {
             durationMs: typeof resultData?.duration_ms === 'number' ? resultData.duration_ms : undefined,
             wallClockMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
             tokens: {
-              input: typeof resultUsage?.input_tokens === 'number' ? resultUsage.input_tokens : undefined,
-              output: typeof resultUsage?.output_tokens === 'number' ? resultUsage.output_tokens : undefined,
-              cacheRead: typeof resultUsage?.cache_read_input_tokens === 'number' ? resultUsage.cache_read_input_tokens : undefined,
+              input: u?.inputTokens,
+              output: u?.outputTokens,
+              cacheRead: u?.cacheReadInputTokens,
             },
-            usageSource: 'provider-stream-json',
+            usageSource: u?.source ?? 'provider-stream-json',
           });
         }
       }
@@ -1461,6 +1489,51 @@ function truncateDetails(obj: Record<string, unknown>, maxLen: number): Record<s
     }
   }
   return out;
+}
+
+/**
+ * Read the real (billed) token usage from the Claude Code session jsonl file.
+ * Claude Code persists the authoritative usage on each assistant line under
+ * `message.usage`. Provider-reported numbers in the stream-json `result` event
+ * can be inflated by Anthropic-compat adapters, so this is the ground truth.
+ *
+ * Returns undefined if the session file can't be found or parsed.
+ */
+function readSessionUsage(
+  workspacePath: string,
+  sessionId: string | null | undefined,
+): { inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number } | undefined {
+  if (!sessionId) return undefined;
+  try {
+    const projectDir = workspacePath.replace(/\/+/g, '-');
+    const sessionFile = join(
+      process.env.HOME || process.env.USERPROFILE || '/root',
+      '.claude',
+      'projects',
+      projectDir,
+      `${sessionId}.jsonl`,
+    );
+    if (!existsSync(sessionFile)) return undefined;
+    // Read the file and scan backwards for the last assistant line with usage.
+    const raw = readFileSync(sessionFile, 'utf-8');
+    const lines = raw.trim().split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const obj = JSON.parse(line);
+      if (obj.type !== 'assistant') continue;
+      const usage = obj.message?.usage;
+      if (!usage || typeof usage !== 'object') continue;
+      return {
+        inputTokens: typeof usage.input_tokens === 'number' ? usage.input_tokens : undefined,
+        outputTokens: typeof usage.output_tokens === 'number' ? usage.output_tokens : undefined,
+        cacheReadInputTokens: typeof usage.cache_read_input_tokens === 'number' ? usage.cache_read_input_tokens : undefined,
+      };
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function unwrapMessagePayload(input: unknown): unknown {

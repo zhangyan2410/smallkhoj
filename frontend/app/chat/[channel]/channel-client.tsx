@@ -947,7 +947,7 @@ export function ChannelClient({
                       <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="font-semibold text-foreground">{msg.sender}</span>
+                          <span className="font-semibold text-foreground">{msg.sender.replace(/^@/, "")}</span>
                           <span
                             className={`rounded px-1.5 py-0.5 text-[0.65rem] font-medium ${
                               msg.senderType === "agent"
@@ -1107,7 +1107,7 @@ export function ChannelClient({
                       <h2 className="truncate text-sm font-semibold">Thread</h2>
                       {activeRoot && (
                         <p className="truncate text-xs text-muted-foreground">
-                          {activeRoot.sender} · {threadData?.replyCount ?? 0} {threadData?.replyCount === 1 ? "reply" : "replies"}
+                          {activeRoot.sender.replace(/^@/, "")} · {threadData?.replyCount ?? 0} {threadData?.replyCount === 1 ? "reply" : "replies"}
                         </p>
                       )}
                     </div>
@@ -1136,7 +1136,7 @@ export function ChannelClient({
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 text-sm">
                           <Avatar size="sm" name={activeRoot.sender} />
-                          <span className="font-semibold text-foreground">{activeRoot.sender}</span>
+                          <span className="font-semibold text-foreground">{activeRoot.sender.replace(/^@/, "")}</span>
                           <span className="text-xs text-muted-foreground">{activeRoot.time}</span>
                         </div>
                         <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
@@ -1187,7 +1187,7 @@ export function ChannelClient({
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 text-sm">
                           <Avatar size="sm" name={msg.sender} />
-                          <span className="font-semibold text-foreground">{msg.sender}</span>
+                          <span className="font-semibold text-foreground">{msg.sender.replace(/^@/, "")}</span>
                           <span className="text-xs text-muted-foreground">{msg.time}</span>
                         </div>
                         <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
