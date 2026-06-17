@@ -3,7 +3,7 @@
   "name": "slock-cli-parity",
   "title": "slock CLI parity with Raft system prompt",
   "description": "Align slock CLI commands with the updated system prompt (Raft parity). Missing commands: thread unfollow, task unclaim, reminder snooze, reminder log, profile show (alias for get). System prompt references these but CLI does not implement them yet.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

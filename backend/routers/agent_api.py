@@ -1142,6 +1142,18 @@ async def _serialize_reminder(db: AsyncSession, reminder: Reminder) -> dict:
     }
 
 
+def _serialize_activity_log(activity: ActivityLog) -> dict:
+    return {
+        "id": str(activity.id),
+        "type": activity.kind,
+        "description": activity.description,
+        "details": activity.details or {},
+        "channelId": str(activity.channel_id) if activity.channel_id else None,
+        "taskId": str(activity.task_id) if activity.task_id else None,
+        "occurredAt": activity.occurred_at.isoformat() if activity.occurred_at else None,
+    }
+
+
 # ── Server info ──────────────────────────────────────────────
 
 @router.get("/server")
@@ -1941,6 +1953,27 @@ async def search_messages(
     messages = list(reversed(result.scalars().all()))
     items = [await _serialize_message(db, item) for item in messages]
     return {"messages": items, "results": items, "count": len(items), "query": term}
+
+
+@router.get("/messages/{message_ref}/resolve")
+async def resolve_message(
+    message_ref: str,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    message = await _resolve_message_ref(db, server, message_ref)
+    visible_ids = await _visible_channel_ids(db, member)
+    if message.channel_id not in visible_ids:
+        raise HTTPException(403, "Message is not visible to this agent")
+    serialized = await _serialize_message(db, message)
+    return {
+        "ok": True,
+        "resolved": True,
+        "message": serialized,
+        "messageId": serialized["messageId"],
+        "shortId": serialized["shortId"],
+    }
 
 
 @router.post("/messages/{message_ref}/reactions")
@@ -2768,7 +2801,8 @@ async def unfollow_thread(
     if not thread_id:
         raise HTTPException(400, "Missing threadId")
 
-    message = await _resolve_message_ref(db, server, str(thread_id))
+    _, thread_ref = _split_thread_target(str(thread_id))
+    message = await _resolve_message_ref(db, server, thread_ref or str(thread_id))
     root_id = message.parent_id or message.id
     _set_thread_following(member, root_id, False)
     await _record_activity(
@@ -2796,7 +2830,8 @@ async def follow_thread(
     if not thread_id:
         raise HTTPException(400, "Missing threadId")
 
-    message = await _resolve_message_ref(db, server, str(thread_id))
+    _, thread_ref = _split_thread_target(str(thread_id))
+    message = await _resolve_message_ref(db, server, thread_ref or str(thread_id))
     root_id = message.parent_id or message.id
     _set_thread_following(member, root_id, True)
     await _record_activity(
@@ -2922,8 +2957,12 @@ async def update_reminder(
         reminder.description = body["description"]
     if "fireAt" in body:
         reminder.fire_at = _parse_datetime(body["fireAt"])
+        if reminder.status != "cancelled":
+            reminder.status = "pending"
     if "delaySeconds" in body:
         reminder.fire_at = _utcnow() + timedelta(seconds=int(body["delaySeconds"]))
+        if reminder.status != "cancelled":
+            reminder.status = "pending"
     if "repeat" in body:
         reminder.repeat = {"cadence": body["repeat"]} if isinstance(body["repeat"], str) else body["repeat"]
     if "channel" in body:
@@ -2947,6 +2986,42 @@ async def update_reminder(
     await db.commit()
     await db.refresh(reminder)
     return {"updated": True, "reminder": await _serialize_reminder(db, reminder)}
+
+
+@router.get("/reminders/{reminder_id}/log")
+async def reminder_log(
+    reminder_id: str,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    try:
+        parsed_id = uuid.UUID(reminder_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid reminder id")
+
+    result = await db.execute(
+        select(Reminder).where(Reminder.id == parsed_id, Reminder.server_id == server.id, Reminder.agent_id == member.id)
+    )
+    reminder = result.scalar_one_or_none()
+    if not reminder:
+        raise HTTPException(404, "Reminder not found")
+
+    activity_result = await db.execute(
+        select(ActivityLog)
+        .where(
+            ActivityLog.server_id == server.id,
+            ActivityLog.agent_id == member.id,
+            ActivityLog.details.contains({"reminderId": str(parsed_id)}),
+        )
+        .order_by(ActivityLog.occurred_at)
+    )
+    entries = [_serialize_activity_log(item) for item in activity_result.scalars().all()]
+    return {
+        "reminderId": str(reminder.id),
+        "entries": entries,
+        "count": len(entries),
+    }
 
 
 @router.delete("/reminders/{reminder_id}")

@@ -1,3 +1,4 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
-{"file": "agent/daemon/aaa-daemon/src/runtime/claude-runtime.ts", "reason": "Verify all prompt-referenced commands have CLI implementations"}
-{"file": "agent/daemon/aaa-daemon/src/slock-cli.ts", "reason": "Verify each command path returns correct response"}
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "Verify prompt, slock CLI, proxy, daemon forwarding, and write-safety contracts remain true"}
+{"file": ".trellis/spec/backend/threading-contracts.md", "reason": "Verify thread unfollow does not violate existing thread contracts"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Check new command branches follow existing parser patterns instead of duplicating divergent logic"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Check every prompt-listed command has a valid route across CLI, daemon/proxy, and backend or is deliberately removed"}

@@ -161,6 +161,68 @@ test('slock message check maps to receive endpoint with limit', async () => {
   }
 });
 
+test('slock CLI parity commands map to canonical local proxy endpoints', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-cli-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+
+  try {
+    const tokenFile = join(root, 'token.txt');
+    writeFileSync(tokenFile, 'sap_cli_token', 'utf-8');
+    const env = {
+      SLOCK_AGENT_PROXY_URL: server.url,
+      SLOCK_AGENT_PROXY_TOKEN_FILE: tokenFile,
+      SLOCK_AGENT_ID: 'agent-1',
+      SLOCK_ALLOW_WRITES: '1',
+    };
+
+    assert.equal((await runCli(['message', 'resolve', 'msg-1'], env)).code, 0);
+    assert.equal((await runCli(['thread', 'unfollow', '--target', '#general:msg-1'], env)).code, 0);
+    assert.equal((await runCli(['task', 'unclaim', '--id', 'task-1'], env)).code, 0);
+    assert.equal((await runCli(['profile', 'show', '--handle', '@alice'], env)).code, 0);
+    assert.equal((await runCli(['reminder', 'snooze', '--id', 'rem-1', '--delay-seconds', '300'], env)).code, 0);
+    assert.equal((await runCli(['reminder', 'log', '--id', 'rem-1'], env)).code, 0);
+
+    assert.deepEqual(server.requests.map(({ req, body }) => ({ method: req.method, url: req.url, body })), [
+      {
+        method: 'GET',
+        url: '/internal/agent/agent-1/messages/msg-1/resolve',
+        body: '',
+      },
+      {
+        method: 'POST',
+        url: '/internal/agent/agent-1/threads/unfollow',
+        body: JSON.stringify({ threadId: '#general:msg-1' }),
+      },
+      {
+        method: 'POST',
+        url: '/internal/agent/agent-1/tasks/task-1/unclaim',
+        body: '',
+      },
+      {
+        method: 'GET',
+        url: '/internal/agent/agent-1/profile/%40alice',
+        body: '',
+      },
+      {
+        method: 'PATCH',
+        url: '/internal/agent/agent-1/reminders/rem-1',
+        body: JSON.stringify({ delaySeconds: 300 }),
+      },
+      {
+        method: 'GET',
+        url: '/internal/agent/agent-1/reminders/rem-1/log',
+        body: '',
+      },
+    ]);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('AgentProxy holds sends until pending messages are read', async () => {
   const upstream = await startServer((req, res, body) => {
     const url = new URL(req.url, 'http://upstream.test');
@@ -569,6 +631,22 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
       res.end(JSON.stringify({ handle: '@alice' }));
       return;
     }
+    if (url.pathname === '/internal/agent-api/messages/msg-1/resolve') {
+      res.end(JSON.stringify({ resolved: true, messageId: 'msg-1' }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/tasks/task-1/unclaim') {
+      res.end(JSON.stringify({ unclaimed: true, taskId: 'task-1' }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/reminders/rem-1/log') {
+      res.end(JSON.stringify({ reminderId: 'rem-1', entries: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/reminders/rem-1') {
+      res.end(JSON.stringify({ reminderId: 'rem-1', method: req.method, body: body ? JSON.parse(body) : null }));
+      return;
+    }
     if (url.pathname === '/internal/agent-api/knowledge/search') {
       res.end(JSON.stringify({ results: [{ id: 'k-1', q: url.searchParams.get('q') }] }));
       return;
@@ -693,6 +771,67 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
     assert.equal(upstream.requests.length, 5);
     assert.equal(upstream.requests[4].req.url, '/internal/agent-api/threads/thread-1/summary');
     assert.deepEqual(JSON.parse(upstream.requests[4].body), { summary: 'Current state is clear.' });
+
+    const messageResolve = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 6,
+      method: 'daemon/message.resolve',
+      params: { id: 'msg-1' },
+    });
+
+    assert.deepEqual(messageResolve, {
+      jsonrpc: '2.0',
+      id: 6,
+      result: { resolved: true, messageId: 'msg-1' },
+    });
+    assert.equal(upstream.requests.length, 6);
+    assert.equal(upstream.requests[5].req.url, '/internal/agent-api/messages/msg-1/resolve');
+
+    const taskUnclaim = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'daemon/task.unclaim',
+      params: { id: 'task-1' },
+    });
+
+    assert.deepEqual(taskUnclaim, {
+      jsonrpc: '2.0',
+      id: 7,
+      result: { unclaimed: true, taskId: 'task-1' },
+    });
+    assert.equal(upstream.requests.length, 7);
+    assert.equal(upstream.requests[6].req.url, '/internal/agent-api/tasks/task-1/unclaim');
+
+    const reminderSnooze = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 8,
+      method: 'daemon/reminder.snooze',
+      params: { id: 'rem-1', delaySeconds: 300 },
+    });
+
+    assert.deepEqual(reminderSnooze, {
+      jsonrpc: '2.0',
+      id: 8,
+      result: { reminderId: 'rem-1', method: 'PATCH', body: { delaySeconds: 300 } },
+    });
+    assert.equal(upstream.requests.length, 8);
+    assert.equal(upstream.requests[7].req.url, '/internal/agent-api/reminders/rem-1');
+    assert.deepEqual(JSON.parse(upstream.requests[7].body), { delaySeconds: 300 });
+
+    const reminderLog = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'daemon/reminder.log',
+      params: { id: 'rem-1' },
+    });
+
+    assert.deepEqual(reminderLog, {
+      jsonrpc: '2.0',
+      id: 9,
+      result: { reminderId: 'rem-1', entries: [] },
+    });
+    assert.equal(upstream.requests.length, 9);
+    assert.equal(upstream.requests[8].req.url, '/internal/agent-api/reminders/rem-1/log');
   } finally {
     proxy.stop();
     await upstream.close();

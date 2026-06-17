@@ -15,11 +15,12 @@ This directory contains guidelines for backend development. Fill in each file wi
 | Guide | Description | Status |
 |-------|-------------|--------|
 | [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
+| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations, read-only marker observation | Active |
 | [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
 | [Runtime Slock Integration](./runtime-slock-integration.md) | Claude runtime, slock CLI, local proxy, and MCP compatibility contracts | Active |
+| [Event Delivery Contracts](./event-delivery-contracts.md) | Activity/event filtering, daemon delivery, and runtime token-safety contracts | Active |
 | [Threading Contracts](./threading-contracts.md) | Single-level thread APIs, summary metadata, DM display, and daemon thread events | Active |
 
 ---

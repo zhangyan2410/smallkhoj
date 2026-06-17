@@ -49,7 +49,11 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 ### Project WebDriver Policy
 
 - Do not use Playwright for browser/UI verification in this repository.
-- Use the project WebDriver harness instead: `/Users/code/project/smallkhoj/agent/daemon/webdriver/twd.py`.
+- Skill: `project-webdriver-cli`
+- Path: `/Users/code/project/smallkhoj/.agents/skills/project-webdriver-cli/SKILL.md`
+- Use this skill for frontend/browser-facing fixes, UI assertions, screenshots, snapshots, DOM checks, and marker-based real-test evidence.
+- Use the project WebDriver CLI wrapper instead: `/Users/code/project/smallkhoj/agent/daemon/webdriver/twd`.
+- Do not invoke `python .../twd.py` for normal verification; treat `twd.py` and WebDriver internals as implementation details for debugging the WebDriver tool itself.
 - For frontend or browser-facing fixes, drive the running local app through this WebDriver tool, use unique markers, verify visible DOM state, and cross-check backend/API/database state when relevant.
 - Keep `smallkhoj-trace` for runtime/control-plane flow diagnosis; use WebDriver only for browser-visible behavior.
 

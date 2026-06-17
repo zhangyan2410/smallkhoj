@@ -1,3 +1,4 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
-{"file": "agent/daemon/aaa-daemon/src/runtime/claude-runtime.ts", "reason": "System prompt definition — buildSlockSystemPrompt (line 49+), authoritative prompt sent to all runtimes"}
-{"file": "agent/daemon/aaa-daemon/src/slock-cli.ts", "reason": "slock CLI implementation — parseRequest, all command routing"}
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "Owns the Claude runtime, generated slock CLI, local proxy, write-safety, and daemon forwarding contracts"}
+{"file": ".trellis/spec/backend/threading-contracts.md", "reason": "Owns thread read/summary/unfollow behavior and target/id constraints"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "CLI parser changes should reuse existing option/body/write-safety patterns"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Prompt/CLI/daemon/proxy/backend parity crosses multiple boundaries"}

@@ -29,7 +29,7 @@ function printUsage(): never {
   stderr.write(JSON.stringify({
     ok: false,
     code: 'USAGE',
-    message: 'Usage: slock message check|send|read|search|react, slock channel members|join|leave, slock thread read|summary, slock server info, slock task list|claim|update|create, slock profile get|update, slock integration list|login, slock reminder list|schedule|create|update|cancel|delete, slock attachment view|download|upload',
+    message: 'Usage: slock message check|send|read|search|resolve|react, slock channel members|join|leave, slock thread read|summary|unfollow, slock server info, slock task list|claim|unclaim|update|create, slock profile show|get|update, slock integration list|login, slock reminder list|schedule|create|snooze|update|cancel|delete|log, slock attachment view|download|upload',
   }) + '\n');
   exit(2);
 }
@@ -277,6 +277,12 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     return { method: 'GET', path: `${agentPrefix}/search?${query}` };
   }
 
+  if (group === 'message' && command === 'resolve') {
+    const messageId = getOption(rest, '--message-id') ?? getOption(rest, '--message') ?? getOption(rest, '--id') ?? getOption(rest, '-m') ?? positionalArgs(rest)[0];
+    if (!messageId) throw Object.assign(new Error('Missing --message-id'), { code: 'MISSING_MESSAGE_ID' });
+    return { method: 'GET', path: `${agentPrefix}/messages/${encodeURIComponent(messageId)}/resolve` };
+  }
+
   if (group === 'channel' && command === 'members') {
     const channel = getOption(rest, '--channel') ?? getOption(rest, '--target') ?? getOption(rest, '-c');
     if (!channel) throw Object.assign(new Error('Missing --channel'), { code: 'MISSING_CHANNEL' });
@@ -320,6 +326,17 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     };
   }
 
+  if (group === 'thread' && command === 'unfollow') {
+    const threadId = getOption(rest, '--target') ?? getOption(rest, '--thread-id') ?? getOption(rest, '--id') ?? positionalArgs(rest)[0];
+    if (!threadId) throw Object.assign(new Error('Missing --target or --thread-id'), { code: 'MISSING_THREAD_ID' });
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/threads/unfollow`,
+      body: { threadId },
+      safety: writeSafety(`thread:${threadId}`),
+    };
+  }
+
   if (group === 'task' && command === 'list') {
     const channel = getOption(rest, '--channel');
     const query = new URLSearchParams();
@@ -354,6 +371,27 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
       method: 'POST',
       path: `${agentPrefix}/tasks/${encodeURIComponent(taskId)}/claim`,
       body: compactBody({ assignee }),
+      safety: writeSafety(taskId),
+    };
+  }
+
+  if (group === 'task' && command === 'unclaim') {
+    const channel = getOption(rest, '--channel');
+    const number = getOption(rest, '--number');
+    if (channel && number && !getOption(rest, '--id') && !getOption(rest, '--task-id')) {
+      return {
+        method: 'POST',
+        path: `${agentPrefix}/tasks/update-status`,
+        body: { channel, task_number: requirePositiveInteger(number, '--number'), status: 'todo' },
+        safety: writeSafety(channel),
+      };
+    }
+
+    const taskId = getOption(rest, '--id') ?? getOption(rest, '--task-id') ?? positionalArgs(rest)[0];
+    if (!taskId) throw Object.assign(new Error('Missing --id or --channel with --number'), { code: 'MISSING_TASK_ID' });
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/tasks/${encodeURIComponent(taskId)}/unclaim`,
       safety: writeSafety(taskId),
     };
   }
@@ -410,7 +448,7 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     return { method: 'POST', path: `${agentPrefix}/tasks`, body, safety: writeSafety(channel) };
   }
 
-  if (group === 'profile' && command === 'get') {
+  if (group === 'profile' && (command === 'get' || command === 'show')) {
     const handle = getOption(rest, '--handle') ?? getOption(rest, '-h') ?? positionalArgs(rest)[0];
     return { method: 'GET', path: `${agentPrefix}/profile${handle ? `/${encodeURIComponent(handle)}` : ''}` };
   }
@@ -513,6 +551,25 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
     };
   }
 
+  if (group === 'reminder' && command === 'snooze') {
+    const reminderId = getOption(rest, '--id') ?? getOption(rest, '--reminder-id') ?? positionalArgs(rest)[0];
+    if (!reminderId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_REMINDER_ID' });
+    const delaySeconds = getOption(rest, '--in') ?? getOption(rest, '--delay-seconds');
+    const fireAt = getOption(rest, '--fire-at') ?? getOption(rest, '--at');
+    if (!delaySeconds && !fireAt) {
+      throw Object.assign(new Error('Missing --delay-seconds or --fire-at'), { code: 'MISSING_AT' });
+    }
+    return {
+      method: 'PATCH',
+      path: `${agentPrefix}/reminders/${encodeURIComponent(reminderId)}`,
+      body: compactBody({
+        delaySeconds: maybeNumber(delaySeconds),
+        fireAt,
+      }),
+      safety: writeSafety(reminderId),
+    };
+  }
+
   if (group === 'reminder' && (command === 'delete' || command === 'remove' || command === 'cancel')) {
     const reminderId = getOption(rest, '--id') ?? getOption(rest, '--reminder-id') ?? positionalArgs(rest)[0];
     if (!reminderId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_REMINDER_ID' });
@@ -521,6 +578,12 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
       path: `${agentPrefix}/reminders/${encodeURIComponent(reminderId)}`,
       safety: writeSafety(reminderId),
     };
+  }
+
+  if (group === 'reminder' && command === 'log') {
+    const reminderId = getOption(rest, '--id') ?? getOption(rest, '--reminder-id') ?? positionalArgs(rest)[0];
+    if (!reminderId) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_REMINDER_ID' });
+    return { method: 'GET', path: `${agentPrefix}/reminders/${encodeURIComponent(reminderId)}/log` };
   }
 
   if (group === 'attachment' && (command === 'download' || command === 'view')) {

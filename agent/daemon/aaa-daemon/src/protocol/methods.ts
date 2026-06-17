@@ -53,6 +53,9 @@ export const DaemonMethods = {
   /** Search messages */
   MessageSearch: 'daemon/message.search',
 
+  /** Resolve a message id/short id exactly */
+  MessageResolve: 'daemon/message.resolve',
+
   /** Add/remove reaction */
   MessageReact: 'daemon/message.react',
 
@@ -84,9 +87,11 @@ export const DaemonMethods = {
   ReminderList: 'daemon/reminder.list',
   ReminderCreate: 'daemon/reminder.create',
   ReminderSchedule: 'daemon/reminder.schedule',
+  ReminderSnooze: 'daemon/reminder.snooze',
   ReminderUpdate: 'daemon/reminder.update',
   ReminderCancel: 'daemon/reminder.cancel',
   ReminderDelete: 'daemon/reminder.delete',
+  ReminderLog: 'daemon/reminder.log',
   AttachmentView: 'daemon/attachment.view',
   AttachmentDownload: 'daemon/attachment.download',
   AttachmentUpload: 'daemon/attachment.upload',

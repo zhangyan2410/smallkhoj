@@ -154,9 +154,10 @@ export class DaemonCore extends EventEmitter {
     this.proxy.on('event_received', (data) => {
       if (!isRecord(data)) return;
       const eventType = firstString(data.type, data.eventType) ?? '';
-      // Only deliver task/thread events and message events to runtime; skip heartbeats/member updates.
+      // Only deliver explicitly actionable non-message events to runtime; skip
+      // telemetry, status updates, and generic event feed noise.
       if (eventType === 'message_received') return; // already handled above
-      if (!isTaskEventType(eventType) && !isThreadEventType(eventType)) return;
+      if (!isRuntimeActionableEventType(eventType)) return;
       this.deliverRuntimeMessage(data, 'proxy');
     });
   }
@@ -1660,6 +1661,13 @@ function summarizeRuntimeEvent(value: Record<string, unknown>, eventType?: strin
 
 function isTaskCreatedEvent(type?: string): boolean {
   return type === 'task_created' || type === 'task.created';
+}
+
+export function isRuntimeActionableEventType(type?: string): boolean {
+  return type === 'task_created'
+    || type === 'task.created'
+    || type === 'thread_summary_requested'
+    || type === 'thread.summary_requested';
 }
 
 function isMessageEventType(type: string): boolean {

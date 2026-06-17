@@ -360,6 +360,12 @@ function buildUpstreamHandler() {
       return;
     }
 
+    // message resolve
+    if (pathname === '/internal/agent-api/messages/msg-1/resolve') {
+      res.end(JSON.stringify({ resolved: true, messageId: 'msg-1' }));
+      return;
+    }
+
     // message reactions
     if (pathname === '/internal/agent-api/messages/msg-1/reactions') {
       res.end(JSON.stringify({ reacted: true, method: req.method, body: JSON.parse(body) }));
@@ -401,6 +407,10 @@ function buildUpstreamHandler() {
       res.end(JSON.stringify({ updated: true, body: JSON.parse(body) }));
       return;
     }
+    if (pathname === '/internal/agent-api/threads/unfollow' && req.method === 'POST') {
+      res.end(JSON.stringify({ unfollowed: true, body: JSON.parse(body) }));
+      return;
+    }
 
     // task list
     if (pathname === '/internal/agent-api/tasks' && req.method === 'GET') {
@@ -423,6 +433,10 @@ function buildUpstreamHandler() {
     // task claim by id
     if (pathname === '/internal/agent-api/tasks/task-42/claim') {
       res.end(JSON.stringify({ claimed: true, taskId: 'task-42', body: body ? JSON.parse(body) : {} }));
+      return;
+    }
+    if (pathname === '/internal/agent-api/tasks/task-42/unclaim') {
+      res.end(JSON.stringify({ unclaimed: true, taskId: 'task-42' }));
       return;
     }
 
@@ -471,6 +485,10 @@ function buildUpstreamHandler() {
     // reminder update
     if (pathname === '/internal/agent-api/reminders/rem-7') {
       res.end(JSON.stringify({ reminderId: 'rem-7', method: req.method, body: body ? JSON.parse(body) : null }));
+      return;
+    }
+    if (pathname === '/internal/agent-api/reminders/rem-7/log') {
+      res.end(JSON.stringify({ reminderId: 'rem-7', entries: [] }));
       return;
     }
 
@@ -586,6 +604,14 @@ test('slock CLI command variants', async (t) => {
       assert.equal(parsed.events.length, 0);
     });
 
+    await t.test('message resolve returns canonical resolved message', async () => {
+      const result = await runCli(['message', 'resolve', 'msg-1'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.resolved, true);
+      assert.equal(parsed.messageId, 'msg-1');
+    });
+
     // #5 - channel join/leave --channel-id (explicit channelId)
     await t.test('#5 channel join with --channel-id', async () => {
       const result = await runCli(
@@ -625,12 +651,28 @@ test('slock CLI command variants', async (t) => {
       assert.deepEqual(parsed.body, { summary: 'Current state is clear.' });
     });
 
+    await t.test('thread unfollow posts thread target body', async () => {
+      const result = await runCli(['thread', 'unfollow', '--target', '#general:thread-1'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.unfollowed, true);
+      assert.deepEqual(parsed.body, { threadId: '#general:thread-1' });
+    });
+
     // #6 - task claim --id <taskId>
     await t.test('#6 task claim by task ID', async () => {
       const result = await runCli(['task', 'claim', '--id', 'task-42'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.claimed, true);
+      assert.equal(parsed.taskId, 'task-42');
+    });
+
+    await t.test('task unclaim by task ID', async () => {
+      const result = await runCli(['task', 'unclaim', '--id', 'task-42'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.unclaimed, true);
       assert.equal(parsed.taskId, 'task-42');
     });
 
@@ -742,6 +784,13 @@ test('slock CLI command variants', async (t) => {
       assert.equal(parsed.handle, '@self');
     });
 
+    await t.test('profile show aliases profile get', async () => {
+      const result = await runCli(['profile', 'show', '--handle', '@bob'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.handle, '@bob');
+    });
+
     // #15 - profile update --display-name/--description/--avatar-url/--json
     await t.test('#15 profile update non-status fields', async () => {
       const result = await runCli(
@@ -828,6 +877,23 @@ test('slock CLI command variants', async (t) => {
         delaySeconds: 600,
         repeat: 'weekly',
       });
+    });
+
+    await t.test('reminder snooze updates delay without replacing reminder', async () => {
+      const result = await runCli(['reminder', 'snooze', '--id', 'rem-7', '--in', '900'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.reminderId, 'rem-7');
+      assert.equal(parsed.method, 'PATCH');
+      assert.deepEqual(parsed.body, { delaySeconds: 900 });
+    });
+
+    await t.test('reminder log reads lifecycle entries', async () => {
+      const result = await runCli(['reminder', 'log', '--id', 'rem-7'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.reminderId, 'rem-7');
+      assert.deepEqual(parsed.entries, []);
     });
 
     // #20 - attachment download --output <file> (rawOutputFile)

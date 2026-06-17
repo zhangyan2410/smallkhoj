@@ -1,5 +1,7 @@
 # Runtime Slock Integration
 
+> This file covers Claude runtime, Slock CLI, local proxy, provider, and connect-token integration. Event visibility, activity/event separation, and runtime token-safety rules live in `event-delivery-contracts.md`; read that file before changing `ActivityLog`, `EventRecord`, daemon WS/SSE/polling, or runtime delivery classification.
+
 ## Scenario: Claude Runtime Uses Slock CLI, Not MCP, For Chat
 
 ### Environment Notes
@@ -35,7 +37,7 @@ Future environment support must validate:
 
 ### 2. Signatures
 
-- CLI entry: `slock message check|send|read|search|react`, `slock channel members|join|leave`, `slock thread read|summary`, `slock server info`, `slock task list|create|claim|update`, `slock profile get|update`, `slock integration list|login`, `slock reminder list|schedule|create|update|cancel|delete`, `slock attachment view|download|upload`
+- CLI entry: `slock message check|send|read|search|resolve|react`, `slock channel members|join|leave`, `slock thread read|summary|unfollow`, `slock server info`, `slock task list|create|claim|unclaim|update`, `slock profile show|get|update`, `slock integration list|login`, `slock reminder list|schedule|create|snooze|update|cancel|delete|log`, `slock attachment view|download|upload`
 - Daemon runtime flags:
   - `aaa-daemon start --runtime none` (default)
   - `aaa-daemon start --runtime claude`
@@ -122,7 +124,7 @@ Future environment support must validate:
   - Backend `message.created` event payloads must include a reply-safe `target`/`channel` string for runtime prompts, plus `channelId` for machine lookup. Public/private channel targets use `#name`; DM targets use the sender peer handle from the receiving runtime's perspective, for example a human-authored DM to an agent uses `target:"dm:@zy-ean"`. Thread targets append the root short id, for example `dm:@zy-ean:a1b2c3d4`. A bare channel UUID is valid as an API fallback target, but it must not be the primary runtime prompt target.
   - Event replay must backfill reply-safe `target`/`channel` for historical `message.created` rows whose stored payload lacks those fields. Polling, SSE, and daemon WebSocket expansion must derive the target from `event_records.message_id` -> message/channel/root thread plus the receiving agent's DM peer, so reconnecting daemons do not replay old DM thread messages as targetless top-level DMs.
   - Backend event records use dotted canonical event names such as `message.created`, `task.created`, `task.claimed`, `task.updated`, `message.reaction_added`, `channel.member_joined`, and `thread.summary_requested`, while also returning `legacyType` for older consumers.
-  - Backend daemon WebSocket delivery is computer-scoped. `WS /internal/agent-api/ws` authenticates with the machine token, keeps a per-connection `eventLogCursor`, expands `EventRecord` rows by every agent on that computer that can see the event, and sets both `agentId` and `targetAgentId` to the receiving agent id before sending. Do not reuse `EventRecord.actor_id` as the delivery target.
+- Backend daemon WebSocket delivery is computer-scoped. `WS /internal/agent-api/ws` authenticates with the machine token, keeps a per-connection `eventLogCursor`, expands `EventRecord` rows by every agent on that computer that can see the event, and sets both `agentId` and `targetAgentId` to the receiving agent id before sending. Do not reuse `EventRecord.actor_id` as the delivery target. See `event-delivery-contracts.md` for self-echo suppression, activity/event separation, and non-actionable event filtering rules.
   - Backend daemon WebSocket push must run after the database commit that creates the `EventRecord`. If no WS peer is connected, the event remains in `event_records` for reconnect/SSE/polling fallback.
   - The daemon WebSocket reconnect URL must include `eventLogCursor=<last delivered event seq>` once it has received message/task events, so reconnect does not replay old chat into the runtime.
   - A daemon WebSocket connection with no cursor, `eventLogCursor=0`, or an invalid cursor is a live subscription starting at the current max `EventRecord.seq`. It must not replay historical chat into Claude or other runtimes on daemon restart. Historical context is pulled explicitly by the agent with read/check/search commands when needed.
@@ -158,7 +160,7 @@ Future environment support must validate:
   - dynamic runtime workspaces must be isolated. If a command omits `workspacePath`, use a per-agent path under the daemon workspace instead of sharing the daemon root `.slock` wrapper.
   - heartbeat/register workspace payloads for active runtimes use `status:"running"` and include `workspaceId`, `runtime`, `runtimeCommand`, `runtimeModel`, `sessionId`, `cwd`, and `pid` when known.
   - On daemon register/heartbeat, the `workspaces` array is the authoritative list of runtimes currently managed by that daemon process. Any workspace on the same computer that was previously `running`, `active`, or `idle` but is missing from the payload must be treated as stale and re-armed as `pending_start` so the next control response can send `start_runtime` again.
-  - Daemon and legacy agent heartbeat endpoints update current-state fields such as `computers.last_heartbeat_at`, `computers.status`, `agent_workspaces.status`, `agent_workspaces.session_id`, and `agent_workspaces.pid`, but must not create high-volume `ActivityLog(kind="workspace_heartbeat")`, heartbeat-like `ActivityLog(kind="custom")`, or `EventRecord(event_type="workspace.heartbeat")` rows. Registration/update events remain valid when a workspace is first registered or explicitly updated.
+- Daemon and legacy agent heartbeat endpoints update current-state fields such as `computers.last_heartbeat_at`, `computers.status`, `agent_workspaces.status`, `agent_workspaces.session_id`, and `agent_workspaces.pid`, but must not create high-volume `ActivityLog(kind="workspace_heartbeat")`, heartbeat-like `ActivityLog(kind="custom")`, or `EventRecord(event_type="workspace.heartbeat")` rows. Registration/update events remain valid when a workspace is first registered or explicitly updated. Heartbeat/activity telemetry must never be delivered to runtime as work.
   - explicit stops report `status:"stopped"`; unexpected exits report `status:"exited"` before the runtime record is removed, so backend state does not stay falsely running.
   - daemon records captured Claude session ids in `SessionManager`
   - runtime trace events are emitted for start, stream events, session capture, message send, exit, error, restart scheduling, and stall detection
@@ -178,16 +180,86 @@ Future environment support must validate:
 - `aaa-daemon start --import-slock-runtime <runtimeDir> --runtime claude` must load the imported runtime credential before proxy registration, then generate an aaa wrapper for the managed Claude process. The Claude process must call the aaa wrapper, not the original runtime wrapper directly.
 - Read-only CLI commands must stay GET-only:
   - `message search --query <q> [--channel <target>] [--limit <n>]` -> `/search?q=...`
+  - `message resolve <id>` -> `/messages/{id}/resolve`; exact-only proof that the id exists and is visible, not a context navigation command
   - `channel members --channel <target>` -> `/channel-members?channel=...`
   - `thread read --thread-id <id>` -> `/threads/{id}`
-  - `profile get [--handle <handle>]` -> `/profile` or `/profile/{handle}`
+  - `profile show|get [--handle <handle>]` -> `/profile` or `/profile/{handle}`
   - `integration list` -> `/integrations`
   - `reminder list` -> `/reminders`
+  - `reminder log <id>` -> `/reminders/{id}/log`
 - Write-capable CLI commands must require explicit opt-in before making local proxy requests:
   - `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`
   - optional target guard: `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`
 - `thread summary --thread-id <id> --summary <text>` is write-capable and maps to `POST /threads/{id}/summary` with body `{summary}`.
+- `thread unfollow --target <target>` is write-capable and maps to `POST /threads/unfollow` with body `{threadId}`.
+- `task unclaim --id <id>` maps to `POST /tasks/{id}/unclaim`; `task unclaim --channel <target> --number <n>` maps to `POST /tasks/update-status` with body `{channel, task_number, status:"todo"}`.
+- `reminder snooze <id> --delay-seconds <n>` or `--fire-at <iso>` is write-capable and maps to `PATCH /reminders/{id}` with body `{delaySeconds}` or `{fireAt}`.
 - Attachment upload resolves `--channel` through `/resolve-channel`, then forwards multipart form data (`file`, `channelId`, optional `mimeType`) to `/upload`.
+
+## Scenario: Runtime Prompt Command Parity
+
+### 1. Scope / Trigger
+
+- Trigger: adding or exposing Slock CLI commands that managed runtimes may call from the Claude system prompt.
+- This is cross-layer: prompt text, generated CLI parser, local proxy rewrite, daemon JSON-RPC forwarding, backend agent API, and tests must agree before the command is documented for workers.
+
+### 2. Signatures
+
+- `GET /internal/agent/{agentId}/messages/{messageRef}/resolve` -> backend `GET /internal/agent-api/messages/{messageRef}/resolve`
+- `POST /internal/agent/{agentId}/threads/unfollow` body `{threadId}`
+- `POST /internal/agent/{agentId}/tasks/{taskId}/unclaim`
+- `POST /internal/agent/{agentId}/tasks/update-status` body `{channel, task_number, status:"todo"}`
+- `PATCH /internal/agent/{agentId}/reminders/{reminderId}` body `{delaySeconds? | fireAt?}`
+- `GET /internal/agent/{agentId}/reminders/{reminderId}/log`
+- Daemon JSON-RPC methods: `daemon/message.resolve`, `daemon/task.unclaim`, `daemon/reminder.snooze`, `daemon/reminder.log`
+
+### 3. Contracts
+
+- `message resolve` is read-only and exact-only. It returns `{ok:true, resolved:true, message, messageId, shortId}` for a visible message and must fail closed for missing or invisible refs.
+- Runtime prompt guidance must present `message resolve` as proof for cited ids. Historical context still comes from `message search` and `message read`.
+- `thread unfollow`, `task unclaim`, and `reminder snooze` are write-capable and must pass the local write gate before the proxy request is made.
+- `profile show` is an alias for `profile get`; both must stay read-only.
+- `reminder snooze` re-arms a non-cancelled reminder by setting `status:"pending"` when `fireAt` or `delaySeconds` changes.
+- Do not expose commands in the runtime prompt until the CLI, proxy, daemon method forwarding, backend endpoint, and tests all exist. Keep design-only affordances such as action preparation out of the prompt.
+
+### 4. Validation & Error Matrix
+
+- Missing message id -> CLI `MISSING_MESSAGE_ID`; daemon forwarding rejects empty `/messages//resolve`.
+- Invisible resolved message -> backend HTTP 403.
+- Missing thread id -> CLI `MISSING_THREAD_ID`.
+- Missing task id and no channel/number pair -> CLI `MISSING_TASK_ID`.
+- Missing reminder id -> CLI `MISSING_REMINDER_ID`.
+- Snooze without `delaySeconds` or `fireAt` -> CLI `MISSING_AT`.
+- Invalid reminder UUID in log endpoint -> backend HTTP 400.
+- Reminder not owned by the current agent/server -> backend HTTP 404.
+
+### 5. Good/Base/Bad Cases
+
+- Good: `slock message resolve abc12345` returns the canonical message row, then `slock message read --around abc12345` is used only if surrounding context is needed.
+- Base: `slock task unclaim --channel "#general" --number 3` transitions an assigned in-progress task back to `todo`.
+- Bad: prompt advertises `slock action prepare` without a complete action-card product contract; workers may depend on a workflow humans have not accepted.
+
+### 6. Tests Required
+
+- CLI parser coverage asserts new commands map to the expected local proxy method/path/body and write safety.
+- Proxy rewrite coverage asserts `/messages/{id}/resolve` reaches `/internal/agent-api/messages/{id}/resolve`.
+- ClientHandler coverage asserts the JSON-RPC methods forward with correct paths and missing identifiers fail early.
+- Runtime prompt coverage asserts implemented commands are listed and non-implemented commands such as `slock action prepare` are absent.
+- Backend compile or unit coverage must include the new endpoints' import/signature validity; integration tests should cover visibility and ownership checks when backend fixtures are available.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+Tell Claude it can call `slock action prepare` because the proxy can rewrite an action path.
+```
+
+#### Correct
+
+```text
+Only list commands whose CLI parse path, daemon forwarding path, backend endpoint, safety behavior, and tests all exist.
+```
 
 ## Scenario: Daemon-Local Runtime Provider Selection
 
@@ -324,6 +396,7 @@ The daemon resolves `Kimi` to the local launcher and model from its own machine-
 - Bad: using the daemon global `workspacePath/.slock` wrapper for every dynamic agent. The later runtime overwrites wrapper/token env for earlier runtimes.
 - Bad: dropping `agentId` when buffering agent-scoped events. In a 1:N daemon that can misroute or skip runtime delivery.
 - Bad: using the event actor as the daemon WS delivery target. Human-authored UI messages must route to the agent recipient, not the human sender.
+- Bad: treating `ActivityLog` or runtime state telemetry as actionable runtime events. This can feed a runtime its own activity, create loops, and burn tokens.
 - Bad: emitting only `channelId`/bare UUID for a DM runtime prompt. Models tend to reuse the visible header, so missing `target=dm:@peer` causes replies to hit "Channel ... not found" or land outside the visible DM.
 
 ### 6. Tests Required
@@ -378,7 +451,7 @@ For product-facing runtime/control-plane changes, also use the task-local Real T
   - assert DM `message.created` events delivered to an agent include `target:"dm:@<human>"`, while `/internal/agent-api/send` accepts both that target and the raw DM `channelId`
   - assert a DM thread `message.created` event still returns `target:"dm:@<human>:<rootShortId>"` when the persisted event payload has had `target`/`channel` removed before replay
   - live smoke: start backend and `aaa-daemon start --ws auto` with a fake Claude runtime that records stdin; post `POST /api/v1/channels/{name}/messages`; assert the marker appears in runtime stdin without waiting for polling
-  - user-facing agent/chat/thread bugs and product-facing runtime/control-plane changes require an additional WebDriver acceptance pass against the running local app. Drive the real browser through the reported workflow with `agent/daemon/webdriver/twd.py`, use a unique marker, verify the visible DOM state, and cross-check persistence/API fields such as `parent_id`, `target`, `threadId`, workspace status, daemon id, or task id as relevant. When daemon/runtime delivery is involved, also cross-check `smallkhoj-trace` output. Treat this as a stronger acceptance gate than automated E2E alone; if WebDriver behavior disagrees with the requested behavior, keep fixing even when E2E is green.
+- user-facing agent/chat/thread bugs and product-facing runtime/control-plane changes require an additional WebDriver acceptance pass against the running local app. Drive the real browser through the reported workflow with the `project-webdriver-cli` skill and `agent/daemon/webdriver/twd`, use a unique marker, verify the visible DOM state, and cross-check persistence/API fields such as `parent_id`, `target`, `threadId`, workspace status, daemon id, or task id as relevant. When daemon/runtime delivery is involved, also cross-check `smallkhoj-trace` output. Treat this as a stronger acceptance gate than automated E2E alone; if WebDriver behavior disagrees with the requested behavior, keep fixing even when E2E is green.
 - Proxy freshness/SSE tests:
   - assert stale sends return HTTP 409 held responses before upstream send
   - assert checking/reading messages advances `readUpToSeq` enough for a later send

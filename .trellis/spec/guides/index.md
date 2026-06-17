@@ -23,6 +23,7 @@ These guides help you **ask the right questions before coding**.
 |-------|---------|-------------|
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
+| [Runtime Debugging SOP](./runtime-debugging-sop.md) | Diagnose runtime/daemon/provider stuck states | Agent/runtime delivery issues |
 
 ---
 
@@ -34,8 +35,18 @@ These guides help you **ask the right questions before coding**.
 - [ ] Data format changes between layers
 - [ ] Multiple consumers need the same data
 - [ ] You're not sure where to put some logic
+- [ ] A backend event, activity, or runtime state might be consumed by multiple surfaces
 
 → Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
+
+### When to Think About Runtime/Event Delivery
+
+- [ ] You're changing `ActivityLog`, `EventRecord`, daemon WS/SSE/polling, or event aliases
+- [ ] A new event might reach an agent runtime
+- [ ] A runtime could receive its own activity/message back
+- [ ] Token usage could grow because telemetry is delivered as prompt text
+
+→ Read [Runtime Debugging SOP](./runtime-debugging-sop.md) and `.trellis/spec/backend/event-delivery-contracts.md`
 
 ### When to Think About Code Reuse
 

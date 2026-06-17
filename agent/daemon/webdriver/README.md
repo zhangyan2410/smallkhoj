@@ -157,16 +157,17 @@ python twd.py --compact scan --text --url-match slock.ai
 ## 给 Claude Code / Codex 的最小提示词
 
 ```text
-浏览器自动化可用 CLI：D:\ai\khoj\smallkhoj\agent\daemon\webdriver\twd.py
-先假设用户已开一个常驻：python twd.py serve
+浏览器自动化可用 CLI：agent/daemon/webdriver/twd
+不要直接调用 python twd.py；twd.py 是 CLI 内部实现，只有调试 WebDriver 工具本身时才读。
+先假设用户已开一个常驻：agent/daemon/webdriver/twd serve
 常用：
-- python twd.py tabs
-- python twd.py scan --text --url-match <domain>
-- python twd.py eval --url-match <domain> "return document.title"
-- python twd.py input --url-match <domain> "textarea" "文本" --contains "占位/标签关键字"
-- python twd.py click --url-match <domain> "button" --contains "按钮文字"
+- agent/daemon/webdriver/twd tabs
+- agent/daemon/webdriver/twd scan --text --url-match <domain>
+- agent/daemon/webdriver/twd eval --url-match <domain> "return document.title"
+- agent/daemon/webdriver/twd input --url-match <domain> "textarea" "文本" --contains "占位/标签关键字"
+- agent/daemon/webdriver/twd click --url-match <domain> "button" --contains "按钮文字"
 输出都是 JSON；失败时看 ok=false/code/message。
-单行 JSON 用：python twd.py --compact <cmd> ...（--compact 放在子命令前）。
+单行 JSON 用：agent/daemon/webdriver/twd --compact <cmd> ...（--compact 放在子命令前）。
 JS 中 await 必须显式 return。
 ```
 
@@ -174,7 +175,7 @@ JS 中 await 必须显式 return。
 
 1. `tabs` 为空：确认 Chrome 已打开普通网页，不要只开 `chrome://` / `about:blank`。
 2. 确认扩展已安装并启用：`TMWD CDP Bridge`。
-3. 确认 master 在跑：`python twd.py serve`，端口是 `18765/18766`。
+3. 确认 master 在跑：`agent/daemon/webdriver/twd serve`，端口是 `18765/18766`。
 4. 如果扩展刚装或服务刚启动，等 5 秒或刷新网页。
 5. 后台 tab 可能被节流；关键操作可以先切到目标 tab。
 
@@ -196,7 +197,7 @@ python twd.py tabs
 ```bash
 # Linux/Mac
 export TWD_PORT=28765
-python twd.py serve
+agent/daemon/webdriver/twd serve
 ```
 
 ## Tab Groups（Chrome 113+）
@@ -228,21 +229,22 @@ python twd.py groups update --group-id 1878492781 --collapsed false
 ## 给 Claude Code / Codex 的完整提示词
 
 ```text
-浏览器自动化可用 CLI：python twd.py
+浏览器自动化可用 CLI：agent/daemon/webdriver/twd
+不要直接调用 python twd.py；twd.py 是 CLI 内部实现，只有调试 WebDriver 工具本身时才读。
 默认读 TWD_PORT 环境变量，不设则用 18765。
 
 常用命令：
-- python twd.py tabs                                    # 列出已连接 tab
-- python twd.py eval --url-match <domain> "return ..."  # 执行 JS
-- python twd.py scan --text --url-match <domain>        # 读取页面文本
-- python twd.py input --url-match <domain> "textarea" "内容" --contains "关键字"
-- python twd.py click --url-match <domain> "button" --contains "按钮文字"
-- python twd.py act --url-match <domain> "JS动作"       # 执行动作并自动 diff
-- python twd.py groups list                             # 列出 tab 分组
-- python twd.py groups create --title 名字 --color green --tabs id1,id2  # 创建分组
+- agent/daemon/webdriver/twd tabs                                    # 列出已连接 tab
+- agent/daemon/webdriver/twd eval --url-match <domain> "return ..."  # 执行 JS
+- agent/daemon/webdriver/twd scan --text --url-match <domain>        # 读取页面文本
+- agent/daemon/webdriver/twd input --url-match <domain> "textarea" "内容" --contains "关键字"
+- agent/daemon/webdriver/twd click --url-match <domain> "button" --contains "按钮文字"
+- agent/daemon/webdriver/twd act --url-match <domain> "JS动作"       # 执行动作并自动 diff
+- agent/daemon/webdriver/twd groups list                             # 列出 tab 分组
+- agent/daemon/webdriver/twd groups create --title 名字 --color green --tabs id1,id2  # 创建分组
 
 输出都是 JSON；失败看 ok=false/code/message。
 --compact 单行输出，--compact 放子命令前。
 JS 中 await 必须显式 return。
-先确保有常驻：python twd.py serve
+先确保有常驻：agent/daemon/webdriver/twd serve
 ```

@@ -17,6 +17,7 @@ import {
 } from '../dist/runtime/claude-runtime.js';
 import {
   formatRuntimeIncomingMessage,
+  isRuntimeActionableEventType,
   normalizeRuntimeIncomingMessage,
   parseDaemonControlCommand,
 } from '../dist/daemon/daemon.js';
@@ -72,16 +73,24 @@ test('claude args and prompt force slock CLI communication', () => {
 
   const prompt = buildSlockSystemPrompt({ credential, workspacePath: 'D:/workspace' });
   assert.match(prompt, /slock CLI ONLY/);
-  assert.match(prompt, /Supported commands in this daemon build/);
   assert.match(prompt, /slock message check/);
+  assert.match(prompt, /slock message resolve/);
   assert.match(prompt, /slock server info/);
-  assert.match(prompt, /slock task list\|create\|claim\|update/);
-  assert.match(prompt, /slock attachment view\|download\|upload/);
+  assert.match(prompt, /slock task list/);
+  assert.match(prompt, /slock task create/);
+  assert.match(prompt, /slock task claim/);
+  assert.match(prompt, /slock task unclaim/);
+  assert.match(prompt, /slock task update/);
+  assert.match(prompt, /slock reminder snooze/);
+  assert.match(prompt, /slock reminder log/);
+  assert.match(prompt, /slock attachment upload/);
+  assert.match(prompt, /slock attachment view/);
+  assert.doesNotMatch(prompt, /slock action prepare/);
   assert.match(prompt, /WRITES_NOT_ALLOWED/);
   assert.doesNotMatch(prompt, /not yet implemented/);
-  assert.match(prompt, /Message Targets/);
-  assert.match(prompt, /Reuse the exact `target=` value/);
-  assert.match(prompt, /Never use `channel=` or a bare channel UUID/);
+  assert.match(prompt, /## Messaging/);
+  assert.match(prompt, /`target=` — where the message came from/);
+  assert.match(prompt, /reuse the exact `target`/i);
   assert.match(prompt, /Agent ID: agent-123/);
 });
 
@@ -352,6 +361,19 @@ test('daemon formats thread summary requests for runtime delivery', () => {
       '[event=thread.summary_requested eventSeq=55 target=#general:abc123ef msg=thread-1 time=2026-06-05T10:08:00.000Z actor=agent-123 type=thread.summary_requested] Summarize this thread and write it back with slock thread summary.',
     ].join('\n'),
   );
+});
+
+test('daemon runtime delivery gate ignores non-actionable event noise', () => {
+  assert.equal(isRuntimeActionableEventType('task.created'), true);
+  assert.equal(isRuntimeActionableEventType('task_created'), true);
+  assert.equal(isRuntimeActionableEventType('thread.summary_requested'), true);
+  assert.equal(isRuntimeActionableEventType('thread_summary_requested'), true);
+
+  assert.equal(isRuntimeActionableEventType('task.updated'), false);
+  assert.equal(isRuntimeActionableEventType('task.claimed'), false);
+  assert.equal(isRuntimeActionableEventType('thread.followed'), false);
+  assert.equal(isRuntimeActionableEventType('runtime.idle'), false);
+  assert.equal(isRuntimeActionableEventType('workspace.heartbeat'), false);
 });
 
 test('websocket helpers classify messages and build ack/activity payloads', () => {

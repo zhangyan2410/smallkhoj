@@ -122,7 +122,7 @@ Use `http://localhost:3000` for local browser e2e, or configure `allowedDevOrigi
 
 ### Mutation Smoke Tests
 
-For forms that write to backend APIs, include at least one project WebDriver browser smoke test using `agent/daemon/webdriver/twd.py` that:
+For forms that write to backend APIs, include at least one project WebDriver browser smoke test using the `project-webdriver-cli` skill and `agent/daemon/webdriver/twd` that:
 
 - Fills and submits the visible form.
 - Verifies the expected result appears in the UI.
@@ -131,20 +131,30 @@ For forms that write to backend APIs, include at least one project WebDriver bro
 
 ### Real Browser Test SOP
 
-For browser-facing product work, add a task-local Real Test SOP and evidence files. Use the project WebDriver harness, not Playwright, for repository browser/UI verification.
+For browser-facing product work, add task-local real-test evidence files. Use the `project-webdriver-cli` skill and the project WebDriver CLI wrapper, not Playwright, for repository browser/UI verification.
 
 Start new task evidence from `docs/real-test-sop-template.md`, then specialize the steps for the feature being verified.
 
 Required evidence:
 
 - Unique marker in the shape `REAL_<task-slug>_<timestamp>`.
-- `twd.py` navigation/action commands against the running local app.
+- `agent/daemon/webdriver/twd` navigation/action commands against the running local app.
 - Visible DOM assertion through `scan --text` or `eval`.
 - Screenshot saved under `{TASK_DIR}/evidence/`.
 - API or database cross-check when the UI creates or mutates backend state.
 - `smallkhoj-trace` cross-check when daemon/runtime delivery is part of the workflow.
 
 If the real browser behavior disagrees with automated tests, treat the task as failing and keep fixing.
+
+### Event/Activity UI Token-Safety Gate
+
+When frontend work touches Activity, Events, agent timelines, daemon status, runtime state, or trace/debug views:
+
+- Treat Activity timeline rows as observability UI, not runtime work items.
+- Verify UI labels distinguish telemetry states from actionable messages/tasks.
+- Cross-check backend contracts in `.trellis/spec/backend/event-delivery-contracts.md`.
+- Use a marker-based browser check when the UI claims an event reached a specific agent/runtime.
+- Do not accept a UI that makes self-authored runtime activity look like a new inbound message.
 
 ---
 

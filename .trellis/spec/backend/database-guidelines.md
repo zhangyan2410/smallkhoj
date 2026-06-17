@@ -26,6 +26,43 @@ Questions to answer:
 
 (To be filled by the team)
 
+### Read-Only Marker Observation
+
+Use this pattern for debugging real-test markers across browser/API/database/event state.
+
+**Rules**:
+- Use `SELECT` only.
+- Do not run `UPDATE`, `DELETE`, `INSERT`, `TRUNCATE`, or DDL during observation.
+- Do not assume the active local database port. Check the running backend and test likely local ports such as `5432` and `55432`.
+- Copy IDs from results into follow-up queries; do not patch rows to make evidence pass.
+
+**Marker queries**:
+
+```sql
+SELECT m.id, m.short_id, c.name AS channel, m.content, m.created_at
+FROM messages m
+JOIN channels c ON c.id = m.channel_id
+WHERE m.content LIKE '%REAL_marker_here%'
+ORDER BY m.created_at DESC
+LIMIT 5;
+```
+
+```sql
+SELECT e.seq, e.event_type, e.message_id, e.payload->>'content' AS content
+FROM event_records e
+WHERE e.payload::text LIKE '%REAL_marker_here%'
+ORDER BY e.seq DESC
+LIMIT 10;
+```
+
+```sql
+SELECT t.id, t.task_number, t.title, t.status, t.created_at
+FROM tasks t
+WHERE t.title LIKE '%REAL_marker_here%' OR t.description LIKE '%REAL_marker_here%'
+ORDER BY t.created_at DESC
+LIMIT 5;
+```
+
 ---
 
 ## Migrations

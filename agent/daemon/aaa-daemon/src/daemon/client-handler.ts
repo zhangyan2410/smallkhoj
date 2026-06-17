@@ -90,6 +90,9 @@ export class ClientHandler extends EventEmitter {
       case DaemonMethods.MessageSearch:
         return this.forwardToProxy(id, 'message.search', params);
 
+      case DaemonMethods.MessageResolve:
+        return this.forwardToProxy(id, 'message.resolve', params);
+
       case DaemonMethods.MessageReact:
         return this.forwardToProxy(id, 'message.react', params);
 
@@ -101,6 +104,9 @@ export class ClientHandler extends EventEmitter {
 
       case DaemonMethods.TaskClaim:
         return this.forwardToProxy(id, 'task.claim', params);
+
+      case DaemonMethods.TaskUnclaim:
+        return this.forwardToProxy(id, 'task.unclaim', params);
 
       case DaemonMethods.TaskUpdate:
         return this.forwardToProxy(id, 'task.update', params);
@@ -147,6 +153,9 @@ export class ClientHandler extends EventEmitter {
       case DaemonMethods.ReminderSchedule:
         return this.forwardToProxy(id, 'reminder.schedule', params);
 
+      case DaemonMethods.ReminderSnooze:
+        return this.forwardToProxy(id, 'reminder.snooze', params);
+
       case DaemonMethods.ReminderUpdate:
         return this.forwardToProxy(id, 'reminder.update', params);
 
@@ -155,6 +164,9 @@ export class ClientHandler extends EventEmitter {
 
       case DaemonMethods.ReminderDelete:
         return this.forwardToProxy(id, 'reminder.delete', params);
+
+      case DaemonMethods.ReminderLog:
+        return this.forwardToProxy(id, 'reminder.log', params);
 
       case DaemonMethods.AttachmentView:
         return this.forwardToProxy(id, 'attachment.view', params);
@@ -232,6 +244,9 @@ export class ClientHandler extends EventEmitter {
         case 'message.search':
           apiPath = `${agentPath}/search${queryString(p, ['q', 'query', 'channel', 'target', 'limit'])}`;
           break;
+        case 'message.resolve':
+          apiPath = `${agentPath}/messages/${encodeURIComponent(String(p.messageId ?? p.message_id ?? p.id ?? ''))}/resolve`;
+          break;
         case 'message.react':
           apiPath = `${agentPath}/messages/${encodeURIComponent(String(p.messageId ?? p.message_id ?? p.id ?? ''))}/reactions`;
           httpMethod = p.remove === true ? 'DELETE' : 'POST';
@@ -252,6 +267,19 @@ export class ClientHandler extends EventEmitter {
           } else {
             apiPath = `${agentPath}/tasks/claim`;
             body = params;
+          }
+          httpMethod = 'POST';
+          break;
+        case 'task.unclaim':
+          if (p.channel && (p.task_number || p.taskNumber || p.number) && !p.taskId && !p.id) {
+            apiPath = `${agentPath}/tasks/update-status`;
+            body = {
+              channel: p.channel,
+              task_number: p.task_number ?? p.taskNumber ?? p.number,
+              status: 'todo',
+            };
+          } else {
+            apiPath = `${agentPath}/tasks/${encodeURIComponent(String(p.taskId ?? p.id ?? ''))}/unclaim`;
           }
           httpMethod = 'POST';
           break;
@@ -323,6 +351,14 @@ export class ClientHandler extends EventEmitter {
           httpMethod = 'POST';
           body = params;
           break;
+        case 'reminder.snooze':
+          apiPath = `${agentPath}/reminders/${encodeURIComponent(String(p.reminderId ?? p.id ?? ''))}`;
+          httpMethod = 'PATCH';
+          body = compactBody({
+            fireAt: p.fireAt ?? p.fire_at,
+            delaySeconds: p.delaySeconds ?? p.delay_seconds ?? p.in,
+          });
+          break;
         case 'reminder.update':
           apiPath = `${agentPath}/reminders/${encodeURIComponent(String(p.reminderId ?? p.id ?? ''))}`;
           httpMethod = 'PATCH';
@@ -332,6 +368,9 @@ export class ClientHandler extends EventEmitter {
         case 'reminder.delete':
           apiPath = `${agentPath}/reminders/${encodeURIComponent(String(p.reminderId ?? p.id ?? ''))}`;
           httpMethod = 'DELETE';
+          break;
+        case 'reminder.log':
+          apiPath = `${agentPath}/reminders/${encodeURIComponent(String(p.reminderId ?? p.id ?? ''))}/log`;
           break;
         case 'attachment.view':
           apiPath = `/api/attachments/${encodeURIComponent(String(p.attachmentId ?? p.id ?? ''))}`;
@@ -357,7 +396,7 @@ export class ClientHandler extends EventEmitter {
           return buildError(id, ErrorCode.MethodNotFound, `Unknown method for proxy: ${method}`);
       }
 
-      if (apiPath.endsWith('//reactions') || apiPath.endsWith('/tasks/') || apiPath.endsWith('/channels//join') || apiPath.endsWith('/channels//leave') || apiPath.endsWith('/threads/') || apiPath.endsWith('/threads//summary') || apiPath.endsWith('/reminders/') || apiPath.endsWith('/attachments/') || apiPath.endsWith('/knowledge/')) {
+      if (apiPath.endsWith('//resolve') || apiPath.endsWith('//reactions') || apiPath.endsWith('/tasks/') || apiPath.endsWith('/tasks//unclaim') || apiPath.endsWith('/channels//join') || apiPath.endsWith('/channels//leave') || apiPath.endsWith('/threads/') || apiPath.endsWith('/threads//summary') || apiPath.endsWith('/reminders/') || apiPath.endsWith('/reminders//log') || apiPath.endsWith('/attachments/') || apiPath.endsWith('/knowledge/')) {
         return buildError(id, ErrorCode.InvalidParams, `Missing required identifier for ${method}`);
       }
 
