@@ -44,6 +44,8 @@ import {
   statusLabel,
   API_BASE,
 } from "@/lib/control-plane"
+import { CreateChannelDialog } from "./create-channel-dialog"
+import { CreateAgentDialog } from "./create-agent-dialog"
 
 type ChannelInfo = { id: string; name: string; type: string; description?: string }
 type DmInfo = {
@@ -182,7 +184,6 @@ export function ChannelClient({
   const [filesLoading, setFilesLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
-  const dmAgentSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const currentChannel = channels.find((c) => c.name.replace("#", "") === channelName)
@@ -592,29 +593,6 @@ export function ChannelClient({
     }
   }
 
-  async function handleCreateDm() {
-    const peerName = dmAgentSelectRef.current?.value
-    if (!peerName) return
-    try {
-      const data = await apiPost<{ channel: DmInfo }>("/api/v1/dm", { peer: peerName }, sessionToken)
-      if (data?.channel) {
-        if (dmAgentSelectRef.current) dmAgentSelectRef.current.value = ""
-        await refreshDms()
-        const dmName = data.channel.name
-        if (dmName) {
-          window.location.href = `/chat/${channelPathSegment(dmName)}`
-        }
-      }
-    } catch (e) {
-      console.error("Create DM failed:", e)
-    }
-  }
-
-  async function refreshDms() {
-    const data = await apiGet<{ dms: DmInfo[] }>("/api/v1/dms", { dms: [] }, sessionToken)
-    setDms(data.dms || [])
-  }
-
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -696,7 +674,10 @@ export function ChannelClient({
               Saved
             </Link>
           </div>
-          <h3 className="mb-2 mt-5 text-xs font-medium uppercase text-muted-foreground">Channels</h3>
+          <div className="mb-2 mt-5 flex items-center justify-between">
+            <h3 className="text-xs font-medium uppercase text-muted-foreground">Channels</h3>
+            <CreateChannelDialog />
+          </div>
           <div className="space-y-1">
             {[...channels].sort((a, b) => a.name.localeCompare(b.name)).map((ch) => (
               <Link
@@ -714,31 +695,9 @@ export function ChannelClient({
               </Link>
             ))}
           </div>
-          <h3 className="mb-2 mt-5 text-xs font-medium uppercase text-muted-foreground">DMs</h3>
-          <div className="mb-2 flex gap-2">
-            <select
-              aria-label="Start DM with agent"
-              ref={dmAgentSelectRef}
-              className="flex-1 rounded-md border bg-background px-2 py-1 text-sm"
-            >
-              <option value="">Select agent...</option>
-              {allMembers
-                .filter((m) => m.kind === "agent")
-                .sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name))
-                .map((m) => (
-                  <option key={m.id} value={m.displayName}>
-                    {m.displayName}
-                  </option>
-                ))}
-            </select>
-            <button
-              type="button"
-              aria-label="Start DM"
-              onClick={handleCreateDm}
-              className="inline-flex h-7 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-[0.8rem] font-medium text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <Plus className="size-3" />
-            </button>
+          <div className="mb-2 mt-5 flex items-center justify-between">
+            <h3 className="text-xs font-medium uppercase text-muted-foreground">DMs</h3>
+            <CreateAgentDialog />
           </div>
           <div className="space-y-1">
             {[...dms].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((dm) => (

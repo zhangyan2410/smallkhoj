@@ -1,11 +1,12 @@
 import Link from "next/link"
 import { Hash, MessageSquare } from "lucide-react"
+import { redirect } from "next/navigation"
 
 import { ProductShell } from "@/components/product-shell"
 import { EmptyState, RuntimeChip } from "@/components/product-ui"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { apiGet, type Member } from "@/lib/control-plane"
-import { requireCurrentAccount } from "@/lib/server-auth"
+import { API_BASE, type Member } from "@/lib/control-plane"
+import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 import { DmStarter } from "./dm-starter"
 
 type Channel = {
@@ -29,14 +30,35 @@ function channelPathSegment(name: string) {
 
 export default async function ChatPage() {
   const session = await requireCurrentAccount()
-  const [{ channels }, { dms }, { members: allMembers }] = await Promise.all([
-    apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] }),
-    apiGet<{ dms: DmInfo[] }>("/api/v1/dms", { dms: [] }),
-    apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }),
+  // 注意：这是服务端组件，必须用 serverApiHeaders() 从 cookie 读 session token。
+  // 不能用 apiGet() 不带 token 的形式——那会落到 browserSessionToken()，
+  // 在服务端拿不到浏览器 localStorage 的 token，导致请求被当作匿名，返回空列表。
+  const headers = await serverApiHeaders()
+  const [channelsRes, dmsRes, membersRes] = await Promise.all([
+    fetch(`${API_BASE}/api/v1/channels`, { headers, cache: "no-store" }),
+    fetch(`${API_BASE}/api/v1/dms`, { headers, cache: "no-store" }),
+    fetch(`${API_BASE}/api/v1/members`, { headers, cache: "no-store" }),
   ])
+  const channelsData = channelsRes.ok ? await channelsRes.json() as { channels?: Channel[] } : {}
+  const dmsData = dmsRes.ok ? await dmsRes.json() as { dms?: DmInfo[] } : {}
+  const membersData = membersRes.ok ? await membersRes.json() as { members?: Member[] } : {}
+  const channels = channelsData.channels || []
+  const dms = dmsData.dms || []
+  const allMembers = membersData.members || []
   const agents = (allMembers || []).filter((m: Member) => m.kind === "agent").sort(
     (a: Member, b: Member) => (a.displayName || a.name).localeCompare(b.displayName || b.name)
   )
+
+  // 落地页已被移除：直接进入第一个频道，回退到第一个 DM，
+  // 都没有时才展示一个最小空状态，引导用户创建会话。
+  const firstChannel = channels[0]
+  if (firstChannel) {
+    redirect(`/chat/${channelPathSegment(firstChannel.name)}`)
+  }
+  const firstDm = dms[0]
+  if (firstDm) {
+    redirect(`/chat/${channelPathSegment(firstDm.name)}`)
+  }
 
   return (
     <ProductShell

@@ -1,6 +1,5 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation"
 import {
   Activity,
   Bell,
@@ -16,14 +15,15 @@ import {
 } from "lucide-react"
 
 import ActivityTab from "./activity-tab"
+import { CreateAgentCard } from "./create-agent-card"
 
 import { ProductShell } from "@/components/product-shell"
 import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
-import { ProviderSelect } from "./provider-select"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
+  API_BASE,
   apiGet,
   badgeClass,
   dotClass,
@@ -34,10 +34,8 @@ import {
   shortId,
   statusLabel,
 } from "@/lib/control-plane"
+import { detectedProviderOptions } from "@/lib/runtime-options"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
-const EXPECTED_RUNTIME_PROVIDERS = ["Codex CLI", "OpenCode", "Antigravity", "Pi"]
 
 async function getMembers() {
   return apiGet<{ members: Member[]; count?: number }>("/api/v1/members", { members: [], count: 0 })
@@ -45,28 +43,6 @@ async function getMembers() {
 
 async function getComputers() {
   return apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] })
-}
-
-async function createAgentAction(formData: FormData) {
-  "use server"
-  const name = formData.get("name") as string
-  const computerId = formData.get("computerId") as string
-  const runtime = formData.get("runtime") as string || "claude_code"
-  const runtimeProvider = formData.get("runtimeProvider") as string
-  const provider = formData.get("provider") as string
-  if (!name || !computerId) redirect("/members?error=Missing%20name%20or%20computer")
-  const response = await fetch(`${API_BASE}/api/v1/members/agents`, {
-    method: "POST",
-    headers: await serverApiHeaders(true),
-    body: JSON.stringify({ name, computerId, runtime, runtimeProvider, provider }),
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
-    redirect(`/members?error=${encodeURIComponent(detail)}`)
-  }
-  revalidatePath("/members")
-  redirect("/members")
 }
 
 function profileName(member: Member) {
@@ -83,29 +59,6 @@ function profileAvatar(member: Member) {
 
 function searchValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
-}
-
-function detectedProviderOptions(computers: Computer[]) {
-  const options = new Map<string, string>()
-  for (const computer of computers) {
-    for (const runtime of computer.detectedRuntimes) {
-      if (typeof runtime === "string") continue
-      const provider = runtime.runtimeProvider ?? runtime.provider
-      if (!provider) continue
-      options.set(provider, runtimeLabel(runtime))
-    }
-  }
-  return Array.from(options, ([value, label]) => ({ value, label }))
-}
-
-function unavailableProviderOptions(providerOptions: Array<{ value: string; label: string }>) {
-  const available = new Set(providerOptions.map((provider) => provider.value))
-  return EXPECTED_RUNTIME_PROVIDERS
-    .filter((provider) => !available.has(provider))
-    .map((provider) => ({
-      value: provider,
-      label: `${provider} (not detected on connected computers)`,
-    }))
 }
 
 type TabKey = "profile" | "permissions" | "dms" | "reminders" | "workspace" | "apps" | "activity"
@@ -684,73 +637,6 @@ function MemberDetail({
           {activeTab === "apps" && <AppsTab member={member} />}
           {activeTab === "activity" && <ActivityTab member={member} computers={computers} />}
         </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function CreateAgentCard({
-  computers,
-  error,
-  providerOptions,
-}: {
-  computers: Computer[]
-  error?: string | null
-  providerOptions: Array<{ value: string; label: string }>
-}) {
-  const unavailableProviders = unavailableProviderOptions(providerOptions)
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Bot className="size-4" />
-          Create Agent
-        </CardTitle>
-        <CardDescription>Create a new agent and bind it to a computer runtime.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
-        <form action={createAgentAction} className="flex flex-wrap items-end gap-3">
-          <div>
-            <label htmlFor="agent-name" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Agent Name
-            </label>
-            <Input id="agent-name" name="name" placeholder="my-agent" required className="w-36" />
-          </div>
-          <div>
-            <label htmlFor="agent-computer" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Computer
-            </label>
-            <select
-              id="agent-computer"
-              name="computerId"
-              required
-              className="h-9 rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="">Select...</option>
-              {computers.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="agent-runtime" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Runtime
-            </label>
-            <select id="agent-runtime" name="runtime" className="h-9 rounded-md border bg-background px-3 text-sm">
-              <option value="claude_code">Claude Code</option>
-              <option value="custom">Custom</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="agent-provider" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Provider
-            </label>
-            <ProviderSelect options={providerOptions} unavailableOptions={unavailableProviders} />
-          </div>
-          <Button type="submit" size="sm">Create Agent</Button>
-        </form>
       </CardContent>
     </Card>
   )
