@@ -740,6 +740,7 @@ function CreateAgentCard({
             </label>
             <select id="agent-runtime" name="runtime" className="h-9 rounded-md border bg-background px-3 text-sm">
               <option value="claude_code">Claude Code</option>
+              <option value="codex_cli">Codex CLI</option>
               <option value="custom">Custom</option>
             </select>
           </div>

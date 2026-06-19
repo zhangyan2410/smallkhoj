@@ -23,6 +23,8 @@ import { ClientHandler } from './client-handler.js';
 import { SessionManager } from './session-manager.js';
 import { type SlockWrapperResult, writeSlockWrapper } from '../runtime/slock-wrapper.js';
 import { ClaudeRuntimeDriver, getContentBlocks } from '../runtime/claude-runtime.js';
+import { CodexRuntimeDriver } from '../runtime/codex-runtime.js';
+import type { ManagedRuntimeDriver } from '../runtime/runtime-driver.js';
 import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
 import {
   detectedRuntimesForInventory,
@@ -80,7 +82,7 @@ interface RuntimeRecord {
   credential: Credential;
   proxyToken: string;
   wrapper: SlockWrapperResult;
-  driver: ClaudeRuntimeDriver;
+  driver: ManagedRuntimeDriver;
   workspacePath: string;
   status: 'starting' | 'running' | 'stopped' | 'exited';
   runtimeCommand?: string;
@@ -250,7 +252,7 @@ export class DaemonCore extends EventEmitter {
     return delivered;
   }
 
-  getRuntimeForAgent(agentId: string): ClaudeRuntimeDriver | undefined {
+  getRuntimeForAgent(agentId: string): ManagedRuntimeDriver | undefined {
     return this.runtimes.get(agentId)?.driver;
   }
 
@@ -327,9 +329,9 @@ export class DaemonCore extends EventEmitter {
       this.startDaemonHeartbeat();
     }
 
-    if (this.config.runtime === 'claude_code' && this.credential.agentId) {
+    if ((this.config.runtime === 'claude_code' || this.config.runtime === 'codex_cli') && this.credential.agentId) {
       this.startRuntimeForAgent(this.credential.agentId, {
-        runtime: 'claude_code',
+        runtime: this.config.runtime,
         runtimeCommand: this.config.runtimeCommand,
         runtimeCommandArgs: this.config.runtimeCommandArgs,
         runtimeModel: this.config.runtimeModel,
@@ -552,22 +554,23 @@ export class DaemonCore extends EventEmitter {
     }
   }
 
-  // ── Claude runtime lifecycle ──────────────────────────────
+  // ── Managed runtime lifecycle ─────────────────────────────
 
   startRuntimeForAgent(agentId: string, runtimeConfig: DaemonControlCommand['config'] = {}): void {
     if (!this.credential) {
-      throw new Error('Cannot start Claude runtime before credential is ready');
+      throw new Error('Cannot start runtime before credential is ready');
     }
     if (this.runtimes.has(agentId)) {
       this.log(`Runtime already running for agent ${agentId}`, 'debug');
       return;
     }
-    if (runtimeConfig.runtime && runtimeConfig.runtime !== 'claude_code') {
+    const runtimeType = runtimeConfig.runtime ?? this.config.runtime ?? 'claude_code';
+    if (runtimeType !== 'claude_code' && runtimeType !== 'codex_cli') {
       this.log(`Unsupported runtime ${runtimeConfig.runtime} for agent ${agentId}`, 'warn');
       return;
     }
     const runtimeProvider = runtimeConfig.runtimeProvider ?? this.config.runtimeProvider;
-    const providerLaunch = runtimeConfig.runtimeCommand
+    const providerLaunch = runtimeConfig.runtimeCommand || !runtimeProvider
       ? {}
       : resolveRuntimeProviderLaunch(runtimeProvider, this.runtimeProviderInventory);
     if (providerLaunch.error) {
@@ -595,30 +598,44 @@ export class DaemonCore extends EventEmitter {
       activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
     });
     const resumeSessionId = this.runtimeSessionIds.get(agentId) ?? this.config.runtimeResumeSessionId;
-    const driver = new ClaudeRuntimeDriver({
-      credential,
-      workspacePath,
-      wrapperDir: wrapper.wrapperDir,
-      slockHome: wrapper.slockHome,
-      launchId: wrapper.launchId,
-      resumeSessionId: resumeSessionId ?? undefined,
-      model: runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel,
-      command: runtimeConfig.runtimeCommand ?? providerLaunch.command ?? this.config.runtimeCommand,
-      commandArgs: runtimeConfig.runtimeCommandArgs ?? providerLaunch.commandArgs ?? this.config.runtimeCommandArgs,
-    });
+    const model = runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel;
+    const command = runtimeConfig.runtimeCommand ?? providerLaunch.command ?? this.config.runtimeCommand;
+    const commandArgs = runtimeConfig.runtimeCommandArgs ?? providerLaunch.commandArgs ?? this.config.runtimeCommandArgs;
+    const driver: ManagedRuntimeDriver = runtimeType === 'codex_cli'
+      ? new CodexRuntimeDriver({
+        credential,
+        workspacePath,
+        wrapperDir: wrapper.wrapperDir,
+        slockHome: wrapper.slockHome,
+        launchId: wrapper.launchId,
+        model,
+        command,
+        commandArgs,
+      })
+      : new ClaudeRuntimeDriver({
+        credential,
+        workspacePath,
+        wrapperDir: wrapper.wrapperDir,
+        slockHome: wrapper.slockHome,
+        launchId: wrapper.launchId,
+        resumeSessionId: resumeSessionId ?? undefined,
+        model,
+        command,
+        commandArgs,
+      });
     const runtime: RuntimeRecord = {
       agentId,
       workspaceId: runtimeConfig.workspaceId,
-      runtime: runtimeConfig.runtime ?? 'claude_code',
+      runtime: runtimeType,
       credential,
       proxyToken,
       wrapper,
       driver,
       workspacePath,
       status: 'starting',
-      runtimeCommand: runtimeConfig.runtimeCommand ?? providerLaunch.command ?? this.config.runtimeCommand,
-      runtimeCommandArgs: runtimeConfig.runtimeCommandArgs ?? providerLaunch.commandArgs ?? this.config.runtimeCommandArgs,
-      runtimeModel: runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel,
+      runtimeCommand: command,
+      runtimeCommandArgs: commandArgs,
+      runtimeModel: model,
       runtimeProvider: providerLaunch.runtimeProvider ?? runtimeProvider,
       sessionId: resumeSessionId ?? null,
       activeTraceId: undefined,
@@ -640,9 +657,9 @@ export class DaemonCore extends EventEmitter {
 
     driver.on('line', (event) => {
       this.markRuntimeProgress(runtime);
-      this.log(`Claude runtime ${agentId} ${event.stream}: ${event.line}`, 'debug');
+      this.log(`${runtimeType} runtime ${agentId} ${event.stream}: ${event.line}`, 'debug');
       if (event.stream === 'stderr') {
-        console.error(`[Daemon] Claude runtime ${agentId} stderr: ${event.line}`);
+        console.error(`[Daemon] ${runtimeType} runtime ${agentId} stderr: ${event.line}`);
       }
       this.emit('runtime_line', { ...event, agentId });
     });
@@ -657,6 +674,12 @@ export class DaemonCore extends EventEmitter {
       // that happens the runtime stays in 'starting' status and is not
       // advertised as ready/online.
       if (!runtime.ready) {
+        if (runtime.runtime === 'codex_cli' && eventType === 'result') {
+          const exitCode = isRecord(event) && typeof event.exitCode === 'number' ? event.exitCode : undefined;
+          if (exitCode === undefined || exitCode === 0) {
+            this.markRuntimeReady(runtime, 'codex_warmup_complete');
+          }
+        }
         if (eventType === 'assistant') {
           for (const block of getContentBlocks(event)) {
             if (block.type !== 'tool_use' || typeof block.id !== 'string') continue;
@@ -706,7 +729,9 @@ export class DaemonCore extends EventEmitter {
           // Ground truth: read the real (billed) usage from the Claude Code
           // session jsonl. Provider-reported numbers via stream-json can be
           // inflated by Anthropic-compat adapters (MiniMax ~2-8x).
-          const sessionUsage = readSessionUsage(runtime.workspacePath, driver.sessionId);
+          const sessionUsage = runtime.runtime === 'claude_code'
+            ? readSessionUsage(runtime.workspacePath, driver.sessionId)
+            : undefined;
           const realCacheRead = sessionUsage?.cacheReadInputTokens;
           const realInputTokens = sessionUsage?.inputTokens;
           const realOutputTokens = sessionUsage?.outputTokens;
@@ -816,7 +841,7 @@ export class DaemonCore extends EventEmitter {
         agentId,
         status: 'active',
         cwd: workspacePath,
-        command: runtime.runtimeCommand ?? 'claude',
+        command: runtime.runtimeCommand ?? (runtime.runtime === 'codex_cli' ? 'codex' : 'claude'),
         createdAt: now,
         updatedAt: now,
       });
@@ -842,8 +867,8 @@ export class DaemonCore extends EventEmitter {
       });
     });
     driver.on('exit', (event) => {
-      this.log(`Claude runtime ${agentId} exited: code=${event.code} signal=${event.signal}`, event.intentional ? 'info' : 'warn');
-      console.error(`[Daemon] Claude runtime ${agentId} exited: code=${event.code} signal=${event.signal}`);
+      this.log(`${runtime.runtime} runtime ${agentId} exited: code=${event.code} signal=${event.signal}`, event.intentional ? 'info' : 'warn');
+      console.error(`[Daemon] ${runtime.runtime} runtime ${agentId} exited: code=${event.code} signal=${event.signal}`);
       if (event.sessionId) {
         this.sessionManager.update(event.sessionId, { status: 'dead' });
       }
@@ -858,21 +883,21 @@ export class DaemonCore extends EventEmitter {
       }
       this.stopRuntimeStallWatchdog(runtime);
       this.proxy.unregister(proxyToken);
-      if (!event.intentional) {
+      if (!event.intentional && runtime.runtime === 'claude_code') {
         this.scheduleRuntimeRestart(runtime, event.sessionId);
       }
     });
     driver.on('error', (err) => {
       this.markRuntimeProgress(runtime);
-      this.log(`Claude runtime ${agentId} error: ${(err as Error).message}`, 'error');
-      console.error(`[Daemon] Claude runtime ${agentId} error:`, (err as Error).message);
+      this.log(`${runtime.runtime} runtime ${agentId} error: ${(err as Error).message}`, 'error');
+      console.error(`[Daemon] ${runtime.runtime} runtime ${agentId} error:`, (err as Error).message);
       this.emit('runtime_error', err);
       this.emitRuntimeTrace({ type: 'error', agentId, message: (err as Error).message });
     });
 
     driver.start();
-    this.log(`Claude runtime started for agent ${agentId}: pid=${driver.pid ?? 'unknown'} (status=starting, awaiting warmup)`, 'info');
-    console.error(`[Daemon] Claude runtime started for agent ${agentId}: pid=${driver.pid ?? 'unknown'}`);
+    this.log(`${runtime.runtime} runtime started for agent ${agentId}: pid=${driver.pid ?? 'unknown'} (status=starting, awaiting warmup)`, 'info');
+    console.error(`[Daemon] ${runtime.runtime} runtime started for agent ${agentId}: pid=${driver.pid ?? 'unknown'}`);
     this.emitRuntimeTrace({
       type: 'start',
       agentId,
@@ -955,7 +980,7 @@ export class DaemonCore extends EventEmitter {
       const idleForMs = Date.now() - runtime.lastProgressAt;
       if (idleForMs < timeoutMs) return;
 
-      this.log(`Claude runtime ${runtime.agentId} stalled for ${idleForMs}ms; terminating`, 'warn');
+      this.log(`${runtime.runtime} runtime ${runtime.agentId} stalled for ${idleForMs}ms; terminating`, 'warn');
       this.emitRuntimeTrace({
         type: 'stall',
         agentId: runtime.agentId,
@@ -1055,7 +1080,8 @@ export class DaemonCore extends EventEmitter {
     if (!this.credential || !this.daemonRegistrationEnabled) return;
     const serverUrl = this.credential.serverUrl || this.config.serverUrl;
     const endpoint = kind === 'register' ? '/internal/agent-api/daemon/register' : '/internal/agent-api/daemon/heartbeat';
-    const runtimeCommand = this.config.runtimeCommand ?? (this.config.runtime === 'claude_code' ? 'claude' : undefined);
+    const runtimeCommand = this.config.runtimeCommand
+      ?? (this.config.runtime === 'claude_code' ? 'claude' : this.config.runtime === 'codex_cli' ? 'codex' : undefined);
     const workspaces = Array.from(this.runtimes.values()).map((runtime) => ({
       agentId: runtime.agentId,
       workspaceId: runtime.workspaceId,

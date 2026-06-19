@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Credential } from '../types.js';
 import { prependPathEnv } from './slock-wrapper.js';
+import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeStreamEvent } from './runtime-driver.js';
 
 export interface ClaudeRuntimeOptions {
   credential: Credential;
@@ -18,24 +19,9 @@ export interface ClaudeRuntimeOptions {
   baseEnv?: NodeJS.ProcessEnv;
 }
 
-export interface ClaudeRuntimeEvent {
-  stream: 'stdout' | 'stderr';
-  line: string;
-}
-
-export interface ClaudeRuntimeExitEvent {
-  code: number | null;
-  signal: NodeJS.Signals | null;
-  intentional: boolean;
-  sessionId?: string;
-}
-
-export type ClaudeStreamEvent = Record<string, unknown> & {
-  type?: string;
-  subtype?: string;
-  session_id?: string;
-  sessionId?: string;
-};
+export type ClaudeRuntimeEvent = RuntimeLineEvent;
+export type ClaudeRuntimeExitEvent = RuntimeExitEvent;
+export type ClaudeStreamEvent = RuntimeStreamEvent;
 
 export interface ClaudeUserMessagePayload {
   type: 'user';
@@ -442,7 +428,7 @@ export function extractClaudeSessionId(event: ClaudeStreamEvent): string | undef
   return undefined;
 }
 
-export class ClaudeRuntimeDriver extends EventEmitter {
+export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeDriver {
   private readonly options: ClaudeRuntimeOptions;
   private child: ChildProcessWithoutNullStreams | null = null;
   private stdoutRemainder = '';

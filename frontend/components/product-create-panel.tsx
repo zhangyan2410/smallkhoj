@@ -101,7 +101,7 @@ export function AgentCreateForm({ computers, compact = false }: { computers: Com
     const detected = (selected?.detectedRuntimes ?? [])
       .map((runtime) => (typeof runtime === "string" ? runtime : runtime.type || runtime.command || runtimeLabel(runtime)))
       .filter(Boolean)
-    return Array.from(new Set([...detected, "claude_code", "custom"]))
+    return Array.from(new Set([...detected, "claude_code", "codex_cli", "custom"]))
   }, [computerId, computers])
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {

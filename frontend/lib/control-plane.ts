@@ -251,9 +251,14 @@ export function badgeClass(status: string) {
 }
 
 export function runtimeLabel(runtime: RuntimeInfo) {
-  if (typeof runtime === "string") return runtime
+  const labels: Record<string, string> = {
+    claude_code: "Claude Code",
+    codex_cli: "Codex CLI",
+    custom: "Custom",
+  }
+  if (typeof runtime === "string") return labels[runtime] ?? runtime
   return [
-    runtime.provider ?? runtime.runtimeProvider ?? runtime.type ?? "runtime",
+    runtime.provider ?? runtime.runtimeProvider ?? (runtime.type ? labels[runtime.type] ?? runtime.type : undefined) ?? "runtime",
     runtime.status,
     runtime.model,
     runtime.version,
