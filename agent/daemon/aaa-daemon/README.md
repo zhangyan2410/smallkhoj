@@ -9,6 +9,7 @@ The current architecture follows the real Slock daemon direction:
 - The local proxy rewrites `/internal/agent/{agentId}/...` paths to `/internal/agent-api/...`.
 - MCP is only a compatibility bridge and exposes the no-op `runtime_profile_migration_done` tool.
 - Claude Code is started only when `--runtime claude` is explicitly set.
+- Codex CLI can be started as the same daemon-managed runtime boundary with `--runtime codex`.
 
 ## Layout
 
@@ -17,7 +18,7 @@ src/cmd/main.ts              CLI entry: start / attach / status / stop / smoke
 src/cmd/smoke.ts             read-only smoke test against imported Slock runtime
 src/daemon/daemon.ts         lifecycle orchestration, proxy registration, runtime spawn
 src/proxy/agent-proxy.ts     local HTTP proxy, bearer auth, path rewrite, response buffering
-src/runtime/                 Claude runtime, .slock wrapper generation, runtime import
+src/runtime/                 Claude/Codex runtime drivers, .slock wrapper generation, runtime import
 src/slock-cli.ts             minimal agent-facing slock CLI
 src/chat-bridge.ts           MCP compatibility server for Claude Code
 src/mcp-bridge.ts            daemon JSON-RPC MCP bridge prototype
@@ -43,6 +44,14 @@ Start Claude Code through aaa-daemon:
 ```powershell
 node dist/cmd/main.js start --foreground --runtime claude
 ```
+
+Start Codex CLI through aaa-daemon:
+
+```powershell
+node dist/cmd/main.js start --foreground --runtime codex
+```
+
+Codex currently uses `codex exec --json` per delivered daemon event. It still runs inside the agent workspace with the generated `.slock` wrapper first in `PATH`, and user-visible communication must go through `slock message send`.
 
 Start the daemon against the local smallkhoj FastAPI backend and its daemon WebSocket:
 

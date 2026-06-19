@@ -5,13 +5,15 @@ import type { DaemonConfig, DetectedRuntime } from '../types.js';
 export interface LocalRuntimeProvider {
   id: string;
   name: string;
-  runtime: 'claude_code';
+  runtime: 'claude_code' | 'codex_cli';
   model?: string;
-  source: 'cc-switch';
+  command?: string;
+  source: 'cc-switch' | 'codex-cli';
 }
 
 export interface RuntimeProviderInventory {
   ccsClaudeCommand?: string;
+  codexCommand?: string;
   providers: LocalRuntimeProvider[];
 }
 
@@ -30,12 +32,12 @@ export function parseCcsClaudeListOutput(output: string): LocalRuntimeProvider[]
     if (!line || line.startsWith('current ') || line.startsWith('current\t')) continue;
     if (line.startsWith('Available') || line.startsWith('Usage:')) continue;
     if (line.startsWith('*')) line = line.slice(1).trim();
-    const columns = line.split(/[\t]+/).map((item) => item.trim().replace(/^- /, '')).filter(Boolean);
+    const columns = line.split(/\t+|\s{2,}/).map((item) => item.trim().replace(/^- /, '')).filter(Boolean);
     if (columns.length < 1) continue;
     const name = columns[0];
     // macOS ccs-claude: "name  id  model" (3+ columns)
     // Windows cc-switch.ps1: "name\t- description" (1-2 columns, no model info)
-    const id = columns.length >= 3 ? columns[1] : name;
+    const id = name;
     const model = columns.length >= 3 ? columns[2] : columns[1] || name;
     if (!name) continue;
     providers.push({
@@ -51,6 +53,7 @@ export function parseCcsClaudeListOutput(output: string): LocalRuntimeProvider[]
 
 export function detectRuntimeProviders(env: NodeJS.ProcessEnv = process.env): RuntimeProviderInventory {
   const homeDir = env.USERPROFILE || env.HOME || '';
+  const codexCommand = detectCodexCommand(env);
   const candidates = [
     env.SLOCK_CCS_CLAUDE_COMMAND,
     env.CCS_CLAUDE_COMMAND,
@@ -91,10 +94,32 @@ export function detectRuntimeProviders(env: NodeJS.ProcessEnv = process.env): Ru
     if (result.status !== 0) continue;
     const providers = parseCcsClaudeListOutput(result.stdout || '');
     if (providers.length === 0) continue;
-    return { ccsClaudeCommand: candidate, providers };
+      return {
+        ccsClaudeCommand: candidate,
+        codexCommand,
+        providers: [
+          ...providers,
+          ...(codexCommand ? [{
+            id: 'codex-cli',
+            name: 'Codex CLI',
+            runtime: 'codex_cli' as const,
+            command: codexCommand,
+            source: 'codex-cli' as const,
+          }] : []),
+        ],
+      };
   }
 
-  return { providers: [] };
+  return {
+    codexCommand,
+    providers: codexCommand ? [{
+      id: 'codex-cli',
+      name: 'Codex CLI',
+      runtime: 'codex_cli',
+      command: codexCommand,
+      source: 'codex-cli',
+    }] : [],
+  };
 }
 
 export function detectedRuntimesForInventory(
@@ -115,6 +140,7 @@ export function detectedRuntimesForInventory(
       provider: provider.name,
       runtimeProvider: provider.id,
       model: provider.model,
+      command: provider.command,
       source: provider.source,
     });
   }
@@ -132,7 +158,19 @@ export function resolveRuntimeProviderLaunch(
     item.id.toLowerCase() === selected.toLowerCase()
     || item.name.toLowerCase() === selected.toLowerCase()
   ));
-  if (!provider || !inventory.ccsClaudeCommand) {
+  if (!provider) {
+    return { runtimeProvider: selected, error: `Runtime provider ${selected} is not available locally` };
+  }
+
+  if (provider.runtime === 'codex_cli') {
+    return {
+      runtimeProvider: provider.id,
+      command: provider.command ?? inventory.codexCommand,
+      model: provider.model,
+    };
+  }
+
+  if (!inventory.ccsClaudeCommand) {
     return { runtimeProvider: selected, error: `Runtime provider ${selected} is not available locally` };
   }
 
@@ -154,4 +192,28 @@ export function resolveRuntimeProviderLaunch(
     commandArgs: [provider.name, provider.model].filter((item): item is string => Boolean(item)),
     model: provider.model,
   };
+}
+
+function detectCodexCommand(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const homeDir = env.USERPROFILE || env.HOME || '';
+  const candidates = [
+    env.SLOCK_CODEX_COMMAND,
+    env.CODEX_COMMAND,
+    'codex',
+    `${homeDir}/.npm-global/bin/codex`,
+    `${homeDir}/.local/bin/codex`,
+  ].filter((item): item is string => Boolean(item));
+
+  for (const candidate of candidates) {
+    if (candidate.includes('/') && !existsSync(candidate)) continue;
+    if (candidate.includes('\\') && !existsSync(candidate)) continue;
+    const result = spawnSync(candidate, ['--version'], {
+      encoding: 'utf-8',
+      env,
+      windowsHide: true,
+    });
+    if (result.status === 0) return candidate;
+  }
+
+  return undefined;
 }

@@ -389,8 +389,14 @@ function EmptyState({ label }: { label: string }) {
 }
 
 function runtimeLabel(runtime: string | { type?: string; status?: string; command?: string; provider?: string; runtimeProvider?: string; model?: string }) {
-  if (typeof runtime === "string") return runtime
-  return [runtime.runtimeProvider ?? runtime.provider ?? runtime.type ?? "runtime", runtime.status, runtime.model].filter(Boolean).join(" / ")
+  const labels: Record<string, string> = {
+    claude_code: "Claude Code",
+    codex_cli: "Codex CLI",
+    custom: "Custom",
+  }
+  if (typeof runtime === "string") return labels[runtime] ?? runtime
+  const type = runtime.type ? labels[runtime.type] ?? runtime.type : undefined
+  return [runtime.runtimeProvider ?? runtime.provider ?? type ?? "runtime", runtime.status, runtime.model].filter(Boolean).join(" / ")
 }
 
 export default async function DaemonPage({

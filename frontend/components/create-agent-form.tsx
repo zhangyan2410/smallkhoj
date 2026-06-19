@@ -126,6 +126,7 @@ export function CreateAgentForm({
             className="h-8 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
           >
             <option value="claude_code">Claude Code</option>
+            <option value="codex_cli">Codex CLI</option>
             <option value="custom">Custom</option>
           </select>
         </div>

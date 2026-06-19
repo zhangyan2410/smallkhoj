@@ -112,7 +112,7 @@ test('slock CLI error paths', async (t) => {
   // #24 - Missing SLOCK_AGENT_ID
   await t.test('#24 missing SLOCK_AGENT_ID', async () => {
     const env = { ...baseEnv(root) };
-    delete env.SLOCK_AGENT_ID;
+    env.SLOCK_AGENT_ID = '';
     const result = await runCli(['message', 'check'], env);
     assert.equal(result.code, 1);
     assert.equal(JSON.parse(result.stderr).code, 'MISSING_SLOCK_AGENT_ID');

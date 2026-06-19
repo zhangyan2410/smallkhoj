@@ -31,6 +31,14 @@ function deriveBackendWebSocketUrl(serverUrl: string): string {
   return url.toString();
 }
 
+function parseRuntimeOption(value: string): DaemonConfig['runtime'] | undefined {
+  if (!value || value === 'none') return undefined;
+  if (value === 'claude' || value === 'claude_code') return 'claude_code';
+  if (value === 'codex' || value === 'codex_cli') return 'codex_cli';
+  if (value === 'opencode' || value === 'kimi_cli' || value === 'custom') return value;
+  throw new Error(`Unsupported runtime: ${value}`);
+}
+
 program
   .name('aaa-daemon')
   .description('Minimal Slock Agent Daemon — based on opencan-daemon architecture')
@@ -51,13 +59,13 @@ program
   .option('--pid-file <path>', 'PID file path', './aaa-daemon.pid')
   .option('--log-file <path>', 'Log file path')
   .option('--workspace <path>', 'Workspace path for managed runtime files', process.cwd())
-  .option('--runtime <runtime>', 'Runtime driver to start (none|claude)', 'none')
+  .option('--runtime <runtime>', 'Runtime driver to start (none|claude|codex)', 'none')
   .option('--runtime-command <command>', 'Runtime executable command')
   .option('--runtime-command-arg <arg>', 'Runtime executable argument (repeatable)', collect, [])
-  .option('--runtime-model <model>', 'Claude runtime model')
+  .option('--runtime-model <model>', 'Runtime model')
   .option('--runtime-provider <provider>', 'Local runtime provider/profile name resolved by the daemon')
   .option('--runtime-resume-session-id <id>', 'Resume an existing Claude Code session id')
-  .option('--runtime-restart-on-crash', 'Restart Claude runtime once after an unexpected exit')
+  .option('--runtime-restart-on-crash', 'Restart supported runtimes once after an unexpected exit')
   .option('--runtime-stall-timeout-ms <ms>', 'Busy runtime inactivity timeout before stall recovery')
   .option('--runtime-warmup-timeout-ms <ms>', 'Startup warmup timeout before degrading runtime to ready')
   .option('--register-daemon', 'Register daemon computer/workspace lifecycle with the backend')
@@ -101,7 +109,7 @@ program
       importSlockRuntime: options.importSlockRuntime,
       logFile: options.logFile,
       workspacePath: options.workspace,
-      runtime: options.runtime === 'claude' ? 'claude_code' : undefined,
+      runtime: parseRuntimeOption(options.runtime),
       runtimeCommand: options.runtimeCommand,
       runtimeCommandArgs: options.runtimeCommandArg,
       runtimeModel: options.runtimeModel,

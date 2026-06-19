@@ -70,6 +70,15 @@ const serverInfo = spawnSync(slockCommand, ['server', 'info'], {
   env: process.env,
   shell: process.platform === 'win32',
 });
+process.stdout.write(JSON.stringify({
+  type: 'assistant',
+  message: { content: [{ type: 'tool_use', id: 'warmup-slock', name: 'Bash', input: { command: 'slock server info' } }] },
+}) + '\\n');
+process.stdout.write(JSON.stringify({
+  type: 'user',
+  message: { content: [{ type: 'tool_result', tool_use_id: 'warmup-slock', content: serverInfo.stdout || serverInfo.stderr || '' }] },
+}) + '\\n');
+process.stdout.write(JSON.stringify({ type: 'result', duration_ms: 1 }) + '\\n');
 const result = {
   argv: process.argv.slice(2),
   serverStatus: serverInfo.status,
@@ -126,6 +135,47 @@ const result = {
 writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
 `, 'utf-8');
   chmodSync(path, 0o755);
+}
+
+function writeFakeCodexScript(path, marker) {
+  writeFileSync(path, `
+import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+if (process.argv.includes('--version')) {
+  process.stdout.write('codex-cli 0.0.0-fake\\n');
+  process.exit(0);
+}
+
+let prompt = '';
+process.stdin.setEncoding('utf-8');
+process.stdin.on('data', chunk => { prompt += chunk; });
+process.stdin.on('end', () => {
+  const slockCommand = process.platform === 'win32' ? 'slock.cmd' : 'slock';
+  const serverInfo = spawnSync(slockCommand, ['server', 'info'], {
+    encoding: 'utf-8',
+    env: process.env,
+    shell: process.platform === 'win32',
+  });
+  const result = {
+    argv: process.argv.slice(2),
+    prompt,
+    serverStatus: serverInfo.status,
+    serverStdout: (serverInfo.stdout || '').trim(),
+    serverStderr: (serverInfo.stderr || '').trim(),
+    pathHead: (process.env.PATH || '').split(process.platform === 'win32' ? ';' : ':')[0],
+    slockHome: process.env.SLOCK_HOME,
+    agentId: process.env.SLOCK_AGENT_ID,
+    currentWorkspacePath: process.env.SLOCK_CURRENT_WORKSPACE_PATH,
+    launchId: process.env.SLOCK_AGENT_LAUNCH_ID,
+  };
+  process.stdout.write(JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'text', text: 'checked slock server info' }] },
+  }) + '\\n');
+  writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
+});
+`, 'utf-8');
 }
 
 test('ccs-claude provider list output is parsed into sanitized providers', () => {
@@ -219,6 +269,83 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
       target: '#general',
       content: 'hello from runtime',
     });
+  } catch (err) {
+    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
+  }
+});
+
+test('daemon runtime starts fake Codex with slock wrapper on PATH', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-codex-runtime-'));
+  const marker = join(root, 'codex-runtime-marker.json');
+  const fakeCodex = join(root, 'fake-codex.mjs');
+  const upstream = await startServer((req, res) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/server') {
+      res.end(JSON.stringify({ id: 'server-codex', channels: [{ name: 'general' }] }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeFakeCodexScript(fakeCodex, marker);
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'ws://127.0.0.1:9',
+    '--agent-id', 'agent-codex',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'codex',
+    '--runtime-command', process.execPath,
+    '--runtime-command-arg', fakeCodex,
+  ], {
+    cwd: resolve('.'),
+    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real', SLOCK_ALLOW_WRITES: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => existsSync(marker));
+    const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
+
+    assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
+    assert.match(runtime.serverStdout, /"server-codex"/);
+    assert.equal(runtime.pathHead, join(root, '.slock'));
+    assert.equal(runtime.slockHome, join(root, '.slock'));
+    assert.match(runtime.launchId, /^pid-/);
+    assert.equal(runtime.argv.includes('exec'), true);
+    assert.equal(runtime.argv.includes('--json'), true);
+    assert.match(runtime.prompt, /Codex Runtime Notes/);
+    assert.match(runtime.prompt, /Run `slock server info` once/);
+    assert.match(readFileSync(join(root, '.slock', 'codex-slock-prompt.md'), 'utf-8'), /Codex Runtime Notes/);
+
+    await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
+    const serverRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/server');
+    assert.equal(serverRequest.req.headers.authorization, 'Bearer sk_machine_real');
+    assert.equal(serverRequest.req.headers['x-agent-id'], 'agent-codex');
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
@@ -330,8 +457,8 @@ test('daemon handles backend start_runtime control command dynamically', async (
     assert.equal(runtime.currentWorkspacePath, runtimeWorkspace);
     assert.equal(runtime.systemPromptFile, join(runtimeWorkspace, '.slock', 'claude-system-prompt.md'));
 
-    await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-dynamic')));
-    const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-dynamic'));
+    await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-dynamic' && workspace.status === 'running')));
+    const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-dynamic' && workspace.status === 'running'));
     const workspace = runtimeHeartbeat.workspaces.find(item => item.agentId === 'agent-dynamic');
     assert.equal(workspace.workspaceId, 'workspace-dynamic');
     assert.equal(workspace.runtime, 'claude_code');
@@ -484,9 +611,14 @@ test('daemon start imports existing Slock runtime and Claude can call slock serv
 
   const upstream = await startServer((req, res) => {
     const url = new URL(req.url, 'http://upstream.test');
-    res.writeHead(200, { 'content-type': 'application/json' });
     if (url.pathname === '/internal/agent-api/server') {
+      res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ id: 'server-imported', channels: [{ name: 'all' }], agents: [], humans: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/activity') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
     res.writeHead(404, { 'content-type': 'application/json' });
@@ -560,11 +692,11 @@ test('daemon start imports existing Slock runtime and Claude can call slock serv
     assert.match(readFileSync(runtime.systemPromptFile, 'utf-8'), /Agent ID: agent-imported/);
     assert.equal(runtime.argv.includes('--system-prompt'), false);
 
-    await waitFor(() => upstream.requests.length >= 1);
-    assert.equal(upstream.requests.length, 1);
-    assert.equal(upstream.requests[0].req.url, '/internal/agent-api/server');
-    assert.equal(upstream.requests[0].req.headers.authorization, 'Bearer sap_original_proxy_token');
-    assert.equal(upstream.requests[0].req.headers['x-agent-id'], 'agent-imported');
+    await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
+    const serverRequests = upstream.requests.filter(item => item.req.url === '/internal/agent-api/server');
+    assert.equal(serverRequests.length, 1);
+    assert.equal(serverRequests[0].req.headers.authorization, 'Bearer sap_original_proxy_token');
+    assert.equal(serverRequests[0].req.headers['x-agent-id'], 'agent-imported');
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
