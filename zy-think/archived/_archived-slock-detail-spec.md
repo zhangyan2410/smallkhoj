@@ -1,3 +1,10 @@
+---
+topics: [slock, spec, archived]
+doc_kind: archived-spec
+created: 2026-06-04
+updated: 2026-06-19
+---
+
 # Slock 详细技术规范
 
 > 基于 `slock-ui-interaction-design.md` 产品设计文档、MVP 代码（`types.ts`、`daemon-store/index.ts`、API 路由、daemon websocket/CLI）生成。

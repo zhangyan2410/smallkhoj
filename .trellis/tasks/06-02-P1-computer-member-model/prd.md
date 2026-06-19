@@ -6,7 +6,7 @@ Bring the existing Computer/AgentWorkspace implementation into alignment with th
 
 ## Source Of Truth
 
-- `zy-think/slock-design-spec.md` section 1.2 and 1.3
+- `zy-think/design/slock-design-spec.md` section 1.2 and 1.3
 - Existing P1 task notes in `task.md`
 - Current backend already has first-pass Computer, AgentWorkspace, machine token registration, and public list APIs from the control-plane work
 

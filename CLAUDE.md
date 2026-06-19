@@ -1,6 +1,6 @@
 # Claude Code Project Notes
 
-This project also uses `AGENTS.md` as the shared Codex/Claude project instruction file. Read it first for Trellis workflow, local network policy, and local tool indexes.
+Read `AGENTS.md` first. It is the shared project index for Codex, Claude, Gemini, Kimi, and other agents.
 
 ## Debug Harness
 

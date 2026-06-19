@@ -7,11 +7,11 @@
 - `06-02-slock-backend-analysis` — 后端结构分析文档
 
 ## 输入
-- `zy-think/slock-ui-interaction-design.md` — UI 交互设计
-- `zy-think/slock-backend-architecture.md` — 后端架构分析（上一步产出）
+- `zy-think/archived/_archived-slock-ui-interaction-design.md` — UI 交互设计
+- `zy-think/archived/_archived-slock-backend-architecture.md` — 后端架构分析（上一步产出）
 
 ## 产出
-- 文档路径：`zy-think/slock-detail-spec.md`
+- 文档路径：`zy-think/archived/_archived-slock-detail-spec.md`
 - 内容包括：
   1. 每个 UI 模块对应的后端数据结构（TypeScript interface）
   2. API 端点规范（请求/响应格式）
@@ -22,4 +22,4 @@
   7. Daemon 注册和心跳协议
 
 ## 状态
-- [x] 已完成 — 文档已输出到 `zy-think/slock-detail-spec.md`
+- [x] 已完成 — 文档已输出到 `zy-think/archived/_archived-slock-detail-spec.md`

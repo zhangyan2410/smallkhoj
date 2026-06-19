@@ -1,3 +1,10 @@
+---
+topics: [architecture, daemon, runtime]
+doc_kind: architecture
+created: 2026-06-14
+updated: 2026-06-19
+---
+
 # SmallKhoj aaa-daemon 架构详解
 
 > 范围：`agent/daemon/aaa-daemon/`
@@ -309,7 +316,7 @@ node agent/daemon/aaa-daemon/dist/cmd/main.js start --foreground \
 
 | 日期 | 变更 | 相关文件 |
 |------|------|---------|
-| 2026-06-07 | 全局架构归档 | `zy-think/current-architecture.md` |
+| 2026-06-07 | 全局架构归档 | `zy-think/architecture/current-architecture.md` |
 | 2026-06-14 | 新增 runtime warmup 门控：`starting` → `warmup_slock_ok` → `running` | `daemon.ts`, `claude-runtime.ts`, `types.ts`, `main.ts` |
 | 2026-06-14 | 新增 latency trace token 膨胀检测 | `daemon.ts` |
 | 2026-06-14 | backend 状态映射修复：`idle` 黄色、`online` 绿色、缺失 runtime 置 offline | `agent_api.py`, `public_api.py` |

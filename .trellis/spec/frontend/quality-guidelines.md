@@ -122,7 +122,7 @@ Use `http://localhost:3000` for local browser e2e, or configure `allowedDevOrigi
 
 ### Mutation Smoke Tests
 
-For forms that write to backend APIs, include at least one project WebDriver browser smoke test using the `project-webdriver-cli` skill and `agent/daemon/webdriver/twd` that:
+For forms that write to backend APIs, include at least one project WebDriver browser smoke test using the `project-webdriver-cli` skill and `./twd` that:
 
 - Fills and submits the visible form.
 - Verifies the expected result appears in the UI.
@@ -138,7 +138,7 @@ Start new task evidence from `docs/real-test-sop-template.md`, then specialize t
 Required evidence:
 
 - Unique marker in the shape `REAL_<task-slug>_<timestamp>`.
-- `agent/daemon/webdriver/twd` navigation/action commands against the running local app.
+- `./twd` navigation/action commands against the running local app.
 - Visible DOM assertion through `scan --text` or `eval`.
 - Screenshot saved under `{TASK_DIR}/evidence/`.
 - API or database cross-check when the UI creates or mutates backend state.

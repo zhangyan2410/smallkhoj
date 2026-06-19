@@ -1,3 +1,10 @@
+---
+topics: [slock, ui, interaction, archived]
+doc_kind: archived-design
+created: 2026-06-04
+updated: 2026-06-19
+---
+
 # Slock UI 交互设计文档
 
 > 基于 Slock 官方产品截图整理，描述各页面模块的核心交互与数据结构。

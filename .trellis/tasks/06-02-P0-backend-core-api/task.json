@@ -21,8 +21,8 @@
   "children": [],
   "parent": null,
   "relatedFiles": [
-    "zy-think/slock-backend-architecture.md",
-    "zy-think/slock-detail-spec.md",
+    "zy-think/archived/_archived-slock-backend-architecture.md",
+    "zy-think/archived/_archived-slock-detail-spec.md",
     "mvp-prototype/daemon-store/index.ts",
     "mvp-prototype/internal/agent-api/"
   ],

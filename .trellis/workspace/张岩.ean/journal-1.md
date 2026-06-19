@@ -19,9 +19,9 @@ Completed and archived the agent delegation control plane: backend dotted events
 
 ### Main Changes
 
-- Rewrote `zy-think/total-design.md` around current product capabilities, current implementation state, and remaining work.
-- Rewrote `zy-think/slock-design-spec.md` to match the current connect-ticket, daemon lease, model, API, event, and runtime contracts.
-- Added `zy-think/current-architecture.md` as the global architecture archive entry.
+- Rewrote `zy-think/design/total-design.md` around current product capabilities, current implementation state, and remaining work.
+- Rewrote `zy-think/design/slock-design-spec.md` to match the current connect-ticket, daemon lease, model, API, event, and runtime contracts.
+- Added `zy-think/architecture/current-architecture.md` as the global architecture archive entry.
 - Archived `.trellis/tasks/06-06-fix-computer-credential-daemon-command`.
 
 ### Git Commits

@@ -1,0 +1,4 @@
+{"file":"docs/codegraph-agent-guide.md","reason":"Use CodeGraph as the first-pass code map for runtime/context entry points before broad grep."}
+{"file":".trellis/spec/backend/runtime-slock-integration.md","reason":"Runtime and daemon integration contracts, including real-runtime acceptance expectations."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Event delivery and token-safety contracts that affect runtime context injection."}
+{"file":"docs/real-test-sop-template.md","reason":"Evidence format for browser/runtime-visible product behavior."}

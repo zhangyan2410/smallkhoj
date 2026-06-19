@@ -2,19 +2,19 @@
 
 ## Goal
 
-Turn SmallKhoj from an MVP/backend-verification surface into a product-maturity roadmap comparable to Slock's current product depth, while keeping SmallKhoj's visual identity distinct: cyan/blue, calmer, cleaner, and informed by `zy-think/khoj-design-spec.md` rather than copying Slock's brutalist UI.
+Turn SmallKhoj from an MVP/backend-verification surface into a product-maturity roadmap comparable to Slock's current product depth, while keeping SmallKhoj's visual identity distinct: cyan/blue, calmer, cleaner, and informed by `zy-think/design/khoj-design-spec.md` rather than copying Slock's brutalist UI.
 
 This task is a parent planning task. Its output is not one implementation patch. Its output is a complete Trellis decomposition: product PRDs, implementation plans, specs, real browser test SOPs, and child tasks that agents can execute one by one until SmallKhoj reaches Slock-like product maturity.
 
 ## What I already know
 
 * The target product to study is `https://app.slock.ai/`.
-* The user wants the frontend to be visually different from Slock, with cyan/blue colors and UI inspiration from `zy-think/khoj-design-spec.md`.
+* The user wants the frontend to be visually different from Slock, with cyan/blue colors and UI inspiration from `zy-think/design/khoj-design-spec.md`.
 * The backend already implements most Slock-like capability: computers, members/agents, agent workspaces, channels, messages, tasks, files, reminders, activity, daemon connect/register/heartbeat, and runtime control.
 * Current SmallKhoj frontend is useful but still reads like a backend control/verification panel in many places.
 * Project browser/UI verification must use `/Users/code/project/smallkhoj/agent/daemon/webdriver/twd.py`, not Playwright.
 * Real testing has already started through `docs/real-runtime-dm-reply-sop.md`; the user wants real testing SOP to become part of the Trellis flow, not an ad-hoc external habit.
-* There are existing current design references in `zy-think/total-design.md`, `zy-think/current-architecture.md`, `zy-think/slock-design-spec.md`, and `zy-think/khoj-design-spec.md`.
+* There are existing current design references in `zy-think/design/total-design.md`, `zy-think/architecture/current-architecture.md`, `zy-think/design/slock-design-spec.md`, and `zy-think/design/khoj-design-spec.md`.
 * Existing local browser tabs show both real Slock and local SmallKhoj, so comparison can be evidence-based.
 
 ## Current Evidence

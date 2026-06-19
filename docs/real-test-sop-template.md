@@ -1,3 +1,10 @@
+---
+topics: [testing, real-test, webdriver, evidence]
+doc_kind: note
+created: 2026-06-19
+updated: 2026-06-19
+---
+
 # Real Test SOP Template
 
 Use this template for SmallKhoj tasks that change browser-visible product behavior, daemon/runtime delivery, or control-plane state.
@@ -40,9 +47,9 @@ REAL_<marker>-trace.json
 Use the project WebDriver harness. Do not use Playwright for repository UI verification.
 
 ```bash
-python agent/daemon/webdriver/twd.py --compact tabs
-python agent/daemon/webdriver/twd.py goto --url-match 127.0.0.1:3000 http://127.0.0.1:3000/
-python agent/daemon/webdriver/twd.py scan --text
+./twd --compact tabs
+./twd goto --url-match 127.0.0.1:3000 http://127.0.0.1:3000/
+./twd --compact scan --text --url-match 127.0.0.1:3000
 ```
 
 Record:

@@ -14,4 +14,4 @@ It has been moved here to separate prototype concerns from production frontend/b
 ## Why This Was Moved
 
 These files served as a "fake backend" to verify the daemon → server communication chain works end-to-end.
-They will be replaced by the real FastAPI + PostgreSQL backend as described in `zy-think/slock-backend-architecture.md`.
+They will be replaced by the real FastAPI + PostgreSQL backend as described in `zy-think/archived/_archived-slock-backend-architecture.md`.

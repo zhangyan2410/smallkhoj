@@ -1,3 +1,10 @@
+---
+topics: [architecture, slock, smallkhoj]
+doc_kind: architecture
+created: 2026-06-07
+updated: 2026-06-19
+---
+
 # SmallKhoj / Slock 当前全局架构
 
 > 更新日期：2026-06-07

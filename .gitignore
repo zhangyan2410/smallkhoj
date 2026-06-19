@@ -17,6 +17,7 @@ agent/daemon/aaa-daemon/dist/
 .idea/
 .DS_Store
 **/.DS_Store
+zy-think/.obsidian/
 
 # Build caches
 *.tsbuildinfo
@@ -32,6 +33,9 @@ backend/.data/
 
 # CodeGraph knowledge-graph index (generated, ~8MB SQLite + WAL; per-machine)
 .codegraph/
+
+# Graphify knowledge-graph output (generated, AST-only; per-machine)
+graphify-out/
 
 # Locally installed Claude skill bundles
 .claude/skills/gh-fix-ci/

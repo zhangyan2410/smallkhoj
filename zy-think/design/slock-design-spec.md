@@ -1,3 +1,10 @@
+---
+topics: [slock, design, source-of-truth]
+doc_kind: design-spec
+created: 2026-06-07
+updated: 2026-06-19
+---
+
 # Slock 设计规范
 
 > 更新日期：2026-06-07

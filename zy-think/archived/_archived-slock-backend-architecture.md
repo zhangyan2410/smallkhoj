@@ -1,3 +1,10 @@
+---
+topics: [backend, architecture, archived]
+doc_kind: archived-note
+created: 2026-06-04
+updated: 2026-06-19
+---
+
 # Slock 后端架构分析
 
 ## 1. 现有 MVP 架构分析

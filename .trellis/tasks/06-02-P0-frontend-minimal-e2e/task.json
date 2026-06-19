@@ -21,7 +21,7 @@
   "children": [],
   "parent": "P0-backend-core-api",
   "relatedFiles": [
-    "zy-think/slock-ui-interaction-design.md",
+    "zy-think/archived/_archived-slock-ui-interaction-design.md",
     "mvp-prototype/daemon-store/index.ts"
   ],
   "notes": "",

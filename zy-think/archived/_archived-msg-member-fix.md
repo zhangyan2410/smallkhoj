@@ -1,3 +1,10 @@
+---
+topics: [message, channel, member, task, archived]
+doc_kind: archived-note
+created: 2026-06-04
+updated: 2026-06-19
+---
+
 # Message / Channel / Member / Task 设计 — 修正清单
 
 > 日期：2026-06-04

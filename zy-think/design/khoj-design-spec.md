@@ -1,3 +1,10 @@
+---
+topics: [frontend, design, khoj]
+doc_kind: design-spec
+created: 2026-06-09
+updated: 2026-06-19
+---
+
 # khoj 前端设计规范
 
 从 khoj GitHub 源码提取的完整设计规范，供构建 SmallKhoj 前端视觉 demo 参考。

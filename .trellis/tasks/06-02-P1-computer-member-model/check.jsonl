@@ -1,4 +1,4 @@
-{"file":"zy-think/slock-design-spec.md","reason":"Verify implementation against finalized P1 model/API source of truth."}
+{"file":"zy-think/design/slock-design-spec.md","reason":"Verify implementation against finalized P1 model/API source of truth."}
 {"file":".trellis/spec/backend/index.md","reason":"Backend guideline index for review."}
 {"file":".trellis/spec/backend/database-guidelines.md","reason":"Review schema/backfill approach."}
 {"file":".trellis/spec/backend/error-handling.md","reason":"Review API error behavior."}

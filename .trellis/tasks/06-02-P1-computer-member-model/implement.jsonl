@@ -1,4 +1,4 @@
-{"file":"zy-think/slock-design-spec.md","reason":"Source of truth for Member, Computer, AgentWorkspace, API, and P1 priorities."}
+{"file":"zy-think/design/slock-design-spec.md","reason":"Source of truth for Member, Computer, AgentWorkspace, API, and P1 priorities."}
 {"file":".trellis/spec/backend/index.md","reason":"Backend guideline index for this cross-layer task."}
 {"file":".trellis/spec/backend/database-guidelines.md","reason":"Database and migration/backfill conventions."}
 {"file":".trellis/spec/backend/error-handling.md","reason":"FastAPI error handling conventions."}

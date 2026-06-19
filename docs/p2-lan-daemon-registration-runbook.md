@@ -1,3 +1,10 @@
+---
+topics: [daemon, lan, registration, runbook]
+doc_kind: runbook
+created: 2026-06-19
+updated: 2026-06-19
+---
+
 # P2 LAN Daemon Registration Runbook
 
 Use this runbook to repeat the P2 validation where a daemon on another computer connects to the SmallKhoj backend over a private network and registers without starting a model runtime.

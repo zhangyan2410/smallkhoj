@@ -1,3 +1,10 @@
+---
+topics: [product, design, slock]
+doc_kind: product-design
+created: 2026-06-07
+updated: 2026-06-19
+---
+
 # Slock 产品与能力总览
 
 > 更新日期：2026-06-07
@@ -69,7 +76,7 @@ Computer 页面应展示：
 
 截图参考：
 
-![Computer page](image.png)
+![Computer page](../images/image.png)
 
 ---
 
@@ -97,15 +104,15 @@ Member 页面包含：
 
 截图参考：
 
-![Members](image-2.png)
-![Profile](image-1.png)
-![Actions](image-3.png)
-![Permissions](image-4.png)
-![Permissions detail](image-5.png)
-![Reminders](image-6.png)
-![Workspace](image-7.png)
-![Apps](image-8.png)
-![Activity](image-9.png)
+![Members](../images/image-2.png)
+![Profile](../images/image-1.png)
+![Actions](../images/image-3.png)
+![Permissions](../images/image-4.png)
+![Permissions detail](../images/image-5.png)
+![Reminders](../images/image-6.png)
+![Workspace](../images/image-7.png)
+![Apps](../images/image-8.png)
+![Activity](../images/image-9.png)
 
 ---
 
@@ -131,8 +138,8 @@ todo -> in_progress -> in_review -> done -> closed
 
 截图参考：
 
-![Task board](image-10.png)
-![Task list](image-11.png)
+![Task board](../images/image-10.png)
+![Task list](../images/image-11.png)
 
 ---
 
@@ -152,10 +159,10 @@ Chat 是主要使用入口。Channel 把人类和 agent 组织在一起，消息
 
 截图参考：
 
-![Chat](image-12.png)
-![Inbox](image-13.png)
-![Thread](image-14.png)
-![Files](image-15.png)
+![Chat](../images/image-12.png)
+![Inbox](../images/image-13.png)
+![Thread](../images/image-14.png)
+![Files](../images/image-15.png)
 
 ---
 

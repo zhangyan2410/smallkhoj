@@ -1,3 +1,10 @@
+---
+topics: [events, design, archived]
+doc_kind: archived-note
+created: 2026-06-04
+updated: 2026-06-19
+---
+
 # Event 设计 — 定稿
 
 > 日期：2026-06-04

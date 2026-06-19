@@ -1,3 +1,10 @@
+---
+topics: [testing, real-test, runtime, daemon, dm]
+doc_kind: note
+created: 2026-06-19
+updated: 2026-06-19
+---
+
 # Real Runtime DM Reply SOP
 
 Use this SOP to verify the real product path for human DM -> daemon -> runtime -> Slock reply. Do not use fake recorders or the legacy worker-stack helper for this test.
@@ -23,7 +30,7 @@ Verify that a browser-authored DM from `zy-ean` reaches a real runtime and that 
 - Project WebDriver master is available:
 
 ```bash
-python agent/daemon/webdriver/twd.py tabs
+./twd --compact tabs
 ```
 
 ## Procedure
@@ -31,7 +38,7 @@ python agent/daemon/webdriver/twd.py tabs
 1. Open the product Computers page with WebDriver:
 
 ```bash
-python agent/daemon/webdriver/twd.py goto --url-match 127.0.0.1:3000 http://127.0.0.1:3000/computers
+./twd goto --url-match 127.0.0.1:3000 http://127.0.0.1:3000/computers
 ```
 
 2. Prefer reconnecting an existing disconnected computer from the UI:

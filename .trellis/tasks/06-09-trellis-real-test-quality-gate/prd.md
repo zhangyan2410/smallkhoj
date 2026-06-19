@@ -26,7 +26,7 @@ Make real browser/runtime verification part of Trellis workflow for SmallKhoj ta
 
 This task is mostly documentation, but verify the SOP commands:
 
-1. Run `python agent/daemon/webdriver/twd.py --compact tabs`.
+1. Run `agent/daemon/webdriver/twd --compact tabs`.
 2. Confirm at least the local app tab can be discovered or document setup steps.
 3. Run `./smallkhoj-trace summary` if available.
 4. Save command outputs into task evidence notes.

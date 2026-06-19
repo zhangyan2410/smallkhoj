@@ -1,6 +1,6 @@
 ---
 name: project-webdriver-cli
-description: Use the SmallKhoj project WebDriver CLI for browser/UI verification, DOM assertions, screenshots, marker-based real-test evidence, and local app interaction. Trigger for frontend or browser-facing changes, requests to verify visible UI behavior, screenshots/snapshots, DOM checks, or when project guidance mentions WebDriver/twd. Prefer the CLI wrapper `agent/daemon/webdriver/twd`; do not read or invoke `twd.py` unless debugging the WebDriver tool itself.
+description: Use the SmallKhoj project WebDriver CLI for browser/UI verification, DOM assertions, screenshots, marker-based real-test evidence, and local app interaction. Trigger for frontend or browser-facing changes, requests to verify visible UI behavior, screenshots/snapshots, DOM checks, or when project guidance mentions WebDriver/twd. Prefer the CLI wrapper `./twd`; do not read or invoke `twd.py` unless debugging the WebDriver tool itself.
 ---
 
 # Project WebDriver CLI
@@ -12,10 +12,10 @@ Use this skill for browser-visible verification in SmallKhoj.
 Use the CLI wrapper from the repository root:
 
 ```bash
-agent/daemon/webdriver/twd --help
+./twd --help
 ```
 
-Do not call `python agent/daemon/webdriver/twd.py ...` during normal app verification. Treat `twd.py`, `tmwebdriver_core.py`, and extension internals as implementation details; open them only when the task is to debug or change the WebDriver tool itself.
+Do not call `python ./twd.py ...` during normal app verification. Treat `twd.py`, `tmwebdriver_core.py`, and extension internals as implementation details; open them only when the task is to debug or change the WebDriver tool itself.
 
 Do not use Playwright for this repository's browser/UI verification.
 
@@ -24,13 +24,13 @@ Do not use Playwright for this repository's browser/UI verification.
 Check whether a browser tab is connected:
 
 ```bash
-agent/daemon/webdriver/twd --compact tabs
+./twd --compact tabs
 ```
 
 If no tab is connected, the usual setup is a long-running master process:
 
 ```bash
-agent/daemon/webdriver/twd serve
+./twd serve
 ```
 
 `serve` is persistent and blocks the terminal. Start it only when you need to run the WebDriver bridge and can keep that process open. The CLI emits JSON; use `--compact` before the subcommand for token-efficient output.
@@ -40,44 +40,44 @@ agent/daemon/webdriver/twd serve
 Navigate a matching tab:
 
 ```bash
-agent/daemon/webdriver/twd goto --url-match 127.0.0.1:3000 "http://127.0.0.1:3000/chat/all"
+./twd goto --url-match 127.0.0.1:3000 "http://127.0.0.1:3000/chat/all"
 ```
 
 Read visible page text:
 
 ```bash
-agent/daemon/webdriver/twd --compact scan --text --url-match 127.0.0.1:3000
+./twd --compact scan --text --url-match 127.0.0.1:3000
 ```
 
 Take an optimized snapshot, writing long output to a file:
 
 ```bash
-agent/daemon/webdriver/twd snapshot --url-match 127.0.0.1:3000 --out .trellis/tasks/<task>/evidence/page.snapshot.txt
+./twd snapshot --url-match 127.0.0.1:3000 --out .trellis/tasks/<task>/evidence/page.snapshot.txt
 ```
 
 Execute focused JavaScript. Always use an explicit `return`:
 
 ```bash
-agent/daemon/webdriver/twd --compact eval --url-match 127.0.0.1:3000 "return { title: document.title, text: document.body.innerText.slice(0, 500) }"
+./twd --compact eval --url-match 127.0.0.1:3000 "return { title: document.title, text: document.body.innerText.slice(0, 500) }"
 ```
 
 Input and click with selector plus visible text/label filters:
 
 ```bash
-agent/daemon/webdriver/twd input --url-match 127.0.0.1:3000 "textarea,input[name=content]" "REAL_<marker>" --contains "Message"
-agent/daemon/webdriver/twd click --url-match 127.0.0.1:3000 "button" --contains "Send"
+./twd input --url-match 127.0.0.1:3000 "textarea,input[name=content]" "REAL_<marker>" --contains "Message"
+./twd click --url-match 127.0.0.1:3000 "button" --contains "Send"
 ```
 
 Capture a screenshot:
 
 ```bash
-agent/daemon/webdriver/twd screenshot --url-match 127.0.0.1:3000 .trellis/tasks/<task>/evidence/REAL_<marker>.png
+./twd screenshot --url-match 127.0.0.1:3000 .trellis/tasks/<task>/evidence/REAL_<marker>.png
 ```
 
 Run an action with before/after snapshot, diff, and transient text capture:
 
 ```bash
-agent/daemon/webdriver/twd act --url-match 127.0.0.1:3000 --monitor 2 --settle 0.5 "document.querySelector('button[type=submit]')?.click(); return true"
+./twd act --url-match 127.0.0.1:3000 --monitor 2 --settle 0.5 "document.querySelector('button[type=submit]')?.click(); return true"
 ```
 
 ## Evidence Pattern
@@ -85,7 +85,7 @@ agent/daemon/webdriver/twd act --url-match 127.0.0.1:3000 --monitor 2 --settle 0
 For frontend/browser-facing work:
 
 1. Use a unique marker such as `REAL_<feature>_<YYYYMMDDHHMMSS>`.
-2. Drive the real local app through `agent/daemon/webdriver/twd`.
+2. Drive the real local app through `./twd`.
 3. Verify visible DOM state with `scan`, `snapshot`, or `eval`.
 4. Save screenshots/snapshots under the active task's `evidence/` directory when useful.
 5. Cross-check backend/API/database state when the UI depends on persisted data.

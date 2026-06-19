@@ -19,7 +19,7 @@ Use this SOP whenever a human or supervisor assigns one of the 25 product-maturi
 * Keep SmallKhoj's UI identity cyan/blue and product-workbench-like.
 * Do not copy Slock's exact black-border/brutalist/pink styling.
 * Do not use Kimi WebBridge or Playwright for repository UI verification.
-* Use project WebDriver: `python agent/daemon/webdriver/twd.py ...`.
+* Use project WebDriver: `agent/daemon/webdriver/twd ...`.
 * For runtime/control-plane paths, use `./smallkhoj-trace summary` or `./smallkhoj-trace summary --json`.
 * If backend support is missing, document the exact missing contract and create/update a follow-up task rather than hiding the gap with fake UI.
 
@@ -49,10 +49,10 @@ The notes file must include:
 ## Suggested Command Skeleton
 
 ```bash
-python agent/daemon/webdriver/twd.py --compact tabs
-python agent/daemon/webdriver/twd.py goto --url-match 127.0.0.1:3000 http://127.0.0.1:3000/
-python agent/daemon/webdriver/twd.py scan --text --url-match 127.0.0.1:3000
-python agent/daemon/webdriver/twd.py screenshot --url-match 127.0.0.1:3000 .trellis/tasks/<task>/evidence/<marker>-browser.png
+agent/daemon/webdriver/twd --compact tabs
+agent/daemon/webdriver/twd goto --url-match 127.0.0.1:3000 http://127.0.0.1:3000/
+agent/daemon/webdriver/twd scan --text --url-match 127.0.0.1:3000
+agent/daemon/webdriver/twd screenshot --url-match 127.0.0.1:3000 .trellis/tasks/<task>/evidence/<marker>-browser.png
 ./smallkhoj-trace summary --json
 ```
 

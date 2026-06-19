@@ -32,6 +32,6 @@ Use marker `REAL_design_<timestamp>`.
 
 ## Context
 
-* Design reference: `zy-think/khoj-design-spec.md`
+* Design reference: `zy-think/design/khoj-design-spec.md`
 * Parent research: `.trellis/tasks/06-09-product-maturity-gap-decomposition/research/slock-product-surface.md`
 * Frontend specs: `.trellis/spec/frontend/`

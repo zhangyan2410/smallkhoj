@@ -1,0 +1,5 @@
+{"file":"docs/codegraph-agent-guide.md","reason":"Use CodeGraph to locate daemon/runtime/Codex integration points before broad grep."}
+{"file":".trellis/spec/backend/runtime-slock-integration.md","reason":"Runtime, slock CLI, local proxy, and MCP compatibility contracts."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Daemon event delivery and token-safety contracts for runtime wake/delivery."}
+{"file":"docs/multi-agent-development-workflow.md","reason":"Worktree, verification, PR, and real-test flow for multi-agent implementation."}
+{"file":"docs/real-test-sop-template.md","reason":"Evidence format for runtime/UI-visible behavior."}

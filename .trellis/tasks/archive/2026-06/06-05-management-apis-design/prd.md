@@ -115,6 +115,6 @@
 - Backend 模型：`backend/models/slock.py`
 - Public API：`backend/routers/public_api.py`
 - Agent API：`backend/routers/agent_api.py`
-- 产品设计：`zy-think/total-design.md`
-- API 规范：`zy-think/slock-design-spec.md`
+- 产品设计：`zy-think/design/total-design.md`
+- API 规范：`zy-think/design/slock-design-spec.md`
 - Backend 规范：`.trellis/spec/backend/runtime-slock-integration.md`

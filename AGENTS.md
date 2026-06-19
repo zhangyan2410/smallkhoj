@@ -20,53 +20,13 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 
 <!-- TRELLIS:END -->
 
-## Local Network Policy
+## Project Index
 
-- If a network command fails because of connectivity, TLS, GitHub, or package registry access, retry that single command with a per-command proxy on `127.0.0.1:7897`.
-- Prefer scoped one-shot environment variables, for example `HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897 <command>`.
-- Do not change global shell config, system proxy settings, package-manager global proxy settings, or all future commands just to fix one network failure.
+SmallKhoj keeps project rules short in this file; detailed workflows live in indexed docs and skills.
 
-## Local Tool Index
-
-### SmallKhoj Worker Orchestration Skill
-
-- Skill: `smallkhoj-worker-orchestration`
-- Path: `/Users/code/project/smallkhoj/.agents/skills/smallkhoj-worker-orchestration/SKILL.md`
-- Purpose: use this before delegating development work through the local SmallKhoj/Slock worker stack. It captures the verified flow: Docker/Colima test DB, FastAPI backend, aaa-daemon, `ccs-claude` provider launch, Slock dispatch, watcher notifications, and supervisor code review.
-- Use when: starting or verifying workers, assigning work to `@aaa`, choosing GLM/Kimi/MiniMax providers, debugging daemon/runtime delivery, reading watcher notifications, or reviewing worker-produced changes.
-- Default worker provider: prefer `ccs-claude "Zhipu GLM" glm-5.1`; fall back to Kimi or MiniMax if GLM is unavailable or out of quota.
-- Helper: `.agents/skills/smallkhoj-worker-orchestration/scripts/start-worker-stack.sh start|status|stop`
-
-### SmallKhoj Flow Trace
-
-- Command: `/Users/code/project/smallkhoj/smallkhoj-trace`
-- Purpose: Codex and Claude Code should use this first when debugging the full SmallKhoj agent/control-plane flow. It aggregates backend/frontend dev logs, daemon JSON-RPC logs, daemon sessions, service health, and managed Claude runtime trace lines into one timeline.
-- Quick summary: `./smallkhoj-trace summary`
-- Follow live trace: `./smallkhoj-trace follow`
-- Machine-readable output: `./smallkhoj-trace summary --json`
-- Scope: this is the project debug harness for flow visibility; use the project WebDriver tool for UI/browser assertions, while `smallkhoj-trace` covers why messages/tasks/runtime events moved through the system.
-
-### Project WebDriver Policy
-
-- Do not use Playwright for browser/UI verification in this repository.
-- Skill: `project-webdriver-cli`
-- Path: `/Users/code/project/smallkhoj/.agents/skills/project-webdriver-cli/SKILL.md`
-- Use this skill for frontend/browser-facing fixes, UI assertions, screenshots, snapshots, DOM checks, and marker-based real-test evidence.
-- Use the project WebDriver CLI wrapper instead: `/Users/code/project/smallkhoj/agent/daemon/webdriver/twd`.
-- Do not invoke `python .../twd.py` for normal verification; treat `twd.py` and WebDriver internals as implementation details for debugging the WebDriver tool itself.
-- For frontend or browser-facing fixes, drive the running local app through this WebDriver tool, use unique markers, verify visible DOM state, and cross-check backend/API/database state when relevant.
-- Keep `smallkhoj-trace` for runtime/control-plane flow diagnosis; use WebDriver only for browser-visible behavior.
-
-### CC Switch Terminal Launcher
-
-- Command: `/Users/lee/.local/bin/ccs-claude`
-- Purpose: start Claude Code from a CC Switch provider without changing CC Switch's global current provider, so different terminals can use different providers/models at the same time.
-- Data source: reads Claude providers from `/Users/lee/.cc-switch/cc-switch.db` and merges `common_config_claude` from the CC Switch `settings` table.
-- Behavior: creates a temporary Claude settings file for the current process, starts `claude` with `--settings`, `--model`, `--setting-sources project,local`, and `--permission-mode bypassPermissions`.
-- List providers: `ccs-claude list`
-- Current CC Switch provider: `ccs-claude current`
-- Start examples:
-  - `ccs-claude "Zhipu GLM" glm-5.1`
-  - `ccs-claude Kimi kimi-for-coding`
-  - `ccs-claude DeepSeek deepseek-v4-pro -- --continue`
-- Important: do not create another command named `cc-switch`; that name belongs to the CC Switch desktop app/Homebrew cask.
+- Code map: use CodeGraph as the code-structure tool before broad Bash filtering; it can replace simple `rg`/file-tree sweeps for entry-point discovery. Guide: `docs/codegraph-agent-guide.md`. Index: `codegraph status`, `codegraph files`, `codegraph query "<symbol>"`, `codegraph explore <topic>`, `codegraph node <symbol>`.
+- Multi-agent Git flow: `docs/multi-agent-development-workflow.md`. Use `main` as the stable line; non-trivial work uses a sibling worktree plus `feat/*` branch; verify in that worktree; merge by PR + squash.
+- Real UI/runtime testing: `docs/real-test-sop-template.md` and `docs/real-runtime-dm-reply-sop.md`. Use the project WebDriver wrapper `./twd`; do not call `twd.py` directly, and do not use Playwright for repo UI verification.
+- Runtime/control-plane trace: `./smallkhoj-trace` for backend/frontend logs, daemon sessions, JSON-RPC, service health, and runtime delivery timelines.
+- Worker orchestration: `.agents/skills/smallkhoj-worker-orchestration/SKILL.md`; helper script `.agents/skills/smallkhoj-worker-orchestration/scripts/start-worker-stack.sh`.
+- CC Switch launcher: `ccs-claude` starts Claude Code with a selected CC Switch provider without changing the global provider. Index: `ccs-claude list`, `ccs-claude current`, `ccs-claude "<provider>" <model>`.
