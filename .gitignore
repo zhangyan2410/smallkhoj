@@ -52,3 +52,24 @@ graphify-out/
 !.claude/
 !.trellis/
 !.agents/
+
+# Local agent runtime/config state
+.agent/
+.cat-cafe/
+.gemini/
+.kimi/
+BACKLOG.md
+.claude/settings.json
+.claude/settings.local.json
+.codex/config.toml
+.codex/hooks.json
+.codex/skills/
+.claude/skills/debugging
+.claude/skills/feat-lifecycle
+.claude/skills/merge-gate
+.claude/skills/quality-gate
+.claude/skills/receive-review
+.claude/skills/request-review
+.claude/skills/tdd
+.claude/skills/worktree
+.claude/skills/writing-plans
