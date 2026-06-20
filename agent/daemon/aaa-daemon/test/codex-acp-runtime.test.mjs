@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { writeSlockWrapper } from '../dist/runtime/slock-wrapper.js';
-import { CodexAcpRuntimeDriver } from '../dist/runtime/codex-acp-runtime.js';
+import { CodexAcpRuntimeDriver, resolveCodexAcpLaunchCommand } from '../dist/runtime/codex-acp-runtime.js';
 
 function waitFor(predicate, timeoutMs = 5_000) {
   const started = Date.now();
@@ -176,6 +176,13 @@ test('codex acp runtime creates a session and emits daemon-compatible stream lif
     await waitFor(() => exits.length > 0 || !driver.pid).catch(() => {});
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('codex acp runtime keeps package args when daemon config supplies empty runtime args', () => {
+  assert.deepEqual(resolveCodexAcpLaunchCommand({ commandArgs: [] }), {
+    command: 'npx',
+    args: ['-y', '@zed-industries/codex-acp@0.16.0'],
+  });
 });
 
 test('codex acp runtime queues one prompt while another is in flight', async () => {

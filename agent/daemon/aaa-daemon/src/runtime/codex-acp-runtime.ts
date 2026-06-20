@@ -26,6 +26,18 @@ export type CodexAcpRuntimeEvent = RuntimeLineEvent;
 export type CodexAcpRuntimeExitEvent = RuntimeExitEvent;
 export type CodexAcpStreamEvent = RuntimeStreamEvent;
 
+export function resolveCodexAcpLaunchCommand(options: Pick<CodexAcpRuntimeOptions, 'command' | 'commandArgs'> = {}): { command: string; args: string[] } {
+  const command = options.command?.trim() || 'npx';
+  const commandArgs = options.commandArgs?.filter((arg) => arg.trim().length > 0);
+  if (commandArgs && commandArgs.length > 0) {
+    return { command, args: commandArgs };
+  }
+  if (command === 'npx' || command.endsWith('/npx')) {
+    return { command, args: ['-y', DEFAULT_CODEX_ACP_PACKAGE] };
+  }
+  return { command, args: [] };
+}
+
 export function buildCodexAcpSlockPrompt(options: Pick<CodexAcpRuntimeOptions, 'credential' | 'workspacePath'>): string {
   return [
     buildSlockSystemPrompt({
@@ -184,8 +196,7 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
   }
 
   private createBridge(): CodexAcpBridge {
-    const command = this.options.command ?? 'npx';
-    const args = this.options.commandArgs ?? ['-y', DEFAULT_CODEX_ACP_PACKAGE];
+    const { command, args } = resolveCodexAcpLaunchCommand(this.options);
     const bridge = new CodexAcpBridge({
       command,
       args,

@@ -112,7 +112,7 @@ program
       workspacePath: options.workspace,
       runtime: parseRuntimeOption(options.runtime),
       runtimeCommand: options.runtimeCommand,
-      runtimeCommandArgs: options.runtimeCommandArg,
+      runtimeCommandArgs: options.runtimeCommandArg.length > 0 ? options.runtimeCommandArg : undefined,
       runtimeModel: options.runtimeModel,
       runtimeProvider: options.runtimeProvider,
       runtimeResumeSessionId: options.runtimeResumeSessionId,
