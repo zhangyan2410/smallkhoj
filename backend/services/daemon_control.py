@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import WebSocket
@@ -14,8 +15,9 @@ from models import AgentWorkspace, Channel, ChannelMember, Computer, EventRecord
 
 
 PENDING_RUNTIME_START_STATUS = "pending_start"
+RUNTIME_CONFIGURATION_FAILED_STATUS = "failed"
 RUNTIME_ACTIVE_STATUSES = {"running", "active", "idle"}
-RUNTIME_REARMABLE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"stopped", "offline", "exited", "crashed"}
+RUNTIME_REARMABLE_STATUSES = RUNTIME_ACTIVE_STATUSES
 
 
 def _falsey_config(value: Any) -> bool:
@@ -81,6 +83,61 @@ def runtime_start_command(workspace: AgentWorkspace, agent: Member) -> dict[str,
     }
 
 
+def runtime_provider_available(workspace: AgentWorkspace, agent: Member, computer: Computer) -> bool:
+    return runtime_provider_available_for(
+        workspace.runtime,
+        runtime_provider_for_agent(agent),
+        computer,
+    )
+
+
+def runtime_provider_available_for(runtime: str, provider: str | None, computer: Computer) -> bool:
+    if not provider:
+        return True
+    for item in computer.detected_runtimes or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("runtimeProvider") != provider:
+            continue
+        if item.get("type") != runtime:
+            continue
+        return item.get("status") != "error"
+    return False
+
+
+def runtime_provider_unavailable_message_for(runtime: str, provider: str | None) -> str:
+    return (
+        f"Runtime provider {provider or '<none>'} is not available for "
+        f"{runtime} on this computer"
+    )
+
+
+def runtime_provider_unavailable_message(workspace: AgentWorkspace, agent: Member) -> str:
+    return runtime_provider_unavailable_message_for(workspace.runtime, runtime_provider_for_agent(agent))
+
+
+def mark_runtime_provider_unavailable(workspace: AgentWorkspace, agent: Member) -> None:
+    workspace.status = RUNTIME_CONFIGURATION_FAILED_STATUS
+    workspace.pid = None
+    workspace.stopped_at = datetime.now(timezone.utc)
+    if agent.status in {"online", "active", "running", "idle"}:
+        agent.status = "offline"
+    config = dict(agent.config or {})
+    config["runtimeLastError"] = runtime_provider_unavailable_message(workspace, agent)
+    config["runtimeAutostart"] = False
+    config["runtimeDesiredStatus"] = "stopped"
+    agent.config = config
+
+
+def clear_workspace_reference(agent: Member, workspace_id: uuid.UUID) -> None:
+    config = dict(agent.config or {})
+    if config.get("workspaceId") == str(workspace_id):
+        config.pop("workspaceId", None)
+    config["runtimeAutostart"] = False
+    config["runtimeDesiredStatus"] = "stopped"
+    agent.config = config
+
+
 def runtime_control_command(workspace: AgentWorkspace, agent: Member, command_type: str) -> dict[str, Any]:
     """Build a daemon control envelope for a supported workspace lifecycle action."""
     if command_type == "start_runtime":
@@ -114,8 +171,9 @@ async def pending_runtime_commands(
     agent_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     query = (
-        select(AgentWorkspace, Member)
+        select(AgentWorkspace, Member, Computer)
         .join(Member, Member.id == AgentWorkspace.agent_id)
+        .join(Computer, Computer.id == AgentWorkspace.computer_id)
         .where(
             AgentWorkspace.computer_id == computer_id,
             AgentWorkspace.status == PENDING_RUNTIME_START_STATUS,
@@ -128,7 +186,13 @@ async def pending_runtime_commands(
         query = query.where(AgentWorkspace.agent_id == agent_id)
 
     result = await db.execute(query)
-    return [runtime_start_command(workspace, agent) for workspace, agent in result.all()]
+    commands = []
+    for workspace, agent, computer in result.all():
+        if not runtime_provider_available(workspace, agent, computer):
+            mark_runtime_provider_unavailable(workspace, agent)
+            continue
+        commands.append(runtime_start_command(workspace, agent))
+    return commands
 
 
 async def mark_missing_runtimes_pending_start(
@@ -156,6 +220,8 @@ async def mark_missing_runtimes_pending_start(
     result = await db.execute(query)
     stale = result.all()
     for workspace, agent in stale:
+        if workspace.status not in RUNTIME_REARMABLE_STATUSES:
+            continue
         if not runtime_should_autostart(agent):
             continue
         workspace.status = PENDING_RUNTIME_START_STATUS

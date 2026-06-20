@@ -29,6 +29,7 @@ import { EmptyState, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConnectComputerForm } from "./connect-computer-form"
+import { buildComputerReconnectUrl } from "@/lib/computer-navigation"
 import {
   apiGet,
   badgeClass,
@@ -144,7 +145,7 @@ async function createComputerReconnectCommandAction(formData: FormData) {
     sameSite: "lax",
   })
   revalidatePath("/computers")
-  redirect(`/computers?reconnect=${encodeURIComponent(data.computerId)}`)
+  redirect(buildComputerReconnectUrl(data.computerId))
 }
 
 async function controlWorkspaceLifecycleAction(formData: FormData) {
@@ -171,6 +172,26 @@ async function controlWorkspaceLifecycleAction(formData: FormData) {
 
   revalidatePath("/computers")
   redirect(`/computers?computer=${encodeURIComponent(computerId)}&lifecycle=${encodeURIComponent(workspaceId)}`)
+}
+
+async function deleteComputerAction(formData: FormData) {
+  "use server"
+
+  const computerId = String(formData.get("computerId") || "").trim()
+  if (!computerId) redirect("/computers?error=Missing%20computer")
+  const response = await fetch(`${API_BASE}/api/v1/computers/${computerId}`, {
+    method: "DELETE",
+    headers: await serverApiHeaders(),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/computers?computer=${encodeURIComponent(computerId)}&error=${encodeURIComponent(detail)}`)
+  }
+
+  revalidatePath("/computers")
+  revalidatePath("/members")
+  redirect("/computers?deleted=1")
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -258,6 +279,9 @@ function ComputerDetail({
   reconnectComputerId?: string | null
 }) {
   const runningWorkspaces = computer.agentWorkspaces.filter((w) => w.status === "running").length
+  const deleteBlockingWorkspaces = computer.agentWorkspaces.filter((w) =>
+    ["running", "active", "idle", "busy", "starting", "restarting"].includes(w.status)
+  ).length
   const leaseExpiry = computer.daemonLeaseExpiresAt
     ? new Date(computer.daemonLeaseExpiresAt)
     : null
@@ -292,6 +316,48 @@ function ComputerDetail({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5 pt-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+              <Power className="size-3" />
+              Lifecycle controls
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="flex flex-wrap gap-2">
+                <form action={createComputerReconnectCommandAction}>
+                  <input type="hidden" name="computerId" value={computer.id} />
+                  <Button type="submit" size="sm" variant="outline">
+                    <RefreshCw className="size-4" />
+                    Reconnect
+                  </Button>
+                </form>
+                <Button size="sm" variant="outline" disabled title="Workspace scan requires backend endpoint">
+                  <Scan className="size-4" />
+                  Scan workspaces
+                </Button>
+                <Button size="sm" variant="outline" disabled title="Use row actions to stop one runtime">
+                  <Power className="size-4" />
+                  Stop all
+                </Button>
+                <Button size="sm" variant="outline" disabled title="Use row actions to restart one runtime">
+                  <RotateCcw className="size-4" />
+                  Restart all
+                </Button>
+                <Button size="sm" variant="outline" disabled title="Reconcile requires backend endpoint">
+                  <Play className="size-4" />
+                  Reconcile
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Workspace rows support start, stop, and restart while the daemon lease is online. Batch controls and workspace scan remain scoped until safe multi-runtime reconciliation is available.
+              </p>
+              {computer.status === "offline" || leaseExpired ? (
+                <p className="mt-1 text-xs text-amber-700">
+                  Runtime controls are disabled because this computer has no active daemon lease. Reconnect it before sending lifecycle commands.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
           {reconnectCredential?.computerId === computer.id && reconnectComputerId === computer.id && (
             <div className="space-y-2 rounded-md border bg-muted/40 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -372,64 +438,35 @@ function ComputerDetail({
 
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
-              <Power className="size-3" />
-              Lifecycle controls
-            </div>
-            <div className="rounded-md border p-3">
-              <div className="flex flex-wrap gap-2">
-                <form action={createComputerReconnectCommandAction}>
-                  <input type="hidden" name="computerId" value={computer.id} />
-                  <Button type="submit" size="sm" variant="outline">
-                    <RefreshCw className="size-4" />
-                    Reconnect
-                  </Button>
-                </form>
-                <Button size="sm" variant="outline" disabled title="Workspace scan requires backend endpoint">
-                  <Scan className="size-4" />
-                  Scan workspaces
-                </Button>
-                <Button size="sm" variant="outline" disabled title="Use row actions to stop one runtime">
-                  <Power className="size-4" />
-                  Stop all
-                </Button>
-                <Button size="sm" variant="outline" disabled title="Use row actions to restart one runtime">
-                  <RotateCcw className="size-4" />
-                  Restart all
-                </Button>
-                <Button size="sm" variant="outline" disabled title="Reconcile requires backend endpoint">
-                  <Play className="size-4" />
-                  Reconcile
-                </Button>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Workspace rows support start, stop, and restart while the daemon lease is online. Batch controls and workspace scan remain scoped until safe multi-runtime reconciliation is available.
-              </p>
-              {computer.status === "offline" || leaseExpired ? (
-                <p className="mt-1 text-xs text-amber-700">
-                  Runtime controls are disabled because this computer has no active daemon lease. Reconnect it before sending lifecycle commands.
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
               <Trash2 className="size-3" />
               Delete
             </div>
             <div className="rounded-md border border-rose-200 bg-rose-50/50 p-3">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 size-4 text-rose-500" />
-                <div>
-                  <p className="text-sm font-medium text-rose-700">Computer deletion is not available</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-rose-700">Delete computer</p>
                   <p className="mt-1 text-xs text-rose-600">
-                    Deleting a computer would orphan its agent workspaces and disconnect any running daemon. This action requires a dedicated backend endpoint with cascading safety checks.
+                    Removes the computer, its machine token, and stopped workspaces. Bound agents remain in Members without a computer binding.
                   </p>
-                  {computer.agentWorkspaces.length > 0 && (
+                  {deleteBlockingWorkspaces > 0 && (
                     <p className="mt-1 text-xs text-rose-600">
-                      This computer has {computer.agentWorkspaces.length} agent workspace(s) ({runningWorkspaces} running). All workspaces must be stopped before deletion would be safe.
+                      Stop {deleteBlockingWorkspaces} active/pending workspace(s) before deleting.
                     </p>
                   )}
+                  <form action={deleteComputerAction} className="mt-3">
+                    <input type="hidden" name="computerId" value={computer.id} />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="outline"
+                      disabled={deleteBlockingWorkspaces > 0}
+                      className="border-rose-200 text-rose-700 hover:bg-rose-100"
+                    >
+                      <Trash2 className="size-3.5" />
+                      Delete
+                    </Button>
+                  </form>
                 </div>
               </div>
             </div>
@@ -453,6 +490,7 @@ function WorkspaceRow({
   const canStop = !daemonOffline && ["running", "active", "idle", "busy", "pending_start"].includes(workspace.status)
   const canRestart = !daemonOffline && ["running", "active", "idle", "busy"].includes(workspace.status)
   const disabledTitle = daemonOffline ? "Reconnect the daemon before controlling runtimes" : undefined
+  const runtimeError = workspace.runtimeLastError
 
   return (
     <div className="grid gap-2 border-b px-3 py-3 last:border-b-0 md:grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] md:items-center">
@@ -481,7 +519,15 @@ function WorkspaceRow({
       <div className="truncate font-mono text-xs text-muted-foreground" title={workspace.sessionId ?? ""}>
         {workspace.sessionId ? shortId(workspace.sessionId) : "none"}
       </div>
-      <div className="min-w-0 truncate text-xs text-muted-foreground">{workspace.cwd || "no cwd"}</div>
+      <div className="min-w-0 text-xs text-muted-foreground">
+        <div className="truncate">{workspace.cwd || "no cwd"}</div>
+        {runtimeError ? (
+          <div className="mt-1 flex items-start gap-1 text-rose-600" title={runtimeError}>
+            <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+            <span className="break-words">{runtimeError}</span>
+          </div>
+        ) : null}
+      </div>
       <div className="flex flex-wrap gap-1.5">
         <form action={controlWorkspaceLifecycleAction}>
           <input type="hidden" name="workspaceId" value={workspace.id} />

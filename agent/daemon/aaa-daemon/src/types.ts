@@ -51,7 +51,7 @@ export interface DetectedRuntime {
   source?: string;
 }
 
-export type RuntimeType = 'claude_code' | 'codex_cli' | 'opencode' | 'kimi_cli' | 'custom';
+export type RuntimeType = 'claude_code' | 'codex' | 'codex_cli' | 'codex_acp' | 'opencode' | 'kimi_cli' | 'custom';
 
 /** Agent instance running on a Computer */
 export interface AgentWorkspace {

@@ -1,0 +1,37 @@
+{
+  "id": "fix-webdriver-url-match-tab-selection",
+  "name": "fix-webdriver-url-match-tab-selection",
+  "title": "fix webdriver url match tab selection",
+  "description": "Fix project WebDriver URL matching so agents do not inspect stale/wrong localhost tabs.",
+  "status": "implemented",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-19",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "twd",
+    "agent/daemon/webdriver/twd",
+    "agent/daemon/webdriver/twd.py",
+    "agent/daemon/webdriver/test_twd_selection.py",
+    "agent/daemon/webdriver/tmwebdriver_core.py",
+    "agent/daemon/webdriver/README.md",
+    ".agents/skills/project-webdriver-cli/SKILL.md"
+  ],
+  "notes": "Do not change chat business code. Screenshot evidence shows the chat sidebar is correct; the bug is WebDriver tab selection/wrapper behavior.",
+  "meta": {
+    "bugType": "tooling",
+    "affectedTool": "./twd"
+  }
+}

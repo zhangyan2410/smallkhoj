@@ -1,0 +1,5 @@
+{"file":"twd","reason":"Check wrapper still forwards correctly."}
+{"file":"agent/daemon/webdriver/twd","reason":"Check CLI behavior remains compatible."}
+{"file":"agent/daemon/webdriver/tmwebdriver_core.py","reason":"Review tab selection fix and regression coverage."}
+{"file":"agent/daemon/webdriver/README.md","reason":"Check docs match the final CLI behavior."}
+{"file":".agents/skills/project-webdriver-cli/SKILL.md","reason":"Check agent instructions remain accurate."}

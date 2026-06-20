@@ -14,7 +14,7 @@ from urllib.parse import quote
 from fastapi import HTTPException
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,10 +25,16 @@ from models import (
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
 from services.daemon_control import (
+    clear_workspace_reference,
+    mark_runtime_provider_unavailable,
     PENDING_RUNTIME_START_STATUS,
     RUNTIME_ACTIVE_STATUSES,
     daemon_control_hub,
     push_latest_events_for_server,
+    runtime_provider_available,
+    runtime_provider_available_for,
+    runtime_provider_unavailable_message,
+    runtime_provider_unavailable_message_for,
     runtime_control_command,
     runtime_start_command,
 )
@@ -65,6 +71,7 @@ DANGEROUS_MIME_TYPES = {
 }
 ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 TASK_NUMBER_RETRY_LIMIT = 5
+DELETE_BLOCKING_WORKSPACE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"busy", "starting", "restarting"}
 
 PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_message_sent": "message.created",
@@ -580,6 +587,7 @@ def _serialize_workspace(
             "status": agent.status,
             "backend": member_backend(agent),
             "runtimeProvider": (agent.config or {}).get("runtimeProvider"),
+            "runtimeLastError": (agent.config or {}).get("runtimeLastError"),
             "computerId": member_computer_id(agent) or str(workspace.computer_id),
             "workspaceId": str(workspace.id),
             "profile": {
@@ -598,10 +606,11 @@ def _serialize_workspace(
         "agentStatus": agent.status if agent else None,
         "backend": member_backend(agent) if agent else None,
         "agent": agent_payload,
-        "runtime": workspace.runtime,
+        "runtime": _public_runtime(workspace.runtime),
         "runtimeCommand": workspace.runtime_command,
         "runtimeModel": workspace.runtime_model,
         "runtimeProvider": (agent.config or {}).get("runtimeProvider") if agent else None,
+        "runtimeLastError": (agent.config or {}).get("runtimeLastError") if agent else None,
         "status": status,
         "sessionId": workspace.session_id,
         "cwd": workspace.cwd,
@@ -609,6 +618,100 @@ def _serialize_workspace(
         "startedAt": workspace.started_at.isoformat() if workspace.started_at else None,
         "stoppedAt": workspace.stopped_at.isoformat() if workspace.stopped_at else None,
     }
+
+
+def _delete_blocking_workspace_statuses(workspaces: list[AgentWorkspace]) -> list[str]:
+    return sorted({workspace.status for workspace in workspaces if workspace.status in DELETE_BLOCKING_WORKSPACE_STATUSES})
+
+
+def _detach_agent_from_computer(agent: Member) -> None:
+    agent.computer_id = None
+    agent.status = "offline"
+    config = dict(agent.config or {})
+    config.pop("computerId", None)
+    config.pop("workspaceId", None)
+    config["runtimeAutostart"] = False
+    config["runtimeDesiredStatus"] = "stopped"
+    agent.config = config
+
+
+async def _channel_related_ids(db: AsyncSession, channel_ids: list[uuid.UUID]) -> dict[str, list[uuid.UUID]]:
+    if not channel_ids:
+        return {"message_ids": [], "task_ids": []}
+    message_result = await db.execute(select(Message.id).where(Message.channel_id.in_(channel_ids)))
+    task_result = await db.execute(select(Task.id).where(Task.channel_id.in_(channel_ids)))
+    return {
+        "message_ids": list(message_result.scalars().all()),
+        "task_ids": list(task_result.scalars().all()),
+    }
+
+
+async def _delete_saved_item_references(
+    db: AsyncSession,
+    *,
+    channel_ids: list[uuid.UUID] | None = None,
+    message_ids: list[uuid.UUID] | None = None,
+    task_ids: list[uuid.UUID] | None = None,
+) -> None:
+    conditions = []
+    if channel_ids:
+        conditions.append((SavedItem.item_type == "channel") & SavedItem.item_id.in_(channel_ids))
+    if message_ids:
+        conditions.append((SavedItem.item_type == "message") & SavedItem.item_id.in_(message_ids))
+    if task_ids:
+        conditions.append((SavedItem.item_type == "task") & SavedItem.item_id.in_(task_ids))
+    if conditions:
+        await db.execute(delete(SavedItem).where(or_(*conditions)))
+
+
+async def _delete_channels_by_id(db: AsyncSession, channel_ids: list[uuid.UUID]) -> dict[str, int]:
+    if not channel_ids:
+        return {"channels": 0, "messages": 0, "tasks": 0}
+    related = await _channel_related_ids(db, channel_ids)
+    await _delete_saved_item_references(
+        db,
+        channel_ids=channel_ids,
+        message_ids=related["message_ids"],
+        task_ids=related["task_ids"],
+    )
+    await db.execute(delete(FileEntry).where(FileEntry.channel_id.in_(channel_ids)))
+    await db.execute(delete(Channel).where(Channel.id.in_(channel_ids)))
+    return {
+        "channels": len(channel_ids),
+        "messages": len(related["message_ids"]),
+        "tasks": len(related["task_ids"]),
+    }
+
+
+async def _delete_messages_by_id(db: AsyncSession, message_ids: list[uuid.UUID]) -> dict[str, int]:
+    if not message_ids:
+        return {"messages": 0, "tasks": 0}
+    reply_result = await db.execute(select(Message.id).where(Message.parent_id.in_(message_ids)))
+    all_message_ids = list(dict.fromkeys([*message_ids, *reply_result.scalars().all()]))
+    task_result = await db.execute(select(Task.id).where(Task.message_id.in_(all_message_ids)))
+    task_ids = list(task_result.scalars().all())
+
+    await _delete_saved_item_references(db, message_ids=all_message_ids, task_ids=task_ids)
+    await db.execute(delete(FileEntry).where(FileEntry.message_id.in_(all_message_ids)))
+    await db.execute(delete(Task).where(Task.id.in_(task_ids)))
+    await db.execute(delete(ThreadSummary).where(ThreadSummary.root_message_id.in_(all_message_ids)))
+    await db.execute(delete(MessageReaction).where(MessageReaction.message_id.in_(all_message_ids)))
+    await db.execute(delete(Message).where(Message.parent_id.in_(all_message_ids)))
+    await db.execute(delete(Message).where(Message.id.in_(all_message_ids)))
+    return {"messages": len(all_message_ids), "tasks": len(task_ids)}
+
+
+async def _member_dm_channel_ids(db: AsyncSession, server: Server, member_id: uuid.UUID) -> list[uuid.UUID]:
+    result = await db.execute(
+        select(ChannelMember.channel_id)
+        .join(Channel, Channel.id == ChannelMember.channel_id)
+        .where(
+            Channel.server_id == server.id,
+            Channel.kind == "dm",
+            ChannelMember.member_id == member_id,
+        )
+    )
+    return list(result.scalars().all())
 
 
 async def _serialize_computer(db: AsyncSession, computer: Computer) -> dict:
@@ -1680,6 +1783,74 @@ async def list_computers(_auth: None = Depends(verify_public_api_key), db: Async
     }
 
 
+@router.delete("/computers/{computer_id}")
+async def delete_computer(
+    computer_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    try:
+        parsed_computer_id = uuid.UUID(computer_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid computer id")
+
+    result = await db.execute(
+        select(Computer).where(Computer.id == parsed_computer_id, Computer.server_id == server.id)
+    )
+    computer = result.scalar_one_or_none()
+    if not computer:
+        raise HTTPException(404, "Computer not found")
+
+    actor = await _resolve_human_actor(db, server, request, None, role="computer deletion actor")
+    workspaces_result = await db.execute(
+        select(AgentWorkspace).where(AgentWorkspace.computer_id == computer.id)
+    )
+    workspaces = list(workspaces_result.scalars().all())
+    blocking_statuses = _delete_blocking_workspace_statuses(workspaces)
+    if blocking_statuses:
+        raise HTTPException(409, f"Stop runtimes before deleting computer; blocking statuses: {', '.join(blocking_statuses)}")
+
+    members_result = await db.execute(select(Member).where(Member.computer_id == computer.id))
+    bound_members = list(members_result.scalars().all())
+    for member in bound_members:
+        _detach_agent_from_computer(member)
+
+    await db.execute(delete(ApiKey).where(
+        ApiKey.server_id == server.id,
+        ApiKey.resource_type == "computer",
+        ApiKey.resource_id == computer.id,
+    ))
+    for workspace in workspaces:
+        await db.delete(workspace)
+    await db.delete(computer)
+    await _record_activity(
+        db,
+        server,
+        actor,
+        "workspace_lifecycle",
+        f"@{actor.display_name} deleted computer {computer.name}",
+        {
+            "computerId": str(computer.id),
+            "computerName": computer.name,
+            "action": "delete_computer",
+            "deletedWorkspaces": len(workspaces),
+            "detachedAgents": len(bound_members),
+        },
+    )
+    await db.commit()
+    await push_latest_events_for_server(db, server_id=server.id)
+    return {
+        "ok": True,
+        "deleted": True,
+        "computerId": str(computer.id),
+        "computerName": computer.name,
+        "workspaces": len(workspaces),
+        "detachedAgents": len(bound_members),
+    }
+
+
 @router.get("/activity")
 async def list_activity(
     agent_id: str | None = Query(None, alias="agentId"),
@@ -2093,6 +2264,83 @@ async def update_member(member_id: str, request: Request, _auth: None = Depends(
     return {"updated": True, "member": await serialize_member(db, member)}
 
 
+@router.delete("/members/{member_id}")
+async def delete_member(
+    member_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    member = await _resolve_member(db, server, member_id)
+    if not member:
+        raise HTTPException(404, "Member not found")
+    if member.kind != "agent":
+        raise HTTPException(400, "Only agent deletion is supported from this surface")
+
+    actor = await _resolve_human_actor(db, server, request, None, role="member deletion actor")
+    workspaces_result = await db.execute(select(AgentWorkspace).where(AgentWorkspace.agent_id == member.id))
+    workspaces = list(workspaces_result.scalars().all())
+    blocking_statuses = _delete_blocking_workspace_statuses(workspaces)
+    if blocking_statuses:
+        raise HTTPException(409, f"Stop runtime before deleting agent; blocking statuses: {', '.join(blocking_statuses)}")
+
+    dm_channel_ids = await _member_dm_channel_ids(db, server, member.id)
+    deleted_channels = await _delete_channels_by_id(db, dm_channel_ids)
+
+    authored_messages_result = await db.execute(
+        select(Message.id)
+        .join(Channel, Channel.id == Message.channel_id)
+        .where(Channel.server_id == server.id, Message.sender_id == member.id)
+    )
+    deleted_messages = await _delete_messages_by_id(db, list(authored_messages_result.scalars().all()))
+
+    task_ids_result = await db.execute(select(Task.id).where(Task.creator_id == member.id))
+    created_task_ids = list(task_ids_result.scalars().all())
+    await _delete_saved_item_references(db, task_ids=created_task_ids)
+    await db.execute(delete(Task).where(Task.creator_id == member.id))
+    await db.execute(update(Task).where(Task.assignee_id == member.id).values(assignee_id=None))
+    await db.execute(update(Channel).where(Channel.creator_id == member.id).values(creator_id=None))
+    await db.execute(update(ThreadSummary).where(ThreadSummary.requested_agent_id == member.id).values(requested_agent_id=None))
+    await db.execute(update(ThreadSummary).where(ThreadSummary.updated_by == member.id).values(updated_by=None))
+    await db.execute(delete(ApiKey).where(
+        ApiKey.server_id == server.id,
+        ApiKey.resource_type == "agent",
+        ApiKey.resource_id == member.id,
+    ))
+    for workspace in workspaces:
+        await db.delete(workspace)
+    await db.delete(member)
+    await _record_activity(
+        db,
+        server,
+        actor,
+        "supervisor_member_updated",
+        f"@{actor.display_name} deleted agent @{member.display_name}",
+        {
+            "memberId": str(member.id),
+            "memberName": member.display_name,
+            "action": "delete",
+            "deletedWorkspaces": len(workspaces),
+            "deletedDmChannels": deleted_channels["channels"],
+            "deletedMessages": deleted_channels["messages"] + deleted_messages["messages"],
+            "deletedTasks": deleted_channels["tasks"] + deleted_messages["tasks"] + len(created_task_ids),
+        },
+    )
+    await db.commit()
+    await push_latest_events_for_server(db, server_id=server.id)
+    return {
+        "ok": True,
+        "deleted": True,
+        "memberId": str(member.id),
+        "memberName": member.display_name,
+        "workspaces": len(workspaces),
+        "dmChannels": deleted_channels["channels"],
+        "messages": deleted_channels["messages"] + deleted_messages["messages"],
+        "tasks": deleted_channels["tasks"] + deleted_messages["tasks"] + len(created_task_ids),
+    }
+
+
 @router.post("/reminders")
 async def create_public_reminder(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     server = await _get_server(db)
@@ -2297,6 +2545,28 @@ async def control_workspace_lifecycle(
 
     config = dict(agent.config or {})
     now = _utcnow_aware()
+    if action in {"start", "restart"} and not runtime_provider_available(workspace, agent, computer):
+        mark_runtime_provider_unavailable(workspace, agent)
+        message = runtime_provider_unavailable_message(workspace, agent)
+        await _record_activity(
+            db,
+            server,
+            agent,
+            "workspace_lifecycle",
+            f"@{agent.display_name} runtime configuration failed on {computer.name}",
+            {
+                "computerId": str(computer.id),
+                "workspaceId": str(workspace.id),
+                "runtime": _public_runtime(workspace.runtime),
+                "status": workspace.status,
+                "action": action,
+                "error": message,
+            },
+        )
+        await db.commit()
+        await push_latest_events_for_server(db, server_id=server.id)
+        raise HTTPException(400, message)
+
     if action == "start":
         config["runtimeDesiredStatus"] = "running"
         workspace.status = PENDING_RUNTIME_START_STATUS
@@ -2330,7 +2600,7 @@ async def control_workspace_lifecycle(
         {
             "computerId": str(computer.id),
             "workspaceId": str(workspace.id),
-            "runtime": workspace.runtime,
+            "runtime": _public_runtime(workspace.runtime),
             "status": workspace.status,
             "action": action,
             "delivered": delivered,
@@ -2352,6 +2622,64 @@ async def control_workspace_lifecycle(
         ),
         "workspace": _serialize_workspace(workspace, agent),
         "computer": await _serialize_computer(db, computer),
+    }
+
+
+@router.delete("/workspaces/{workspace_id}")
+async def delete_workspace(
+    workspace_id: str,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    try:
+        parsed_workspace_id = uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid workspace id")
+
+    result = await db.execute(
+        select(AgentWorkspace, Member, Computer)
+        .join(Member, Member.id == AgentWorkspace.agent_id)
+        .join(Computer, Computer.id == AgentWorkspace.computer_id)
+        .where(
+            AgentWorkspace.id == parsed_workspace_id,
+            Member.server_id == server.id,
+            Computer.server_id == server.id,
+        )
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(404, "Workspace not found")
+    workspace, agent, computer = row
+
+    if workspace.status in RUNTIME_ACTIVE_STATUSES or workspace.status in {"busy", "starting", "restarting"}:
+        raise HTTPException(409, "Stop the runtime before deleting this workspace")
+
+    deleted = _serialize_workspace(workspace, agent)
+    clear_workspace_reference(agent, workspace.id)
+    agent.status = "offline"
+    await db.delete(workspace)
+    await _record_activity(
+        db,
+        server,
+        agent,
+        "workspace_lifecycle",
+        f"@{agent.display_name} workspace deleted on {computer.name}",
+        {
+            "computerId": str(computer.id),
+            "workspaceId": str(parsed_workspace_id),
+            "runtime": _public_runtime(deleted.get("runtime")),
+            "status": "deleted",
+            "action": "delete",
+        },
+    )
+    await db.commit()
+    await push_latest_events_for_server(db, server_id=server.id)
+    return {
+        "ok": True,
+        "deleted": True,
+        "workspace": deleted,
+        "member": await serialize_member(db, agent),
     }
 
 
@@ -2406,6 +2734,32 @@ async def generate_computer_credential(
 # ── Agent Creation ────────────────────────────────────────────
 
 
+def _normalize_runtime(value: str | None) -> str:
+    """Normalize public agent runtime identifiers.
+
+    Product surfaces expose Codex as `codex`; the daemon decides the current
+    implementation mode (ACP by default). Historical `codex_acp` values are
+    accepted only as aliases and normalized away.
+    """
+    aliases = {
+        "claude": "claude_code",
+        "claude_code": "claude_code",
+        "codex": "codex",
+        "codex_cli": "codex",
+        "codex-acp": "codex",
+        "codex_acp": "codex",
+    }
+    raw = (str(value).strip().lower() if value else "") or "claude_code"
+    normalized = aliases.get(raw)
+    if not normalized:
+        raise HTTPException(400, f"Unsupported runtime: {value}")
+    return normalized
+
+
+def _public_runtime(value: str | None) -> str:
+    return _normalize_runtime(value)
+
+
 @router.post("/members/agents")
 async def create_agent(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
@@ -2436,7 +2790,7 @@ async def create_agent(
     if not computer:
         raise HTTPException(404, "Computer not found")
 
-    runtime = body.get("runtime", "claude_code")
+    runtime = _normalize_runtime(body.get("runtime", "claude_code"))
     runtime_command = body.get("runtimeCommand")
     runtime_model = body.get("runtimeModel")
     raw_runtime_provider = body.get("runtimeProvider")
@@ -2447,6 +2801,8 @@ async def create_agent(
     provider_name = str(raw_provider_name).strip() if raw_provider_name is not None else None
     if not provider_name:
         provider_name = None
+    if not runtime_provider_available_for(runtime, runtime_provider, computer):
+        raise HTTPException(400, runtime_provider_unavailable_message_for(runtime, runtime_provider))
 
     agent = Member(
         server_id=server.id,
@@ -2551,6 +2907,56 @@ async def create_channel(
             "type": channel.kind,
             "description": channel.description or "",
         },
+    }
+
+
+@router.delete("/channels/{channel_id}")
+async def delete_channel(
+    channel_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    try:
+        parsed_channel_id = uuid.UUID(channel_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid channel id")
+
+    result = await db.execute(
+        select(Channel).where(Channel.id == parsed_channel_id, Channel.server_id == server.id)
+    )
+    channel = result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+    if channel.kind == "dm":
+        raise HTTPException(400, "Delete the agent/member to remove its DM channel")
+
+    actor = await _resolve_human_actor(db, server, request, None, role="channel deletion actor")
+    deleted = await _delete_channels_by_id(db, [channel.id])
+    await _record_activity(
+        db,
+        server,
+        actor,
+        "supervisor_member_updated",
+        f"@{actor.display_name} deleted channel #{channel.name}",
+        {
+            "channelId": str(channel.id),
+            "channelName": channel.name,
+            "action": "delete_channel",
+            "deletedMessages": deleted["messages"],
+            "deletedTasks": deleted["tasks"],
+        },
+    )
+    await db.commit()
+    await push_latest_events_for_server(db, server_id=server.id)
+    return {
+        "ok": True,
+        "deleted": True,
+        "channelId": str(channel.id),
+        "channelName": channel.name,
+        "messages": deleted["messages"],
+        "tasks": deleted["tasks"],
     }
 
 

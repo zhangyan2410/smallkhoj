@@ -593,6 +593,17 @@ export function ChannelClient({
     }
   }
 
+  async function handleDeleteChannel() {
+    if (!currentChannel?.id || currentIsDm) return
+    if (!window.confirm(`Delete ${currentChannel.name}?`)) return
+    try {
+      await apiDelete(`/api/v1/channels/${currentChannel.id}`, sessionToken)
+      window.location.href = "/chat"
+    } catch (e) {
+      console.error("Delete channel failed:", e)
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -754,6 +765,17 @@ export function ChannelClient({
               <Users className="size-4" />
               {members.length}
             </Button>
+            {!currentIsDm && currentChannel?.id && (
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="Delete channel"
+                onClick={handleDeleteChannel}
+                className="border-rose-200 text-rose-700 hover:bg-rose-50"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
           </div>
           <div className="mt-3 flex gap-1">
             {conversationTabs.map(({ label, icon: Icon }) => {

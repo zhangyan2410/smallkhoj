@@ -27,6 +27,7 @@ toremove/
 .dev-pids/
 .dev-logs/
 .slock/
+.slock-runtimes/
 agent/daemon/aaa-daemon/.slock/
 agent/daemon/aaa-daemon/aaa-daemon.pid
 backend/.data/

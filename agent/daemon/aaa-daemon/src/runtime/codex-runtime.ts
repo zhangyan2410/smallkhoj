@@ -22,6 +22,8 @@ export interface CodexRuntimeOptions {
   command?: string;
   commandArgs?: string[];
   baseEnv?: NodeJS.ProcessEnv;
+  /** 上次会话的 thread_id，用于 daemon 重启后续接同一 codex 会话。 */
+  resumeSessionId?: string;
 }
 
 export type CodexRuntimeEvent = RuntimeLineEvent;
@@ -73,18 +75,46 @@ export function buildCodexRuntimeEnv(options: CodexRuntimeOptions, baseEnv = pro
   return env;
 }
 
+// codex CLI 是 turn-based：`exec` 跑一个 turn 退出，没有「一个进程持续吃
+// 多条 stdin 消息」的模式（官方设计，见 developers.openai.com/codex/noninteractive）。
+// 会话连续性靠 `codex exec resume <thread_id>` 续接：首条消息用 exec 生成
+// thread_id，后续消息用 resume 恢复同一会话上下文（与 Claude --resume 同构）。
+//
+// 注意 codex 0.137.0：
+//  - 没有 --ask-for-approval；用 `-c approval_policy=never` 等效跳过审批。
+//  - `exec` 用 `-s danger-full-access`；`exec resume` 不支持 -s，
+//    改用 `-c sandbox_mode=danger-full-access`。
 export function buildCodexArgs(options: Pick<CodexRuntimeOptions, 'model'>): string[] {
   const args = [
     'exec',
     '--json',
     '--skip-git-repo-check',
     '--sandbox', 'danger-full-access',
-    '--ask-for-approval', 'never',
+    '-c', 'approval_policy=never',
     '-',
   ];
 
   if (options.model) {
     args.splice(1, 0, '--model', options.model);
+  }
+
+  return args;
+}
+
+// 续接已有会话：codex exec resume <thread_id>。sandbox 通过 config 传入。
+export function buildCodexResumeArgs(threadId: string, options: Pick<CodexRuntimeOptions, 'model'>): string[] {
+  const args = [
+    'exec', 'resume',
+    '--json',
+    '--skip-git-repo-check',
+    '-c', 'approval_policy=never',
+    '-c', 'sandbox_mode=danger-full-access',
+    threadId,
+    '-',
+  ];
+
+  if (options.model) {
+    args.splice(2, 0, '--model', options.model);
   }
 
   return args;
@@ -133,6 +163,8 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
   constructor(options: CodexRuntimeOptions) {
     super();
     this.options = options;
+    // 恢复 daemon 重启前的会话，使后续消息能 `codex exec resume` 续接上下文。
+    this.currentSessionId = options.resumeSessionId;
   }
 
   start(): void {
@@ -203,9 +235,13 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
 
   private spawnTurn(text: string): void {
     const command = this.options.command ?? 'codex';
+    // 已有会话则 resume 续接（保持上下文连续），否则首条用 exec 生成会话。
+    const baseArgs = this.currentSessionId
+      ? buildCodexResumeArgs(this.currentSessionId, { model: this.options.model })
+      : buildCodexArgs({ model: this.options.model });
     const args = [
       ...(this.options.commandArgs ?? []),
-      ...buildCodexArgs({ model: this.options.model }),
+      ...baseArgs,
     ];
     const child = spawn(command, args, {
       cwd: this.options.workspacePath,
@@ -304,7 +340,12 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     }
     if (!event) return;
     this.sawStructuredEvent = true;
-    const sessionId = extractClaudeSessionId(event as ClaudeStreamEvent);
+    // codex 的会话标识是 thread.started 事件里的 thread_id（不是 Claude 的
+    // session_id）。捕获后用于后续消息的 `codex exec resume <thread_id>`。
+    const threadId = isRecord(event) && typeof event.thread_id === 'string' && event.type === 'thread.started'
+      ? event.thread_id
+      : undefined;
+    const sessionId = threadId ?? extractClaudeSessionId(event as ClaudeStreamEvent);
     if (sessionId && sessionId !== this.currentSessionId) {
       this.currentSessionId = sessionId;
       this.emit('session', { sessionId });

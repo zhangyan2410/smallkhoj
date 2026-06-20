@@ -1,0 +1,10 @@
+{"file":"frontend/components/task-board.tsx","reason":"Primary reusable chat Tasks tab board; first target for task status drag/drop."}
+{"file":"frontend/app/tasks/page.tsx","reason":"Main Tasks page board/list surface; needs client component extraction for dnd-kit."}
+{"file":"frontend/app/chat/[channel]/channel-client.tsx","reason":"Chat file drop and message-to-task drag target/source live here."}
+{"file":"frontend/lib/control-plane.ts","reason":"Existing API helpers and public API header behavior for task updates."}
+{"file":"backend/routers/public_api.py","reason":"Existing public PATCH /api/v1/tasks/{task_id} and file/task APIs used by frontend interactions."}
+{"file":".trellis/tasks/06-09-tasks-board-list-filters/prd.md","reason":"Existing task board/list requirements and completed behavior to preserve."}
+{"file":".trellis/tasks/06-09-task-from-message-and-thread/prd.md","reason":"Existing message-to-task behavior to reuse for drag creation."}
+{"file":".trellis/tasks/06-09-files-surface-and-attachments/prd.md","reason":"Existing files/upload surface to preserve and extend with file drop."}
+{"file":"docs/codegraph-agent-guide.md","reason":"Use CodeGraph for code navigation before broad source searches."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend verification and UX quality expectations."}

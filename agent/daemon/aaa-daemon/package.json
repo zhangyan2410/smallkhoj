@@ -18,10 +18,12 @@
     "start": "node dist/cmd/main.js start --foreground",
     "daemon": "node dist/cmd/main.js start",
     "attach": "node dist/cmd/main.js attach",
+    "smoke:codex-acp": "npm run build && node dist/scripts/codex-acp-smoke.js",
     "status": "node dist/cmd/main.js status",
     "stop": "node dist/cmd/main.js stop"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.28.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^12.0.0",
     "ws": "^8.16.0",

@@ -15,10 +15,12 @@ from routers.agent_api import (
 )
 from routers.public_api import compact_activity_feed
 from services.daemon_control import (
+    clear_workspace_reference,
     DaemonControlHub,
     initial_daemon_event_cursor,
     mark_missing_runtimes_pending_start,
     parse_positive_event_cursor,
+    pending_runtime_commands,
     pending_visible_events_for_computer,
     runtime_control_command,
     runtime_start_command,
@@ -48,15 +50,22 @@ class _ExecuteResult:
     def scalar_one(self):
         return self._scalar_one
 
+    def scalar_one_or_none(self):
+        return self._scalar_one
+
 
 class _FakeSession:
     def __init__(self, *results):
         self._results = list(results)
         self.execute_count = 0
+        self.added = []
 
     async def execute(self, _statement):
         self.execute_count += 1
         return self._results.pop(0)
+
+    def add(self, item):
+        self.added.append(item)
 
     async def flush(self):
         return None
@@ -108,13 +117,15 @@ def _task(*, assignee_id, status="todo"):
     return SimpleNamespace(id=uuid.uuid4(), assignee_id=assignee_id, status=status)
 
 
-def _computer(*, active_daemon_id="old-daemon", lease_expires_at=None, status="online"):
+def _computer(*, active_daemon_id="old-daemon", lease_expires_at=None, status="online", detected_runtimes=None):
     if lease_expires_at is None:
         lease_expires_at = datetime.now(timezone.utc) + timedelta(seconds=30)
     return SimpleNamespace(
+        id=uuid.uuid4(),
         status=status,
         active_daemon_id=active_daemon_id,
         daemon_lease_expires_at=lease_expires_at,
+        detected_runtimes=detected_runtimes or [],
     )
 
 
@@ -140,6 +151,18 @@ def _activity(kind, *, agent_id=None, occurred_at=None, description=None):
         description=description or kind,
         occurred_at=occurred_at or datetime.now(timezone.utc),
     )
+
+
+def test_public_agent_runtime_normalizer_exposes_codex_without_acp_detail():
+    assert public_api._normalize_runtime("codex") == "codex"
+    assert public_api._normalize_runtime("codex_acp") == "codex"
+    assert public_api._normalize_runtime("codex-acp") == "codex"
+
+
+def test_agent_api_public_runtime_hides_codex_implementation_detail():
+    assert agent_api._public_runtime("codex") == "codex"
+    assert agent_api._public_runtime("codex_cli") == "codex"
+    assert agent_api._public_runtime("codex_acp") == "codex"
 
 
 class _FakeWebSocket:
@@ -227,8 +250,40 @@ async def test_create_public_reminder_requires_explicit_agent(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_missing_stopped_workspace_is_rearmed_when_autostart_enabled():
-    workspace = _workspace(status="stopped")
+async def test_create_agent_rejects_unavailable_runtime_provider_before_creating_rows(monkeypatch):
+    server = SimpleNamespace(id=uuid.uuid4())
+    computer = _computer(detected_runtimes=[{
+        "type": "codex",
+        "runtimeProvider": "krill",
+        "status": "available",
+    }])
+    db = _FakeSession(
+        _ExecuteResult(scalar_one=None),
+        _ExecuteResult(scalar_one=computer),
+    )
+
+    async def fake_get_server(_db):
+        return server
+
+    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    request = _JsonRequest({
+        "name": "bad-provider-probe",
+        "computerId": str(computer.id),
+        "runtime": "codex",
+        "runtimeProvider": "codex-cli",
+    })
+
+    with pytest.raises(HTTPException) as exc:
+        await public_api.create_agent(request, _auth=None, db=db)
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Runtime provider codex-cli is not available for codex on this computer"
+    assert db.added == []
+
+
+@pytest.mark.asyncio
+async def test_missing_running_workspace_is_rearmed_when_autostart_enabled():
+    workspace = _workspace(status="running")
     agent = _runtime_member(config={"runtimeDesiredStatus": "running"}, status="active")
     db = _FakeSession(_ExecuteResult(rows=[(workspace, agent)]))
 
@@ -247,6 +302,24 @@ async def test_missing_stopped_workspace_is_rearmed_when_autostart_enabled():
 
 
 @pytest.mark.asyncio
+async def test_missing_stopped_workspace_is_not_rearmed_when_desired_running():
+    workspace = _workspace(status="stopped")
+    agent = _runtime_member(config={"runtimeDesiredStatus": "running"}, status="active")
+    db = _FakeSession(_ExecuteResult(rows=[(workspace, agent)]))
+
+    await mark_missing_runtimes_pending_start(
+        db,
+        server_id=uuid.uuid4(),
+        computer_id=uuid.uuid4(),
+        reported_workspace_ids=set(),
+    )
+
+    assert workspace.status == "stopped"
+    assert workspace.pid == 1234
+    assert agent.status == "active"
+
+
+@pytest.mark.asyncio
 async def test_missing_workspace_is_not_rearmed_when_desired_stopped():
     workspace = _workspace(status="stopped")
     agent = _runtime_member(config={"runtimeDesiredStatus": "stopped"}, status="offline")
@@ -261,6 +334,108 @@ async def test_missing_workspace_is_not_rearmed_when_desired_stopped():
 
     assert workspace.status == "stopped"
     assert workspace.pid == 1234
+
+
+@pytest.mark.asyncio
+async def test_pending_runtime_with_missing_provider_is_marked_failed_without_command():
+    workspace = _workspace(status="pending_start")
+    workspace.runtime = "codex"
+    agent = _runtime_member(
+        config={"runtimeProvider": "codex-cli", "runtimeDesiredStatus": "running"},
+        status="active",
+    )
+    computer = _computer(detected_runtimes=[{
+        "type": "codex",
+        "runtimeProvider": "krill",
+        "status": "available",
+    }])
+    db = _FakeSession(_ExecuteResult(rows=[(workspace, agent, computer)]))
+
+    commands = await pending_runtime_commands(
+        db,
+        server_id=uuid.uuid4(),
+        computer_id=computer.id,
+    )
+
+    assert commands == []
+    assert workspace.status == "failed"
+    assert workspace.pid is None
+    assert workspace.stopped_at is not None
+    assert agent.status == "offline"
+    assert agent.config["runtimeLastError"] == "Runtime provider codex-cli is not available for codex on this computer"
+    assert agent.config["runtimeAutostart"] is False
+    assert agent.config["runtimeDesiredStatus"] == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_pending_runtime_with_available_provider_returns_start_command():
+    workspace = _workspace(status="pending_start")
+    workspace.runtime = "codex"
+    agent = _runtime_member(config={"runtimeProvider": "krill"})
+    computer = _computer(detected_runtimes=[{
+        "type": "codex",
+        "runtimeProvider": "krill",
+        "status": "available",
+    }])
+    db = _FakeSession(_ExecuteResult(rows=[(workspace, agent, computer)]))
+
+    commands = await pending_runtime_commands(
+        db,
+        server_id=uuid.uuid4(),
+        computer_id=computer.id,
+    )
+
+    assert len(commands) == 1
+    assert commands[0]["command"]["config"]["runtimeProvider"] == "krill"
+
+
+def test_clear_workspace_reference_removes_workspace_id_and_disables_autostart():
+    workspace_id = uuid.uuid4()
+    agent = _runtime_member(config={
+        "workspaceId": str(workspace_id),
+        "runtimeProvider": "codex-cli",
+        "runtimeDesiredStatus": "running",
+    })
+
+    clear_workspace_reference(agent, workspace_id)
+
+    assert "workspaceId" not in agent.config
+    assert agent.config["runtimeProvider"] == "codex-cli"
+    assert agent.config["runtimeAutostart"] is False
+    assert agent.config["runtimeDesiredStatus"] == "stopped"
+
+
+def test_public_api_detaches_agent_from_computer_binding():
+    computer_id = uuid.uuid4()
+    workspace_id = uuid.uuid4()
+    agent = _runtime_member(config={
+        "computerId": str(computer_id),
+        "workspaceId": str(workspace_id),
+        "runtimeProvider": "krill",
+        "runtimeDesiredStatus": "running",
+        "runtimeAutostart": True,
+    })
+    agent.computer_id = computer_id
+
+    public_api._detach_agent_from_computer(agent)
+
+    assert agent.computer_id is None
+    assert "computerId" not in agent.config
+    assert "workspaceId" not in agent.config
+    assert agent.config["runtimeProvider"] == "krill"
+    assert agent.config["runtimeDesiredStatus"] == "stopped"
+    assert agent.config["runtimeAutostart"] is False
+
+
+def test_public_api_delete_blocking_workspace_statuses():
+    workspaces = [
+        _workspace(status="stopped"),
+        _workspace(status="failed"),
+        _workspace(status="pending_start"),
+        _workspace(status="running"),
+    ]
+
+    assert public_api._delete_blocking_workspace_statuses(workspaces) == ["running"]
 
 
 def test_agent_can_start_assigned_todo_task():

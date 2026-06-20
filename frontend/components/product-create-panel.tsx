@@ -33,6 +33,12 @@ function fieldValue(form: FormData, key: string) {
   return typeof value === "string" ? value.trim() : ""
 }
 
+function publicRuntimeValue(value: string) {
+  const runtime = value.trim()
+  if (runtime === "codex_acp" || runtime === "codex-acp" || runtime === "codex_cli") return "codex"
+  return runtime
+}
+
 export function ComputerConnectForm({ compact = false }: { compact?: boolean }) {
   const router = useRouter()
   const [state, setState] = useState<SubmitState>({})
@@ -99,9 +105,9 @@ export function AgentCreateForm({ computers, compact = false }: { computers: Com
   const runtimeOptions = useMemo(() => {
     const selected = computers.find((computer) => computer.id === computerId)
     const detected = (selected?.detectedRuntimes ?? [])
-      .map((runtime) => (typeof runtime === "string" ? runtime : runtime.type || runtime.command || runtimeLabel(runtime)))
+      .map((runtime) => publicRuntimeValue(typeof runtime === "string" ? runtime : runtime.type || runtime.command || runtimeLabel(runtime)))
       .filter(Boolean)
-    return Array.from(new Set([...detected, "claude_code", "codex_cli", "custom"]))
+    return Array.from(new Set([...detected, "claude_code", "codex", "custom"]))
   }, [computerId, computers])
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -157,7 +163,7 @@ export function AgentCreateForm({ computers, compact = false }: { computers: Com
           <select name="runtime" className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm">
             {runtimeOptions.map((runtime) => (
               <option key={runtime} value={runtime}>
-                {runtime}
+                {runtimeLabel(runtime)}
               </option>
             ))}
           </select>

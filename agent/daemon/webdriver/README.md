@@ -76,6 +76,8 @@ python twd.py eval --tab 123 "return document.body.innerText.slice(0, 500)"
 python twd.py eval --url-match slock.ai "return location.href"
 ```
 
+`--url-match` 只有一个候选 tab 时会直接使用该 tab。多个候选 tab 时，CLI 会优先使用唯一的 active 候选；如果无法确定唯一 active tab，会返回 `ok=false` / `code=AMBIGUOUS_TAB` 并列出候选 URL。此时改用更具体的 `--url-match` 或显式 `--tab`。
+
 从文件执行：
 
 ```powershell
@@ -154,6 +156,8 @@ python twd.py --compact scan --text --url-match slock.ai
 
 这样 stdout 仍是纯 JSON，但会压成单行，更适合其他 agent 解析。
 
+会操作浏览器 tab 的命令在成功 JSON 中返回 `tabId` 和可用时的 `tabUrl`。调试或验收 UI 时先核对 `tabUrl`，避免把旧 localhost tab 的状态当成当前页面状态。
+
 ## 给 Claude Code / Codex 的最小提示词
 
 ```text
@@ -178,6 +182,7 @@ JS 中 await 必须显式 return。
 3. 确认 master 在跑：`agent/daemon/webdriver/twd serve`，端口是 `18765/18766`。
 4. 如果扩展刚装或服务刚启动，等 5 秒或刷新网页。
 5. 后台 tab 可能被节流；关键操作可以先切到目标 tab。
+6. `AMBIGUOUS_TAB`：`--url-match` 同时匹配多个 tab 且没有唯一 active 候选。查看返回的 `candidates`，改用更具体的 URL 片段或 `--tab <id>`。
 
 ## 设计取舍
 

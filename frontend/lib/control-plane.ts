@@ -90,6 +90,7 @@ export type AgentWorkspace = {
   runtimeCommand?: string | null
   runtimeModel?: string | null
   runtimeProvider?: string | null
+  runtimeLastError?: string | null
   status: string
   sessionId?: string | null
   cwd?: string | null
@@ -188,6 +189,7 @@ export function statusLabel(status: string) {
     restarting: "重启中",
     stopped: "已停止",
     failed: "失败",
+    crashed: "崩溃",
   }
   return labels[status] ?? status
 }
@@ -212,6 +214,7 @@ export function dotClass(status: string) {
     case "in_progress":
       return "bg-sky-500"
     case "failed":
+    case "crashed":
     case "cancelled":
     case "offline":
     case "stopped":
@@ -241,6 +244,7 @@ export function badgeClass(status: string) {
     case "in_progress":
       return "border-sky-200 bg-sky-50 text-sky-700"
     case "failed":
+    case "crashed":
     case "cancelled":
     case "offline":
     case "stopped":
@@ -253,7 +257,9 @@ export function badgeClass(status: string) {
 export function runtimeLabel(runtime: RuntimeInfo) {
   const labels: Record<string, string> = {
     claude_code: "Claude Code",
-    codex_cli: "Codex CLI",
+    codex: "Codex",
+    codex_cli: "Codex",
+    codex_acp: "Codex",
     custom: "Custom",
   }
   if (typeof runtime === "string") return labels[runtime] ?? runtime

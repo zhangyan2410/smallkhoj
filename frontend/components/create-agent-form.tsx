@@ -11,7 +11,11 @@ import {
   type Computer,
   type Member,
 } from "@/lib/control-plane"
-import type { ProviderOption } from "@/lib/runtime-options"
+import {
+  detectedProviderOptions,
+  unavailableProviderOptions,
+  type ProviderOption,
+} from "@/lib/runtime-options"
 
 type CreatedMember = Member
 
@@ -45,6 +49,14 @@ export function CreateAgentForm({
 }: CreateAgentFormProps) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [computerId, setComputerId] = useState("")
+  const [runtime, setRuntime] = useState("claude_code")
+  const scopedProviderOptions = computerId
+    ? detectedProviderOptions(computers, { computerId, runtime })
+    : providerOptions
+  const scopedUnavailableProviders = computerId
+    ? unavailableProviderOptions(scopedProviderOptions, { runtime })
+    : unavailableProviders
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -108,6 +120,8 @@ export function CreateAgentForm({
             id="agent-computer"
             name="computerId"
             required
+            value={computerId}
+            onChange={(event) => setComputerId(event.target.value)}
             className="h-8 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
           >
             <option value="">Select...</option>
@@ -123,10 +137,12 @@ export function CreateAgentForm({
           <select
             id="agent-runtime"
             name="runtime"
+            value={runtime}
+            onChange={(event) => setRuntime(event.target.value)}
             className="h-8 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
           >
             <option value="claude_code">Claude Code</option>
-            <option value="codex_cli">Codex CLI</option>
+            <option value="codex">Codex</option>
             <option value="custom">Custom</option>
           </select>
         </div>
@@ -134,7 +150,7 @@ export function CreateAgentForm({
           <label htmlFor="agent-provider" className="text-xs font-medium text-muted-foreground">
             Provider
           </label>
-          <ProviderSelect options={providerOptions} unavailableOptions={unavailableProviders} />
+          <ProviderSelect options={scopedProviderOptions} unavailableOptions={scopedUnavailableProviders} />
         </div>
       </div>
       <div className="flex justify-end">

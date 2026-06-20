@@ -34,7 +34,8 @@ function deriveBackendWebSocketUrl(serverUrl: string): string {
 function parseRuntimeOption(value: string): DaemonConfig['runtime'] | undefined {
   if (!value || value === 'none') return undefined;
   if (value === 'claude' || value === 'claude_code') return 'claude_code';
-  if (value === 'codex' || value === 'codex_cli') return 'codex_cli';
+  if (value === 'codex' || value === 'codex_acp') return 'codex';
+  if (value === 'codex_cli') return 'codex_cli';
   if (value === 'opencode' || value === 'kimi_cli' || value === 'custom') return value;
   throw new Error(`Unsupported runtime: ${value}`);
 }
@@ -59,7 +60,7 @@ program
   .option('--pid-file <path>', 'PID file path', './aaa-daemon.pid')
   .option('--log-file <path>', 'Log file path')
   .option('--workspace <path>', 'Workspace path for managed runtime files', process.cwd())
-  .option('--runtime <runtime>', 'Runtime driver to start (none|claude|codex)', 'none')
+  .option('--runtime <runtime>', 'Runtime driver to start (none|claude|codex|codex_cli)', 'none')
   .option('--runtime-command <command>', 'Runtime executable command')
   .option('--runtime-command-arg <arg>', 'Runtime executable argument (repeatable)', collect, [])
   .option('--runtime-model <model>', 'Runtime model')

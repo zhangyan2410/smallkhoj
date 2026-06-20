@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 export function ProviderSelect({
   options,
@@ -9,16 +9,22 @@ export function ProviderSelect({
   options: Array<{ value: string; label: string }>
   unavailableOptions: Array<{ value: string; label: string }>
 }) {
-  const [provider, setProvider] = useState("")
+  const [runtimeProvider, setRuntimeProvider] = useState("")
+  const allOptions = useMemo(() => [...options, ...unavailableOptions], [options, unavailableOptions])
+  const selectedOption = allOptions.find((option) => option.value === runtimeProvider)
+  const selectedIsUnavailable = unavailableOptions.some((option) => option.value === runtimeProvider)
+  const selectedValue = selectedOption && !selectedIsUnavailable ? runtimeProvider : ""
+  const provider = selectedValue ? selectedOption?.label.split(" / ")[0] ?? "" : ""
+
   return (
     <>
       <select
         id="agent-provider"
         name="runtimeProvider"
+        value={selectedValue}
         className="h-9 min-w-36 rounded-md border bg-background px-3 text-sm"
         onChange={(e) => {
-          const opt = [...options, ...unavailableOptions].find((o) => o.value === e.target.value)
-          setProvider(opt?.label.split(" / ")[0] ?? "")
+          setRuntimeProvider(e.target.value)
         }}
       >
         <option value="">Default</option>

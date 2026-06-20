@@ -5,7 +5,14 @@ import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { parseCcsClaudeListOutput } from '../dist/runtime/runtime-provider.js';
+import {
+  detectRuntimeProviders,
+  detectedRuntimesForInventory,
+  parseManualRuntimeProviders,
+  parseCcSwitchProviderRows,
+  parseCcsClaudeListOutput,
+  resolveRuntimeProviderLaunch,
+} from '../dist/runtime/runtime-provider.js';
 
 function startServer(handler) {
   const requests = [];
@@ -178,6 +185,88 @@ process.stdin.on('end', () => {
 `, 'utf-8');
 }
 
+function writeFakeAcpScript(path, marker) {
+  writeFileSync(path, `
+import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+let buffer = '';
+process.stdin.setEncoding('utf-8');
+process.stdin.on('data', chunk => {
+  buffer += chunk;
+  const lines = buffer.split(/\\r?\\n/);
+  buffer = lines.pop() ?? '';
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      send({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: [] } });
+    } else if (msg.method === 'session/new') {
+      send({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'fake-acp-daemon-session' } });
+    } else if (msg.method === 'session/load') {
+      send({ jsonrpc: '2.0', id: msg.id, result: {} });
+    } else if (msg.method === 'session/prompt') {
+      const slockCommand = process.platform === 'win32' ? 'slock.cmd' : 'slock';
+      const serverInfo = spawnSync(slockCommand, ['server', 'info'], {
+        encoding: 'utf-8',
+        env: process.env,
+        shell: process.platform === 'win32',
+      });
+      const prompt = (msg.params.prompt ?? []).map(block => block.text ?? '').join('\\n');
+      const warmup = prompt.includes('startup readiness check');
+      const targetMatch = prompt.match(/\\btarget=([^\\s\\]]+)/);
+      const target = targetMatch?.[1] ?? '#general';
+      const sendResult = warmup ? null : spawnSync(slockCommand, ['message', 'send', '--target', target, 'fake codex acp reply'], {
+        encoding: 'utf-8',
+        env: process.env,
+        shell: process.platform === 'win32',
+      });
+      const result = {
+        argv: process.argv.slice(2),
+        cwd: process.cwd(),
+        prompt,
+        warmup,
+        target,
+        serverStatus: serverInfo.status,
+        serverStdout: (serverInfo.stdout || '').trim(),
+        serverStderr: (serverInfo.stderr || '').trim(),
+        sendStatus: sendResult?.status,
+        sendStdout: (sendResult?.stdout || '').trim(),
+        sendStderr: (sendResult?.stderr || '').trim(),
+        pathHead: (process.env.PATH || '').split(process.platform === 'win32' ? ';' : ':')[0],
+        slockHome: process.env.SLOCK_HOME,
+        agentId: process.env.SLOCK_AGENT_ID,
+        currentWorkspacePath: process.env.SLOCK_CURRENT_WORKSPACE_PATH,
+        launchId: process.env.SLOCK_AGENT_LAUNCH_ID,
+        sessionId: msg.params.sessionId,
+      };
+      writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
+      notify(msg.params.sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'fake acp warmup ok' } });
+      notify(msg.params.sessionId, { sessionUpdate: 'usage_update', used: 123, size: 258400 });
+      send({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {
+          stopReason: 'end_turn',
+          usage: { totalTokens: 123, inputTokens: 100, cachedReadTokens: 12, outputTokens: 23 }
+        }
+      });
+    } else if (msg.method === 'session/cancel') {
+      send({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+
+function send(frame) {
+  process.stdout.write(JSON.stringify(frame) + '\\n');
+}
+
+function notify(sessionId, update) {
+  send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId, update } });
+}
+`, 'utf-8');
+}
+
 test('ccs-claude provider list output is parsed into sanitized providers', () => {
   const providers = parseCcsClaudeListOutput([
     'current  name         id                                    model',
@@ -195,6 +284,176 @@ test('ccs-claude provider list output is parsed into sanitized providers', () =>
     { id: 'Kimi', name: 'Kimi', runtime: 'claude_code', model: 'kimi-for-coding', source: 'cc-switch' },
     { id: 'Zhipu GLM', name: 'Zhipu GLM', runtime: 'claude_code', model: 'glm-5.1', source: 'cc-switch' },
   ]);
+});
+
+test('cc-switch Codex provider rows are parsed into sanitized public Codex providers', () => {
+  const providers = parseCcSwitchProviderRows([
+    {
+      id: 'codex-krill',
+      app_type: 'codex',
+      name: 'krill',
+      settings_config: JSON.stringify({
+        auth: { api_key: 'SECRET_TOKEN' },
+        config: { model: 'gpt-5.3-codex' },
+      }),
+    },
+    {
+      id: 'claude-kimi',
+      app_type: 'claude',
+      name: 'Kimi',
+      settings_config: JSON.stringify({ auth: { api_key: 'OTHER_SECRET' } }),
+    },
+  ], 'codex');
+
+  assert.deepEqual(providers, [{
+    id: 'codex-krill',
+    name: 'krill',
+    runtime: 'codex',
+    model: 'gpt-5.3-codex',
+    source: 'cc-switch',
+  }]);
+  const serialized = JSON.stringify(providers);
+  assert.equal(serialized.includes('SECRET_TOKEN'), false);
+  assert.equal(serialized.includes('api_key'), false);
+  assert.equal(serialized.includes('settings_config'), false);
+});
+
+test('daemon loads Codex providers from the local CC Switch database command', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-cc-switch-codex-'));
+  const fakeDb = join(root, 'cc-switch.db');
+  const fakeSqlite = join(root, 'fake-sqlite.mjs');
+  const fakeCodex = join(root, 'fake-codex.mjs');
+  writeFileSync(fakeDb, '', 'utf-8');
+  writeFakeCodexScript(fakeCodex, join(root, 'unused-marker.json'));
+  chmodSync(fakeCodex, 0o755);
+  writeFileSync(fakeSqlite, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify([{
+  id: 'codex-krill',
+  app_type: 'codex',
+  name: 'krill',
+  settings_config: JSON.stringify({
+    auth: { api_key: 'SECRET_TOKEN' },
+    config: { model: 'gpt-5.3-codex' },
+  }),
+}]));
+`, 'utf-8');
+  chmodSync(fakeSqlite, 0o755);
+
+  try {
+    const inventory = detectRuntimeProviders({
+      ...process.env,
+      HOME: root,
+      USERPROFILE: root,
+      SLOCK_CC_SWITCH_DB: fakeDb,
+      SLOCK_SQLITE_COMMAND: fakeSqlite,
+      SLOCK_CODEX_COMMAND: fakeCodex,
+      SLOCK_CCS_CLAUDE_COMMAND: join(root, 'missing-ccs-claude'),
+    });
+    const codexProviders = inventory.providers.filter(item => item.runtime === 'codex');
+    assert.deepEqual(codexProviders, [{
+      id: 'codex-krill',
+      name: 'krill',
+      runtime: 'codex',
+      model: 'gpt-5.3-codex',
+      source: 'cc-switch',
+    }]);
+    assert.equal(JSON.stringify(inventory).includes('SECRET_TOKEN'), false);
+    assert.equal(inventory.providers.some(item => item.runtime === 'codex_cli'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('manual runtime provider JSON is parsed into local launch-only provider config', () => {
+  const providers = parseManualRuntimeProviders(JSON.stringify([
+    {
+      id: 'local-codex-krill',
+      name: 'Local Codex Krill',
+      runtime: 'codex',
+      model: 'gpt-5.3-codex',
+      command: '/Users/me/bin/codex-acp-wrapper',
+      commandArgs: ['--profile', 'krill'],
+    },
+  ]));
+
+  assert.deepEqual(providers, [{
+    id: 'local-codex-krill',
+    name: 'Local Codex Krill',
+    runtime: 'codex',
+    model: 'gpt-5.3-codex',
+    command: '/Users/me/bin/codex-acp-wrapper',
+    commandArgs: ['--profile', 'krill'],
+    source: 'manual',
+  }]);
+
+  const detected = detectedRuntimesForInventory({ runtime: 'codex' }, { providers });
+  const providerRuntime = detected.find(item => item.runtimeProvider === 'local-codex-krill');
+  assert.equal(providerRuntime?.source, 'manual');
+  assert.equal('command' in providerRuntime, false);
+  assert.equal('commandArgs' in providerRuntime, false);
+});
+
+test('daemon resolves manual provider command without exposing it as CC Switch config', () => {
+  const launch = resolveRuntimeProviderLaunch('local-codex-krill', {
+    providers: [{
+      id: 'local-codex-krill',
+      name: 'Local Codex Krill',
+      runtime: 'codex',
+      model: 'gpt-5.3-codex',
+      command: '/Users/me/bin/codex-acp-wrapper',
+      commandArgs: ['--profile', 'krill'],
+      source: 'manual',
+    }],
+  });
+
+  assert.deepEqual(launch, {
+    runtimeProvider: 'local-codex-krill',
+    command: '/Users/me/bin/codex-acp-wrapper',
+    commandArgs: ['--profile', 'krill'],
+    model: 'gpt-5.3-codex',
+  });
+});
+
+test('daemon detected runtimes include CC Switch Codex providers as public codex', () => {
+  const detected = detectedRuntimesForInventory(
+    { runtime: 'codex' },
+    {
+      providers: [{
+        id: 'codex-krill',
+        name: 'krill',
+        runtime: 'codex',
+        model: 'gpt-5.3-codex',
+        source: 'cc-switch',
+      }],
+    },
+  );
+
+  assert.ok(detected.some(item => (
+    item.type === 'codex'
+    && item.provider === 'krill'
+    && item.runtimeProvider === 'codex-krill'
+    && item.model === 'gpt-5.3-codex'
+    && item.source === 'cc-switch'
+  )));
+  assert.equal(JSON.stringify(detected).includes('codex_acp'), false);
+});
+
+test('daemon resolves selected CC Switch Codex provider without exposing launch credentials', () => {
+  const launch = resolveRuntimeProviderLaunch('krill', {
+    codexCommand: 'codex',
+    providers: [{
+      id: 'codex-krill',
+      name: 'krill',
+      runtime: 'codex',
+      model: 'gpt-5.3-codex',
+      source: 'cc-switch',
+    }],
+  });
+
+  assert.deepEqual(launch, {
+    runtimeProvider: 'codex-krill',
+    model: 'gpt-5.3-codex',
+  });
 });
 
 test('daemon runtime starts fake Claude with slock wrapper on PATH', async () => {
@@ -310,7 +569,7 @@ test('daemon runtime starts fake Codex with slock wrapper on PATH', async () => 
     '--proxy-port', '0',
     '--pid-file', join(root, 'aaa-daemon.pid'),
     '--workspace', root,
-    '--runtime', 'codex',
+    '--runtime', 'codex_cli',
     '--runtime-command', process.execPath,
     '--runtime-command-arg', fakeCodex,
   ], {
@@ -346,6 +605,149 @@ test('daemon runtime starts fake Codex with slock wrapper on PATH', async () => 
     const serverRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/server');
     assert.equal(serverRequest.req.headers.authorization, 'Bearer sk_machine_real');
     assert.equal(serverRequest.req.headers['x-agent-id'], 'agent-codex');
+  } catch (err) {
+    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
+  }
+});
+
+test('daemon starts public Codex runtime with ACP implementation and reports workspace heartbeat', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-codex-acp-runtime-'));
+  const marker = join(root, 'codex-acp-marker.json');
+  const fakeAcp = join(root, 'fake-acp.mjs');
+  const registerBodies = [];
+  const activityBodies = [];
+  const sendBodies = [];
+  let releaseInbound = false;
+  let inboundDelivered = false;
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/register' || url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      registerBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({ ok: true, registered: true, controlCommands: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/activity') {
+      activityBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/server') {
+      res.end(JSON.stringify({ id: 'server-acp', channels: [{ name: 'general' }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      sendBodies.push({ headers: req.headers, body: JSON.parse(body) });
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/events') {
+      if (releaseInbound && !inboundDelivered) {
+        inboundDelivered = true;
+        res.end(JSON.stringify({
+          count: 1,
+          eventLogCursor: '1',
+          events: [{
+            type: 'message_received',
+            eventSeq: '1',
+            messageId: 'msg-acp-1',
+            target: '#general',
+            channelId: 'channel-general',
+            sender: 'human',
+            actor: 'human-1',
+            content: 'please reply from codex acp',
+          }],
+        }));
+        return;
+      }
+      res.end(JSON.stringify({ count: 0, events: [] }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeFakeAcpScript(fakeAcp, marker);
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'none',
+    '--agent-id', 'agent-acp',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'codex',
+    '--runtime-command', process.execPath,
+    '--runtime-command-arg', fakeAcp,
+    '--register-daemon',
+  ], {
+    cwd: resolve('.'),
+    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real', SLOCK_ALLOW_WRITES: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => existsSync(marker));
+    const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
+
+    assert.equal(runtime.agentId, 'agent-acp');
+    assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
+    assert.match(runtime.serverStdout, /"server-acp"/);
+    assert.equal(runtime.pathHead, join(root, '.slock'));
+    assert.equal(runtime.slockHome, join(root, '.slock'));
+    assert.equal(runtime.currentWorkspacePath, root);
+    assert.equal(runtime.sessionId, 'fake-acp-daemon-session');
+    assert.match(runtime.prompt, /Codex ACP Runtime Notes/);
+    assert.match(runtime.prompt, /Run `slock server info` once/);
+
+    await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-acp' && workspace.runtime === 'codex' && workspace.status === 'running')));
+    const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-acp' && workspace.runtime === 'codex' && workspace.status === 'running'));
+    const workspace = runtimeHeartbeat.workspaces.find(item => item.agentId === 'agent-acp');
+    assert.equal(workspace.runtime, 'codex');
+    assert.equal(workspace.status, 'running');
+    assert.equal(workspace.sessionId, 'fake-acp-daemon-session');
+    assert.equal(workspace.cwd, root);
+    assert.equal(typeof workspace.pid, 'number');
+
+    await waitFor(() => activityBodies.some(item => item.type === 'runtime_idle'));
+    const idle = activityBodies.find(item => item.type === 'runtime_idle');
+    assert.equal(idle.description, 'Idle');
+
+    releaseInbound = true;
+    await waitFor(() => sendBodies.length > 0, 8_000);
+    assert.equal(sendBodies[0].headers['x-agent-id'], 'agent-acp');
+    assert.equal(sendBodies[0].body.target, '#general');
+    assert.equal(sendBodies[0].body.content, 'fake codex acp reply');
+
+    await waitFor(() => activityBodies.some(item => item.type === 'runtime_working'));
+    const working = activityBodies.find(item => item.type === 'runtime_working');
+    assert.equal(working.description, 'Working on message');
+    assert.equal(working.details.target, '#general');
+    await waitFor(() => activityBodies.filter(item => item.type === 'runtime_idle').length >= 2);
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
@@ -597,6 +999,78 @@ test('daemon resolves selected runtimeProvider locally through ccs-claude', asyn
     } catch {
       // Windows can briefly keep spawned script directories locked after process exit.
     }
+  }
+});
+
+test('daemon foreground process stays alive after machine connect without runtime child', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-foreground-keepalive-'));
+  const registerBodies = [];
+  const connectToken = 'sk_connect_keepalive';
+  const machineToken = 'sk_machine_keepalive';
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/connect') {
+      assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
+      res.end(JSON.stringify({
+        connected: true,
+        daemonId: 'daemon-keepalive',
+        machineToken,
+        computer: { serverId: 'server-keepalive' },
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/register' || url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      registerBodies.push(JSON.parse(body));
+      assert.equal(req.headers.authorization, `Bearer ${machineToken}`);
+      res.end(JSON.stringify({ ok: true, controlCommands: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'none',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'none',
+    '--register-daemon',
+  ], {
+    cwd: resolve('.'),
+    env: {
+      ...process.env,
+      SLOCK_CONNECT_TOKEN: connectToken,
+      AAA_DAEMON_MACHINE_ID_FILE: join(root, 'machine-id'),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => registerBodies.length > 0);
+    await new Promise(resolveWait => setTimeout(resolveWait, 1200));
+    assert.equal(daemon.exitCode, null, `daemon exited early\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 import {
   Activity,
   Bell,
@@ -9,6 +10,7 @@ import {
   MessageSquare,
   Puzzle,
   Shield,
+  Trash2,
   User,
   UserRound,
   Wrench,
@@ -236,6 +238,24 @@ async function updatePermissionsAction(formData: FormData) {
     body: JSON.stringify({ permissions, actions }),
   })
   revalidatePath("/members")
+}
+
+async function deleteMemberAction(formData: FormData) {
+  "use server"
+  const memberId = String(formData.get("memberId") || "")
+  if (!memberId) return
+  const response = await fetch(`${API_BASE}/api/v1/members/${memberId}`, {
+    method: "DELETE",
+    headers: await serverApiHeaders(),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/members?error=${encodeURIComponent(detail)}`)
+  }
+  revalidatePath("/members")
+  revalidatePath("/computers")
+  redirect("/members?kind=agent")
 }
 
 function PermissionsTab({ member }: { member: Member }) {
@@ -623,7 +643,16 @@ function MemberDetail({
         <CardTitle className="flex items-center gap-2 text-base">
           {member.kind === "agent" ? <Bot className="size-4" /> : <UserRound className="size-4" />}
           Member Detail
-          <span className="ml-auto text-xs font-normal text-muted-foreground">{shortId(member.id)}</span>
+          {member.kind === "agent" && (
+            <form action={deleteMemberAction} className="ml-auto">
+              <input type="hidden" name="memberId" value={member.id} />
+              <Button type="submit" size="sm" variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50">
+                <Trash2 className="size-3.5" />
+                Delete
+              </Button>
+            </form>
+          )}
+          <span className={`${member.kind === "agent" ? "" : "ml-auto"} text-xs font-normal text-muted-foreground`}>{shortId(member.id)}</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">

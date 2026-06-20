@@ -1,0 +1,7 @@
+{"file":"frontend/package.json","reason":"Dependency and script verification after adding dnd-kit."}
+{"file":"frontend/package-lock.json","reason":"Dependency lockfile changes must be scoped to dnd-kit unless audit remediation is explicitly requested."}
+{"file":"frontend/components/task-board.tsx","reason":"Verify chat Tasks tab drag behavior and preserved selection/detail behavior."}
+{"file":"frontend/app/tasks/page.tsx","reason":"Verify /tasks behavior after client component extraction."}
+{"file":"frontend/app/chat/[channel]/channel-client.tsx","reason":"Verify file drop and message-to-task drag behavior."}
+{"file":"docs/codegraph-agent-guide.md","reason":"Use CodeGraph for targeted review/navigation."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend quality gate and real-test expectations."}

@@ -391,7 +391,9 @@ function EmptyState({ label }: { label: string }) {
 function runtimeLabel(runtime: string | { type?: string; status?: string; command?: string; provider?: string; runtimeProvider?: string; model?: string }) {
   const labels: Record<string, string> = {
     claude_code: "Claude Code",
-    codex_cli: "Codex CLI",
+    codex: "Codex",
+    codex_cli: "Codex",
+    codex_acp: "Codex",
     custom: "Custom",
   }
   if (typeof runtime === "string") return labels[runtime] ?? runtime

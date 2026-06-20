@@ -261,11 +261,183 @@ Tell Claude it can call `slock action prepare` because the proxy can rewrite an 
 Only list commands whose CLI parse path, daemon forwarding path, backend endpoint, safety behavior, and tests all exist.
 ```
 
+## Scenario: Codex Runtime Uses Invocation Driver, Not Long-Lived Stdin
+
+### 1. Scope / Trigger
+
+- Trigger: daemon-managed Codex runtime for Slock workspaces.
+- Codex is not the same shape as Claude Code stream-json. Treat it as a turn-based CLI invocation runtime: one `codex exec --json` or `codex exec resume --json` process handles one delivered Slock event, emits JSONL, then exits.
+- Reference implementation to study, not copy blindly: Clowder AI `CodexAgentService`, `codex-event-transform`, and invocation tracking. The portable lessons are invocation lifecycle, MCP/config injection, context accounting, diagnostics, and event normalization.
+
+### 2. Signatures
+
+- First turn:
+  - `codex exec --json --sandbox danger-full-access --skip-git-repo-check [--model <model>] [--config <key=value>...] -- -`
+  - prompt body is passed through stdin, never argv.
+- Resume turn:
+  - `codex exec resume --json --skip-git-repo-check [--model <model>] [--config <key=value>...] <thread_id> -`
+  - `thread_id` is captured from `thread.started.thread_id`.
+- Runtime driver:
+  - `CodexRuntimeDriver.sendUserMessage(text)` starts exactly one child process when idle.
+  - additional messages are queued until the running child exits.
+  - `sessionId` means Codex `thread_id`, not Claude `session_id`.
+- Optional MCP config injection:
+  - use per-invocation `--config mcp_servers.<name>.*=...` entries when exposing runtime-specific tools.
+  - do not mutate global `~/.codex/config.toml` for daemon-managed sessions.
+
+### 3. Contracts
+
+- Prompt/context injection:
+  - preferred stable instruction channel is per-invocation config when supported, for example `--config developer_instructions=<toml-string>`.
+  - if the active Codex CLI version cannot carry daemon instructions as config, prepend the Slock system block to stdin and record that capability gap in runtime status.
+  - the Slock prompt prefix should be stable across turns where possible to improve cache hits; variable event payload belongs after a clear `Current Slock Event` delimiter.
+- Process security:
+  - prompt text, chat history, credentials, and task context must not appear in process argv.
+  - OAuth mode may need the real Codex home for login refresh; API-key/custom-provider mode should support isolated `HOME` / `USERPROFILE` to avoid stale OAuth interference.
+  - daemon-managed config must be per invocation or per runtime workspace; never overwrite user-global Codex config.
+- Workspace isolation:
+  - each channel/runtime agent needs an independent workspace path and generated `.slock` wrapper.
+  - the channel may also have a shared project space, but the runtime process `cwd` must identify the agent's own workspace/session root.
+- Slock communication:
+  - user-visible chat/task/attachment writes still go through the generated `slock` CLI wrapper unless the product explicitly adds a separate MCP write contract.
+  - stdout/stderr from `codex exec` are daemon telemetry only. They are not Slock replies.
+- Event normalization:
+  - `thread.started` -> session capture.
+  - `item.started` for `command_execution` / `mcp_tool_call` -> tool-use activity.
+  - `item.completed` for `agent_message` -> assistant text telemetry.
+  - `item.completed` for `command_execution` / `mcp_tool_call` -> tool-result telemetry.
+  - `turn.completed.usage` -> token/cache/context accounting when present.
+  - raw JSONL must be archived or traceable with sensitive tokens redacted.
+- Lifecycle:
+  - busy means a child process is running.
+  - queued Slock events must flush only after a terminal child exit or semantic completion.
+  - exit code `0` is success; non-zero exits require diagnostic classification before deciding whether to retry, surface an error, or suppress a known harmless CLI quirk.
+
+### 4. Validation & Error Matrix
+
+- CLI not found -> fail the runtime start with `CODEX_CLI_NOT_FOUND`; do not silently fall back to another runtime.
+- no `thread.started.thread_id` on first successful turn -> keep runtime usable for one-shot work, but mark session continuity degraded.
+- malformed stdout JSON before any structured event -> treat as text telemetry; after structured events, keep it as raw diagnostic only.
+- child exits while messages are queued -> flush the next message exactly once.
+- child stalls past configured timeout -> emit liveness warning, then terminate according to daemon stall policy.
+- resume fails because session id is invalid/missing -> classify as session-continuity failure and start a new session only if the control-plane policy allows it.
+- MCP server config cannot be resolved -> continue without that MCP server only if Slock CLI communication still works; otherwise fail closed.
+
+### 5. Good/Base/Bad Cases
+
+- Good: a DM event starts `codex exec --json`, captures `thread.started.thread_id`, Codex uses `slock message send`, daemon records usage and final exit, then the next DM resumes the same thread id.
+- Base: Codex emits command/tool JSONL and a final answer but no token usage; daemon still records the session id and stream events, with usage omitted.
+- Bad: daemon passes the full Slock event body as a command-line argument; other local processes can inspect it through process listings.
+- Bad: daemon rewrites `~/.codex/config.toml` to add MCP or developer instructions; concurrent user Codex sessions inherit the wrong agent identity.
+
+### 6. Tests Required
+
+- Unit: build first-turn args and resume args, asserting prompt is stdin-only and thread id placement matches `codex exec resume --help`.
+- Unit: parse `thread.started`, `item.started`, `item.completed`, `turn.completed`, malformed JSON, and stderr diagnostics.
+- Unit: queue behavior sends one child at a time and flushes exactly one queued message after each exit.
+- Integration: fake Codex CLI receives generated Slock wrapper in `PATH`, isolated workspace `cwd`, and no proxy secret env vars.
+- Integration: resume session id from daemon restart is reused for the next turn.
+- Regression: global Codex config files are not created or modified by daemon-managed runtime launch.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+- Model Codex as a persistent process that can safely receive arbitrary future messages over stdin.
+- Put Slock prompt, event payload, or message history in argv.
+- Treat Codex stdout text as delivered chat.
+- Use one global workspace/session for every channel agent.
+
+#### Correct
+
+- Model Codex as a per-turn invocation driver with explicit session resume.
+- Pass the prompt through stdin and keep daemon-owned config per invocation/runtime workspace.
+- Normalize JSONL into daemon telemetry and require `slock message send` for visible replies.
+- Keep independent runtime workspaces and session ids per joined agent/channel context.
+
+## Scenario: Codex ACP Resident Runtime Spike
+
+### 1. Scope / Trigger
+
+- Trigger: evaluating Codex as a resident runtime to reduce `codex exec resume` per-turn startup overhead.
+- ACP is a separate runtime path from `codex exec/resume`. Do not replace the stable exec driver until ACP proves startup, session resume/load, prompt, cancel, event translation, and cleanup in local daemon tests.
+- Reference implementation: Neutree Agent Platform `agents/codex` uses `codex-acp` plus an ACP bridge with one child process per active session and LRU eviction.
+
+### 2. Signatures
+
+- Package sources:
+  - `@zed-industries/codex-acp` exposes `codex-acp`.
+  - `@agentclientprotocol/sdk` provides `ClientSideConnection`, `ndJsonStream`, and ACP types.
+- MVP decision: default Codex ACP launch uses `@zed-industries/codex-acp@0.16.0`, but the daemon runtime command remains configurable so the package can later switch to `@agentclientprotocol/codex-acp` or a fork.
+- Product naming: external APIs and UI expose the runtime as `codex`; `codex_acp` is an implementation detail and historical alias. Explicit `codex_cli` remains a daemon/debug fallback only.
+- MVP smoke:
+  - `npm run smoke:codex-acp -- --npm-package @zed-industries/codex-acp@0.16.0 --prompt "<text>"`
+  - `npm run smoke:codex-acp -- --command codex-acp --prompt "<text>"`
+- Bridge API:
+  - `CodexAcpBridge.start()`
+  - `CodexAcpBridge.createSession({cwd?, mcpServers?}) -> sessionId`
+  - `CodexAcpBridge.loadSession(sessionId, {cwd?, mcpServers?}) -> sessionId`
+  - `CodexAcpBridge.prompt(sessionId, text) -> PromptResponse`
+  - `CodexAcpBridge.cancel(sessionId)`
+  - `CodexAcpBridge.stop()`
+
+### 3. Contracts
+
+- ACP child process is a runtime-session carrier, not a one-turn CLI.
+- The daemon may cache one ACP child per live Codex session, then evict idle sessions by TTL/count once product policy is defined.
+- `session/update` notifications are runtime telemetry. Translate at least:
+  - `agent_message_chunk` -> message delta telemetry.
+  - `tool_call` -> tool-use telemetry.
+  - `tool_call_update` terminal statuses -> tool-result telemetry.
+  - `usage_update` -> token/context accounting once wired.
+- `session/new` creates a new runtime session; `session/load` restores an existing runtime session. A failed load must be surfaced as a session-continuity error, not silently converted to a new session.
+- MCP servers are passed to ACP `session/new` / `session/load`, so session-scoped headers such as Slock/session tokens belong there, not in global Codex config.
+- Process cleanup must terminate the process group when launched through wrappers such as `npx`, otherwise the smoke can finish the turn but leave the ACP child alive.
+
+### 4. Validation & Error Matrix
+
+- `codex-acp` command missing -> smoke fails before daemon runtime selection changes.
+- ACP initialize fails -> runtime state `failed_start`, no session id.
+- `session/new` fails -> no active runtime session; report agent-visible startup error.
+- `session/load` fails -> do not create a new session unless an explicit recovery policy allows it.
+- prompt returns `stopReason:"cancelled"` -> invocation status `cancelled`.
+- child exits while prompt is in flight -> reject the prompt and mark invocation failed, so backend does not remain `agent`/busy forever.
+- stop/eviction must kill `npx` process groups on POSIX and direct child processes on Windows.
+
+### 5. Good/Base/Bad Cases
+
+- Good: `@zed-industries/codex-acp@0.16.0` starts through `npx`, creates an ACP session, streams `agent_message_chunk` deltas, emits `usage_update`, returns `stopReason:"end_turn"`, and exits cleanly after `stop()`.
+- Good: public daemon runtime `codex` starts a managed ACP child, creates or loads a session, queues prompts while a turn is in flight, maps ACP updates into daemon-compatible `assistant` / `usage` / `result` events, and reports heartbeat workspace state with `runtime:"codex"`, `sessionId`, `pid`, and `status`.
+- Base: fake ACP server exercises initialize/session/prompt/update/cancel without requiring model credentials.
+- Bad: use ACP only for prompt but keep Slock/MCP session headers in global `.codex/config.toml`; concurrent sessions can leak identity or lose per-session auth.
+- Bad: kill only the `npx` wrapper and leave `codex-acp` running.
+
+### 6. Tests Required
+
+- Unit/integration: fake ACP child covers initialize, `session/new`, `session/load`, `session/prompt`, `session/update`, and process stop.
+- Smoke: real `@zed-industries/codex-acp` starts via npx and completes one prompt locally.
+- Future runtime integration: daemon heartbeat includes ACP `sessionId`, `pid`, `busy`, queued count, and last event time.
+- Future MCP integration: session-scoped Slock MCP headers are visible to the ACP session and not persisted globally.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+Treat `codex-acp` as a global singleton for all agents and all channel workspaces.
+```
+
+#### Correct
+
+```text
+Keep ACP session identity scoped to one daemon-managed agent/workspace runtime, then add TTL/count eviction once reuse is proven.
+```
+
 ## Scenario: Daemon-Local Runtime Provider Selection
 
 ### 1. Scope / Trigger
 
-- Trigger: users can select a local Claude provider/profile for a runtime, while provider credentials and launch details must remain local to the daemon machine.
+- Trigger: users can select a local Claude or Codex provider/profile for a runtime, while provider credentials and launch details must remain local to the daemon machine.
 - This is a cross-layer contract: daemon local capability detection -> backend capability display/storage -> `start_runtime` provider selection -> daemon-local runtime launch.
 
 ### 2. Signatures
@@ -276,29 +448,41 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
   - default command discovery order: `SLOCK_CCS_CLAUDE_COMMAND`, `CCS_CLAUDE_COMMAND`, `/Users/lee/.local/bin/ccs-claude`, `ccs-claude`
   - discovery: `<ccsClaudeCommand> list`
   - launch: `<ccsClaudeCommand> <providerName> <model>`
+- Manual provider inventory:
+  - env var discovery order: `SLOCK_RUNTIME_PROVIDERS_JSON`, `AAA_DAEMON_RUNTIME_PROVIDERS_JSON`, `RUNTIME_PROVIDERS_JSON`
+  - JSON shape: `[{id,name,runtime,model?,command?,commandArgs?}]`
+  - `command` and `commandArgs` are daemon-local launch data only; they must not be echoed through backend/public heartbeat payloads.
+- CC Switch Codex provider inventory:
+  - default database discovery order: `SLOCK_CC_SWITCH_DB`, `CC_SWITCH_DB`, `$HOME/.cc-switch/cc-switch.db`
+  - query only local `providers` rows with `app_type='codex'`
+  - provider rows are parsed into public runtime `codex`; ACP remains an implementation detail
 - Public/backend payload fields:
   - `Member.config.runtimeProvider?: string`
   - `AgentWorkspace.runtimeProvider?: string` in serialized responses
-  - `Computer.detectedRuntimes[]` may include `{type:"claude_code", status:"available", provider, runtimeProvider, model, source:"cc-switch"}`
+  - `Computer.detectedRuntimes[]` may include `{type:"claude_code"|"codex", status:"available", provider, runtimeProvider, model, source:"cc-switch"}`
   - `start_runtime.command.config.runtimeProvider?: string`
 
 ### 3. Contracts
 
 - `runtimeProvider` is a provider/profile name, not an API key, shell command, or serialized credential.
 - The backend may store and return `runtimeProvider`, but it must not store API keys, CC Switch provider config, generated Claude settings files, command args, or auth headers.
-- The daemon owns provider detection and launch resolution. If local CC Switch/`ccs-claude` is unavailable, `detectedRuntimes` still includes the default runtime capability and existing default runtime launch behavior continues.
-- Detected CC Switch providers are reported as sanitized capabilities only: `type`, `status`, `provider`, `runtimeProvider`, `model`, and `source`. Do not include `ccs-claude` path, provider config JSON, tokens, request headers, or command args.
+- The daemon owns provider detection and launch resolution. If local CC Switch DB/`ccs-claude` is unavailable, `detectedRuntimes` still includes the default runtime capability and existing default runtime launch behavior continues.
+- Detected manual and CC Switch providers are reported as sanitized capabilities only: `type`, `status`, `provider`, `runtimeProvider`, `model`, and `source`. Do not include `ccs-claude` path, CC Switch DB path, provider config JSON, tokens, request headers, provider command, or command args.
 - `backend` is a legacy/old display field. Do not infer `runtimeProvider` from `backend` during serialization or runtime start command construction.
 - Creating or updating an agent may set `runtimeProvider` explicitly. Old `backend` values remain old data and must not silently become provider selections.
-- If a `start_runtime` command includes `runtimeProvider` and omits `runtimeCommand`, the daemon resolves the provider locally and starts Claude Code via the local provider launcher.
+- If a Claude `start_runtime` command includes `runtimeProvider` and omits `runtimeCommand`, the daemon resolves the provider locally and starts Claude Code via the local provider launcher.
+- If a Codex `start_runtime` command includes a CC Switch `runtimeProvider`, the daemon records the selected sanitized provider identity and starts public runtime `codex`; provider-specific Codex launch isolation requires a future `ccs-codex`-equivalent launcher or per-runtime Codex config writer before it can guarantee switching without mutating CC Switch global state.
+- If a manually configured `runtimeProvider` includes `command` / `commandArgs`, the daemon may use them for local launch resolution, but heartbeat and backend storage still carry only the provider id/name/model/source.
 - If `runtimeCommand` is explicitly supplied, it takes precedence over provider resolution for test/custom-launch paths.
 - Daemon workspace register/heartbeat payloads for provider-launched runtimes include `runtimeProvider`, but omit `runtimeCommand` and `runtimeModel` unless those were explicitly configured outside provider launch.
 - Reconnect/re-register currently re-arms expected-running workspaces that are missing from daemon heartbeat, including last observed `stopped`, `offline`, `exited`, or `crashed` states. A future desired-state controller may narrow this once explicit stop/reset controls exist.
 
 ### 4. Validation & Error Matrix
 
-- No local `ccs-claude` available -> report no CC Switch provider capabilities; keep default runtime path usable.
+- No local `ccs-claude` available -> report no Claude CC Switch provider capabilities; keep default runtime path usable.
+- No local CC Switch DB or `sqlite3` available -> report no Codex CC Switch provider capabilities; keep default runtime path usable.
 - `runtimeProvider` supplied but not found in local provider inventory -> daemon logs a sanitized warning and does not start that runtime.
+- Manual provider JSON is malformed or contains unsupported runtime values -> skip those entries; keep other detection sources usable.
 - `runtimeProvider` supplied with `runtimeCommand` -> daemon uses the explicit command and does not try to resolve the provider locally.
 - Provider launch exits or crashes -> runtime follows normal runtime exit/crash reporting and restart policy.
 - Backend receives `backend` only -> keep it as legacy/display data; do not create `config.runtimeProvider` from it.
@@ -307,8 +491,10 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 ### 5. Good/Base/Bad Cases
 
 - Good: `create_agent` receives `{runtimeProvider:"Kimi"}`; backend stores `Member.config.runtimeProvider`; daemon receives `start_runtime.config.runtimeProvider:"Kimi"` and launches `ccs-claude Kimi kimi-for-coding` locally.
+- Good: `SLOCK_RUNTIME_PROVIDERS_JSON` defines `local-codex-krill`; daemon heartbeat reports `{type:"codex", provider:"Local Codex Krill", runtimeProvider:"local-codex-krill", source:"manual"}` while launch resolution uses the local command privately.
+- Good: CC Switch DB contains Codex provider `krill`; daemon heartbeat reports `{type:"codex", provider:"krill", runtimeProvider:"<local-provider-id>", source:"cc-switch"}` without exposing `settings_config`.
 - Base: no CC Switch on the machine; the daemon reports only the base runtime capability and starts the default Claude runtime when no provider is selected.
-- Base: daemon reports `Kimi` and `Zhipu GLM` in `detectedRuntimes`; UI lists provider names/models but cannot see API keys or launcher arguments.
+- Base: daemon reports `Kimi`, `Zhipu GLM`, and Codex providers such as `krill` in `detectedRuntimes`; UI lists provider names/models but cannot see API keys, DB paths, settings JSON, or launcher arguments.
 - Bad: storing `CCS_PROVIDER_DEFAULTS`, provider tokens, or provider command args on the backend.
 - Bad: treating `backend:"Claude"` as `runtimeProvider:"Claude"`; that can block default Claude startup when no such CC Switch provider exists.
 - Bad: sending `/Users/.../ccs-claude` or generated Claude settings paths through server APIs.
@@ -321,6 +507,8 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
   - missing expected-running workspaces are re-armed to `pending_start`, but `runtimeDesiredStatus:"stopped"` is not re-armed.
 - Daemon unit/integration tests:
   - parse `ccs-claude list` output into sanitized providers.
+  - parse CC Switch Codex provider rows into sanitized public `codex` providers.
+  - parse manual provider JSON and verify command/args are launch-only, not heartbeat payload fields.
   - fake `ccs-claude` launches the selected provider/model from `start_runtime.config.runtimeProvider`.
   - daemon register/heartbeat reports provider capabilities and provider workspace state without command args.
 - Real test:

@@ -49,6 +49,8 @@ Read visible page text:
 ./twd --compact scan --text --url-match 127.0.0.1:3000
 ```
 
+When `--url-match` matches multiple tabs, the CLI prefers the unique active matching tab if that signal is available. If it cannot determine a unique active tab, it fails with `code=AMBIGUOUS_TAB` and a `candidates` list. Use a more specific URL fragment or `--tab <id>` instead of accepting a broad localhost match.
+
 Take an optimized snapshot, writing long output to a file:
 
 ```bash
@@ -93,9 +95,12 @@ For frontend/browser-facing work:
 
 Keep large DOM or HTML output out of chat. Prefer `--out` files, `--compact`, and small `eval` return objects.
 
+For any command that acts on a tab, check the returned `tabUrl` along with `tabId` before treating the result as UI evidence.
+
 ## Troubleshooting
 
 - `ok=false` with `NO_TAB`: no connected browser tab. Start/verify the WebDriver master and Chrome extension, then retry `tabs`.
+- `ok=false` with `AMBIGUOUS_TAB`: your `--url-match` matched multiple tabs and no unique active tab was known. Use one of the returned candidate URLs as a narrower match, or pass `--tab`.
 - Port mismatch: default is `18765`; set `TWD_PORT=<port>` for another bridge instance.
 - Long output: write to `--out` or return a small slice from `eval`.
 - Need real browser event details or CDP: use `cdp`, `screenshot`, or `act` before opening WebDriver source files.

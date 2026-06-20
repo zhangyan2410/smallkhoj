@@ -33,6 +33,32 @@ class Session:
         self.disconnect_at = time.time()
 
 
+def should_disconnect_ext_session(session, current_tab_ids, client) -> bool:
+    return (
+        session.type == 'ext_ws'
+        and session.ws_client == client
+        and session.id not in current_tab_ids
+    )
+
+
+def ext_tab_session_info(tab) -> dict:
+    session_info = {'url': tab.get('url'), 'title': tab.get('title', ''), 'connected_at': time.time(), 'type': 'ext_ws'}
+    for key in ('active', 'windowId'):
+        if key in tab:
+            session_info[key] = tab.get(key)
+    return session_info
+
+
+def upsert_ext_tab_session(driver, tab, client) -> None:
+    session_id = str(tab['id'])
+    session_info = ext_tab_session_info(tab)
+    sess = driver.sessions.get(session_id)
+    if sess and sess.is_active() and sess.ws_client == client:
+        sess.info = session_info
+    else:
+        driver._register_client(session_id, client, session_info)
+
+
 class TMWebDriver:
     def __init__(self, host: str = '127.0.0.1', port: int = 18765, token: str | None = None):
         self.host, self.port = host, port
@@ -157,14 +183,10 @@ class TMWebDriver:
                         print(f"Received tabs update: {current_tab_ids}", file=sys.stderr)
                         for sid in list(driver.sessions.keys()):
                             sess = driver.sessions[sid]
-                            if sess.type == 'ext_ws' and sid not in current_tab_ids:
+                            if should_disconnect_ext_session(sess, current_tab_ids, self):
                                 sess.mark_disconnected()
                         for tab in tabs:
-                            session_id = str(tab['id'])
-                            session_info = {'url': tab.get('url'), 'title': tab.get('title', ''), 'connected_at': time.time(), 'type': 'ext_ws'}
-                            sess = driver.sessions.get(session_id)
-                            if sess and sess.is_active(): sess.info = session_info
-                            else: driver._register_client(session_id, self, session_info)
+                            upsert_ext_tab_session(driver, tab, self)
                     elif data.get('type') == 'ack': driver.acks[data.get('id','')] = True
                     elif data.get('type') == 'result':
                         driver.results[data.get('id')] = {'success': True, 'data': data.get('result'), 'newTabs': data.get('newTabs', [])}
@@ -204,6 +226,7 @@ class TMWebDriver:
             if session.ws_client == client: session.mark_disconnected()
 
     def execute_js(self, code, timeout=15, session_id=None) -> Any:
+        explicit_session_id = session_id is not None
         if session_id is None: session_id = self.default_session_id
         if self.is_remote:
             response = self._remote_cmd({"cmd": "execute_js", "sessionId": session_id,
@@ -216,6 +239,8 @@ class TMWebDriver:
             time.sleep(3)
             session = self.sessions.get(session_id)
             if not session or not session.is_active():
+                if explicit_session_id:
+                    raise ValueError(f"会话ID {session_id} 未连接")
                 alive_sessions = [s for s in self.sessions.values() if s.is_active()]
                 if alive_sessions:
                     session = alive_sessions[0]

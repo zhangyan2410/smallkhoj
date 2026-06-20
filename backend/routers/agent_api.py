@@ -909,6 +909,15 @@ def _serialize_member(member: Member) -> dict:
     }
 
 
+def _public_runtime(value: str | None) -> str:
+    raw = (str(value).strip().lower() if value else "") or "claude_code"
+    if raw in {"codex", "codex_cli", "codex-acp", "codex_acp"}:
+        return "codex"
+    if raw in {"claude", "claude_code"}:
+        return "claude_code"
+    return raw
+
+
 async def _serialize_workspace(db: AsyncSession, workspace: AgentWorkspace) -> dict:
     agent_result = await db.execute(select(Member).where(Member.id == workspace.agent_id))
     agent = agent_result.scalar_one_or_none()
@@ -917,7 +926,7 @@ async def _serialize_workspace(db: AsyncSession, workspace: AgentWorkspace) -> d
         "computerId": str(workspace.computer_id),
         "agentId": str(workspace.agent_id),
         "agentName": agent.display_name if agent else None,
-        "runtime": workspace.runtime,
+        "runtime": _public_runtime(workspace.runtime),
         "runtimeCommand": workspace.runtime_command,
         "runtimeModel": workspace.runtime_model,
         "runtimeProvider": (agent.config or {}).get("runtimeProvider") if agent else None,
@@ -984,11 +993,13 @@ async def _upsert_daemon_workspace(
         )
         workspace = result.scalar_one_or_none()
 
+    runtime = _public_runtime(item.runtime)
+
     if workspace is None:
         query = select(AgentWorkspace).where(
             AgentWorkspace.computer_id == computer.id,
             AgentWorkspace.agent_id == agent_member.id,
-            AgentWorkspace.runtime == item.runtime,
+            AgentWorkspace.runtime == runtime,
         )
         if item.cwd:
             query = query.where(AgentWorkspace.cwd == item.cwd)
@@ -1001,11 +1012,11 @@ async def _upsert_daemon_workspace(
             id=uuid.UUID(workspace_ref) if workspace_ref else uuid.uuid4(),
             computer_id=computer.id,
             agent_id=agent_member.id,
-            runtime=item.runtime,
+            runtime=runtime,
         )
         db.add(workspace)
 
-    workspace.runtime = item.runtime
+    workspace.runtime = runtime
     workspace.runtime_command = item.runtimeCommand
     workspace.runtime_model = item.runtimeModel
     workspace.status = item.status
@@ -1360,7 +1371,7 @@ async def register_daemon(
             {
                 "computerId": str(computer.id),
                 "workspaceId": str(workspace.id),
-                "runtime": workspace.runtime,
+                "runtime": _public_runtime(workspace.runtime),
                 "status": workspace.status,
                 "sessionId": workspace.session_id,
             },
@@ -1422,7 +1433,7 @@ async def daemon_heartbeat(
                 {
                     "computerId": str(computer.id),
                     "workspaceId": str(workspace.id),
-                    "runtime": workspace.runtime,
+                    "runtime": _public_runtime(workspace.runtime),
                     "status": workspace.status,
                     "sessionId": workspace.session_id,
                     "pid": workspace.pid,
