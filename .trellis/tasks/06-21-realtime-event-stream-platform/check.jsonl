@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "verify frontend realtime projection boundary"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "verify real browser testing evidence"}
+{"file": ".trellis/spec/backend/event-delivery-contracts.md", "reason": "verify event envelope, ordering, reconnect, and catch-up contract"}
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "verify browser stream stays separate from daemon control-plane"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "verify backend write to SSE to UI data flow"}
+{"file": ".trellis/tasks/06-09-production-readiness-broadcast-cache/architecture-gap-analysis.md", "reason": "verify fanout/multi-process assumptions"}
+{"file": ".trellis/tasks/06-21-realtime-event-stream-platform/prd.md", "reason": "acceptance criteria"}
+{"file": ".trellis/tasks/06-21-realtime-event-stream-platform/design.md", "reason": "design constraints"}
+{"file": ".trellis/tasks/06-21-realtime-event-stream-platform/implement.md", "reason": "validation plan"}

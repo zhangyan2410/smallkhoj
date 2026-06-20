@@ -44,6 +44,14 @@ import {
   statusLabel,
   API_BASE,
 } from "@/lib/control-plane"
+import {
+  applyHighWater,
+  connectRealtimeEvents,
+  mergeMessageById,
+  shouldHandleRealtimeEvent,
+  type HighWater,
+  type PublicEventEnvelope,
+} from "@/lib/realtime-events"
 import { CreateChannelDialog } from "./create-channel-dialog"
 import { CreateAgentDialog } from "./create-agent-dialog"
 
@@ -185,6 +193,7 @@ export function ChannelClient({
   const [uploading, setUploading] = useState(false)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
 
   const currentChannel = channels.find((c) => c.name.replace("#", "") === channelName)
   const currentDm = dms.find((dm) => dm.name === channelName)
@@ -326,7 +335,7 @@ export function ChannelClient({
     fileInputRef.current.click()
   }
 
-  async function refreshMessages() {
+  const refreshMessages = useCallback(async () => {
     const encodedChannel = channelPathSegment(channelName)
     const data = await apiGet<{ messages: ChannelMessage[] }>(
       `/api/v1/channels/${encodedChannel}/messages?limit=50&threadMode=roots`,
@@ -334,9 +343,9 @@ export function ChannelClient({
       sessionToken,
     )
     setMessages(data.messages || [])
-  }
+  }, [channelName, sessionToken])
 
-  async function refreshThread(threadId = activeThreadId) {
+  const refreshThread = useCallback(async (threadId = activeThreadId) => {
     if (!threadId) return
     setThreadLoading(true)
     try {
@@ -345,7 +354,80 @@ export function ChannelClient({
     } finally {
       setThreadLoading(false)
     }
-  }
+  }, [activeThreadId, sessionToken])
+
+  const refreshChannelsAndDms = useCallback(async () => {
+    const h = apiHeaders(sessionToken)
+    const [chsRes, dmsRes] = await Promise.all([
+      fetch(`${API_BASE}/api/v1/channels`, { headers: h }),
+      fetch(`${API_BASE}/api/v1/dms`, { headers: h }),
+    ])
+    if (chsRes.ok) {
+      const d = await chsRes.json()
+      setChannels((d.channels || []) as ChannelInfo[])
+    }
+    if (dmsRes.ok) {
+      const d = await dmsRes.json()
+      setDms((d.dms || []) as DmInfo[])
+    }
+  }, [sessionToken])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let catchUpTimer: number | null = null
+    const scheduleCatchUp = () => {
+      if (catchUpTimer) window.clearTimeout(catchUpTimer)
+      catchUpTimer = window.setTimeout(() => {
+        void refreshMessages()
+        if (activeThreadId) void refreshThread(activeThreadId)
+        catchUpTimer = null
+      }, 120)
+    }
+    const stop = connectRealtimeEvents({
+      headers: apiHeaders(sessionToken),
+      signal: controller.signal,
+      scope: channelId ? { kind: "channel", id: channelId } : undefined,
+      onEvent: (event: PublicEventEnvelope) => {
+        if (!shouldHandleRealtimeEvent(event, { channelId, channelName })) {
+          // Event belongs to another channel/DM or to a non-chat scope:
+          // refresh sidebar lists so unread/new channels are visible.
+          void refreshChannelsAndDms()
+          return
+        }
+        const decision = applyHighWater(realtimeHighWaterRef.current, event)
+        if (decision.action === "drop") {
+          console.debug("[realtime] duplicate dropped", event.id)
+          return
+        }
+        if (decision.action === "catch_up") {
+          console.info("[realtime] catch-up triggered", decision.reason, event)
+          scheduleCatchUp()
+          return
+        }
+        if (event.type === "message.created") {
+          const message = event.payload.message
+          if (message && typeof message === "object" && "id" in message) {
+            setMessages((previous) => mergeMessageById(previous, message as ChannelMessage))
+          } else {
+            scheduleCatchUp()
+          }
+          return
+        }
+        if (event.type === "reaction.updated" || event.type === "message.updated" || event.type === "message.deleted") {
+          scheduleCatchUp()
+        }
+      },
+      onStatus: (status) => {
+        if (status.state === "error") console.warn("[realtime] chat stream error", status.error)
+        if (status.state === "reconnecting") console.info("[realtime] chat reconnect", status.attempt, status.delayMs)
+      },
+    })
+    return () => {
+      stop()
+      controller.abort()
+      if (catchUpTimer) window.clearTimeout(catchUpTimer)
+    }
+  }, [activeThreadId, channelId, channelName, refreshChannelsAndDms, refreshMessages, refreshThread, sessionToken])
 
   async function openThread(message: ChannelMessage) {
     const threadId = message.threadId || message.id

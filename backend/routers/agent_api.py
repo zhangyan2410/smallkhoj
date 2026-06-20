@@ -47,6 +47,10 @@ UPLOAD_ROOT = Path(__file__).resolve().parents[1] / ".data" / "uploads"
 DAEMON_LEASE_SECONDS = 90
 
 
+async def _push_committed_events(db: AsyncSession, *, server_id: uuid.UUID) -> int:
+    return await push_latest_events_for_server(db, server_id=server_id)
+
+
 # ── Schemas ──────────────────────────────────────────────────
 
 class SendRequest(BaseModel):
@@ -1007,6 +1011,17 @@ async def _upsert_daemon_workspace(
         workspace = result.scalar_one_or_none()
 
     created = workspace is None
+    previous_runtime_state = None
+    if workspace is not None:
+        previous_runtime_state = (
+            workspace.runtime,
+            workspace.runtime_command,
+            workspace.runtime_model,
+            workspace.status,
+            workspace.session_id,
+            workspace.cwd,
+            workspace.pid,
+        )
     if workspace is None:
         workspace = AgentWorkspace(
             id=uuid.UUID(workspace_ref) if workspace_ref else uuid.uuid4(),
@@ -1022,7 +1037,10 @@ async def _upsert_daemon_workspace(
     workspace.status = item.status
     workspace.session_id = item.sessionId or workspace.session_id
     workspace.cwd = item.cwd if item.cwd is not None else workspace.cwd
-    workspace.pid = item.pid if item.pid is not None else workspace.pid
+    if item.status in {"stopped", "offline", "exited"}:
+        workspace.pid = None
+    elif item.pid is not None:
+        workspace.pid = item.pid
     if item.startedAt:
         workspace.started_at = _parse_datetime(item.startedAt)
     elif workspace.started_at is None and item.status in {"running", "active", "idle"}:
@@ -1049,6 +1067,19 @@ async def _upsert_daemon_workspace(
         agent_member.status = "online"
     elif item.status in {"stopped", "offline", "exited"}:
         agent_member.status = "offline"
+
+    current_runtime_state = (
+        workspace.runtime,
+        workspace.runtime_command,
+        workspace.runtime_model,
+        workspace.status,
+        workspace.session_id,
+        workspace.cwd,
+        workspace.pid,
+    )
+    workspace._smallkhoj_realtime_changed = bool(
+        previous_runtime_state is not None and previous_runtime_state != current_runtime_state
+    )
 
     return workspace, agent_member, created
 
@@ -1097,6 +1128,33 @@ async def _record_activity(
             payload=payload,
         ))
     return activity
+
+
+async def _record_computer_status_event(
+    db: AsyncSession,
+    server: Server,
+    computer: Computer,
+    *,
+    action: str,
+    previous_status: str | None = None,
+) -> None:
+    db.add(EventRecord(
+        server_id=server.id,
+        event_type="computer.status.updated",
+        actor_id=None,
+        payload={
+            "type": "computer.status.updated",
+            "legacyType": "computer_status_updated",
+            "computerId": str(computer.id),
+            "computerName": computer.name,
+            "status": computer.status,
+            "previousStatus": previous_status,
+            "action": action,
+            "daemonId": computer.active_daemon_id,
+            "leaseExpiresAt": computer.daemon_lease_expires_at.isoformat() if computer.daemon_lease_expires_at else None,
+            "lastHeartbeatAt": computer.last_heartbeat_at.isoformat() if computer.last_heartbeat_at else None,
+        },
+    ))
 
 
 def _require_permission(member: Member, permission: str) -> None:
@@ -1345,6 +1403,7 @@ async def register_daemon(
     now = _utcnow_aware()
     if _daemon_lease_conflicts(computer, body.daemonId, now):
         raise HTTPException(409, "Computer is leased by another daemon")
+    previous_computer_status = computer.status
     computer.name = body.name or computer.name
     computer.os = body.os or computer.os
     computer.daemon_version = body.daemonVersion or computer.daemon_version
@@ -1378,6 +1437,15 @@ async def register_daemon(
         )
         upserted.append(await _serialize_workspace(db, workspace))
 
+    if previous_computer_status != computer.status:
+        await _record_computer_status_event(
+            db,
+            server,
+            computer,
+            action="register",
+            previous_status=previous_computer_status,
+        )
+
     await mark_missing_runtimes_pending_start(
         db,
         server_id=server.id,
@@ -1392,6 +1460,7 @@ async def register_daemon(
 
     await db.commit()
     await db.refresh(computer)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "registered": True,
         "computer": await _serialize_computer(db, computer),
@@ -1410,6 +1479,7 @@ async def daemon_heartbeat(
     now = _utcnow_aware()
     if _daemon_lease_conflicts(computer, body.daemonId, now):
         raise HTTPException(409, "Computer is leased by another daemon")
+    previous_computer_status = computer.status
     computer.status = body.status
     computer.active_daemon_id = body.daemonId or computer.active_daemon_id
     computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
@@ -1439,7 +1509,32 @@ async def daemon_heartbeat(
                     "pid": workspace.pid,
                 },
             )
+        elif getattr(workspace, "_smallkhoj_realtime_changed", False):
+            await _record_activity(
+                db,
+                server,
+                agent_member,
+                "workspace_updated",
+                f"@{agent_member.display_name} workspace updated on {computer.name}",
+                {
+                    "computerId": str(computer.id),
+                    "workspaceId": str(workspace.id),
+                    "runtime": _public_runtime(workspace.runtime),
+                    "status": workspace.status,
+                    "sessionId": workspace.session_id,
+                    "pid": workspace.pid,
+                },
+            )
         upserted.append(await _serialize_workspace(db, workspace))
+
+    if previous_computer_status != computer.status:
+        await _record_computer_status_event(
+            db,
+            server,
+            computer,
+            action="heartbeat",
+            previous_status=previous_computer_status,
+        )
 
     await mark_missing_runtimes_pending_start(
         db,
@@ -1455,6 +1550,7 @@ async def daemon_heartbeat(
 
     await db.commit()
     await db.refresh(computer)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
         "computer": await _serialize_computer(db, computer),
@@ -1479,10 +1575,19 @@ async def daemon_shutdown(
             "computer": await _serialize_computer(db, computer),
         }
 
+    previous_computer_status = computer.status
     computer.status = body.status or "offline"
     computer.active_daemon_id = None
     computer.daemon_lease_expires_at = now
     computer.last_heartbeat_at = now
+    if previous_computer_status != computer.status:
+        await _record_computer_status_event(
+            db,
+            server,
+            computer,
+            action="shutdown",
+            previous_status=previous_computer_status,
+        )
 
     workspace_result = await db.execute(
         select(AgentWorkspace, Member)
@@ -1491,16 +1596,34 @@ async def daemon_shutdown(
     )
     workspaces = []
     for workspace, agent_member in workspace_result.all():
+        previous_workspace_status = workspace.status
         if workspace.status in {"running", "active", "idle", PENDING_RUNTIME_START_STATUS}:
             workspace.status = "stopped"
             workspace.pid = None
             workspace.stopped_at = now
         if agent_member.status in {"online", "active", "running", "idle"}:
             agent_member.status = "offline"
+        if previous_workspace_status != workspace.status:
+            await _record_activity(
+                db,
+                server,
+                agent_member,
+                "workspace_updated",
+                f"@{agent_member.display_name} workspace stopped on {computer.name}",
+                {
+                    "computerId": str(computer.id),
+                    "workspaceId": str(workspace.id),
+                    "runtime": _public_runtime(workspace.runtime),
+                    "status": workspace.status,
+                    "sessionId": workspace.session_id,
+                    "pid": workspace.pid,
+                },
+            )
         workspaces.append(await _serialize_workspace(db, workspace))
 
     await db.commit()
     await db.refresh(computer)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
         "computer": await _serialize_computer(db, computer),
@@ -1653,7 +1776,7 @@ async def send_message(
         await db.commit()
         await db.refresh(msg)
     with trace.time("backend.agent_send.push_events", messageId=str(msg.id), shortId=msg.short_id):
-        delivered = await push_latest_events_for_server(db, server_id=server.id)
+        delivered = await _push_committed_events(db, server_id=server.id)
     trace.finish("backend.agent_send.response_ready", messageId=str(msg.id), shortId=msg.short_id, delivered=delivered)
 
     return {
@@ -2192,7 +2315,7 @@ async def create_tasks(
     await db.commit()
     for task in created:
         await db.refresh(task)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
 
     return {
         "created": True,
@@ -2259,7 +2382,7 @@ async def claim_task(
     )
     await db.commit()
     await db.refresh(task)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
 
     return {
         "claimed": True,
@@ -2315,7 +2438,7 @@ async def update_task_status(
     )
     await db.commit()
     await db.refresh(task)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
 
     return {
         "updated": True,
@@ -2354,7 +2477,7 @@ async def claim_task_by_id(
             )
             await db.commit()
             await db.refresh(task)
-            await push_latest_events_for_server(db, server_id=server.id)
+            await _push_committed_events(db, server_id=server.id)
             return {
                 "claimed": True,
                 "task": await _serialize_task(db, task),
@@ -2382,7 +2505,7 @@ async def claim_task_by_id(
     )
     await db.commit()
     await db.refresh(task)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
 
     return {
         "claimed": True,
@@ -2412,7 +2535,7 @@ async def unclaim_task_by_id(
     )
     await db.commit()
     await db.refresh(task)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {"unclaimed": True, "task": await _serialize_task(db, task)}
 
 
@@ -2442,7 +2565,7 @@ async def submit_task_by_id(
     )
     await db.commit()
     await db.refresh(task)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {"submitted": True, "task": await _serialize_task(db, task)}
 
 
@@ -2481,7 +2604,7 @@ async def update_task_by_id(
     )
     await db.commit()
     await db.refresh(task)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
 
     return {
         "updated": True,
@@ -2793,7 +2916,7 @@ async def update_thread_summary(
     ))
     await db.commit()
     await db.refresh(summary)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "updated": True,
         "threadSummary": serialize_thread_summary(summary),

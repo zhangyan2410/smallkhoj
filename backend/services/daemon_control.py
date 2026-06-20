@@ -12,12 +12,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import AgentWorkspace, Channel, ChannelMember, Computer, EventRecord, Member, Message
+from services.public_events import publish_latest_public_events
 
 
 PENDING_RUNTIME_START_STATUS = "pending_start"
 RUNTIME_CONFIGURATION_FAILED_STATUS = "failed"
 RUNTIME_ACTIVE_STATUSES = {"running", "active", "idle"}
 RUNTIME_REARMABLE_STATUSES = RUNTIME_ACTIVE_STATUSES
+RUNTIME_TERMINAL_STATUSES = {"stopped", "offline", "exited"}
 
 
 def _falsey_config(value: Any) -> bool:
@@ -210,7 +212,7 @@ async def mark_missing_runtimes_pending_start(
             AgentWorkspace.computer_id == computer_id,
             Member.server_id == server_id,
             Member.kind == "agent",
-            AgentWorkspace.status.in_(RUNTIME_REARMABLE_STATUSES),
+            AgentWorkspace.status.in_(RUNTIME_REARMABLE_STATUSES | RUNTIME_TERMINAL_STATUSES),
         )
         .order_by(AgentWorkspace.updated_at, AgentWorkspace.id)
     )
@@ -220,6 +222,9 @@ async def mark_missing_runtimes_pending_start(
     result = await db.execute(query)
     stale = result.all()
     for workspace, agent in stale:
+        if workspace.status in RUNTIME_TERMINAL_STATUSES:
+            workspace.pid = None
+            continue
         if workspace.status not in RUNTIME_REARMABLE_STATUSES:
             continue
         if not runtime_should_autostart(agent):
@@ -411,6 +416,7 @@ async def push_latest_events_for_server(db: AsyncSession, *, server_id: uuid.UUI
             server_id=server_id,
             computer_id=computer_id,
         )
+    await publish_latest_public_events(db, server_id=server_id)
     return delivered
 
 

@@ -1,0 +1,13 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend implementation guidelines"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "fetch-stream subscription hook patterns"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "single-writer realtime projection boundary"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "browser verification requirements"}
+{"file": ".trellis/spec/backend/index.md", "reason": "backend implementation guidelines"}
+{"file": ".trellis/spec/backend/event-delivery-contracts.md", "reason": "backend event delivery and realtime contract guidance"}
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "daemon/runtime control-plane separation"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "cross-layer write-to-stream-to-UI verification"}
+{"file": ".trellis/tasks/06-02-P1-realtime-events/task.md", "reason": "older daemon-focused realtime task for contrast"}
+{"file": ".trellis/tasks/06-09-production-readiness-broadcast-cache/architecture-gap-analysis.md", "reason": "multi-process fanout and broadcast context"}
+{"file": ".trellis/tasks/06-21-realtime-event-stream-platform/prd.md", "reason": "single-task PRD"}
+{"file": ".trellis/tasks/06-21-realtime-event-stream-platform/design.md", "reason": "technical design"}
+{"file": ".trellis/tasks/06-21-realtime-event-stream-platform/implement.md", "reason": "implementation phases and validation"}

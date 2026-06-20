@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Credential } from '../types.js';
 import { prependPathEnv } from './slock-wrapper.js';
+import { runtimeProcessSpawnOptions, scheduleRuntimeProcessTreeKill, signalRuntimeProcessTree } from './process-tree.js';
 import {
   buildSlockSystemPrompt,
   type ClaudeRuntimeOptions,
@@ -157,6 +158,7 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
   private currentSessionId: string | undefined;
   private started = false;
   private stopping = false;
+  private forceKillTimer: ReturnType<typeof setTimeout> | null = null;
   private systemPrompt = '';
   private sawStructuredEvent = false;
 
@@ -243,12 +245,11 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
       ...(this.options.commandArgs ?? []),
       ...baseArgs,
     ];
-    const child = spawn(command, args, {
+    const child = spawn(command, args, runtimeProcessSpawnOptions({
       cwd: this.options.workspacePath,
       env: buildCodexRuntimeEnv(this.options, this.options.baseEnv ?? process.env),
       stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
+    }));
 
     this.child = child;
     this.stdoutRemainder = '';
@@ -260,6 +261,7 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     child.stderr.on('data', (chunk: string) => this.emitLines('stderr', chunk));
     child.on('error', (err) => this.emit('error', err));
     child.on('exit', (code, signal) => {
+      this.clearForceKillTimer();
       this.flushRemainders();
       const intentional = this.stopping;
       this.child = null;
@@ -356,7 +358,15 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
   private terminate(intentional: boolean): void {
     this.stopping = intentional;
     if (!this.child) return;
-    this.child.kill('SIGTERM');
+    this.clearForceKillTimer();
+    signalRuntimeProcessTree(this.child, 'SIGTERM');
+    this.forceKillTimer = scheduleRuntimeProcessTreeKill(this.child);
+  }
+
+  private clearForceKillTimer(): void {
+    if (!this.forceKillTimer) return;
+    clearTimeout(this.forceKillTimer);
+    this.forceKillTimer = null;
   }
 }
 

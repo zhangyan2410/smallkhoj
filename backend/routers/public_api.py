@@ -1,5 +1,6 @@
 """Public API routes — frontend-facing endpoints under /api/v1/."""
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -13,7 +14,7 @@ from urllib.parse import quote
 
 from fastapi import HTTPException
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +40,12 @@ from services.daemon_control import (
     runtime_start_command,
 )
 from services.latency_trace import LatencyTrace, trace_id_from_request
+from services.public_events import (
+    public_event_heartbeat_frame,
+    public_event_hub,
+    public_event_sse_frame,
+    should_deliver_public_event,
+)
 from services.thread_summary import (
     load_thread_metadata,
     resolve_thread_root,
@@ -78,6 +85,8 @@ PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_task_created": "task.created",
     "supervisor_task_updated": "task.updated",
     "supervisor_member_updated": "member.updated",
+    "message_reaction_added": "reaction.updated",
+    "message_reaction_removed": "reaction.updated",
     "supervisor_reminder_created": "reminder.created",
     "supervisor_reminder_updated": "reminder.updated",
     "workspace_lifecycle": "workspace.updated",
@@ -87,12 +96,18 @@ HEARTBEAT_ACTIVITY_TYPES = {"workspace_heartbeat"}
 
 EVENT_TYPE_ALIASES = {
     "message.created": "message_received",
+    "reaction.updated": "reaction_updated",
     "task.created": "task_created",
     "task.updated": "task_updated",
     "member.updated": "member_updated",
+    "member.status.updated": "member_updated",
     "reminder.created": "reminder_created",
     "reminder.updated": "reminder_updated",
 }
+
+
+async def _push_committed_events(db: AsyncSession, *, server_id: uuid.UUID) -> int:
+    return await push_latest_events_for_server(db, server_id=server_id)
 
 
 def _computer_connection_command(
@@ -1042,6 +1057,40 @@ async def list_channels(_auth: None = Depends(verify_public_api_key), db: AsyncS
     }
 
 
+@router.get("/events/stream")
+async def stream_public_events(
+    request: Request,
+    scopeKind: str | None = Query(None),
+    scopeId: str | None = Query(None),
+    heartbeatSeconds: float = Query(15.0),
+    _auth: None = Depends(verify_public_api_key),
+):
+    heartbeat = min(max(heartbeatSeconds, 1.0), 120.0)
+
+    async def event_stream():
+        yield "event: ready\ndata: {\"ok\":true}\n\n"
+        async with public_event_hub.subscribe_queue() as queue:
+            while not await request.is_disconnected():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=heartbeat)
+                except asyncio.TimeoutError:
+                    yield public_event_heartbeat_frame()
+                    continue
+                if not should_deliver_public_event(event, scope_kind=scopeKind, scope_id=scopeId):
+                    continue
+                yield public_event_sse_frame(event)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/channels/{channel_name}/messages")
 async def get_channel_messages(
     channel_name: str,
@@ -1200,7 +1249,7 @@ async def create_channel_message(
         await db.commit()
         await db.refresh(msg)
     with trace.time("backend.public_message.push_events", messageId=str(msg.id), shortId=msg.short_id):
-        delivered = await push_latest_events_for_server(db, server_id=server.id)
+        delivered = await _push_committed_events(db, server_id=server.id)
     trace.finish("backend.public_message.response_ready", messageId=str(msg.id), shortId=msg.short_id, delivered=delivered)
     return {
         "created": True,
@@ -1267,6 +1316,7 @@ async def add_public_message_reaction(
         )
 
     await db.commit()
+    await _push_committed_events(db, server_id=server.id)
     return {
         "created": created,
         "messageId": str(message.id),
@@ -1313,6 +1363,7 @@ async def remove_public_message_reaction(
         )
 
     await db.commit()
+    await _push_committed_events(db, server_id=server.id)
     return {
         "removed": removed,
         "messageId": str(message.id),
@@ -1701,7 +1752,7 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
 
     await db.commit()
     await db.refresh(task)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {"created": True, "task": await _serialize_task(db, task)}
 
 
@@ -1764,7 +1815,7 @@ async def update_task(task_id: str, request: Request, _auth: None = Depends(veri
     )
     await db.commit()
     await db.refresh(task)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {"updated": True, "task": await _serialize_task(db, task)}
 
 
@@ -1840,7 +1891,7 @@ async def delete_computer(
         },
     )
     await db.commit()
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
         "deleted": True,
@@ -2261,6 +2312,7 @@ async def update_member(member_id: str, request: Request, _auth: None = Depends(
     )
     await db.commit()
     await db.refresh(member)
+    await _push_committed_events(db, server_id=server.id)
     return {"updated": True, "member": await serialize_member(db, member)}
 
 
@@ -2328,7 +2380,7 @@ async def delete_member(
         },
     )
     await db.commit()
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
         "deleted": True,
@@ -2564,7 +2616,7 @@ async def control_workspace_lifecycle(
             },
         )
         await db.commit()
-        await push_latest_events_for_server(db, server_id=server.id)
+        await _push_committed_events(db, server_id=server.id)
         raise HTTPException(400, message)
 
     if action == "start":
@@ -2610,7 +2662,7 @@ async def control_workspace_lifecycle(
     await db.commit()
     await db.refresh(workspace)
     await db.refresh(computer)
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
         "action": action,
@@ -2674,7 +2726,7 @@ async def delete_workspace(
         },
     )
     await db.commit()
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
         "deleted": True,
@@ -2949,7 +3001,7 @@ async def delete_channel(
         },
     )
     await db.commit()
-    await push_latest_events_for_server(db, server_id=server.id)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
         "deleted": True,

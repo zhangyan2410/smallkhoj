@@ -7,6 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from routers import health, chat, agent_api, public_api, hello
 from models.seed import create_tables
+from models import async_session
+from services.public_events import (
+    initialize_public_event_cursors,
+    start_postgres_public_event_listener,
+    stop_postgres_public_event_listener,
+)
 from services.reminder_scheduler import start_reminder_scheduler, stop_reminder_scheduler
 from services.thread_summary import start_thread_summary_scheduler, stop_thread_summary_scheduler
 
@@ -15,6 +21,9 @@ from services.thread_summary import start_thread_summary_scheduler, stop_thread_
 async def lifespan(app: FastAPI):
     """应用生命周期：创建或升级数据库表。"""
     await create_tables()
+    async with async_session() as db:
+        await initialize_public_event_cursors(db)
+    await start_postgres_public_event_listener()
     reminder_task = start_reminder_scheduler()
     thread_summary_task = (
         start_thread_summary_scheduler()
@@ -26,6 +35,7 @@ async def lifespan(app: FastAPI):
     finally:
         await stop_reminder_scheduler(reminder_task)
         await stop_thread_summary_scheduler(thread_summary_task)
+        await stop_postgres_public_event_listener()
 
 
 app = FastAPI(

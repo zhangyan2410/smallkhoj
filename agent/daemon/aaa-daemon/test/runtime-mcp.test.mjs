@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -29,6 +29,33 @@ const credential = {
   token: 'sk_machine_secret',
   serverUrl: 'https://api.slock.ai',
 };
+
+function waitFor(predicate, timeoutMs = 5_000) {
+  const started = Date.now();
+  return new Promise((resolveWait, rejectWait) => {
+    const tick = () => {
+      if (predicate()) {
+        resolveWait(undefined);
+        return;
+      }
+      if (Date.now() - started > timeoutMs) {
+        rejectWait(new Error('Timed out waiting for condition'));
+        return;
+      }
+      setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
+
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 test('claude runtime env prepends wrapper path and strips proxy secrets', () => {
   const env = buildClaudeRuntimeEnv({
@@ -609,6 +636,118 @@ test('claude runtime queues messages while busy and flushes at result boundary',
   assert.equal(driver.queuedMessageCount, 0);
   assert.equal(writes.length, 1);
   assert.equal(JSON.parse(writes[0]).message.content[0].text, 'queued hello');
+});
+
+test('claude runtime stop terminates wrapper child process group', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('process group signal behavior is POSIX-specific');
+    return;
+  }
+
+  const root = mkdtempSync(join(tmpdir(), 'aaa-claude-stop-tree-'));
+  const marker = join(root, 'grandchild-pid.txt');
+  const fakeClaude = join(root, 'fake-claude-wrapper.mjs');
+  const grandchild = join(root, 'grandchild.mjs');
+  let grandchildPid = null;
+
+  writeFileSync(grandchild, `
+setInterval(() => {}, 1000);
+`, 'utf-8');
+  writeFileSync(fakeClaude, `
+import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+const child = spawn(process.execPath, [${JSON.stringify(grandchild)}], {
+  stdio: ['ignore', 'ignore', 'ignore'],
+});
+writeFileSync(${JSON.stringify(marker)}, String(child.pid));
+process.stdout.write(JSON.stringify({ type: 'system', subtype: 'session_init', session_id: 'stop-tree-session' }) + '\\n');
+setInterval(() => {}, 1000);
+`, 'utf-8');
+
+  const driver = new ClaudeRuntimeDriver({
+    credential,
+    workspacePath: root,
+    wrapperDir: join(root, '.slock'),
+    command: process.execPath,
+    commandArgs: [fakeClaude],
+  });
+
+  try {
+    driver.start();
+    await waitFor(() => existsSync(marker));
+    grandchildPid = Number(readFileSync(marker, 'utf-8'));
+    assert.ok(Number.isInteger(grandchildPid));
+    assert.equal(processExists(grandchildPid), true);
+
+    driver.stop();
+    await waitFor(() => !processExists(grandchildPid), 5_000);
+  } finally {
+    if (grandchildPid && processExists(grandchildPid)) {
+      try {
+        process.kill(grandchildPid, 'SIGKILL');
+      } catch {
+        // Already gone.
+      }
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('claude runtime stop force-kills process group when SIGTERM is ignored', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('process group signal behavior is POSIX-specific');
+    return;
+  }
+
+  const root = mkdtempSync(join(tmpdir(), 'aaa-claude-stop-force-'));
+  const marker = join(root, 'grandchild-pid.txt');
+  const fakeClaude = join(root, 'fake-claude-wrapper.mjs');
+  const grandchild = join(root, 'grandchild-ignore-term.mjs');
+  let grandchildPid = null;
+
+  writeFileSync(grandchild, `
+process.on('SIGTERM', () => {});
+setInterval(() => {}, 1000);
+`, 'utf-8');
+  writeFileSync(fakeClaude, `
+import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+process.on('SIGTERM', () => {});
+const child = spawn(process.execPath, [${JSON.stringify(grandchild)}], {
+  stdio: ['ignore', 'ignore', 'ignore'],
+});
+writeFileSync(${JSON.stringify(marker)}, String(child.pid));
+process.stdout.write(JSON.stringify({ type: 'system', subtype: 'session_init', session_id: 'force-stop-session' }) + '\\n');
+setInterval(() => {}, 1000);
+`, 'utf-8');
+
+  const driver = new ClaudeRuntimeDriver({
+    credential,
+    workspacePath: root,
+    wrapperDir: join(root, '.slock'),
+    command: process.execPath,
+    commandArgs: [fakeClaude],
+  });
+
+  try {
+    driver.start();
+    await waitFor(() => existsSync(marker));
+    grandchildPid = Number(readFileSync(marker, 'utf-8'));
+    assert.ok(Number.isInteger(grandchildPid));
+    assert.equal(processExists(grandchildPid), true);
+
+    driver.stop();
+    await waitFor(() => !processExists(grandchildPid), 6_000);
+  } finally {
+    if (grandchildPid && processExists(grandchildPid)) {
+      try {
+        process.kill(grandchildPid, 'SIGKILL');
+      } catch {
+        // Already gone.
+      }
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('chat bridge exposes only runtime_profile_migration_done MCP tool', async () => {

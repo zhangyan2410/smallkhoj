@@ -257,7 +257,7 @@ export function AgentActivityList({
   const refreshActivity = useCallback(async () => {
     // Don't show a loading spinner if we already have cached data — refresh
     // silently in the background.
-    if (activity.length === 0) setLoading(true)
+    if (!activityCache.get(cacheKey)?.items.length) setLoading(true)
     const data = await apiGet<{ activity: ActivityItem[]; count: number }>(
       `/api/v1/activity?agentId=${agentId}&limit=${limit}`,
       { activity: [], count: 0 }
@@ -271,12 +271,13 @@ export function AgentActivityList({
     activityCache.set(cacheKey, { items, at: Date.now() })
     setActivity(items)
     setLoading(false)
-  }, [agentId, limit, runtimeOnly, activity.length])
+  }, [agentId, limit, runtimeOnly, cacheKey])
 
   useEffect(() => {
-    // Fetch immediately on mount (no setTimeout delay). If cache exists it will
-    // be replaced by fresh data in ~150ms; if not, the spinner shows.
-    void refreshActivity()
+    const timer = window.setTimeout(() => {
+      void refreshActivity()
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [refreshActivity])
 
   return (

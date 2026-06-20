@@ -25,6 +25,7 @@ import {
 } from "lucide-react"
 
 import { ProductShell } from "@/components/product-shell"
+import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -664,6 +665,7 @@ export default async function ComputersPage({
         </>
       }
     >
+      <RealtimeRefresh eventTypes={["workspace.updated", "runtime.updated", "computer.status.updated", "member.status.updated"]} />
       <div className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-3">
           <Card size="sm">

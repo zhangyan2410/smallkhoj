@@ -107,6 +107,8 @@ def _workspace(*, status="stopped"):
         runtime_command=None,
         runtime_model=None,
         cwd=None,
+        session_id=None,
+        started_at=None,
         status=status,
         pid=1234,
         stopped_at=datetime.now(timezone.utc),
@@ -315,7 +317,7 @@ async def test_missing_stopped_workspace_is_not_rearmed_when_desired_running():
     )
 
     assert workspace.status == "stopped"
-    assert workspace.pid == 1234
+    assert workspace.pid is None
     assert agent.status == "active"
 
 
@@ -333,7 +335,35 @@ async def test_missing_workspace_is_not_rearmed_when_desired_stopped():
     )
 
     assert workspace.status == "stopped"
-    assert workspace.pid == 1234
+    assert workspace.pid is None
+
+
+@pytest.mark.asyncio
+async def test_daemon_workspace_stopped_update_clears_stale_pid():
+    server = SimpleNamespace(id=uuid.uuid4())
+    computer = _computer()
+    agent = _runtime_member(status="online")
+    workspace = _workspace(status="running")
+    db = _FakeSession(
+        _ExecuteResult(scalar_one=agent),
+        _ExecuteResult(scalar_one=workspace),
+    )
+    item = agent_api.DaemonWorkspacePayload(
+        workspaceId=str(workspace.id),
+        agentId=str(agent.id),
+        runtime="claude_code",
+        status="stopped",
+        pid=None,
+    )
+
+    updated, updated_agent, created = await agent_api._upsert_daemon_workspace(db, server, computer, item)
+
+    assert created is False
+    assert updated is workspace
+    assert updated.pid is None
+    assert updated_agent.status == "offline"
+    assert updated.stopped_at is not None
+    assert getattr(updated, "_smallkhoj_realtime_changed") is True
 
 
 @pytest.mark.asyncio
@@ -525,12 +555,16 @@ async def test_daemon_heartbeat_does_not_record_existing_workspace_activity(monk
     async def fake_serialize_computer(_db, item):
         return {"id": str(item.id)}
 
+    async def fake_push(*_args, **_kwargs):
+        return 0
+
     monkeypatch.setattr(agent_api, "_upsert_daemon_workspace", fake_upsert)
     monkeypatch.setattr(agent_api, "_record_activity", fake_record_activity)
     monkeypatch.setattr(agent_api, "mark_missing_runtimes_pending_start", fake_mark_missing)
     monkeypatch.setattr(agent_api, "pending_runtime_commands", fake_pending_runtime_commands)
     monkeypatch.setattr(agent_api, "_serialize_workspace", fake_serialize_workspace)
     monkeypatch.setattr(agent_api, "_serialize_computer", fake_serialize_computer)
+    monkeypatch.setattr(agent_api, "_push_committed_events", fake_push)
 
     body = agent_api.DaemonHeartbeatRequest(
         daemonId="daemon-a",
@@ -542,6 +576,56 @@ async def test_daemon_heartbeat_does_not_record_existing_workspace_activity(monk
 
     assert result["ok"] is True
     assert recorded_activity_kinds == []
+
+
+@pytest.mark.asyncio
+async def test_daemon_heartbeat_records_computer_status_event_on_status_change(monkeypatch):
+    pushed = []
+    server = SimpleNamespace(id=uuid.uuid4())
+    computer = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="local-dev",
+        status="offline",
+        active_daemon_id="daemon-a",
+        daemon_lease_expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
+        last_heartbeat_at=None,
+        detected_runtimes=[],
+    )
+
+    async def fake_mark_missing(*_args, **_kwargs):
+        return []
+
+    async def fake_pending_runtime_commands(*_args, **_kwargs):
+        return []
+
+    async def fake_serialize_computer(_db, item):
+        return {"id": str(item.id), "status": item.status}
+
+    async def fake_push(*_args, **_kwargs):
+        pushed.append(True)
+        return 1
+
+    monkeypatch.setattr(agent_api, "mark_missing_runtimes_pending_start", fake_mark_missing)
+    monkeypatch.setattr(agent_api, "pending_runtime_commands", fake_pending_runtime_commands)
+    monkeypatch.setattr(agent_api, "_serialize_computer", fake_serialize_computer)
+    monkeypatch.setattr(agent_api, "_push_committed_events", fake_push)
+
+    body = agent_api.DaemonHeartbeatRequest(
+        daemonId="daemon-a",
+        status="online",
+        workspaces=[],
+    )
+    db = _FakeSession()
+
+    result = await agent_api.daemon_heartbeat(body, machine=(computer, server, object()), db=db)
+
+    assert result["ok"] is True
+    assert pushed == [True]
+    assert len(db.added) == 1
+    assert db.added[0].event_type == "computer.status.updated"
+    assert db.added[0].payload["computerId"] == str(computer.id)
+    assert db.added[0].payload["previousStatus"] == "offline"
+    assert db.added[0].payload["status"] == "online"
 
 
 def test_compact_activity_feed_collapses_heartbeats_by_agent():

@@ -14,6 +14,7 @@ import {
   type SessionNotification,
   type SessionUpdate,
 } from '@agentclientprotocol/sdk';
+import { runtimeProcessSpawnOptions, signalRuntimeProcessTree } from './process-tree.js';
 
 export interface CodexAcpCommandOptions {
   command?: string;
@@ -101,13 +102,11 @@ export class CodexAcpBridge extends EventEmitter {
   async start(): Promise<void> {
     if (this.child) return;
     const { command, args } = buildCodexAcpCommand({ command: this.options.command });
-    const child = spawn(command, [...(this.options.args ?? args)], {
+    const child = spawn(command, [...(this.options.args ?? args)], runtimeProcessSpawnOptions({
       cwd: this.options.cwd,
       env: { ...process.env, ...(this.options.env ?? {}) },
       stdio: ['pipe', 'pipe', 'pipe'],
-      detached: process.platform !== 'win32',
-      windowsHide: true,
-    });
+    }));
     this.child = child;
 
     child.stderr.setEncoding('utf-8');
@@ -184,14 +183,14 @@ export class CodexAcpBridge extends EventEmitter {
       child.once('exit', () => resolve());
     });
 
-    this.killChildProcess(child, 'SIGTERM');
+    signalRuntimeProcessTree(child, 'SIGTERM');
     if (timeoutMs > 0) {
       const timedOut = await Promise.race([
         exited.then(() => false),
         new Promise<boolean>((resolve) => setTimeout(() => resolve(true), timeoutMs)),
       ]);
       if (timedOut) {
-        this.killChildProcess(child, 'SIGKILL');
+        signalRuntimeProcessTree(child, 'SIGKILL');
         await exited.catch(() => {});
       }
     }
@@ -213,18 +212,6 @@ export class CodexAcpBridge extends EventEmitter {
       if (!line) continue;
       this.options.onLine?.({ stream, line });
       this.emit('line', { stream, line });
-    }
-  }
-
-  private killChildProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
-    try {
-      if (process.platform !== 'win32' && child.pid) {
-        process.kill(-child.pid, signal);
-        return;
-      }
-      child.kill(signal);
-    } catch {
-      // Process may already have exited.
     }
   }
 }

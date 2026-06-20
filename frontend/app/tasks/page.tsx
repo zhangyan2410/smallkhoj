@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 
 import { ProductShell } from "@/components/product-shell"
+import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, StatusPill, Toolbar } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -623,6 +624,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
         </Link>
       }
     >
+      <RealtimeRefresh eventTypes={["task.created", "task.updated"]} />
       <div className="space-y-5">
         <Toolbar>
           <ListChecks className="size-4 text-primary" />

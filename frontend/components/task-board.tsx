@@ -1,9 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Camera,
-  CheckSquare,
   Columns3,
   Database,
   ExternalLink,
@@ -16,7 +15,8 @@ import {
 import { EmptyState, StatusPill } from "@/components/product-ui"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { apiGet, badgeClass, formatTime, statusLabel, type Member } from "@/lib/control-plane"
+import { apiGet, apiHeaders, badgeClass, formatTime, statusLabel, type Member } from "@/lib/control-plane"
+import { applyHighWater, connectRealtimeEvents, type HighWater } from "@/lib/realtime-events"
 
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
 
@@ -304,6 +304,7 @@ export function TaskBoard({
   const [loading, setLoading] = useState(!preloadedTasks)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [activity, setActivity] = useState<ActivityItem[]>([])
+  const highWaterRef = useRef(new Map<string, HighWater>())
 
   const refreshTasks = useCallback(async () => {
     if (preloadedTasks) return
@@ -318,8 +319,43 @@ export function TaskBoard({
   }, [preloadedTasks, channelName])
 
   useEffect(() => {
-    void refreshTasks()
+    const timer = window.setTimeout(() => {
+      void refreshTasks()
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [refreshTasks])
+
+  useEffect(() => {
+    if (preloadedTasks) return
+    const controller = new AbortController()
+    let refreshTimer: number | null = null
+    const scheduleRefresh = () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer)
+      refreshTimer = window.setTimeout(() => {
+        void refreshTasks()
+        refreshTimer = null
+      }, 150)
+    }
+    const stop = connectRealtimeEvents({
+      headers: apiHeaders(),
+      signal: controller.signal,
+      scope: { kind: "task" },
+      onEvent: (event) => {
+        if (event.type !== "task.created" && event.type !== "task.updated") return
+        const decision = applyHighWater(highWaterRef.current, event)
+        if (decision.action === "drop") return
+        scheduleRefresh()
+      },
+      onStatus: (status) => {
+        if (status.state === "error") console.warn("[realtime] task stream error", status.error)
+      },
+    })
+    return () => {
+      stop()
+      controller.abort()
+      if (refreshTimer) window.clearTimeout(refreshTimer)
+    }
+  }, [preloadedTasks, refreshTasks])
 
   // Load activity when task selected
   useEffect(() => {
