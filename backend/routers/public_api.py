@@ -2271,18 +2271,15 @@ async def list_members(_auth: None = Depends(verify_public_api_key), db: AsyncSe
     }
 
 
-@router.patch("/members/{member_id}")
-async def update_member(member_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    server = await _get_server(db)
-    member = await _resolve_member(db, server, member_id)
-    if not member:
-        raise HTTPException(404, "Member not found")
-    body = await request.json()
-
+def _apply_member_patch(member: Member, body: dict) -> None:
     if "status" in body:
         member.status = body["status"]
     if "description" in body:
         member.description = body["description"]
+    if "avatarUrl" in body and member.kind == "human":
+        avatar_url = body["avatarUrl"]
+        member.avatar_url = str(avatar_url).strip() if avatar_url else None
+
     config = dict(member.config or {})
     if "permissions" in body:
         config["permissions"] = body.get("permissions") or {}
@@ -2295,6 +2292,17 @@ async def update_member(member_id: str, request: Request, _auth: None = Depends(
         runtime_provider = str(body["runtimeProvider"]).strip() if body["runtimeProvider"] is not None else ""
         config["runtimeProvider"] = runtime_provider or None
     member.config = config
+
+
+@router.patch("/members/{member_id}")
+async def update_member(member_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    server = await _get_server(db)
+    member = await _resolve_member(db, server, member_id)
+    if not member:
+        raise HTTPException(404, "Member not found")
+    body = await request.json()
+
+    _apply_member_patch(member, body)
 
     actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="member actor")
     await _record_activity(

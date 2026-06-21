@@ -28,6 +28,8 @@ import {
   X,
 } from "lucide-react"
 
+import { MemberAvatar } from "@/components/member-avatar"
+import { MessageFrame } from "@/components/message-frame"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +56,7 @@ import {
 } from "@/lib/realtime-events"
 import { CreateChannelDialog } from "./create-channel-dialog"
 import { CreateAgentDialog } from "./create-agent-dialog"
+import { memberForMessageSender } from "@/lib/member-avatar"
 
 type ChannelInfo = { id: string; name: string; type: string; description?: string }
 type DmInfo = {
@@ -131,6 +134,16 @@ function channelPathSegment(value: string) {
   return encodeURIComponent(value)
 }
 
+function dmAvatarMember(dm: DmInfo): Member {
+  return dm.peer ?? {
+    id: dm.id,
+    name: dm.name,
+    displayName: dm.displayName.replace(/^DM @/, ""),
+    kind: "human",
+    status: "offline",
+  }
+}
+
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -200,6 +213,7 @@ export function ChannelClient({
   const currentTitle = currentDm?.displayName ?? (currentChannel?.name ?? `#${channelName}`)
   const currentIsDm = Boolean(currentDm)
   const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
+  const allKnownMembers = [...members, ...allMembers]
   const didReact = (message: ChannelMessage, emoji: string) =>
     Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
 
@@ -372,6 +386,16 @@ export function ChannelClient({
     }
   }, [sessionToken])
 
+  const refreshMembers = useCallback(async () => {
+    if (!channelId) return
+    try {
+      const data = await apiGet<{ members: Member[] }>(`/api/v1/channels/${channelId}/members`, { members: [] }, sessionToken)
+      setMembers(data.members || [])
+    } catch {
+      setMembers([])
+    }
+  }, [channelId, sessionToken])
+
   useEffect(() => {
     const controller = new AbortController()
     let catchUpTimer: number | null = null
@@ -388,6 +412,11 @@ export function ChannelClient({
       signal: controller.signal,
       scope: channelId ? { kind: "channel", id: channelId } : undefined,
       onEvent: (event: PublicEventEnvelope) => {
+        if (event.type === "member.status.updated" || event.type === "member.updated") {
+          void refreshChannelsAndDms()
+          void refreshMembers()
+          return
+        }
         if (!shouldHandleRealtimeEvent(event, { channelId, channelName })) {
           // Event belongs to another channel/DM or to a non-chat scope:
           // refresh sidebar lists so unread/new channels are visible.
@@ -427,22 +456,12 @@ export function ChannelClient({
       controller.abort()
       if (catchUpTimer) window.clearTimeout(catchUpTimer)
     }
-  }, [activeThreadId, channelId, channelName, refreshChannelsAndDms, refreshMessages, refreshThread, sessionToken])
+  }, [activeThreadId, channelId, channelName, refreshChannelsAndDms, refreshMembers, refreshMessages, refreshThread, sessionToken])
 
   async function openThread(message: ChannelMessage) {
     const threadId = message.threadId || message.id
     setActiveThreadId(threadId)
     await refreshThread(threadId)
-  }
-
-  async function refreshMembers() {
-    if (!channelId) return
-    try {
-      const data = await apiGet<{ members: Member[] }>(`/api/v1/channels/${channelId}/members`, { members: [] }, sessionToken)
-      setMembers(data.members || [])
-    } catch {
-      setMembers([])
-    }
   }
 
   async function handleAddMember() {
@@ -793,31 +812,30 @@ export function ChannelClient({
             <CreateAgentDialog />
           </div>
           <div className="space-y-1">
-            {[...dms].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((dm) => (
-              <Link
-                key={dm.id}
-                href={`/chat/${channelPathSegment(dm.name)}`}
-                className={`block truncate rounded-md px-2 py-1.5 text-sm ${
-                  dm.name === channelName ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
-                }`}
-              >
-                <span className="inline-flex min-w-0 items-center gap-2">
-                  <Avatar
-                    size="sm"
-                    name={dm.peer?.displayName || dm.displayName.replace(/^DM @/, "")}
-                    status={dm.peer?.status === "online" ? "online" : "offline"}
-                  />
-                  <span className="truncate">{dm.peer?.displayName || dm.displayName.replace(/^DM @/, "")}</span>
-                </span>
-              </Link>
-            ))}
+            {[...dms].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((dm) => {
+              const avatarMember = dmAvatarMember(dm)
+              return (
+                <Link
+                  key={dm.id}
+                  href={`/chat/${channelPathSegment(dm.name)}`}
+                  className={`block truncate rounded-md px-2 py-1.5 text-sm ${
+                    dm.name === channelName ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
+                  }`}
+                >
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <MemberAvatar member={avatarMember} size="sm" />
+                    <span className="truncate">{avatarMember.displayName || avatarMember.name}</span>
+                  </span>
+                </Link>
+              )
+            })}
           </div>
         </div>
         <div className="mt-auto border-t p-3">
           <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Members Online</h3>
           {members.map((m) => (
             <div key={m.id} className="flex items-center gap-2 py-1 text-sm">
-              <Avatar size="xs" name={m.displayName || m.name} status={m.status === "online" ? "online" : "offline"} />
+              <MemberAvatar member={m} size="xs" />
               <span className="truncate">{m.displayName}</span>
               <span className="ml-auto text-xs text-muted-foreground">{m.kind}</span>
             </div>
@@ -829,7 +847,11 @@ export function ChannelClient({
         <header className="border-b px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <Avatar size="xl" name={currentTitle} />
+              {currentDm ? (
+                <MemberAvatar member={dmAvatarMember(currentDm)} size="xl" />
+              ) : (
+                <Avatar size="xl" name={currentTitle} />
+              )}
               <div className="min-w-0">
                 <h1 className="truncate text-lg font-semibold">{currentTitle}</h1>
                 <div className="mt-1 flex items-center gap-2">
@@ -994,50 +1016,47 @@ export function ChannelClient({
             ) : (
               <>
                 <div className="flex-1 overflow-y-auto p-4">
-              <div className="mx-auto max-w-3xl space-y-3">
+                <div className="mx-auto max-w-3xl space-y-3">
                 {messages.map((msg) => {
                   const isSaved = savedMessageIds.has(msg.id)
+                  const senderMember = memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)
                   return (
                     <div
                       key={msg.id}
                       data-testid={`message-${msg.id}`}
-                      className={`group/message relative flex gap-3 rounded-lg p-2.5 transition-colors focus-within:bg-accent hover:bg-accent ${
+                      className={`group/message relative rounded-lg p-2.5 transition-colors focus-within:bg-accent hover:bg-accent ${
                         isSaved ? "bg-primary/5" : ""
                       }`}
                       tabIndex={0}
                     >
-                      <Avatar size="lg" name={msg.sender} className="mt-0.5" />
-                      <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="font-semibold text-foreground">{msg.sender.replace(/^@/, "")}</span>
-                          <span
-                            className={`rounded px-1.5 py-0.5 text-[0.65rem] font-medium ${
-                              msg.senderType === "agent"
-                                ? "bg-primary/10 text-primary"
-                                : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {msg.senderType === "agent" ? "assistant" : "member"}
-                          </span>
-                          <span className="text-xs text-muted-foreground">{msg.time}</span>
-                  {isSaved && (
-                    <Bookmark className="size-3 text-primary" aria-label="Saved" />
-                  )}
-                  {taskLinks[msg.id] && (
-                    <Link
-                      href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                      className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
-                    >
-                      <CheckSquare className="size-3" />
-                      Task
-                    </Link>
-                  )}
-                </div>
-                        <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
-                          {renderMessageActions(msg)}
-                        </div>
-                      </div>
+                      <MessageFrame
+                        member={senderMember}
+                        senderType={msg.senderType}
+                        time={msg.time}
+                        avatarSize="lg"
+                        showStatus={senderMember.kind === "agent"}
+                        badges={
+                          <>
+                            {isSaved && (
+                              <Bookmark className="size-3 text-primary" aria-label="Saved" />
+                            )}
+                            {taskLinks[msg.id] && (
+                              <Link
+                                href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
+                                className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                              >
+                                <CheckSquare className="size-3" />
+                                Task
+                              </Link>
+                            )}
+                          </>
+                        }
+                        actions={
+                          <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+                            {renderMessageActions(msg)}
+                          </div>
+                        }
+                      >
                       <MarkdownMessage content={msg.content} />
                       {(msg.replyCount || msg.threadSummary) && (
                         <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
@@ -1074,7 +1093,7 @@ export function ChannelClient({
                           ))}
                         </div>
                       )}
-                      </div>
+                      </MessageFrame>
                     </div>
                   )
                 })}
@@ -1196,16 +1215,18 @@ export function ChannelClient({
                 <div className="flex-1 space-y-3 overflow-y-auto pr-1">
                   {activeRoot && (
                     <div className="group/message relative rounded-md border bg-card p-3 focus-within:ring-1 focus-within:ring-ring" tabIndex={0}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Avatar size="sm" name={activeRoot.sender} />
-                          <span className="font-semibold text-foreground">{activeRoot.sender.replace(/^@/, "")}</span>
-                          <span className="text-xs text-muted-foreground">{activeRoot.time}</span>
-                        </div>
-                        <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
-                          {renderMessageActions(activeRoot)}
-                        </div>
-                      </div>
+                      <MessageFrame
+                        member={memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers)}
+                        senderType={activeRoot.senderType}
+                        time={activeRoot.time}
+                        avatarSize="sm"
+                        showStatus={activeRoot.senderType === "agent"}
+                        actions={
+                          <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+                            {renderMessageActions(activeRoot)}
+                          </div>
+                        }
+                      >
                       {taskLinks[activeRoot.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[activeRoot.id])}`}
@@ -1241,22 +1262,25 @@ export function ChannelClient({
                           {threadData.threadSummary.summary}
                         </p>
                       )}
+                      </MessageFrame>
                     </div>
                   )}
 
                   {threadLoading && <p className="py-8 text-center text-sm text-muted-foreground">Loading...</p>}
                   {activeReplies.map((msg) => (
                     <div key={msg.id} className="group/message relative rounded-md border bg-card p-3 focus-within:ring-1 focus-within:ring-ring" tabIndex={0}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Avatar size="sm" name={msg.sender} />
-                          <span className="font-semibold text-foreground">{msg.sender.replace(/^@/, "")}</span>
-                          <span className="text-xs text-muted-foreground">{msg.time}</span>
-                        </div>
-                        <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
-                          {renderMessageActions(msg)}
-                        </div>
-                      </div>
+                      <MessageFrame
+                        member={memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)}
+                        senderType={msg.senderType}
+                        time={msg.time}
+                        avatarSize="sm"
+                        showStatus={msg.senderType === "agent"}
+                        actions={
+                          <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+                            {renderMessageActions(msg)}
+                          </div>
+                        }
+                      >
                       {taskLinks[msg.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
@@ -1287,6 +1311,7 @@ export function ChannelClient({
                           ))}
                         </div>
                       )}
+                      </MessageFrame>
                     </div>
                   ))}
                   {!threadLoading && activeReplies.length === 0 && (
@@ -1329,7 +1354,7 @@ export function ChannelClient({
                   className="flex items-center justify-between gap-2"
                 >
                   <div className="flex items-center gap-2 text-sm">
-                    <Avatar size="sm" name={m.displayName || m.name} status={m.status === "online" ? "online" : "offline"} />
+                    <MemberAvatar member={m} size="sm" />
                     <span className="truncate">{m.displayName}</span>
                     <span className="text-xs text-muted-foreground">{statusLabel(m.status)}</span>
                   </div>

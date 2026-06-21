@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Hash, MessageSquare } from "lucide-react"
 import { redirect } from "next/navigation"
 
+import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
 import { EmptyState, RuntimeChip } from "@/components/product-ui"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,6 +27,16 @@ type DmInfo = {
 
 function channelPathSegment(name: string) {
   return encodeURIComponent(name.replace(/^#/, ""))
+}
+
+function dmAvatarMember(dm: DmInfo): Member {
+  return dm.peer ?? {
+    id: dm.id,
+    name: dm.name,
+    displayName: dm.displayName,
+    kind: "human",
+    status: "offline",
+  }
 }
 
 export default async function ChatPage() {
@@ -116,6 +127,7 @@ export default async function ChatPage() {
                 href={`/chat/${channelPathSegment(dm.name)}`}
                 className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-accent"
               >
+                <MemberAvatar member={dmAvatarMember(dm)} size="sm" />
                 <span className="min-w-0 flex-1 truncate font-medium">
                   {dm.peer?.displayName || dm.displayName}
                 </span>

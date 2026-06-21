@@ -89,6 +89,18 @@ def _member(member_id, *, computer_id=None):
     return SimpleNamespace(id=member_id, computer_id=computer_id, kind="agent")
 
 
+def _profile_member(*, kind="human", avatar_url=None):
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        kind=kind,
+        status="online",
+        description=None,
+        avatar_url=avatar_url,
+        config={},
+        backend=None,
+    )
+
+
 def _runtime_member(*, config=None, backend=None, status="offline"):
     return SimpleNamespace(
         id=uuid.uuid4(),
@@ -466,6 +478,22 @@ def test_public_api_delete_blocking_workspace_statuses():
     ]
 
     assert public_api._delete_blocking_workspace_statuses(workspaces) == ["running"]
+
+
+def test_public_api_member_patch_updates_human_avatar_url():
+    member = _profile_member(kind="human")
+
+    public_api._apply_member_patch(member, {"avatarUrl": "https://example.com/human.png"})
+
+    assert member.avatar_url == "https://example.com/human.png"
+
+
+def test_public_api_member_patch_ignores_agent_avatar_url():
+    member = _profile_member(kind="agent", avatar_url=None)
+
+    public_api._apply_member_patch(member, {"avatarUrl": "https://example.com/agent.png"})
+
+    assert member.avatar_url is None
 
 
 def test_agent_can_start_assigned_todo_task():

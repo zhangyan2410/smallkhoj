@@ -19,7 +19,9 @@ import {
 import ActivityTab from "./activity-tab"
 import { CreateAgentCard } from "./create-agent-card"
 
+import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
+import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,7 +30,6 @@ import {
   API_BASE,
   apiGet,
   badgeClass,
-  dotClass,
   formatTime,
   type Computer,
   type Member,
@@ -53,10 +54,6 @@ function profileName(member: Member) {
 
 function profileDescription(member: Member) {
   return member.profile?.description ?? member.description
-}
-
-function profileAvatar(member: Member) {
-  return member.profile?.avatarUrl ?? member.avatarUrl
 }
 
 function searchValue(value: string | string[] | undefined) {
@@ -95,8 +92,27 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   )
 }
 
+async function updateHumanAvatarUrlAction(formData: FormData) {
+  "use server"
+  const memberId = String(formData.get("memberId") || "")
+  const avatarUrl = String(formData.get("avatarUrl") || "").trim()
+  if (!memberId) return
+
+  const response = await fetch(`${API_BASE}/api/v1/members/${memberId}`, {
+    method: "PATCH",
+    headers: await serverApiHeaders(true),
+    body: JSON.stringify({ avatarUrl: avatarUrl || null }),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile&error=${encodeURIComponent(detail)}`)
+  }
+  revalidatePath("/members")
+  redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
+}
+
 function MemberRow({ member, selected }: { member: Member; selected: boolean }) {
-  const avatar = profileAvatar(member)
   const name = profileName(member)
   const href = memberDetailHref(member.id)
 
@@ -107,15 +123,7 @@ function MemberRow({ member, selected }: { member: Member; selected: boolean }) 
         selected ? "bg-primary/8 border border-primary/20" : "border border-transparent"
       }`}
     >
-      <span className={`size-2 shrink-0 rounded-full ${dotClass(member.status)}`} />
-      {avatar ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={avatar} alt="" className="size-6 rounded-md border object-cover" />
-      ) : (
-        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border bg-muted">
-          {member.kind === "agent" ? <Bot className="size-3.5" /> : <UserRound className="size-3.5" />}
-        </span>
-      )}
+      <MemberAvatar member={member} size="xs" />
       <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
       <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
         {member.kind}
@@ -150,21 +158,13 @@ function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }
 
 function ProfileTab({ member, computers }: { member: Member; computers: Computer[] }) {
   const description = profileDescription(member)
-  const avatar = profileAvatar(member)
   const computer = computers.find((c) => c.id === member.computerId)
   const workspace = computer?.agentWorkspaces.find((w) => w.agentId === member.id)
 
   return (
     <div className="space-y-4">
       <div className="flex items-start gap-4">
-        {avatar ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={avatar} alt="" className="size-14 rounded-lg border object-cover" />
-        ) : (
-          <span className="inline-flex size-14 shrink-0 items-center justify-center rounded-lg border bg-muted">
-            {member.kind === "agent" ? <Bot className="size-7" /> : <UserRound className="size-7" />}
-          </span>
-        )}
+        <MemberAvatar member={member} size="xl" />
         <div className="min-w-0">
           <div className="text-lg font-semibold">{profileName(member)}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -180,6 +180,28 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
           <p className="mt-2 text-sm text-muted-foreground">{description || "No profile description."}</p>
         </div>
       </div>
+
+      {member.kind === "human" && (
+        <form action={updateHumanAvatarUrlAction} className="rounded-md border bg-muted/20 p-3">
+          <input type="hidden" name="memberId" value={member.id} />
+          <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <UserRound className="size-3" />
+            Human Avatar
+          </div>
+          <div className="mt-2 flex gap-2">
+            <Input
+              name="avatarUrl"
+              type="url"
+              defaultValue={member.profile?.avatarUrl ?? member.avatarUrl ?? ""}
+              placeholder="https://example.com/avatar.png"
+              className="h-8"
+            />
+            <Button type="submit" size="sm" variant="outline">
+              Save
+            </Button>
+          </div>
+        </form>
+      )}
 
       <div className="grid gap-2 sm:grid-cols-3">
         <Field label="memberId" value={shortId(member.id)} />
@@ -774,6 +796,7 @@ export default async function MembersPage({
       }
     >
       <div className="space-y-5">
+        <RealtimeRefresh eventTypes={["member.updated", "member.status.updated"]} />
 
         <div className="grid gap-3 sm:grid-cols-3">
           <Card size="sm">
