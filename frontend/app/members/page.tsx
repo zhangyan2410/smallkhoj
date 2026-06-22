@@ -796,7 +796,7 @@ export default async function MembersPage({
       }
     >
       <div className="space-y-5">
-        <RealtimeRefresh eventTypes={["member.updated", "member.status.updated"]} />
+        <RealtimeRefresh eventTypes={["member.created", "member.updated", "member.status.updated"]} />
 
         <div className="grid gap-3 sm:grid-cols-3">
           <Card size="sm">

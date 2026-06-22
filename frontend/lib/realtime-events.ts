@@ -103,6 +103,10 @@ export function shouldHandleRealtimeEvent(
   event: PublicEventEnvelope,
   current: { channelId?: string | null; channelName?: string | null },
 ) {
+  // Defensive: some events (e.g. workspace broadcasts) may arrive without a
+  // scope. Treat them as out-of-scope rather than throwing — callers refresh
+  // sidebar lists when this returns false.
+  if (!event.scope) return false
   if (event.scope.kind !== "channel" && event.scope.kind !== "dm") return true
   const normalizedName = current.channelName?.replace(/^#/, "")
   return Boolean(
@@ -163,7 +167,13 @@ export function connectRealtimeEvents({
         for await (const frame of readSSE(response, controller.signal)) {
           if (!frame.data) continue
           try {
-            onEvent(JSON.parse(frame.data) as PublicEventEnvelope)
+            const parsed = JSON.parse(frame.data) as PublicEventEnvelope
+            // Drop empty / non-envelope payloads (backend heartbeat, keepalive,
+            // or malformed frame) before they reach shouldHandleRealtimeEvent.
+            if (!parsed || typeof parsed !== "object" || !parsed.type || !parsed.scope) {
+              continue
+            }
+            onEvent(parsed)
           } catch (error) {
             console.warn("[realtime] malformed event dropped", error)
           }
@@ -178,7 +188,9 @@ export function connectRealtimeEvents({
       }
       if (signal.aborted || stopped) break
       attempt += 1
-      const delayMs = Math.min(1000 * 2 ** Math.min(attempt, 5), 10000)
+      // Exponential backoff capped at 30s; reset to 0 on every successful connect
+      // (see `attempt = 0` after the `response.ok` check above).
+      const delayMs = Math.min(1000 * 2 ** Math.min(attempt, 5), 30000)
       onStatus?.({ state: "reconnecting", attempt, delayMs })
       await new Promise((resolve) => window.setTimeout(resolve, delayMs))
     }

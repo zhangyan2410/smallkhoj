@@ -21,6 +21,8 @@ Use this spec whenever code changes any of:
 
 - Backend event storage: `event_records(server_id, seq, event_type, actor_id, channel_id, message_id, task_id, payload)`
 - Backend activity storage: `activity_logs(server_id, agent_id, kind, description, details, channel_id, task_id)`
+- Activity→event map: `PUBLIC_ACTIVITY_EVENT_TYPES` in `routers/public_api.py` (supervisor_* activity kind → dotted public event type)
+- Event type normalization: `PUBLIC_EVENT_TYPE_ALIASES` + `_event_scope()` in `services/public_events.py`; `EVENT_TYPE_ALIASES` (dotted→legacy) in `routers/public_api.py`
 - Daemon WS: `WS /internal/agent-api/ws?eventLogCursor=<seq>`
 - Agent polling/SSE: `/internal/agent-api/events`
 - Runtime delivery: `ClaudeRuntimeDriver.sendUserMessage()`
@@ -75,6 +77,35 @@ Use this spec whenever code changes any of:
   - heartbeat/register updates do not create high-volume activity/event records.
 - Token regression:
   - a runtime that sends a message does not receive its own `message.created` event as a new turn.
+
+### Adding a new EventRecord type — required checklist
+
+When you add a new dotted event type (e.g. `member.created`, `foo.updated`) by
+extending `PUBLIC_ACTIVITY_EVENT_TYPES` + `PUBLIC_EVENT_TYPE_ALIASES` +
+`_event_scope()`, you MUST verify the runtime-delivery gate, not just the SSE
+browser fanout:
+
+1. **Scope handler** — add a branch to `_event_scope()` in
+   `services/public_events.py` so the event carries a meaningful `scope`
+   (`{kind, id}`). Frontends filter on scope; a missing branch produces
+   `scope={kind:"server"}` and may over- or under-deliver.
+2. **Runtime gate** — confirm the daemon proxy at
+   `agent/daemon/aaa-daemon/src/daemon/daemon.ts` drops it. The gate is
+   `isRuntimeActionableEventType(eventType)` inside the `event_received`
+   handler: only `task_created`/`task.created`/`thread_summary_requested`
+   reach `deliverRuntimeMessage`. UI-only events (`member.*`, `workspace.*`,
+   `computer.*`, `reminder.*`) must NOT be added to that allowlist unless the
+   event is genuinely actionable runtime work.
+3. **Message freshness** — confirm the new type is not `message.*` so it
+   cannot pollute pending-message freshness in the proxy.
+4. **Alias symmetry** — add the dotted→legacy pair in both
+   `EVENT_TYPE_ALIASES` (backend `public_api.py`) and the daemon's
+   `_dotted_event_type` / `_legacy_event_type` maps if clients rely on the
+   legacy name.
+
+Lesson source: task `06-22-06-22-frontend-realtime-sync-fixes` added
+`member.created` for Members-page auto-refresh. It is UI-only; the daemon
+proxy gate correctly drops it, so no runtime receives a spurious turn.
 
 ### 7. Wrong vs Correct
 

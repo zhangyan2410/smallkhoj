@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
 import shlex
@@ -55,6 +56,8 @@ from services.thread_summary import (
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
+logger = logging.getLogger(__name__)
+
 PUBLIC_API_KEY = "sk_public_local"
 DEFAULT_LOCAL_DAEMON_DIR = Path(__file__).resolve().parents[2] / "agent" / "daemon" / "aaa-daemon"
 DEFAULT_DAEMON_LAUNCHER = Path(__file__).resolve().parents[2] / "smallkhoj-daemon"
@@ -85,6 +88,7 @@ PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_task_created": "task.created",
     "supervisor_task_updated": "task.updated",
     "supervisor_member_updated": "member.updated",
+    "supervisor_member_created": "member.created",
     "message_reaction_added": "reaction.updated",
     "message_reaction_removed": "reaction.updated",
     "supervisor_reminder_created": "reminder.created",
@@ -100,6 +104,7 @@ EVENT_TYPE_ALIASES = {
     "task.created": "task_created",
     "task.updated": "task_updated",
     "member.updated": "member_updated",
+    "member.created": "member_created",
     "member.status.updated": "member_updated",
     "reminder.created": "reminder_created",
     "reminder.updated": "reminder_updated",
@@ -2926,6 +2931,33 @@ async def create_agent(
     await db.commit()
     await db.refresh(agent)
     await db.refresh(workspace)
+
+    # Emit a member.created event so the Members page refreshes without a manual
+    # reload. The actor is the human who created the agent when authenticated;
+    # otherwise we fall back to the new agent itself (public API key path).
+    # This event is UI-only: the daemon proxy gates non-message events through
+    # isRuntimeActionableEventType(), so member.created never reaches a runtime.
+    try:
+        actor = await _resolve_human_actor(db, server, request, None, role="agent creation actor", required=False)
+        emit_actor = actor or agent
+        await _record_activity(
+            db,
+            server,
+            emit_actor,
+            "supervisor_member_created",
+            f"@{emit_actor.display_name} created agent @{agent.display_name}",
+            {
+                "memberId": str(agent.id),
+                "agentId": str(agent.id),
+                "memberName": agent.display_name,
+                "computerId": str(computer_id),
+            },
+        )
+        await db.commit()
+        await _push_committed_events(db, server_id=server.id)
+    except Exception:
+        logger.exception("member.created event emit failed for agent=%s", agent.id)
+
     await daemon_control_hub.push(computer.id, runtime_start_command(workspace, agent))
     return {
         "created": True,

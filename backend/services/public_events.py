@@ -31,6 +31,7 @@ POSTGRES_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 
 PUBLIC_EVENT_TYPE_ALIASES = {
     "member.updated": "member.status.updated",
+    "member.created": "member.created",
     "message.reaction_added": "reaction.updated",
     "message.reaction_removed": "reaction.updated",
 }
@@ -222,7 +223,7 @@ def _event_scope(record: EventRecord) -> dict[str, Any]:
         return scope
     if event_type.startswith("task."):
         return {"kind": "task", "id": str(record.task_id or payload.get("taskId")) if (record.task_id or payload.get("taskId")) else None}
-    if event_type == "member.status.updated":
+    if event_type == "member.status.updated" or event_type == "member.created":
         return {"kind": "member", "id": str(payload.get("memberId") or payload.get("agentId") or record.actor_id)}
     if event_type == "computer.status.updated":
         return {"kind": "computer", "id": str(payload.get("computerId")) if payload.get("computerId") else None}
