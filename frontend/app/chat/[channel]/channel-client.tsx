@@ -56,6 +56,8 @@ import {
 } from "@/lib/realtime-events"
 import { channelMemberAddPayload } from "@/lib/channel-members"
 import { AGENT_DRAG_MIME, parseAgentDragPayload, serializeAgentDragPayload } from "@/lib/drag-data"
+import { getAgentColor } from "@/lib/agent-color"
+import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { CreateChannelDialog } from "./create-channel-dialog"
 import { CreateAgentDialog } from "./create-agent-dialog"
 import { memberForMessageSender } from "@/lib/member-avatar"
@@ -239,6 +241,9 @@ export function ChannelClient({
   const [agentDropError, setAgentDropError] = useState<string | null>(null)
   const [sidebarWidthOverride, setSidebarWidthOverride] = useState<number | null>(null)
   const [threadWidthOverride, setThreadWidthOverride] = useState<number | null>(null)
+  // Per-conversation unread counts (in-memory only; reset on page load).
+  // Keyed by channel/DM id. Cleared when the user navigates to that conversation.
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const dragDepthRef = useRef(0)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -378,6 +383,13 @@ export function ChannelClient({
       }
       if (match && !cancelled) {
         setChannelId(match.id)
+        // Navigating to a conversation clears its unread counter.
+        setUnreadCounts((prev) => {
+          if (!(match.id in prev)) return prev
+          const next = { ...prev }
+          delete next[match.id]
+          return next
+        })
         const mRes = await fetch(`${API_BASE}/api/v1/channels/${match.id}/members`, { headers: h })
         if (mRes.ok) { const md = await mRes.json(); if (!cancelled) setMembers(md.members || []) }
       }
@@ -576,6 +588,18 @@ export function ChannelClient({
     }
   }, [channelId, sessionToken])
 
+  // Refresh the workspace-wide member list (all agents + humans). The active
+  // agents panel reads from this state, so it must be re-fetched on
+  // member.status.updated / member.updated events for the panel to stay live.
+  const refreshAllMembers = useCallback(async () => {
+    try {
+      const data = await apiGet<{ members: Member[] }>(`/api/v1/members`, { members: [] }, sessionToken)
+      setAllMembers(data.members || [])
+    } catch {
+      // leave existing list in place on error
+    }
+  }, [sessionToken])
+
   useEffect(() => {
     const controller = new AbortController()
     let catchUpTimer: number | null = null
@@ -595,7 +619,17 @@ export function ChannelClient({
         if (event.type === "member.status.updated" || event.type === "member.updated") {
           void refreshChannelsAndDms()
           void refreshMembers()
+          void refreshAllMembers()
           return
+        }
+        // Unread tracking: a new message in a conversation we are NOT currently
+        // viewing increments its in-memory unread counter. The scope.id tells us
+        // which channel/DM the message belongs to.
+        if (event.type === "message.created") {
+          const eventChannelId = event.scope?.id
+          if (eventChannelId && eventChannelId !== channelId) {
+            setUnreadCounts((prev) => ({ ...prev, [eventChannelId]: (prev[eventChannelId] ?? 0) + 1 }))
+          }
         }
         if (!shouldHandleRealtimeEvent(event, { channelId, channelName })) {
           // Event belongs to another channel/DM or to a non-chat scope:
@@ -636,7 +670,7 @@ export function ChannelClient({
       controller.abort()
       if (catchUpTimer) window.clearTimeout(catchUpTimer)
     }
-  }, [activeThreadId, channelId, channelName, refreshChannelsAndDms, refreshMembers, refreshMessages, refreshThread, sessionToken])
+  }, [activeThreadId, channelId, channelName, refreshChannelsAndDms, refreshMembers, refreshAllMembers, refreshMessages, refreshThread, sessionToken])
 
   async function openThread(message: ChannelMessage) {
     const threadId = message.threadId || message.id
@@ -1012,27 +1046,34 @@ export function ChannelClient({
             <CreateChannelDialog />
           </div>
           <div className="space-y-1">
-            {[...channels].sort((a, b) => a.name.localeCompare(b.name)).map((ch) => (
-              <Link
-                key={ch.id}
-                href={`/chat/${channelPathSegment(ch.name.replace("#", ""))}`}
-                onDragOver={(event) => handleChannelAgentDragOver(event, ch.id)}
-                onDragLeave={(event) => handleChannelAgentDragLeave(event, ch.id)}
-                onDrop={(event) => void handleChannelAgentDrop(event, ch.id)}
-                title="Drop an agent here to add it to this channel"
-                className={`block truncate rounded-md border px-2 py-1.5 text-sm transition-colors ${
-                  ch.name.replace("#", "") === channelName ? "border-primary/20 bg-primary/10 font-medium text-primary" : "border-transparent hover:bg-sidebar-accent"
-                } ${
-                  agentDropChannelId === ch.id ? "border-primary/50 bg-primary/10 ring-1 ring-primary/25" : ""
-                }`}
-              >
-                <span className="inline-flex min-w-0 items-center gap-1">
-                  <Hash className="size-3" />
-                  <span className="truncate">{ch.name.replace("#", "")}</span>
-                  <span className="ml-auto text-[0.7rem] text-muted-foreground">ch</span>
-                </span>
-              </Link>
-            ))}
+            {[...channels].sort((a, b) => a.name.localeCompare(b.name)).map((ch) => {
+              const chUnread = unreadCounts[ch.id] ?? 0
+              return (
+                <Link
+                  key={ch.id}
+                  href={`/chat/${channelPathSegment(ch.name.replace("#", ""))}`}
+                  onDragOver={(event) => handleChannelAgentDragOver(event, ch.id)}
+                  onDragLeave={(event) => handleChannelAgentDragLeave(event, ch.id)}
+                  onDrop={(event) => void handleChannelAgentDrop(event, ch.id)}
+                  title="Drop an agent here to add it to this channel"
+                  className={`block truncate rounded-md border px-2 py-1.5 text-sm transition-colors ${
+                    ch.name.replace("#", "") === channelName ? "border-primary/20 bg-primary/10 font-medium text-primary" : "border-transparent hover:bg-sidebar-accent"
+                  } ${
+                    agentDropChannelId === ch.id ? "border-primary/50 bg-primary/10 ring-1 ring-primary/25" : ""
+                  }`}
+                >
+                  <span className="inline-flex min-w-0 items-center gap-1">
+                    <Hash className="size-3" />
+                    <span className="truncate">{ch.name.replace("#", "")}</span>
+                    {/* Low-density unread indicator: a subtle dot, no count. */}
+                    {chUnread > 0 && (
+                      <span className="ml-auto size-1.5 rounded-full bg-primary" aria-label={`${chUnread} unread`} />
+                    )}
+                    {chUnread === 0 && <span className="ml-auto text-[0.7rem] text-muted-foreground">ch</span>}
+                  </span>
+                </Link>
+              )
+            })}
           </div>
           {agentDropError && <p className="mt-2 text-xs text-destructive">{agentDropError}</p>}
           <div className="mb-2 mt-5 flex items-center justify-between">
@@ -1043,6 +1084,8 @@ export function ChannelClient({
             {dms.map((dm) => {
               const avatarMember = dmAvatarMember(dm)
               const isAgentDm = avatarMember.kind === "agent"
+              const dmUnread = unreadCounts[dm.id] ?? 0
+              const isActive = dm.name === channelName
               return (
                 <Link
                   key={dm.id}
@@ -1054,19 +1097,60 @@ export function ChannelClient({
                     event.dataTransfer.setData("text/plain", avatarMember.handle || avatarMember.displayName || avatarMember.name)
                   } : undefined}
                   title={isAgentDm ? "Drag agent to a channel or task" : undefined}
-                  className={`block truncate rounded-md px-2 py-1.5 text-sm ${
-                    dm.name === channelName ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
+                  style={isAgentDm && dmUnread > 0 ? { borderLeftColor: getAgentColor(avatarMember.id) } : undefined}
+                  className={`block truncate rounded-md border border-l-2 px-2 py-1.5 text-sm ${
+                    isActive ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
+                  } ${dmUnread > 0 && !isActive ? "font-semibold" : ""} ${
+                    isAgentDm && dmUnread > 0 ? "border-l-primary/40" : "border-l-transparent"
                   } ${isAgentDm ? "cursor-grab active:cursor-grabbing" : ""}`}
                 >
                   <span className="inline-flex min-w-0 items-center gap-2">
                     <MemberAvatar member={avatarMember} size="sm" />
                     <span className="truncate">{avatarMember.displayName || avatarMember.name}</span>
+                    {dmUnread > 0 && (
+                      <span
+                        className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+                        aria-label={`${dmUnread} unread`}
+                      >
+                        {dmUnread > 99 ? "99+" : dmUnread}
+                      </span>
+                    )}
                   </span>
                 </Link>
               )
             })}
           </div>
         </div>
+        {/* Active agents panel: shows agents whose status bucket is ACTIVE,
+            THINKING, or STARTING. Auto-hides when none are active. Stays
+            current via the existing member.status.updated SSE subscription. */}
+        {(() => {
+          const activeAgents = allMembers.filter((m) => {
+            if (m.kind !== "agent") return false
+            const bucket = getStatusBucket(m.status)
+            return bucket === "ACTIVE" || bucket === "THINKING" || bucket === "STARTING"
+          })
+          if (activeAgents.length === 0) return null
+          return (
+            <div className="border-t p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <h3 className="text-xs font-medium uppercase text-muted-foreground">运行中</h3>
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                  {activeAgents.length}
+                </span>
+              </div>
+              <div className="space-y-1">
+                {activeAgents.map((agent) => (
+                  <div key={agent.id} className="flex items-center gap-2 py-0.5 text-sm">
+                    <MemberAvatar member={agent} size="xs" showStatus />
+                    <span className="truncate">{agent.displayName || agent.name}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{getStatusLabel(agent.status)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
         <div className="mt-auto border-t p-3">
           <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Members Online</h3>
           {members.map((m) => (
@@ -1299,6 +1383,7 @@ export function ChannelClient({
                       <MessageFrame
                         member={senderMember}
                         senderType={msg.senderType}
+                        agentId={senderMember.kind === "agent" ? senderMember.id : undefined}
                         time={msg.time}
                         avatarSize="lg"
                         showStatus={senderMember.kind === "agent"}
@@ -1503,6 +1588,7 @@ export function ChannelClient({
                       <MessageFrame
                         member={memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers)}
                         senderType={activeRoot.senderType}
+                        agentId={activeRoot.senderType === "agent" ? memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers).id : undefined}
                         time={activeRoot.time}
                         timeVariant="compact"
                         avatarSize="sm"
@@ -1558,6 +1644,7 @@ export function ChannelClient({
                       <MessageFrame
                         member={memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)}
                         senderType={msg.senderType}
+                        agentId={msg.senderType === "agent" ? memberForMessageSender(msg.sender, msg.senderType, allKnownMembers).id : undefined}
                         time={msg.time}
                         timeVariant="compact"
                         avatarSize="sm"
