@@ -11,27 +11,29 @@ import {
   Settings,
   Sparkles,
 } from "lucide-react"
+import { getTranslations } from "next-intl/server"
 
 import type { AccountSession } from "@/lib/control-plane"
 import { cn } from "@/lib/utils"
+import { LanguageSwitcher } from "@/components/language-switcher"
 
 type NavKey = "search" | "chat" | "tasks" | "members" | "computers" | "activity" | "settings"
 
 const railItems: Array<{
   key: NavKey
   href: string
-  label: string
+  labelKey: string
   icon: typeof Search
 }> = [
-  { key: "search", href: "/?focus=search", label: "Search", icon: Search },
-  { key: "chat", href: "/chat", label: "Chat", icon: MessageSquare },
-  { key: "tasks", href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { key: "members", href: "/members", label: "Members", icon: Bot },
-  { key: "computers", href: "/computers", label: "Computers", icon: HardDrive },
-  { key: "activity", href: "/daemon", label: "Activity", icon: Bell },
+  { key: "search", href: "/?focus=search", labelKey: "search", icon: Search },
+  { key: "chat", href: "/chat", labelKey: "chat", icon: MessageSquare },
+  { key: "tasks", href: "/tasks", labelKey: "tasks", icon: CheckSquare },
+  { key: "members", href: "/members", labelKey: "members", icon: Bot },
+  { key: "computers", href: "/computers", labelKey: "computers", icon: HardDrive },
+  { key: "activity", href: "/daemon", labelKey: "activity", icon: Bell },
 ]
 
-export function ProductShell({
+export async function ProductShell({
   active,
   title,
   description,
@@ -54,6 +56,7 @@ export function ProductShell({
   actions?: ReactNode
   className?: string
 }) {
+  const t = await getTranslations("nav")
   return (
     <main className="flex h-screen bg-background text-foreground">
       {/* Col 0 — icon rail */}
@@ -68,7 +71,9 @@ export function ProductShell({
         >
           <Sparkles className="size-4" />
         </Link>
-        {railItems.map(({ key, href, label, icon: Icon }) => (
+        {railItems.map(({ key, href, labelKey, icon: Icon }) => {
+          const label = t(labelKey as never)
+          return (
           <Link
             key={key}
             href={href}
@@ -76,15 +81,16 @@ export function ProductShell({
             title={label}
             aria-current={active === key ? "page" : undefined}
             className={cn(
-              "flex size-9 items-center justify-center rounded-xl transition-colors",
+              "relative flex size-9 items-center justify-center rounded-xl transition-colors",
               active === key
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary/10 text-primary before:absolute before:left-0 before:top-1/2 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-gradient-to-b before:from-[oklch(0.60_0.18_260)] before:to-[oklch(0.55_0.20_290)]"
                 : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             )}
           >
             <Icon className="size-[18px]" />
           </Link>
-        ))}
+          )
+        })}
         <div className="mt-auto flex flex-col items-center gap-1">
           {session?.account && (
             <span
@@ -117,7 +123,10 @@ export function ProductShell({
               <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight">{title}</h1>
               {description && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>}
             </div>
-            {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
+            {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+            <div className="shrink-0">
+              <LanguageSwitcher />
+            </div>
           </div>
         </header>
 

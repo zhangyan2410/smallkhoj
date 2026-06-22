@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import {
   Activity,
   Bell,
@@ -217,6 +218,7 @@ export function ChannelClient({
 }) {
   const [channelName, setChannelName] = useState(initialChannel)
   const [messages, setMessages] = useState<ChannelMessage[]>(initialMessages)
+  const tChat = useTranslations("chat")
   const [members, setMembers] = useState<Member[]>(initialMembers)
   const [allMembers, setAllMembers] = useState<Member[]>(initialAllMembers)
   const [channels, setChannels] = useState<ChannelInfo[]>(initialChannels)
@@ -1030,7 +1032,7 @@ export function ChannelClient({
           </Link>
         </div>
         <div className="p-3">
-          <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Attention</h3>
+          <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">{tChat("attention")}</h3>
           <div className="space-y-1">
             <Link href="/daemon" className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
               <Activity className="size-3.5" />
@@ -1042,7 +1044,7 @@ export function ChannelClient({
             </Link>
           </div>
           <div className="mb-2 mt-5 flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase text-muted-foreground">Channels</h3>
+            <h3 className="text-xs font-medium uppercase text-muted-foreground">{tChat("channels")}</h3>
             <CreateChannelDialog />
           </div>
           <div className="space-y-1">
@@ -1077,7 +1079,7 @@ export function ChannelClient({
           </div>
           {agentDropError && <p className="mt-2 text-xs text-destructive">{agentDropError}</p>}
           <div className="mb-2 mt-5 flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase text-muted-foreground">DMs</h3>
+            <h3 className="text-xs font-medium uppercase text-muted-foreground">{tChat("dms")}</h3>
             <CreateAgentDialog />
           </div>
           <div className="space-y-1">
@@ -1134,7 +1136,7 @@ export function ChannelClient({
           return (
             <div className="border-t p-3">
               <div className="mb-2 flex items-center gap-2">
-                <h3 className="text-xs font-medium uppercase text-muted-foreground">运行中</h3>
+                <h3 className="text-xs font-medium uppercase text-muted-foreground">{tChat("running")}</h3>
                 <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
                   {activeAgents.length}
                 </span>
@@ -1152,7 +1154,7 @@ export function ChannelClient({
           )
         })()}
         <div className="mt-auto border-t p-3">
-          <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Members Online</h3>
+          <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">{tChat("membersOnline")}</h3>
           {members.map((m) => (
             <div key={m.id} className="flex items-center gap-2 py-1 text-sm">
               <MemberAvatar member={m} size="xs" />

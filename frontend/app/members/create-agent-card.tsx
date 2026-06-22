@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Bot } from "lucide-react"
 
 import { CreateAgentForm } from "@/components/create-agent-form"
@@ -28,6 +29,7 @@ export function CreateAgentCard({
   error?: string | null
 }) {
   const router = useRouter()
+  const t = useTranslations("members")
   const [warning, setWarning] = useState<string | null>(null)
   const unavailableProviders = unavailableProviderOptions(providerOptions)
 
@@ -50,9 +52,9 @@ export function CreateAgentCard({
           <Bot className="size-5" />
         </div>
         <CardTitle className="flex items-center gap-2 text-sm">
-          Create Agent
+          {t("createAgent")}
         </CardTitle>
-        <CardDescription className="text-[11px]">Bind a new agent to a computer runtime.</CardDescription>
+        <CardDescription className="text-[11px]">{t("createAgentDesc")}</CardDescription>
       </CardHeader>
       <CardContent className="w-full">
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}

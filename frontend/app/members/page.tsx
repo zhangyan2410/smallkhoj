@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import {
   Activity,
   Bell,
@@ -146,7 +147,9 @@ async function controlAgentLifecycleAction(formData: FormData) {
  * silently fail). Each action is gated by the agent's status bucket so only the
  * contextually valid control is offered.
  */
-function AgentControls({ member }: { member: Member }) {
+async function AgentControls({ member }: { member: Member }) {
+  const t = await getTranslations("members")
+  const tCommon = await getTranslations("common")
   const workspaceId = member.workspaceId
   const bucket = getStatusBucket(member.status)
   const canStart = bucket === "OFFLINE" || bucket === "ERROR"
@@ -155,7 +158,7 @@ function AgentControls({ member }: { member: Member }) {
 
   if (!workspaceId) {
     return (
-      <p className="text-[11px] text-muted-foreground">No workspace bound</p>
+      <p className="text-[11px] text-muted-foreground">{t("noWorkspace")}</p>
     )
   }
 
@@ -179,9 +182,9 @@ function AgentControls({ member }: { member: Member }) {
 
   return (
     <div className="mt-1 flex w-full items-stretch gap-1.5">
-      {control("start", "Start", Play, canStart, "border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950")}
-      {control("stop", "Stop", Square, canStop, "border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950")}
-      {control("restart", "Restart", RotateCcw, showRestart, "border-border text-muted-foreground hover:bg-accent")}
+      {control("start", tCommon("start"), Play, canStart, "border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950")}
+      {control("stop", tCommon("stop"), Square, canStop, "border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950")}
+      {control("restart", tCommon("restart"), RotateCcw, showRestart, "border-border text-muted-foreground hover:bg-accent")}
     </div>
   )
 }
@@ -813,6 +816,7 @@ export default async function MembersPage({
   const agentsList = members.filter((m) => m.kind === "agent")
   const boundAgents = agentsList.filter((m) => m.computerId).length
   const providerOptions = detectedProviderOptions(computers)
+  const t = await getTranslations("members")
 
   const selectedMember = selectedMemberId
     ? members.find((m) => m.id === selectedMemberId)
@@ -821,11 +825,11 @@ export default async function MembersPage({
   return (
     <ProductShell
       active="members"
-      title="Members"
-      description="Humans and agents with profile, runtime binding, permissions, skills, and activity hints."
+      title={t("title")}
+      description={t("description")}
       session={session}
-      sidebarTitle="Member Groups"
-      sidebarDescription="Select a member to view profile, permissions, and runtime detail."
+      sidebarTitle={t("memberGroups")}
+      sidebarDescription={t("selectMember")}
       sidebar={
         <div className="space-y-2">
           <div className="rounded-md border bg-background p-3">
@@ -876,7 +880,7 @@ export default async function MembersPage({
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <Bot className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Agents</h2>
+            <h2 className="text-sm font-semibold">{t("agents")}</h2>
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
               {agentsList.length}
             </span>
@@ -898,7 +902,7 @@ export default async function MembersPage({
           <section className="space-y-3">
             <div className="flex items-center gap-2">
               <UserRound className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Humans</h2>
+              <h2 className="text-sm font-semibold">{t("humans")}</h2>
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                 {humansList.length}
               </span>

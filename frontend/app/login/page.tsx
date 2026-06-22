@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { LogIn } from "lucide-react"
+import { getTranslations } from "next-intl/server"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,6 +32,7 @@ async function loginAction(formData: FormData) {
 export default async function LoginPage() {
   const session = await currentAccount()
   if (session) redirect("/")
+  const t = await getTranslations("login")
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -38,20 +40,20 @@ export default async function LoginPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <LogIn className="size-5" />
-            SmallKhoj
+            {t("brand")}
           </CardTitle>
-          <CardDescription>Register or sign in with a local handle.</CardDescription>
+          <CardDescription>{t("description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={loginAction} className="space-y-3">
             <div>
               <label htmlFor="login-name" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Name
+                {t("nameLabel")}
               </label>
-              <Input id="login-name" name="name" required placeholder="realtester" autoFocus />
+              <Input id="login-name" name="name" required placeholder={t("namePlaceholder")} autoFocus />
             </div>
             <Button type="submit" className="w-full">
-              Continue
+              {t("continue")}
             </Button>
           </form>
         </CardContent>

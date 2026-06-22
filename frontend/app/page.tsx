@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import {
   Activity,
   ArrowRight,
@@ -222,6 +223,8 @@ export default async function Home({
   const sessionToken = await getSessionToken()
   const resolvedSearchParams = (await searchParams) ?? {}
   const searchQuery = Array.isArray(resolvedSearchParams.q) ? resolvedSearchParams.q[0] : resolvedSearchParams.q
+  const t = await getTranslations("home")
+  const tCommon = await getTranslations("common")
 
   const [{ channels }, { members }, { tasks }, { computers }, { activity }, { saved }, { results: searchResults }] = await Promise.all([
     getChannels(),
@@ -252,8 +255,8 @@ export default async function Home({
   return (
     <ProductShell
       active="search"
-      title="SmallKhoj Workbench"
-      description="Search, chat, tasks, agents, and connected computers in one operational product surface."
+      title={t("brand")}
+      description={t("recentMessagesDesc")}
       session={session}
       sidebarTitle="Quick Start"
       sidebarDescription="Create a channel or start a DM without leaving the workbench."
@@ -319,11 +322,11 @@ export default async function Home({
             <Input
               aria-label="Global search"
               name="q"
-              placeholder="Search messages, files, tasks, members..."
+              placeholder={tCommon("searchPlaceholder")}
               defaultValue={searchQuery}
               className="border-0 bg-transparent shadow-none focus-visible:ring-0"
             />
-            <Button type="submit" size="sm" variant="ghost">Search</Button>
+            <Button type="submit" size="sm" variant="ghost">{tCommon("search")}</Button>
           </Toolbar>
         </form>
 
@@ -334,10 +337,10 @@ export default async function Home({
             {/* Brand header + greeting */}
             <div className="space-y-1">
               <h1 className="bg-gradient-brand bg-clip-text text-3xl font-bold text-transparent sm:text-4xl">
-                SmallKhoj
+                {t("brand")}
               </h1>
               <p className="text-muted-foreground">
-                你好，{session?.account?.displayName ?? session?.account?.name ?? "there"} 👋
+                {t("greeting", { name: session?.account?.displayName ?? session?.account?.name ?? "there" })}
               </p>
             </div>
 
@@ -349,19 +352,19 @@ export default async function Home({
                   <div>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <MessageSquare className="size-4 text-primary" />
-                      Recent Messages
+                      {t("recentMessages")}
                     </CardTitle>
-                    <CardDescription>Latest activity across your channels and DMs.</CardDescription>
+                    <CardDescription>{t("recentMessagesDesc")}</CardDescription>
                   </div>
                   <Link href="/chat">
                     <Button variant="ghost" size="sm">
-                      Open chat <ArrowRight className="size-3" />
+                      {tCommon("open")} <ArrowRight className="size-3" />
                     </Button>
                   </Link>
                 </CardHeader>
                 <CardContent className="space-y-1">
                   {recentMessages.length === 0 ? (
-                    <EmptyState title="No recent messages" description="Messages will appear here as conversations happen." />
+                    <EmptyState title={t("noRecentMessages")} description={t("noRecentMessagesDesc")} />
                   ) : (
                     recentMessages.map((item) => {
                       const channelName = (item.details?.channelName as string) || (item.details?.channel as string) || item.description?.split(/\s+/).find((w) => w.startsWith("#")) || null
@@ -393,7 +396,7 @@ export default async function Home({
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Bot className="size-4 text-primary" />
-                    Active Agents
+                    {t("activeAgents")}
                   </CardTitle>
                   <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
                     {activeAgents.length}
@@ -401,7 +404,7 @@ export default async function Home({
                 </CardHeader>
                 <CardContent className="space-y-1">
                   {activeAgents.length === 0 ? (
-                    <EmptyState title="No active agents" description="Agents will show here when they start running." />
+                    <EmptyState title={t("noActiveAgents")} description={t("noActiveAgentsDesc")} />
                   ) : (
                     activeAgents.map((agent) => (
                       <Link
@@ -424,13 +427,13 @@ export default async function Home({
                   <div>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <CheckSquare className="size-4 text-primary" />
-                      Pending Tasks
+                      {t("pendingTasks")}
                     </CardTitle>
-                    <CardDescription>Open and in-progress work items.</CardDescription>
+                    <CardDescription>{t("pendingTasksDesc")}</CardDescription>
                   </div>
                   <Link href="/tasks">
                     <Button variant="ghost" size="sm">
-                      All tasks <ArrowRight className="size-3" />
+                      {tCommon("allTasks")} <ArrowRight className="size-3" />
                     </Button>
                   </Link>
                 </CardHeader>
@@ -438,15 +441,15 @@ export default async function Home({
                   <div className="mb-3 flex gap-2">
                     <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
                       <span className="size-1.5 rounded-full bg-amber-500" />
-                      {openTasks.length} open
+                      {t("openCount", { count: openTasks.length })}
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/15 px-2 py-1 text-xs font-medium text-sky-700 dark:text-sky-400">
                       <span className="size-1.5 rounded-full bg-sky-500" />
-                      {inProgressTasks.length} in progress
+                      {t("inProgressCount", { count: inProgressTasks.length })}
                     </span>
                   </div>
                   {pendingTasks.length === 0 ? (
-                    <EmptyState title="No pending tasks" description="Tasks will appear here when created or assigned." />
+                    <EmptyState title={t("noPendingTasks")} description={t("noPendingTasksDesc")} />
                   ) : (
                     <div className="space-y-1">
                       {pendingTasks.slice(0, 6).map((task) => (
@@ -470,28 +473,28 @@ export default async function Home({
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Activity className="size-4 text-primary" />
-                    Workspace
+                    {t("workspace")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Channels</span>
+                    <span className="text-muted-foreground">{t("channels")}</span>
                     <span className="font-semibold">{channels.length}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Agents</span>
+                    <span className="text-muted-foreground">{t("agents")}</span>
                     <span className="font-semibold">{agents.length}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Computers online</span>
+                    <span className="text-muted-foreground">{t("computersOnline")}</span>
                     <span className="font-semibold">{onlineComputers.length}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Saved items</span>
+                    <span className="text-muted-foreground">{t("savedItems")}</span>
                     <span className="font-semibold">{saved.length}</span>
                   </div>
                   <Link href="/computers" className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                    <Bookmark className="size-3" /> Manage computers <ArrowRight className="size-3" />
+                    <Bookmark className="size-3" /> {tCommon("manageComputers")} <ArrowRight className="size-3" />
                   </Link>
                 </CardContent>
               </Card>
