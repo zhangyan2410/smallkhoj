@@ -155,6 +155,19 @@ export async function apiDelete<T>(path: string, sessionToken?: string | null): 
   return response.json()
 }
 
+export async function apiPatch<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "PATCH",
+    headers: apiHeaders(sessionToken, true),
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error((error as { detail?: string }).detail || `HTTP ${response.status}`)
+  }
+  return response.json()
+}
+
 export function formatTime(value?: string | null) {
   if (!value) return "never"
   const date = new Date(value)

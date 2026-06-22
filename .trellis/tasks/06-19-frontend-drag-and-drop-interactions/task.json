@@ -3,7 +3,7 @@
   "name": "frontend-drag-and-drop-interactions",
   "title": "frontend drag and drop interactions",
   "description": "Add practical drag-and-drop interactions for task status movement, chat file upload, and message-to-task creation.",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "张岩.ean",
   "assignee": "张岩.ean",
   "createdAt": "2026-06-19",
-  "completedAt": null,
+  "completedAt": "2026-06-21",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -27,7 +27,7 @@
     "frontend/lib/control-plane.ts",
     "backend/routers/public_api.py"
   ],
-  "notes": "Use @dnd-kit for app-internal drags. Use native drag/drop for OS file uploads. Do not run npm audit fix in this task unless explicitly requested.",
+  "notes": "Implemented @dnd-kit task status drag/drop for chat Tasks and /tasks, native chat file drop, and message-to-task drag handles. Task PATCH requires X-Account-Token; browser surfaces verified with ./twd and screenshot evidence at evidence/chat-dnd-verification.png. Do not run npm audit fix in this task unless explicitly requested.",
   "meta": {
     "preferredDndLibrary": "@dnd-kit",
     "nativeFileDrop": true

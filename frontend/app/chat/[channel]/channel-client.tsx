@@ -54,6 +54,7 @@ import {
   type HighWater,
   type PublicEventEnvelope,
 } from "@/lib/realtime-events"
+import { AGENT_DRAG_MIME, serializeAgentDragPayload } from "@/lib/drag-data"
 import { CreateChannelDialog } from "./create-channel-dialog"
 import { CreateAgentDialog } from "./create-agent-dialog"
 import { memberForMessageSender } from "@/lib/member-avatar"
@@ -129,6 +130,14 @@ const conversationTabs = [
   { label: "Files", icon: Files },
   { label: "Activity", icon: Activity },
 ]
+const CHAT_SIDEBAR_WIDTH_KEY = "smallkhoj.chat.sidebarWidth"
+const CHAT_SIDEBAR_MIN_WIDTH = 220
+const CHAT_SIDEBAR_MAX_WIDTH = 420
+const CHAT_SIDEBAR_DEFAULT_WIDTH = 260
+const THREAD_PANEL_WIDTH_KEY = "smallkhoj.chat.threadWidth"
+const THREAD_PANEL_MIN_WIDTH = 320
+const THREAD_PANEL_MAX_WIDTH = 560
+const THREAD_PANEL_DEFAULT_WIDTH = 384
 
 function channelPathSegment(value: string) {
   return encodeURIComponent(value)
@@ -156,6 +165,18 @@ function createLatencyTraceId(prefix = "chat") {
       ? crypto.randomUUID().slice(0, 12)
       : Math.random().toString(36).slice(2, 14)
   return `${prefix}:${Date.now().toString(36)}:${random}`
+}
+
+function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
+  return Math.min(maxWidth, Math.max(minWidth, width))
+}
+
+function readStoredPanelWidth(key: string, defaultWidth: number, minWidth: number, maxWidth: number) {
+  if (typeof window === "undefined") return defaultWidth
+  const stored = window.localStorage.getItem(key)
+  const parsed = stored ? Number(stored) : defaultWidth
+  if (!Number.isFinite(parsed)) return defaultWidth
+  return clampPanelWidth(parsed, minWidth, maxWidth)
 }
 
 export function ChannelClient({
@@ -204,6 +225,14 @@ export function ChannelClient({
   const [files, setFiles] = useState<FileItem[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    readStoredPanelWidth(CHAT_SIDEBAR_WIDTH_KEY, CHAT_SIDEBAR_DEFAULT_WIDTH, CHAT_SIDEBAR_MIN_WIDTH, CHAT_SIDEBAR_MAX_WIDTH)
+  )
+  const [threadWidth, setThreadWidth] = useState(() =>
+    readStoredPanelWidth(THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_DEFAULT_WIDTH, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH)
+  )
+  const dragDepthRef = useRef(0)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
@@ -216,6 +245,86 @@ export function ChannelClient({
   const allKnownMembers = [...members, ...allMembers]
   const didReact = (message: ChannelMessage, emoji: string) =>
     Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
+
+  function setPersistentPanelWidth(
+    width: number,
+    setWidth: (width: number) => void,
+    key: string,
+    minWidth: number,
+    maxWidth: number,
+  ) {
+    const next = clampPanelWidth(width, minWidth, maxWidth)
+    setWidth(next)
+    window.localStorage.setItem(key, String(next))
+  }
+
+  function startPanelResize(
+    event: React.PointerEvent<HTMLDivElement>,
+    startWidth: number,
+    applyWidth: (width: number) => void,
+    direction: "left-edge" | "right-edge",
+  ) {
+    event.preventDefault()
+    const startX = event.clientX
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = direction === "right-edge" ? moveEvent.clientX - startX : startX - moveEvent.clientX
+      applyWidth(startWidth + delta)
+    }
+    const handlePointerUp = () => {
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+      window.removeEventListener("pointermove", handlePointerMove)
+      window.removeEventListener("pointerup", handlePointerUp)
+    }
+
+    window.addEventListener("pointermove", handlePointerMove)
+    window.addEventListener("pointerup", handlePointerUp, { once: true })
+  }
+
+  function handleSidebarResizePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    startPanelResize(
+      event,
+      sidebarWidth,
+      (width) => setPersistentPanelWidth(width, setSidebarWidth, CHAT_SIDEBAR_WIDTH_KEY, CHAT_SIDEBAR_MIN_WIDTH, CHAT_SIDEBAR_MAX_WIDTH),
+      "right-edge",
+    )
+  }
+
+  function handleThreadResizePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    startPanelResize(
+      event,
+      threadWidth,
+      (width) => setPersistentPanelWidth(width, setThreadWidth, THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),
+      "left-edge",
+    )
+  }
+
+  function handleSidebarResizeKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+    event.preventDefault()
+    setPersistentPanelWidth(
+      sidebarWidth + (event.key === "ArrowRight" ? 16 : -16),
+      setSidebarWidth,
+      CHAT_SIDEBAR_WIDTH_KEY,
+      CHAT_SIDEBAR_MIN_WIDTH,
+      CHAT_SIDEBAR_MAX_WIDTH,
+    )
+  }
+
+  function handleThreadResizeKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+    event.preventDefault()
+    setPersistentPanelWidth(
+      threadWidth + (event.key === "ArrowLeft" ? 16 : -16),
+      setThreadWidth,
+      THREAD_PANEL_WIDTH_KEY,
+      THREAD_PANEL_MIN_WIDTH,
+      THREAD_PANEL_MAX_WIDTH,
+    )
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -337,6 +446,47 @@ export function ChannelClient({
     } finally {
       setUploading(false)
     }
+  }
+
+  // Native file drop handlers
+  function handleDragEnter(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragDepthRef.current += 1
+    if (dragDepthRef.current === 1) setIsDragOver(true)
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = channelId ? "copy" : "none"
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) setIsDragOver(false)
+  }
+
+  async function handleDrop(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragDepthRef.current = 0
+    setIsDragOver(false)
+    const droppedFiles = Array.from(e.dataTransfer.files)
+    if (droppedFiles.length === 0) return
+    if (!channelId) {
+      alert("No channel selected. Cannot upload file.")
+      return
+    }
+    // Upload the first file in MVP
+    const file = droppedFiles[0]
+    await handleFileUpload(file)
   }
 
   function openFilePicker(accept?: string) {
@@ -565,6 +715,7 @@ export function ChannelClient({
       if (taskId) {
         setTaskLinks((previous) => ({ ...previous, [message.id]: taskId }))
       }
+      setActiveTab("tasks")
     } catch (e) {
       console.error("Create task from message failed:", e)
     }
@@ -767,7 +918,10 @@ export function ChannelClient({
         </Link>
       </nav>
 
-      <aside className="w-60 shrink-0 border-r bg-sidebar flex flex-col">
+      <aside
+        className="relative hidden shrink-0 border-r bg-sidebar sm:flex sm:flex-col"
+        style={{ width: sidebarWidth }}
+      >
         <div className="border-b p-3">
           <Link href="/" className="block rounded-md px-2 py-1.5 text-sm font-semibold hover:bg-sidebar-accent">
             SmallKhoj
@@ -814,13 +968,21 @@ export function ChannelClient({
           <div className="space-y-1">
             {[...dms].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((dm) => {
               const avatarMember = dmAvatarMember(dm)
+              const isAgentDm = avatarMember.kind === "agent"
               return (
                 <Link
                   key={dm.id}
                   href={`/chat/${channelPathSegment(dm.name)}`}
+                  draggable={isAgentDm}
+                  onDragStart={isAgentDm ? (event) => {
+                    event.dataTransfer.effectAllowed = "copy"
+                    event.dataTransfer.setData(AGENT_DRAG_MIME, serializeAgentDragPayload(avatarMember))
+                    event.dataTransfer.setData("text/plain", avatarMember.handle || avatarMember.displayName || avatarMember.name)
+                  } : undefined}
+                  title={isAgentDm ? "Drag agent to a task to assign" : undefined}
                   className={`block truncate rounded-md px-2 py-1.5 text-sm ${
                     dm.name === channelName ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
-                  }`}
+                  } ${isAgentDm ? "cursor-grab active:cursor-grabbing" : ""}`}
                 >
                   <span className="inline-flex min-w-0 items-center gap-2">
                     <MemberAvatar member={avatarMember} size="sm" />
@@ -841,6 +1003,19 @@ export function ChannelClient({
             </div>
           ))}
         </div>
+        <div
+          role="separator"
+          aria-label="Resize chat sidebar"
+          aria-orientation="vertical"
+          aria-valuemin={CHAT_SIDEBAR_MIN_WIDTH}
+          aria-valuemax={CHAT_SIDEBAR_MAX_WIDTH}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          data-testid="chat-sidebar-resize-handle"
+          onPointerDown={handleSidebarResizePointerDown}
+          onKeyDown={handleSidebarResizeKeyDown}
+          className="absolute inset-y-0 -right-1 z-20 w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border hover:after:w-0.5 hover:after:bg-primary/60 focus-visible:after:w-0.5 focus-visible:after:bg-primary"
+        />
       </aside>
 
       <div className="flex flex-1 flex-col">
@@ -910,7 +1085,24 @@ export function ChannelClient({
         </header>
 
         <div className="flex flex-1 overflow-hidden">
-          <div className="flex flex-1 flex-col">
+          <div
+            className="flex flex-1 flex-col relative"
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {isDragOver && (
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-primary/10 backdrop-blur-sm border-2 border-dashed border-primary/40 m-2 rounded-lg">
+                <div className="rounded-lg bg-background p-6 shadow-lg border text-center">
+                  <Files className="mx-auto size-10 text-primary mb-3" />
+                  <p className="text-sm font-medium">Drop file to upload</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {channelId ? "Release to upload to this channel" : "No channel available"}
+                  </p>
+                </div>
+              </div>
+            )}
             {activeTab === "activity" ? (
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="mx-auto max-w-3xl">
@@ -932,6 +1124,7 @@ export function ChannelClient({
                     channelName={currentChannel?.name ?? currentDm?.name ?? channelName}
                     initialView="board"
                     showDetail
+                    sessionToken={sessionToken}
                   />
               </div>
             ) : activeTab === "files" ? (
@@ -1181,7 +1374,24 @@ export function ChannelClient({
           </div>
 
           {activeThreadId && (
-            <aside aria-label="Thread" className="w-96 shrink-0 border-l bg-background p-4">
+            <aside
+              aria-label="Thread"
+              className="relative shrink-0 border-l bg-background p-4"
+              style={{ width: threadWidth }}
+            >
+              <div
+                role="separator"
+                aria-label="Resize thread panel"
+                aria-orientation="vertical"
+                aria-valuemin={THREAD_PANEL_MIN_WIDTH}
+                aria-valuemax={THREAD_PANEL_MAX_WIDTH}
+                aria-valuenow={threadWidth}
+                tabIndex={0}
+                data-testid="thread-panel-resize-handle"
+                onPointerDown={handleThreadResizePointerDown}
+                onKeyDown={handleThreadResizeKeyDown}
+                className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border hover:after:w-0.5 hover:after:bg-primary/60 focus-visible:after:w-0.5 focus-visible:after:bg-primary"
+              />
               <div className="flex h-full flex-col">
                 <div className="mb-3 space-y-2">
                   <div className="flex items-center justify-between gap-3">
@@ -1219,6 +1429,7 @@ export function ChannelClient({
                         member={memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers)}
                         senderType={activeRoot.senderType}
                         time={activeRoot.time}
+                        timeVariant="compact"
                         avatarSize="sm"
                         showStatus={activeRoot.senderType === "agent"}
                         actions={
@@ -1273,6 +1484,7 @@ export function ChannelClient({
                         member={memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)}
                         senderType={msg.senderType}
                         time={msg.time}
+                        timeVariant="compact"
                         avatarSize="sm"
                         showStatus={msg.senderType === "agent"}
                         actions={

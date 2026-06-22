@@ -2,7 +2,6 @@ import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import {
   Camera,
-  CheckSquare,
   Columns3,
   Database,
   ExternalLink,
@@ -22,7 +21,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { apiGet, badgeClass, formatTime, statusLabel, type Member } from "@/lib/control-plane"
-import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { requireCurrentAccount, serverApiHeaders, getSessionToken } from "@/lib/server-auth"
+
+import { TaskDndBoard } from "@/components/task-dnd-board"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
@@ -276,14 +277,6 @@ function filteredTasks(tasks: Task[], filters: { channel: string; creator: strin
   })
 }
 
-function taskHref(task: Task, filters: Record<string, string>) {
-  const params = new URLSearchParams({ ...filters, task: task.id })
-  for (const [key, value] of [...params.entries()]) {
-    if (!value) params.delete(key)
-  }
-  return `/tasks?${params.toString()}`
-}
-
 function sourceHref(source: TaskSource) {
   if (!source.channel) return null
   const params = new URLSearchParams()
@@ -292,39 +285,6 @@ function sourceHref(source: TaskSource) {
   const query = params.toString()
   const path = `/chat/${encodeURIComponent(source.channel.replace(/^#/, ""))}`
   return query ? `${path}?${query}` : path
-}
-
-function TaskCard({ task, filters }: { task: Task; filters: Record<string, string> }) {
-  const source = task.data?.source
-  return (
-    <Link href={taskHref(task, filters)} className="block">
-      <Card size="sm" className="transition-colors hover:border-primary/40">
-        <CardContent className="space-y-2">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-mono text-xs text-muted-foreground">
-                {task.channel} #{task.number}
-              </div>
-              <div className="mt-1 line-clamp-2 text-sm font-medium">{task.title}</div>
-            </div>
-            <StatusBadge status={task.status} />
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            {task.creator && <span>by @{task.creator}</span>}
-            {task.assignee && <span>assigned @{task.assignee}</span>}
-            <span>{formatTime(task.updatedAt || task.createdAt)}</span>
-          </div>
-          {source && (
-            <div className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
-              <ExternalLink className="size-3" />
-              {source.channel || source.type || "source"}
-              {source.messageShortId || source.messageId ? ` · ${source.messageShortId || source.messageId?.slice(0, 8)}` : ""}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </Link>
-  )
 }
 
 function dotClass(status: string) {
@@ -576,6 +536,7 @@ function TaskDetail({ task, activity = [] }: { task?: Task; activity?: ActivityI
 
 export default async function TasksPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await requireCurrentAccount()
+  const sessionToken = await getSessionToken()
   const params = await searchParams
   const view = firstParam(params.view, "board") === "list" ? "list" : "board"
   const filters = {
@@ -786,49 +747,12 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
           </div>
         </form>
 
-        {view === "board" ? (
-          <div className="grid gap-3 xl:grid-cols-5">
-            {TASK_STATUSES.map((status) => {
-              const columnTasks = visibleTasks.filter((task) => task.status === status)
-              return (
-                <section key={status} className="min-w-0 rounded-md border bg-muted/20 p-2">
-                  <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                    <span className="text-sm font-medium">{statusLabel(status)}</span>
-                    <span className="text-xs text-muted-foreground">{columnTasks.length}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {columnTasks.map((task) => <TaskCard key={task.id} task={task} filters={filterRecord} />)}
-                    {columnTasks.length === 0 && <div className="rounded-md border border-dashed py-6 text-center text-xs text-muted-foreground">Empty</div>}
-                  </div>
-                </section>
-              )
-            })}
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-md border bg-card">
-            {visibleTasks.map((task) => (
-              <Link
-                key={task.id}
-                href={taskHref(task, filterRecord)}
-                className="grid gap-2 border-b px-3 py-3 text-sm last:border-b-0 hover:bg-muted/40 md:grid-cols-[auto_1fr_auto_auto] md:items-center"
-              >
-                <div className="font-mono text-xs text-muted-foreground">{task.channel} #{task.number}</div>
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{task.title}</div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    {task.creator && <span>by @{task.creator}</span>}
-                    {task.assignee && <span>assigned @{task.assignee}</span>}
-                    {task.data?.source && <span>source message</span>}
-                    <span>updated {formatTime(task.updatedAt || task.createdAt)}</span>
-                  </div>
-                </div>
-                <StatusBadge status={task.status} />
-                <CheckSquare className="size-4 text-muted-foreground" />
-              </Link>
-            ))}
-            {visibleTasks.length === 0 && <EmptyState title="No tasks match filters" description="Clear filters or create a new task." />}
-          </div>
-        )}
+        <TaskDndBoard
+          tasks={visibleTasks}
+          filters={filterRecord}
+          view={view}
+          sessionToken={sessionToken}
+        />
       </div>
     </ProductShell>
   )

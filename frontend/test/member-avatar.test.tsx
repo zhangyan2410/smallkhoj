@@ -133,3 +133,15 @@ test("MessageFrame hides status dots for human chat authors", () => {
   assert.match(markup, /data-slot="member-avatar"/)
   assert.doesNotMatch(markup, /data-status=/)
 })
+
+test("MessageFrame compact time keeps narrow thread headers readable", () => {
+  const markup = renderToStaticMarkup(
+    <MessageFrame member={human} senderType="member" time="2026-06-21 12:00:00" timeVariant="compact" avatarSize="sm">
+      <p>hello</p>
+    </MessageFrame>
+  )
+
+  assert.match(markup, /06\/21 12:00/)
+  assert.match(markup, /title="2026-06-21 12:00:00"/)
+  assert.match(markup, /whitespace-nowrap/)
+})

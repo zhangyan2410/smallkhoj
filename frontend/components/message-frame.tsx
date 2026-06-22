@@ -15,10 +15,22 @@ type MessageFrameProps = {
   children: ReactNode
   className?: string
   bodyClassName?: string
+  timeVariant?: "default" | "compact"
 }
 
 function roleLabel(senderType?: string | null) {
   return senderType === "agent" || senderType === "assistant" ? "assistant" : "member"
+}
+
+function compactTimeLabel(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
 }
 
 export function MessageFrame({
@@ -32,8 +44,10 @@ export function MessageFrame({
   children,
   className,
   bodyClassName,
+  timeVariant = "default",
 }: MessageFrameProps) {
   const role = roleLabel(senderType)
+  const visibleTime = time && timeVariant === "compact" ? compactTimeLabel(time) : time
 
   return (
     <div data-slot="message-frame" className={cn("flex min-w-0 items-start gap-3", className)}>
@@ -50,7 +64,11 @@ export function MessageFrame({
             >
               {role}
             </span>
-            {time ? <span className="text-xs text-muted-foreground">{time}</span> : null}
+            {visibleTime ? (
+              <span className="whitespace-nowrap text-xs text-muted-foreground" title={time ?? undefined}>
+                {visibleTime}
+              </span>
+            ) : null}
             {badges}
           </div>
           {actions ? <div className="shrink-0">{actions}</div> : null}
