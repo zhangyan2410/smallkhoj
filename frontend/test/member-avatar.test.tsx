@@ -7,7 +7,11 @@ import { MemberAvatar } from "../components/member-avatar"
 import { MessageFrame } from "../components/message-frame"
 import {
   AGENT_AVATAR_OPTIONS,
+  AGENT_AVATAR_PRESETS,
   AGENT_AVATAR_STYLE,
+  SMALLKHOJ_ENERGETIC_EYES_VARIANT,
+  SMALLKHOJ_ENERGETIC_EYES_PATH,
+  agentAvatarPresetForMember,
   avatarSeedForMember,
   avatarSourceForMember,
   memberAvatarName,
@@ -54,6 +58,54 @@ test("agent avatars use configured croodles-neutral customization", () => {
   assert.equal(AGENT_AVATAR_STYLE, "croodles-neutral")
   assert.equal(AGENT_AVATAR_OPTIONS.borderRadius, 12)
   assert.ok(AGENT_AVATAR_OPTIONS.backgroundColor.some((color) => svg.includes(color)))
+})
+
+test("agent avatar preset customizes generated croodles-neutral output", () => {
+  const friendlyAgent = {
+    ...agent,
+    config: { avatarPreset: "friendly" },
+  } satisfies AvatarMember
+  const focusedAgent = {
+    ...agent,
+    config: { avatarPreset: "focused" },
+  } satisfies AvatarMember
+  const friendlySvg = decodeURIComponent((avatarSourceForMember(friendlyAgent) ?? "").split(",")[1] ?? "")
+  const focusedSvg = decodeURIComponent((avatarSourceForMember(focusedAgent) ?? "").split(",")[1] ?? "")
+
+  assert.equal(agentAvatarPresetForMember(friendlyAgent).name, "friendly")
+  assert.equal(agentAvatarPresetForMember(focusedAgent).name, "focused")
+  assert.notEqual(friendlySvg, focusedSvg)
+  assert.ok(AGENT_AVATAR_PRESETS.friendly.backgroundColor.some((color) => friendlySvg.includes(color)))
+})
+
+test("unknown agent avatar preset falls back to default", () => {
+  const unknownPresetAgent = {
+    ...agent,
+    config: { avatarPreset: "not-a-preset" },
+  } satisfies AvatarMember
+
+  assert.equal(agentAvatarPresetForMember(unknownPresetAgent).name, "default")
+})
+
+test("system generated agent image URL overrides generated fallback", () => {
+  const imageAgent = {
+    ...agent,
+    config: { avatarImageUrl: "/avatars/agents/generated-energetic-reference.png" },
+  } satisfies AvatarMember
+
+  assert.equal(avatarSourceForMember(imageAgent), "/avatars/agents/generated-energetic-reference.png")
+})
+
+test("energetic preset uses the SmallKhoj custom smiling eyes variant", () => {
+  const energeticAgent = {
+    ...agent,
+    config: { avatarPreset: "energetic" },
+  } satisfies AvatarMember
+  const svg = decodeURIComponent((avatarSourceForMember(energeticAgent) ?? "").split(",")[1] ?? "")
+
+  assert.equal(agentAvatarPresetForMember(energeticAgent).name, "energetic")
+  assert.deepEqual(AGENT_AVATAR_PRESETS.energetic.eyesVariant, [SMALLKHOJ_ENERGETIC_EYES_VARIANT])
+  assert.ok(svg.includes(SMALLKHOJ_ENERGETIC_EYES_PATH))
 })
 
 test("human avatar URL is preferred over generated fallback", () => {

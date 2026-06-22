@@ -8,6 +8,7 @@
     "e2e": "cross-env NODE_PATH=./node_modules playwright test",
     "start": "next start",
     "lint": "eslint",
+    "avatar:preview": "tsx scripts/avatar-preset-preview.ts",
     "server": "tsx server.ts",
     "server:dev": "cross-env PORT=3000 NODE_ENV=development tsx server.ts"
   },

@@ -98,3 +98,26 @@ Message frame alignment follow-up:
 ## Notes
 
 The browser had two local SmallKhoj tabs connected through WebDriver, so broad `--url-match 127.0.0.1:3000` was ambiguous. Verification used precise URL fragments such as `dm%3A1b5c6c75-cd6e` and `member=767edc79`, following the project WebDriver policy for ambiguous tabs.
+
+## Post-MVP Avatar Generation Exploration
+
+Follow-up record:
+
+- `avatar-generation-exploration.md`
+
+Additional evidence:
+
+- `evidence/REAL_agent_avatar_presets_20260622.png`
+- `evidence/REAL_agent_avatar_energetic_eyes_20260622.png`
+- `evidence/REAL_agent_avatar_energetic_section_20260622.png`
+- `evidence/REAL_smallkhoj_avatar_components_20260622.png`
+- `evidence/REAL_smallkhoj_avatar_components_final_20260622.png`
+- `evidence/REAL_agent_avatar_image_asset_preview_20260622.png`
+- `evidence/REAL_mini_agent_image_avatar_20260622.png`
+
+Exploration conclusion:
+
+- Keep deterministic generated avatars as fallback.
+- Preserve only the simple hand-written `energetic` SVG expression for now.
+- Use pre-generated image assets for high-quality agent avatars.
+- A local real-data test assigned `/avatars/agents/generated-energetic-reference.png` to the `@mini` agent through `config.avatarImageUrl` and verified it on the members page.

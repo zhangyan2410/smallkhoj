@@ -78,6 +78,19 @@ Color options:
    - runtime keeper: emerald/slate
 4. If Croodles Neutral cannot reach the desired anime style, use AI-generated references to design a SmallKhoj-owned avatar pack, but keep runtime display as static cached assets.
 
+## Post-MVP Exploration
+
+See `avatar-generation-exploration.md` for the 2026-06-22 follow-up experiment.
+
+Summary:
+
+- DiceBear `croodles-neutral` presets are technically useful but not enough for the desired SmallKhoj agent identity.
+- A local Croodles extension can add simple SVG variants, but complex AI-generated anime-style eyes are not worth hand-tracing.
+- The best direction is a two-tier system:
+  - deterministic local SVG/DiceBear fallback for default small avatars;
+  - pre-generated image assets for polished agent identity.
+- The prototype supports `member.config.avatarImageUrl` for agents and verified it on the local `@mini` member.
+
 ## Boundary
 
 Do not expose DiceBear variant controls to users in this task. Agent avatars are system-generated. Human avatars can use URL/upload-backed images.
