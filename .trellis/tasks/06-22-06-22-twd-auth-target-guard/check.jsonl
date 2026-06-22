@@ -1,0 +1,2 @@
+{"file": ".agents/skills/project-webdriver-cli/SKILL.md", "reason": "Check the final helper commands still rely on project `./twd` and verify actual tab URLs."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Check real browser verification evidence and local dev origin behavior."}

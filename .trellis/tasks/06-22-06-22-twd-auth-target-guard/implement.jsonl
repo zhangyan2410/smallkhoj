@@ -1,0 +1,3 @@
+{"file": ".agents/skills/project-webdriver-cli/SKILL.md", "reason": "Defines the required WebDriver CLI wrapper usage and evidence rules for browser verification."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Defines local frontend browser verification constraints and real-browser evidence expectations."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Applies because the task creates reusable helper commands and shared target-selection logic."}

@@ -27,6 +27,16 @@ Check whether a browser tab is connected:
 ./twd --compact tabs
 ```
 
+For authenticated SmallKhoj frontend pages, prefer the guarded helpers first:
+
+```bash
+./tools/twd-guard/twd-open /tasks
+./tools/twd-guard/twd-eval /tasks "return { path: location.pathname }"
+./tools/twd-guard/twd-auth zy-ean
+```
+
+These helpers log in through the local API, inject the `smallkhoj_session` cookie, use a narrow target match such as `127.0.0.1:3000/tasks`, and fail if the final browser path is not the requested path. Use raw `./twd` commands when testing WebDriver behavior itself or when the page is intentionally unauthenticated.
+
 If no tab is connected, the usual setup is a long-running master process:
 
 ```bash

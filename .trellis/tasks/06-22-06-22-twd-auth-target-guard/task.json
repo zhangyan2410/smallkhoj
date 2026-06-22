@@ -1,0 +1,33 @@
+{
+  "id": "06-22-twd-auth-target-guard",
+  "name": "06-22-twd-auth-target-guard",
+  "title": "TWD auth and target tab guard",
+  "description": "",
+  "status": "done",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-22",
+  "completedAt": "2026-06-22",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "tools/twd-guard/twd-auth-guard.mjs",
+    "tools/twd-guard/twd-auth-guard.test.mjs",
+    "tools/twd-guard/twd-auth",
+    "tools/twd-guard/twd-open",
+    "tools/twd-guard/twd-eval",
+    ".agents/skills/project-webdriver-cli/SKILL.md"
+  ],
+  "notes": "Added guarded TWD auth/open/eval helpers for authenticated frontend verification.",
+  "meta": {}
+}
