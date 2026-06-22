@@ -3,8 +3,9 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import {
   Activity,
-  Bell,
+  ArrowRight,
   Bookmark,
+  Bot,
   CheckSquare,
   FileText,
   Hash,
@@ -12,16 +13,17 @@ import {
   Plus,
   Search,
   User,
-  Eye,
-  AtSign,
 } from "lucide-react"
 
+import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
+import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, Toolbar } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { apiGet, formatTime, type Computer, type Member } from "@/lib/control-plane"
+import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
@@ -144,22 +146,6 @@ async function createDmAction(formData: FormData) {
   }
 }
 
-function activityIcon(type: string) {
-  if (type.includes("message")) return MessageSquare
-  if (type.includes("task")) return CheckSquare
-  if (type.includes("workspace") || type.includes("heartbeat")) return Activity
-  if (type.includes("member")) return User
-  if (type.includes("file")) return FileText
-  return Bell
-}
-
-function activityColor(type: string) {
-  if (type.includes("message_sent")) return "text-primary"
-  if (type.includes("task_claimed") || type.includes("task_updated")) return "text-sky-600"
-  if (type.includes("workspace_heartbeat")) return "text-muted-foreground"
-  return "text-muted-foreground"
-}
-
 function resultIcon(type: string) {
   if (type === "message") return MessageSquare
   if (type === "task") return CheckSquare
@@ -236,7 +222,6 @@ export default async function Home({
   const sessionToken = await getSessionToken()
   const resolvedSearchParams = (await searchParams) ?? {}
   const searchQuery = Array.isArray(resolvedSearchParams.q) ? resolvedSearchParams.q[0] : resolvedSearchParams.q
-  const activityFilter = Array.isArray(resolvedSearchParams.filter) ? resolvedSearchParams.filter[0] : resolvedSearchParams.filter || "all"
 
   const [{ channels }, { members }, { tasks }, { computers }, { activity }, { saved }, { results: searchResults }] = await Promise.all([
     getChannels(),
@@ -248,16 +233,21 @@ export default async function Home({
     getSearchResults(searchQuery),
   ])
   const agents = members.filter((member) => member.kind === "agent")
-  const openTasks = tasks.filter((task) => task.status !== "done" && task.status !== "closed")
+  // Dashboard workbench: active agents (ACTIVE/THINKING/STARTING buckets only).
+  const activeAgents = agents.filter((member) => {
+    const bucket = getStatusBucket(member.status)
+    return bucket === "ACTIVE" || bucket === "THINKING" || bucket === "STARTING"
+  })
+  const openTasks = tasks.filter((task) => task.status === "open")
+  const inProgressTasks = tasks.filter((task) => task.status === "in_progress")
+  const pendingTasks = [...openTasks, ...inProgressTasks]
   const onlineComputers = computers.filter((computer) => computer.status === "online" || computer.status === "active")
 
   const nonHeartbeat = activity.filter((a) => a.type !== "workspace_heartbeat")
   const heartbeatOnly = activity.filter((a) => a.type === "workspace_heartbeat")
   const recentActivity = [...nonHeartbeat, ...heartbeatOnly.slice(0, 5)]
-
-  const filteredActivity = activityFilter === "messages"
-    ? recentActivity.filter((a) => a.type.includes("message"))
-    : recentActivity
+  // Recent messages feed: activity rows describing sent messages.
+  const recentMessages = recentActivity.filter((a) => a.type.includes("message_sent")).slice(0, 8)
 
   return (
     <ProductShell
@@ -321,6 +311,8 @@ export default async function Home({
       }
     >
       <div className="space-y-5">
+        <RealtimeRefresh eventTypes={["member.status.updated", "member.updated", "message.created", "task.created", "task.updated"]} />
+
         <form action="/" method="get" className="flex items-center gap-2">
           <Toolbar>
             <Search className="size-4 text-muted-foreground" />
@@ -339,151 +331,170 @@ export default async function Home({
           <SearchResults query={searchQuery} results={searchResults} />
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Card size="sm">
-                <CardHeader>
-                  <CardDescription>Channels</CardDescription>
-                  <CardTitle className="text-2xl">{channels.length}</CardTitle>
-                </CardHeader>
-              </Card>
-              <Card size="sm">
-                <CardHeader>
-                  <CardDescription>Open Tasks</CardDescription>
-                  <CardTitle className="text-2xl">{openTasks.length}</CardTitle>
-                </CardHeader>
-              </Card>
-              <Card size="sm">
-                <CardHeader>
-                  <CardDescription>Agents</CardDescription>
-                  <CardTitle className="text-2xl">{agents.length}</CardTitle>
-                </CardHeader>
-              </Card>
-              <Card size="sm">
-                <CardHeader>
-                  <CardDescription>Computers Online</CardDescription>
-                  <CardTitle className="text-2xl">{onlineComputers.length}</CardTitle>
-                </CardHeader>
-              </Card>
+            {/* Brand header + greeting */}
+            <div className="space-y-1">
+              <h1 className="bg-gradient-brand bg-clip-text text-3xl font-bold text-transparent sm:text-4xl">
+                SmallKhoj
+              </h1>
+              <p className="text-muted-foreground">
+                你好，{session?.account?.displayName ?? session?.account?.name ?? "there"} 👋
+              </p>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Hash className="size-4 text-primary" />
-                    Chat Spaces
-                  </CardTitle>
-                  <CardDescription>Channels and DMs are the fastest path into collaboration.</CardDescription>
+            {/* Dashboard workbench: 3 columns on desktop, stacked on mobile. */}
+            <div className="grid gap-4 lg:grid-cols-3">
+              {/* Recent Messages (wide on desktop via row-spanning) */}
+              <Card className="lg:col-span-2">
+                <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <MessageSquare className="size-4 text-primary" />
+                      Recent Messages
+                    </CardTitle>
+                    <CardDescription>Latest activity across your channels and DMs.</CardDescription>
+                  </div>
+                  <Link href="/chat">
+                    <Button variant="ghost" size="sm">
+                      Open chat <ArrowRight className="size-3" />
+                    </Button>
+                  </Link>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  {channels.slice(0, 6).map((ch) => (
-                    <Link
-                      key={ch.id}
-                      href={`/chat/${channelPathSegment(ch.name)}`}
-                      className="flex min-h-10 items-center gap-2 rounded-md border bg-background px-3 text-sm transition-colors hover:bg-accent"
-                    >
-                      <Hash className="size-4 text-primary" />
-                      <span className="min-w-0 flex-1 truncate font-medium">{ch.name}</span>
-                      <span className="text-xs text-muted-foreground">{ch.type}</span>
-                    </Link>
-                  ))}
-                  {channels.length === 0 && (
-                    <EmptyState title="No channels yet" description="Create one from the quick start panel." />
+                <CardContent className="space-y-1">
+                  {recentMessages.length === 0 ? (
+                    <EmptyState title="No recent messages" description="Messages will appear here as conversations happen." />
+                  ) : (
+                    recentMessages.map((item) => {
+                      const channelName = (item.details?.channelName as string) || (item.details?.channel as string) || item.description?.split(/\s+/).find((w) => w.startsWith("#")) || null
+                      const channelHref = channelName ? `/chat/${channelPathSegment(channelName)}` : "/chat"
+                      return (
+                        <Link
+                          key={item.id}
+                          href={channelHref}
+                          className="flex items-start gap-2.5 rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent"
+                        >
+                          <Hash className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate font-medium">{item.agentName || "system"}</span>
+                              {channelName && <span className="truncate text-xs text-muted-foreground">#{channelName.replace(/^#/, "")}</span>}
+                            </div>
+                            <div className="line-clamp-1 text-xs text-muted-foreground">{item.description}</div>
+                          </div>
+                          <span className="shrink-0 text-[11px] text-muted-foreground">{formatTime(item.timestamp)}</span>
+                        </Link>
+                      )
+                    })
                   )}
                 </CardContent>
               </Card>
 
-              <div className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Bell className="size-4 text-primary" />
-                      Activity Inbox
-                    </CardTitle>
-                    <CardDescription>Recent events across the control plane.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex gap-1">
+              {/* Active Agents */}
+              <Card>
+                <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Bot className="size-4 text-primary" />
+                    Active Agents
+                  </CardTitle>
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                    {activeAgents.length}
+                  </span>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  {activeAgents.length === 0 ? (
+                    <EmptyState title="No active agents" description="Agents will show here when they start running." />
+                  ) : (
+                    activeAgents.map((agent) => (
                       <Link
-                        href="/"
-                        className={`inline-flex items-center gap-1 rounded-md px-3 py-1 text-xs font-medium transition-colors ${activityFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}
-                      >All</Link>
-                      <Link
-                        href="/?filter=messages"
-                        className={`inline-flex items-center gap-1 rounded-md px-3 py-1 text-xs font-medium transition-colors ${activityFilter === "messages" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}
-                      ><Eye className="size-3" />Messages</Link>
-                      <span
-                        className="inline-flex cursor-not-allowed items-center gap-1 rounded-md bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground/50"
-                        title="Unread filtering requires backend read-state tracking (follow-up: read/unread state API)"
-                      ><Eye className="size-3" />Unread</span>
-                      <span
-                        className="inline-flex cursor-not-allowed items-center gap-1 rounded-md bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground/50"
-                        title="Mentions filtering requires backend mention parsing (follow-up: mentions API)"
-                      ><AtSign className="size-3" />Mentions</span>
-                    </div>
-                    <div className="space-y-1">
-                    {filteredActivity.slice(0, 10).map((item) => {
-                      const Icon = activityIcon(item.type)
-                      const color = activityColor(item.type)
-                      return (
-                        <div key={item.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">
-                          <Icon className={`mt-0.5 size-4 shrink-0 ${color}`} />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate">{item.description}</div>
-                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>{item.agentName || "system"}</span>
-                              <span>{formatTime(item.timestamp)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {filteredActivity.length === 0 && (
-                      <EmptyState
-                        title={activityFilter === "all" ? "No recent activity" : `No ${activityFilter} events`}
-                        description={activityFilter === "all" ? "Events will appear here as agents work." : "Try a different filter."}
-                      />
-                    )}
-                    </div>
-                  </CardContent>
-                </Card>
+                        key={agent.id}
+                        href={`/chat/${encodeURIComponent(agent.displayName || agent.name)}`}
+                        className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent"
+                      >
+                        <MemberAvatar member={agent} size="sm" showStatus />
+                        <span className="min-w-0 flex-1 truncate font-medium">{agent.displayName || agent.name}</span>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">{getStatusLabel(agent.status)}</span>
+                      </Link>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
 
-                <Card>
-                  <CardHeader>
+              {/* Pending Tasks */}
+              <Card className="lg:col-span-2 lg:col-start-2">
+                <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+                  <div>
                     <CardTitle className="flex items-center gap-2 text-base">
-                      <Bookmark className="size-4 text-primary" />
-                      Saved
+                      <CheckSquare className="size-4 text-primary" />
+                      Pending Tasks
                     </CardTitle>
-                    <CardDescription>Bookmarked messages, tasks, and files.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {saved.length === 0 ? (
-                      <EmptyState title="No saved items yet" description="Save a message, task, or file to keep it here." />
-                    ) : (
-                      <div className="space-y-1">
-                        {saved.map((item) => {
-                          const Icon = resultIcon(item.itemType)
-                          return (
-                            <Link
-                              key={item.id}
-                              href={item.href || item.downloadUrl || "/"}
-                              className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-                            >
-                              <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate font-medium">{item.title}</span>
-                                <span className="block truncate text-xs text-muted-foreground">
-                                  {resultMeta({ ...item, type: item.itemType })}
-                                </span>
-                              </span>
-                            </Link>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+                    <CardDescription>Open and in-progress work items.</CardDescription>
+                  </div>
+                  <Link href="/tasks">
+                    <Button variant="ghost" size="sm">
+                      All tasks <ArrowRight className="size-3" />
+                    </Button>
+                  </Link>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-3 flex gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                      <span className="size-1.5 rounded-full bg-amber-500" />
+                      {openTasks.length} open
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/15 px-2 py-1 text-xs font-medium text-sky-700 dark:text-sky-400">
+                      <span className="size-1.5 rounded-full bg-sky-500" />
+                      {inProgressTasks.length} in progress
+                    </span>
+                  </div>
+                  {pendingTasks.length === 0 ? (
+                    <EmptyState title="No pending tasks" description="Tasks will appear here when created or assigned." />
+                  ) : (
+                    <div className="space-y-1">
+                      {pendingTasks.slice(0, 6).map((task) => (
+                        <Link
+                          key={task.id}
+                          href="/tasks"
+                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent"
+                        >
+                          <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
+                          <span className="min-w-0 flex-1 truncate">{task.title}</span>
+                          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">{task.status}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Quick stats sidebar card (computers + saved) */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Activity className="size-4 text-primary" />
+                    Workspace
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Channels</span>
+                    <span className="font-semibold">{channels.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Agents</span>
+                    <span className="font-semibold">{agents.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Computers online</span>
+                    <span className="font-semibold">{onlineComputers.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Saved items</span>
+                    <span className="font-semibold">{saved.length}</span>
+                  </div>
+                  <Link href="/computers" className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                    <Bookmark className="size-3" /> Manage computers <ArrowRight className="size-3" />
+                  </Link>
+                </CardContent>
+              </Card>
             </div>
           </>
         )}
