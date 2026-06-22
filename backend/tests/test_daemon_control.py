@@ -496,6 +496,25 @@ def test_public_api_member_patch_ignores_agent_avatar_url():
     assert member.avatar_url is None
 
 
+def test_public_api_channel_member_payload_accepts_single_and_list_ids():
+    first_id = uuid.uuid4()
+    second_id = uuid.uuid4()
+
+    assert public_api._channel_member_ids_from_body({"memberId": str(first_id)}) == [first_id]
+    assert public_api._channel_member_ids_from_body({"memberIds": [str(first_id), str(second_id)]}) == [
+        first_id,
+        second_id,
+    ]
+
+
+def test_public_api_channel_member_payload_rejects_missing_ids():
+    with pytest.raises(HTTPException) as exc:
+        public_api._channel_member_ids_from_body({})
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Missing memberId"
+
+
 def test_agent_can_start_assigned_todo_task():
     agent_id = uuid.uuid4()
     member = _member(agent_id)

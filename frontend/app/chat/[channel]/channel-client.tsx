@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import {
   Activity,
@@ -54,7 +54,8 @@ import {
   type HighWater,
   type PublicEventEnvelope,
 } from "@/lib/realtime-events"
-import { AGENT_DRAG_MIME, serializeAgentDragPayload } from "@/lib/drag-data"
+import { channelMemberAddPayload } from "@/lib/channel-members"
+import { AGENT_DRAG_MIME, parseAgentDragPayload, serializeAgentDragPayload } from "@/lib/drag-data"
 import { CreateChannelDialog } from "./create-channel-dialog"
 import { CreateAgentDialog } from "./create-agent-dialog"
 import { memberForMessageSender } from "@/lib/member-avatar"
@@ -173,10 +174,18 @@ function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
 
 function readStoredPanelWidth(key: string, defaultWidth: number, minWidth: number, maxWidth: number) {
   if (typeof window === "undefined") return defaultWidth
-  const stored = window.localStorage.getItem(key)
-  const parsed = stored ? Number(stored) : defaultWidth
-  if (!Number.isFinite(parsed)) return defaultWidth
-  return clampPanelWidth(parsed, minWidth, maxWidth)
+  try {
+    const stored = window.localStorage.getItem(key)
+    const parsed = stored ? Number(stored) : defaultWidth
+    if (!Number.isFinite(parsed)) return defaultWidth
+    return clampPanelWidth(parsed, minWidth, maxWidth)
+  } catch {
+    return defaultWidth
+  }
+}
+
+function subscribePanelWidthStore() {
+  return () => {}
 }
 
 export function ChannelClient({
@@ -226,16 +235,29 @@ export function ChannelClient({
   const [filesLoading, setFilesLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
-  const [sidebarWidth, setSidebarWidth] = useState(() =>
-    readStoredPanelWidth(CHAT_SIDEBAR_WIDTH_KEY, CHAT_SIDEBAR_DEFAULT_WIDTH, CHAT_SIDEBAR_MIN_WIDTH, CHAT_SIDEBAR_MAX_WIDTH)
-  )
-  const [threadWidth, setThreadWidth] = useState(() =>
-    readStoredPanelWidth(THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_DEFAULT_WIDTH, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH)
-  )
+  const [agentDropChannelId, setAgentDropChannelId] = useState<string | null>(null)
+  const [agentDropError, setAgentDropError] = useState<string | null>(null)
+  const [sidebarWidthOverride, setSidebarWidthOverride] = useState<number | null>(null)
+  const [threadWidthOverride, setThreadWidthOverride] = useState<number | null>(null)
   const dragDepthRef = useRef(0)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const messageListRef = useRef<HTMLDivElement>(null)
+  const messageEndRef = useRef<HTMLDivElement>(null)
   const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
+
+  const storedSidebarWidth = useSyncExternalStore(
+    subscribePanelWidthStore,
+    () => readStoredPanelWidth(CHAT_SIDEBAR_WIDTH_KEY, CHAT_SIDEBAR_DEFAULT_WIDTH, CHAT_SIDEBAR_MIN_WIDTH, CHAT_SIDEBAR_MAX_WIDTH),
+    () => CHAT_SIDEBAR_DEFAULT_WIDTH,
+  )
+  const storedThreadWidth = useSyncExternalStore(
+    subscribePanelWidthStore,
+    () => readStoredPanelWidth(THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_DEFAULT_WIDTH, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),
+    () => THREAD_PANEL_DEFAULT_WIDTH,
+  )
+  const sidebarWidth = sidebarWidthOverride ?? storedSidebarWidth
+  const threadWidth = threadWidthOverride ?? storedThreadWidth
 
   const currentChannel = channels.find((c) => c.name.replace("#", "") === channelName)
   const currentDm = dms.find((dm) => dm.name === channelName)
@@ -288,7 +310,7 @@ export function ChannelClient({
     startPanelResize(
       event,
       sidebarWidth,
-      (width) => setPersistentPanelWidth(width, setSidebarWidth, CHAT_SIDEBAR_WIDTH_KEY, CHAT_SIDEBAR_MIN_WIDTH, CHAT_SIDEBAR_MAX_WIDTH),
+      (width) => setPersistentPanelWidth(width, setSidebarWidthOverride, CHAT_SIDEBAR_WIDTH_KEY, CHAT_SIDEBAR_MIN_WIDTH, CHAT_SIDEBAR_MAX_WIDTH),
       "right-edge",
     )
   }
@@ -297,7 +319,7 @@ export function ChannelClient({
     startPanelResize(
       event,
       threadWidth,
-      (width) => setPersistentPanelWidth(width, setThreadWidth, THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),
+      (width) => setPersistentPanelWidth(width, setThreadWidthOverride, THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),
       "left-edge",
     )
   }
@@ -307,7 +329,7 @@ export function ChannelClient({
     event.preventDefault()
     setPersistentPanelWidth(
       sidebarWidth + (event.key === "ArrowRight" ? 16 : -16),
-      setSidebarWidth,
+      setSidebarWidthOverride,
       CHAT_SIDEBAR_WIDTH_KEY,
       CHAT_SIDEBAR_MIN_WIDTH,
       CHAT_SIDEBAR_MAX_WIDTH,
@@ -319,7 +341,7 @@ export function ChannelClient({
     event.preventDefault()
     setPersistentPanelWidth(
       threadWidth + (event.key === "ArrowLeft" ? 16 : -16),
-      setThreadWidth,
+      setThreadWidthOverride,
       THREAD_PANEL_WIDTH_KEY,
       THREAD_PANEL_MIN_WIDTH,
       THREAD_PANEL_MAX_WIDTH,
@@ -384,6 +406,14 @@ export function ChannelClient({
     }, 250)
     return () => window.clearTimeout(timer)
   }, [initialMessageId, messages])
+
+  useEffect(() => {
+    if (initialMessageId || activeTab !== "chat") return
+    const frame = window.requestAnimationFrame(() => {
+      messageEndRef.current?.scrollIntoView({ block: "end" })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [activeTab, channelName, initialMessageId, messages.length])
 
   const refreshFiles = useCallback(async () => {
     if (!channelId) return
@@ -618,11 +648,48 @@ export function ChannelClient({
     const memberId = addMemberSelectRef.current?.value
     if (!channelId || !memberId) return
     try {
-      await apiPost(`/api/v1/channels/${channelId}/members`, { memberId }, sessionToken)
+      await apiPost(`/api/v1/channels/${channelId}/members`, channelMemberAddPayload(memberId), sessionToken)
       if (addMemberSelectRef.current) addMemberSelectRef.current.value = ""
       await refreshMembers()
     } catch (e) {
       console.error("Add member failed:", e)
+    }
+  }
+
+  async function addMemberToChannel(targetChannelId: string, memberId: string) {
+    await apiPost(`/api/v1/channels/${targetChannelId}/members`, channelMemberAddPayload(memberId), sessionToken)
+    if (targetChannelId === channelId) {
+      await refreshMembers()
+    }
+  }
+
+  function handleChannelAgentDragOver(event: React.DragEvent, targetChannelId: string) {
+    if (!event.dataTransfer.types.includes(AGENT_DRAG_MIME)) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = "copy"
+    setAgentDropError(null)
+    setAgentDropChannelId(targetChannelId)
+  }
+
+  function handleChannelAgentDragLeave(event: React.DragEvent, targetChannelId: string) {
+    if (!event.dataTransfer.types.includes(AGENT_DRAG_MIME)) return
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    if (agentDropChannelId === targetChannelId) setAgentDropChannelId(null)
+  }
+
+  async function handleChannelAgentDrop(event: React.DragEvent, targetChannelId: string) {
+    if (!event.dataTransfer.types.includes(AGENT_DRAG_MIME)) return
+    event.preventDefault()
+    event.stopPropagation()
+    setAgentDropChannelId(null)
+    const payload = parseAgentDragPayload(event.dataTransfer.getData(AGENT_DRAG_MIME))
+    if (!payload || payload.kind !== "agent") return
+    try {
+      await addMemberToChannel(targetChannelId, payload.id)
+    } catch (error) {
+      console.error("Drop agent into channel failed:", error)
+      setAgentDropError(error instanceof Error ? error.message : "Failed to add agent")
     }
   }
 
@@ -949,8 +1016,14 @@ export function ChannelClient({
               <Link
                 key={ch.id}
                 href={`/chat/${channelPathSegment(ch.name.replace("#", ""))}`}
-                className={`block truncate rounded-md px-2 py-1.5 text-sm ${
-                  ch.name.replace("#", "") === channelName ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
+                onDragOver={(event) => handleChannelAgentDragOver(event, ch.id)}
+                onDragLeave={(event) => handleChannelAgentDragLeave(event, ch.id)}
+                onDrop={(event) => void handleChannelAgentDrop(event, ch.id)}
+                title="Drop an agent here to add it to this channel"
+                className={`block truncate rounded-md border px-2 py-1.5 text-sm transition-colors ${
+                  ch.name.replace("#", "") === channelName ? "border-primary/20 bg-primary/10 font-medium text-primary" : "border-transparent hover:bg-sidebar-accent"
+                } ${
+                  agentDropChannelId === ch.id ? "border-primary/50 bg-primary/10 ring-1 ring-primary/25" : ""
                 }`}
               >
                 <span className="inline-flex min-w-0 items-center gap-1">
@@ -961,12 +1034,13 @@ export function ChannelClient({
               </Link>
             ))}
           </div>
+          {agentDropError && <p className="mt-2 text-xs text-destructive">{agentDropError}</p>}
           <div className="mb-2 mt-5 flex items-center justify-between">
             <h3 className="text-xs font-medium uppercase text-muted-foreground">DMs</h3>
             <CreateAgentDialog />
           </div>
           <div className="space-y-1">
-            {[...dms].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((dm) => {
+            {dms.map((dm) => {
               const avatarMember = dmAvatarMember(dm)
               const isAgentDm = avatarMember.kind === "agent"
               return (
@@ -979,7 +1053,7 @@ export function ChannelClient({
                     event.dataTransfer.setData(AGENT_DRAG_MIME, serializeAgentDragPayload(avatarMember))
                     event.dataTransfer.setData("text/plain", avatarMember.handle || avatarMember.displayName || avatarMember.name)
                   } : undefined}
-                  title={isAgentDm ? "Drag agent to a task to assign" : undefined}
+                  title={isAgentDm ? "Drag agent to a channel or task" : undefined}
                   className={`block truncate rounded-md px-2 py-1.5 text-sm ${
                     dm.name === channelName ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
                   } ${isAgentDm ? "cursor-grab active:cursor-grabbing" : ""}`}
@@ -1208,7 +1282,7 @@ export function ChannelClient({
               </div>
             ) : (
               <>
-                <div className="flex-1 overflow-y-auto p-4">
+                <div ref={messageListRef} data-testid="chat-message-list" className="flex-1 overflow-y-auto p-4">
                 <div className="mx-auto max-w-3xl space-y-3">
                 {messages.map((msg) => {
                   const isSaved = savedMessageIds.has(msg.id)
@@ -1293,6 +1367,7 @@ export function ChannelClient({
                 {messages.length === 0 && (
                   <p className="py-20 text-center text-muted-foreground">No messages in {currentTitle} yet.</p>
                 )}
+                <div ref={messageEndRef} data-testid="chat-message-list-end" aria-hidden="true" />
               </div>
             </div>
 

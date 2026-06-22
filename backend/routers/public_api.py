@@ -2294,6 +2294,33 @@ def _apply_member_patch(member: Member, body: dict) -> None:
     member.config = config
 
 
+def _channel_member_ids_from_body(body: dict) -> list[uuid.UUID]:
+    raw_ids: list[str] = []
+    if body.get("memberId"):
+        raw_ids.append(str(body["memberId"]))
+    if body.get("memberIds"):
+        raw_member_ids = body["memberIds"]
+        if not isinstance(raw_member_ids, list):
+            raise HTTPException(400, "Invalid memberIds")
+        raw_ids.extend(str(member_id) for member_id in raw_member_ids if member_id)
+
+    if not raw_ids:
+        raise HTTPException(400, "Missing memberId")
+
+    parsed_ids: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for raw_id in raw_ids:
+        try:
+            parsed_id = uuid.UUID(raw_id)
+        except ValueError:
+            raise HTTPException(400, "Invalid memberId")
+        if parsed_id in seen:
+            continue
+        seen.add(parsed_id)
+        parsed_ids.append(parsed_id)
+    return parsed_ids
+
+
 @router.patch("/members/{member_id}")
 async def update_member(member_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     server = await _get_server(db)
@@ -3044,32 +3071,47 @@ async def add_channel_member(
         raise HTTPException(404, "Channel not found")
 
     body = await request.json()
-    member_id = body.get("memberId")
-    if not member_id:
-        raise HTTPException(400, "Missing memberId")
-    try:
-        parsed_member_id = uuid.UUID(member_id)
-    except ValueError:
-        raise HTTPException(400, "Invalid memberId")
+    parsed_member_ids = _channel_member_ids_from_body(body)
 
-    member = await db.execute(
-        select(Member).where(Member.id == parsed_member_id, Member.server_id == server.id)
+    members = await db.execute(
+        select(Member).where(Member.id.in_(parsed_member_ids), Member.server_id == server.id)
     )
-    if not member.scalar_one_or_none():
+    existing_members = {member.id for member in members.scalars().all()}
+    missing_member_ids = [member_id for member_id in parsed_member_ids if member_id not in existing_members]
+    if missing_member_ids:
         raise HTTPException(404, "Member not found")
 
     existing = await db.execute(
-        select(ChannelMember).where(
+        select(ChannelMember.member_id).where(
             ChannelMember.channel_id == parsed_channel_id,
-            ChannelMember.member_id == parsed_member_id,
+            ChannelMember.member_id.in_(parsed_member_ids),
         )
     )
-    if existing.scalar_one_or_none():
-        return {"added": False, "reason": "already_member"}
+    existing_member_ids = {member_id for (member_id,) in existing.all()}
+    added_member_ids: list[uuid.UUID] = []
+    for parsed_member_id in parsed_member_ids:
+        if parsed_member_id in existing_member_ids:
+            continue
+        db.add(ChannelMember(channel_id=parsed_channel_id, member_id=parsed_member_id))
+        added_member_ids.append(parsed_member_id)
 
-    db.add(ChannelMember(channel_id=parsed_channel_id, member_id=parsed_member_id))
     await db.commit()
-    return {"added": True, "channelId": str(parsed_channel_id), "memberId": str(parsed_member_id)}
+    if len(parsed_member_ids) == 1:
+        parsed_member_id = parsed_member_ids[0]
+        response = {
+            "added": bool(added_member_ids),
+            "channelId": str(parsed_channel_id),
+            "memberId": str(parsed_member_id),
+        }
+        if not added_member_ids:
+            response["reason"] = "already_member"
+        return response
+    return {
+        "added": len(added_member_ids),
+        "channelId": str(parsed_channel_id),
+        "memberIds": [str(member_id) for member_id in parsed_member_ids],
+        "addedMemberIds": [str(member_id) for member_id in added_member_ids],
+    }
 
 
 @router.delete("/channels/{channel_id}/members/{member_id}")
