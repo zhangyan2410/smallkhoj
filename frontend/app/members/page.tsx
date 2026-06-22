@@ -8,8 +8,11 @@ import {
   Cpu,
   HardDrive,
   MessageSquare,
+  Play,
   Puzzle,
+  RotateCcw,
   Shield,
+  Square,
   Trash2,
   User,
   UserRound,
@@ -24,7 +27,7 @@ import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
   API_BASE,
@@ -37,6 +40,7 @@ import {
   shortId,
   statusLabel,
 } from "@/lib/control-plane"
+import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { detectedProviderOptions } from "@/lib/runtime-options"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
@@ -112,22 +116,121 @@ async function updateHumanAvatarUrlAction(formData: FormData) {
   redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
 }
 
-function MemberRow({ member, selected }: { member: Member; selected: boolean }) {
+async function controlAgentLifecycleAction(formData: FormData) {
+  "use server"
+  const memberId = String(formData.get("memberId") || "")
+  const workspaceId = String(formData.get("workspaceId") || "")
+  const action = String(formData.get("action") || "").trim()
+  if (!memberId || !workspaceId || !action) {
+    redirect(`/members?member=${encodeURIComponent(memberId)}&error=${encodeURIComponent("Missing member, workspace, or action")}`)
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/lifecycle`, {
+    method: "POST",
+    headers: await serverApiHeaders(true),
+    body: JSON.stringify({ action }),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/members?member=${encodeURIComponent(memberId)}&error=${encodeURIComponent(detail)}`)
+  }
+  revalidatePath("/members")
+  redirect(`/members?member=${encodeURIComponent(memberId)}`)
+}
+
+/**
+ * Start / Stop / Restart controls for an agent card. Uses a native form bound to
+ * the `controlAgentLifecycleAction` server action (per quality-guidelines:
+ * critical backend mutations use native form submission so a hydration gap can't
+ * silently fail). Each action is gated by the agent's status bucket so only the
+ * contextually valid control is offered.
+ */
+function AgentControls({ member }: { member: Member }) {
+  const workspaceId = member.workspaceId
+  const bucket = getStatusBucket(member.status)
+  const canStart = bucket === "OFFLINE" || bucket === "ERROR"
+  const canStop = bucket === "ACTIVE" || bucket === "THINKING" || bucket === "STARTING"
+  const showRestart = Boolean(workspaceId)
+
+  if (!workspaceId) {
+    return (
+      <p className="text-[11px] text-muted-foreground">No workspace bound</p>
+    )
+  }
+
+  const control = (action: "start" | "stop" | "restart", label: string, Icon: typeof Play, show: boolean, tone: string) => {
+    if (!show) return null
+    return (
+      <form action={controlAgentLifecycleAction} className="flex-1">
+        <input type="hidden" name="memberId" value={member.id} />
+        <input type="hidden" name="workspaceId" value={workspaceId} />
+        <input type="hidden" name="action" value={action} />
+        <button
+          type="submit"
+          className={`inline-flex w-full items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${tone}`}
+        >
+          <Icon className="size-3" />
+          {label}
+        </button>
+      </form>
+    )
+  }
+
+  return (
+    <div className="mt-1 flex w-full items-stretch gap-1.5">
+      {control("start", "Start", Play, canStart, "border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950")}
+      {control("stop", "Stop", Square, canStop, "border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950")}
+      {control("restart", "Restart", RotateCcw, showRestart, "border-border text-muted-foreground hover:bg-accent")}
+    </div>
+  )
+}
+
+/**
+ * Agent gallery card: avatar with live status, name, status label, description
+ * snippet, and contextual start/stop/restart controls.
+ */
+function AgentCard({ member }: { member: Member }) {
   const name = profileName(member)
+  const description = profileDescription(member)
   const href = memberDetailHref(member.id)
 
   return (
+    <div className="group relative flex flex-col items-center gap-3 rounded-xl border bg-card p-4 text-center ring-1 ring-primary/10 transition-all hover:scale-[1.02] hover:ring-primary/30">
+      <Link href={href} className="flex flex-1 flex-col items-center gap-2 self-stretch">
+        <MemberAvatar member={member} size="xl" showStatus />
+        <div className="min-w-0 w-full">
+          <div className="truncate font-semibold">{name}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{getStatusLabel(member.status)}</div>
+          {description ? (
+            <div className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{description}</div>
+          ) : null}
+        </div>
+      </Link>
+      <AgentControls member={member} />
+    </div>
+  )
+}
+
+/**
+ * Compact human member row for the humans section below the agent gallery.
+ */
+function HumanRow({ member, selected }: { member: Member; selected: boolean }) {
+  const name = profileName(member)
+  const handle = member.handle || `@${member.name}`
+  return (
     <Link
-      href={href}
-      className={`flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors hover:bg-accent ${
-        selected ? "bg-primary/8 border border-primary/20" : "border border-transparent"
+      href={memberDetailHref(member.id)}
+      className={`flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent ${
+        selected ? "border-primary/20 bg-primary/8" : "border-transparent"
       }`}
     >
-      <MemberAvatar member={member} size="xs" />
-      <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
-      <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-        {member.kind}
-      </span>
+      <MemberAvatar member={member} size="sm" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium">{name}</div>
+        <div className="truncate text-[11px] text-muted-foreground">{handle}</div>
+      </div>
+      <StatusBadge status={member.status} />
     </Link>
   )
 }
@@ -693,39 +796,6 @@ function MemberDetail({
   )
 }
 
-function KindFilter({ active, counts }: { active: string; counts: { all: number; humans: number; agents: number } }) {
-  const filters = [
-    { key: "all", label: "All", count: counts.all },
-    { key: "human", label: "Humans", count: counts.humans },
-    { key: "agent", label: "Agents", count: counts.agents },
-  ]
-
-  return (
-    <div className="flex gap-1">
-      {filters.map(({ key, label, count }) => {
-        const isActive = active === key
-        const href = key === "all" ? "/members" : `/members?kind=${key}`
-        return (
-          <Link
-            key={key}
-            href={href}
-            className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors ${
-              isActive
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-transparent bg-background text-muted-foreground hover:bg-accent"
-            }`}
-          >
-            {label}
-            <span className={`ml-0.5 rounded px-1.5 py-0.5 text-[11px] ${isActive ? "bg-primary/15" : "bg-muted"}`}>
-              {count}
-            </span>
-          </Link>
-        )
-      })}
-    </div>
-  )
-}
-
 export default async function MembersPage({
   searchParams,
 }: {
@@ -738,18 +808,11 @@ export default async function MembersPage({
   const error = searchValue(resolvedSearchParams.error)
   const selectedMemberId = searchValue(resolvedSearchParams.member)
   const activeTab = (searchValue(resolvedSearchParams.tab) ?? "profile") as TabKey
-  const kindFilter = searchValue(resolvedSearchParams.kind) ?? "all"
 
   const humansList = members.filter((m) => m.kind === "human")
   const agentsList = members.filter((m) => m.kind === "agent")
   const boundAgents = agentsList.filter((m) => m.computerId).length
   const providerOptions = detectedProviderOptions(computers)
-
-  const filteredMembers = kindFilter === "human"
-    ? humansList
-    : kindFilter === "agent"
-      ? agentsList
-      : members
 
   const selectedMember = selectedMemberId
     ? members.find((m) => m.id === selectedMemberId)
@@ -798,65 +861,55 @@ export default async function MembersPage({
       <div className="space-y-5">
         <RealtimeRefresh eventTypes={["member.created", "member.updated", "member.status.updated"]} />
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Card size="sm">
-            <CardHeader>
-              <CardDescription>Total</CardDescription>
-              <CardTitle className="text-2xl">{members.length}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card size="sm">
-            <CardHeader>
-              <CardDescription>Humans</CardDescription>
-              <CardTitle className="text-2xl">{humansList.length}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card size="sm">
-            <CardHeader>
-              <CardDescription>Agents Bound</CardDescription>
-              <CardTitle className="text-2xl">
-                {boundAgents}
-                <span className="ml-2 text-xs font-normal text-muted-foreground">of {agentsList.length}</span>
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
-
         {selectedMember && (
           <MemberDetail member={selectedMember} computers={computers} activeTab={activeTab} />
         )}
 
-        <CreateAgentCard computers={computers} error={error} providerOptions={providerOptions} />
+        {error && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
 
-        <Card>
-          <CardHeader className="border-b">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <User className="size-4" />
-                Member Directory
-              </CardTitle>
-              <KindFilter
-                active={kindFilter}
-                counts={{ all: members.length, humans: humansList.length, agents: agentsList.length }}
-              />
+        {/* Agent gallery: cards in a responsive grid, with the create-agent
+            form styled as a dashed "add" card as the final grid cell. */}
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Bot className="size-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">Agents</h2>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {agentsList.length}
+            </span>
+          </div>
+          {agentsList.length === 0 ? (
+            <CreateAgentCard computers={computers} providerOptions={providerOptions} />
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+              {agentsList.map((member) => (
+                <AgentCard key={member.id} member={member} />
+              ))}
+              <CreateAgentCard computers={computers} providerOptions={providerOptions} />
             </div>
-          </CardHeader>
-          <CardContent className="pt-2">
-            <div className="divide-y">
-              {filteredMembers.map((member) => (
-                <MemberRow key={member.id} member={member} selected={member.id === selectedMemberId} />
+          )}
+        </section>
+
+        {/* Human members: compact list below the agent gallery. */}
+        {humansList.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <UserRound className="size-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Humans</h2>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {humansList.length}
+              </span>
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+              {humansList.map((member) => (
+                <HumanRow key={member.id} member={member} selected={member.id === selectedMemberId} />
               ))}
             </div>
-            {filteredMembers.length === 0 && (
-              <EmptyState
-                title="No members found"
-                description={kindFilter === "all"
-                  ? "Create a human/agent member to start."
-                  : `No ${kindFilter}s registered yet.`}
-              />
-            )}
-          </CardContent>
-        </Card>
+          </section>
+        )}
       </div>
     </ProductShell>
   )

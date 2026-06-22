@@ -44,17 +44,19 @@ export function CreateAgentCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Bot className="size-4" />
+    <Card className="flex flex-col items-center justify-center border-dashed border-primary/30 p-4 text-center ring-1 ring-primary/10 transition-all hover:ring-primary/30">
+      <CardHeader className="items-center text-center">
+        <div className="mx-auto flex size-10 items-center justify-center rounded-full border border-dashed border-primary/40 text-primary">
+          <Bot className="size-5" />
+        </div>
+        <CardTitle className="flex items-center gap-2 text-sm">
           Create Agent
         </CardTitle>
-        <CardDescription>Create a new agent and bind it to a computer runtime.</CardDescription>
+        <CardDescription className="text-[11px]">Bind a new agent to a computer runtime.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="w-full">
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
-        {warning && <p className="mb-3 text-sm text-amber-700">{warning}</p>}
+        {warning && <p className="mb-3 text-xs text-amber-700">{warning}</p>}
         <CreateAgentForm
           computers={computers}
           providerOptions={providerOptions}
