@@ -17,10 +17,11 @@ import {
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, StatusPill, Toolbar } from "@/components/product-ui"
+import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { apiGet, badgeClass, formatTime, statusLabel, type Member } from "@/lib/control-plane"
+import { apiGet, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders, getSessionToken } from "@/lib/server-auth"
 
 import { TaskDndBoard } from "@/components/task-dnd-board"
@@ -89,20 +90,24 @@ type ActivityItem = {
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
-async function getTasks() {
-  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] })
+async function getTasks(sessionToken?: string | null) {
+  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }, sessionToken)
 }
 
-async function getChannels() {
-  return apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] })
+async function getChannels(sessionToken?: string | null) {
+  return apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] }, sessionToken)
 }
 
-async function getMembers() {
-  return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] })
+async function getMembers(sessionToken?: string | null) {
+  return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }, sessionToken)
 }
 
-async function getTaskActivity(taskId: string) {
-  return apiGet<{ activity: ActivityItem[] }>(`/api/v1/activity?taskId=${encodeURIComponent(taskId)}&limit=20`, { activity: [] })
+async function getTaskActivity(taskId: string, sessionToken?: string | null) {
+  return apiGet<{ activity: ActivityItem[] }>(`/api/v1/activity?taskId=${encodeURIComponent(taskId)}&limit=20`, { activity: [] }, sessionToken)
+}
+
+async function getTaskMemory(taskId: string, sessionToken?: string | null) {
+  return apiGet<{ entries: MemoryEntry[] }>(`/api/v1/tasks/${encodeURIComponent(taskId)}/memory`, { entries: [] }, sessionToken)
 }
 
 async function writeTask(path: string, body: Record<string, unknown>, method = "POST") {
@@ -379,7 +384,7 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
   )
 }
 
-function TaskDetail({ task, activity = [] }: { task?: Task; activity?: ActivityItem[] }) {
+function TaskDetail({ task, activity = [], memoryEntries = [] }: { task?: Task; activity?: ActivityItem[]; memoryEntries?: MemoryEntry[] }) {
   if (!task) {
     return <EmptyState title="No task selected" description="Open a task from board or list to inspect source and evidence." />
   }
@@ -509,6 +514,7 @@ function TaskDetail({ task, activity = [] }: { task?: Task; activity?: ActivityI
           </Button>
         </form>
       </div>
+      <TaskRecoveryCockpit entries={memoryEntries} />
       <div className="rounded-md border bg-background p-3">
         <h3 className="text-sm font-medium">Review</h3>
         <form action={addReviewNoteAction} className="mt-2 space-y-2">
@@ -547,15 +553,24 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
     status: firstParam(params.status),
   }
   const selectedTaskId = firstParam(params.task)
-  const [{ tasks }, { channels }, { members }] = await Promise.all([getTasks(), getChannels(), getMembers()])
+  const [{ tasks }, { channels }, { members }] = await Promise.all([
+    getTasks(sessionToken),
+    getChannels(sessionToken),
+    getMembers(sessionToken),
+  ])
   const agents = members.filter((member) => member.kind === "agent")
   const visibleTasks = filteredTasks(tasks, filters)
   const openTasks = tasks.filter((task) => task.status !== "done" && task.status !== "closed")
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? visibleTasks[0]
   let activity: ActivityItem[] = []
+  let memoryEntries: MemoryEntry[] = []
   if (selectedTask?.id) {
-    const result = await getTaskActivity(selectedTask.id)
+    const [result, memoryResult] = await Promise.all([
+      getTaskActivity(selectedTask.id, sessionToken),
+      getTaskMemory(selectedTask.id, sessionToken),
+    ])
     activity = result.activity
+    memoryEntries = memoryResult.entries
   }
   const creators = Array.from(new Set(tasks.map((task) => task.creator).filter((value): value is string => Boolean(value)))).sort()
   const assignees = Array.from(new Set(tasks.map((task) => task.assignee).filter((value): value is string => Boolean(value)))).sort()
@@ -576,7 +591,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
       session={session}
       sidebarTitle="Task Detail"
       sidebarDescription="Source and evidence for the selected work item."
-      sidebar={<TaskDetail task={selectedTask} activity={activity} />}
+      sidebar={<TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} />}
       actions={
         <Link href="/daemon">
           <Button variant="outline" size="sm">

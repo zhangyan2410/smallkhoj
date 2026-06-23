@@ -10,6 +10,7 @@ import {
   Bot,
   CheckSquare,
   Clipboard,
+  Database,
   Files,
   HardDrive,
   Hash,
@@ -38,12 +39,15 @@ import { RuntimeChip } from "@/components/product-ui"
 import { MarkdownMessage } from "@/components/markdown-message"
 import { AgentActivityList } from "@/components/agent-activity-list"
 import { TaskBoard } from "@/components/task-board"
+import { ChannelMemorySurface, MemoryProposalQueue } from "@/components/memory-entry-surface"
 import {
   apiGet,
   apiPost,
   apiDelete,
   apiHeaders,
   type Member,
+  type MemoryEntry,
+  type MemoryProposal,
   statusLabel,
   API_BASE,
 } from "@/lib/control-plane"
@@ -131,6 +135,7 @@ type SavedItem = {
 const conversationTabs = [
   { label: "Chat", icon: MessageCircle },
   { label: "Tasks", icon: ListChecks },
+  { label: "Memory", icon: Database },
   { label: "Files", icon: Files },
   { label: "Activity", icon: Activity },
 ]
@@ -234,9 +239,13 @@ export function ChannelClient({
   const [taskMessageIds, setTaskMessageIds] = useState<Set<string>>(() => new Set())
   const [taskLinks, setTaskLinks] = useState<Record<string, string>>({})
   const [asTask, setAsTask] = useState(false)
-  const [activeTab, setActiveTab] = useState<"chat" | "tasks" | "files" | "activity">("chat")
+  const [activeTab, setActiveTab] = useState<"chat" | "tasks" | "memory" | "files" | "activity">("chat")
   const [files, setFiles] = useState<FileItem[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
+  const [memoryEntries, setMemoryEntries] = useState<MemoryEntry[]>([])
+  const [memoryProposals, setMemoryProposals] = useState<MemoryProposal[]>([])
+  const [memoryLoading, setMemoryLoading] = useState(false)
+  const [memoryProposalLoading, setMemoryProposalLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [agentDropChannelId, setAgentDropChannelId] = useState<string | null>(null)
@@ -446,6 +455,53 @@ export function ChannelClient({
       setFilesLoading(false)
     }
   }, [channelId, sessionToken])
+
+  const refreshMemory = useCallback(async () => {
+    if (!channelId) {
+      setMemoryEntries([])
+      setMemoryProposals([])
+      return
+    }
+    setMemoryLoading(true)
+    setMemoryProposalLoading(true)
+    try {
+      const [data, proposalData] = await Promise.all([
+        apiGet<{ entries: MemoryEntry[] }>(
+          `/api/v1/memory/scopes/channel/${encodeURIComponent(channelId)}`,
+          { entries: [] },
+          sessionToken,
+        ),
+        apiGet<{ proposals: MemoryProposal[] }>(
+          `/api/v1/memory/scopes/channel/${encodeURIComponent(channelId)}/proposals?status=open`,
+          { proposals: [] },
+          sessionToken,
+        ),
+      ])
+      setMemoryEntries(data.entries || [])
+      setMemoryProposals(proposalData.proposals || [])
+    } catch (e) {
+      console.error("Refresh memory failed:", e)
+      setMemoryEntries([])
+      setMemoryProposals([])
+    } finally {
+      setMemoryLoading(false)
+      setMemoryProposalLoading(false)
+    }
+  }, [channelId, sessionToken])
+
+  const handleMemoryProposalDecision = useCallback(async (proposal: MemoryProposal, decision: "accept" | "reject") => {
+    try {
+      await apiPost(
+        `/api/v1/memory/proposals/${encodeURIComponent(proposal.id)}/${decision}`,
+        { reviewNote: decision === "accept" ? "Accepted from channel memory review queue." : "Rejected from channel memory review queue." },
+        sessionToken,
+      )
+      await refreshMemory()
+    } catch (e) {
+      console.error("Memory proposal decision failed:", e)
+      alert(`Memory proposal update failed: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }, [refreshMemory, sessionToken])
 
   const refreshSavedItems = useCallback(async () => {
     const data = await apiGet<{ saved: SavedItem[] }>(
@@ -658,6 +714,10 @@ export function ChannelClient({
           }
           return
         }
+        if (event.type.startsWith("memory.")) {
+          void refreshMemory()
+          return
+        }
         if (event.type === "reaction.updated" || event.type === "message.updated" || event.type === "message.deleted") {
           scheduleCatchUp()
         }
@@ -672,7 +732,7 @@ export function ChannelClient({
       controller.abort()
       if (catchUpTimer) window.clearTimeout(catchUpTimer)
     }
-  }, [activeThreadId, channelId, channelName, refreshChannelsAndDms, refreshMembers, refreshAllMembers, refreshMessages, refreshThread, sessionToken])
+  }, [activeThreadId, channelId, channelName, refreshChannelsAndDms, refreshMembers, refreshAllMembers, refreshMemory, refreshMessages, refreshThread, sessionToken])
 
   async function openThread(message: ChannelMessage) {
     const threadId = message.threadId || message.id
@@ -1218,7 +1278,7 @@ export function ChannelClient({
           </div>
           <div className="mt-3 flex gap-1">
             {conversationTabs.map(({ label, icon: Icon }) => {
-              const tabKey = label.toLowerCase() as "chat" | "tasks" | "files" | "activity"
+              const tabKey = label.toLowerCase() as "chat" | "tasks" | "memory" | "files" | "activity"
               const isActive = activeTab === tabKey
               return (
                 <button
@@ -1228,6 +1288,9 @@ export function ChannelClient({
                     setActiveTab(tabKey)
                     if (tabKey === "files") {
                       void refreshFiles()
+                    }
+                    if (tabKey === "memory") {
+                      void refreshMemory()
                     }
                   }}
                   className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
@@ -1286,6 +1349,18 @@ export function ChannelClient({
                     showDetail
                     sessionToken={sessionToken}
                   />
+              </div>
+            ) : activeTab === "memory" ? (
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="mx-auto max-w-3xl">
+                  <MemoryProposalQueue
+                    proposals={memoryProposals}
+                    loading={memoryProposalLoading}
+                    onAccept={(proposal) => void handleMemoryProposalDecision(proposal, "accept")}
+                    onReject={(proposal) => void handleMemoryProposalDecision(proposal, "reject")}
+                  />
+                </div>
+                <ChannelMemorySurface entries={memoryEntries} loading={memoryLoading} channelTitle={currentTitle} />
               </div>
             ) : activeTab === "files" ? (
               <div className="flex-1 overflow-y-auto p-4">

@@ -182,34 +182,4 @@ export function memberForMessageSender(sender: string, senderType: string | null
   } satisfies AvatarMember
 }
 
-export function statusDotClass(status?: string | null) {
-  switch (status) {
-    case "online":
-    case "active":
-      return "bg-emerald-500"
-    case "running":
-    case "in_progress":
-      return "bg-sky-500"
-    case "idle":
-    case "pending":
-    case "pending_start":
-    case "starting":
-    case "in_review":
-    case "busy":
-    case "stopping":
-    case "restarting":
-      return "bg-amber-500"
-    case "failed":
-    case "crashed":
-    case "cancelled":
-      return "bg-rose-500"
-    case "offline":
-    case "stopped":
-      return "bg-slate-400"
-    case "done":
-    case "fired":
-      return "bg-emerald-500"
-    default:
-      return "bg-muted-foreground"
-  }
-}
+export { statusDotClass } from "@/lib/agent-status"

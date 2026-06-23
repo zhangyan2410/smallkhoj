@@ -34,9 +34,10 @@ import {
 } from "lucide-react"
 
 import { EmptyState, StatusPill } from "@/components/product-ui"
+import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { apiGet, apiHeaders, apiPatch, badgeClass, formatTime, statusLabel, type Member } from "@/lib/control-plane"
+import { apiGet, apiHeaders, apiPatch, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
 import { AGENT_DRAG_MIME, parseAgentDragPayload, type AgentDragPayload } from "@/lib/drag-data"
 import { applyHighWater, connectRealtimeEvents, type HighWater } from "@/lib/realtime-events"
 
@@ -391,7 +392,77 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
   )
 }
 
-function TaskDetailInline({ task, activity }: { task: Task; activity: ActivityItem[] }) {
+function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionToken?: string | null }) {
+  const [entries, setEntries] = useState<MemoryEntry[]>([])
+  const [loadingTaskId, setLoadingTaskId] = useState(taskId)
+  const highWaterRef = useRef(new Map<string, HighWater>())
+
+  const refreshMemory = useCallback(async () => {
+    const data = await apiGet<{ entries: MemoryEntry[] }>(
+      `/api/v1/tasks/${encodeURIComponent(taskId)}/memory`,
+      { entries: [] },
+      sessionToken,
+    )
+    setEntries(data.entries || [])
+    setLoadingTaskId("")
+  }, [taskId, sessionToken])
+
+  useEffect(() => {
+    let cancelled = false
+    void apiGet<{ entries: MemoryEntry[] }>(
+      `/api/v1/tasks/${encodeURIComponent(taskId)}/memory`,
+      { entries: [] },
+      sessionToken,
+    ).then((data) => {
+      if (!cancelled) {
+        setEntries(data.entries || [])
+        setLoadingTaskId("")
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [taskId, sessionToken])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const stop = connectRealtimeEvents({
+      headers: apiHeaders(sessionToken),
+      signal: controller.signal,
+      scope: { kind: "task", id: taskId },
+      onEvent: (event) => {
+        if (!event.type.startsWith("memory.")) return
+        const decision = applyHighWater(highWaterRef.current, event)
+        if (decision.action === "drop") return
+        void refreshMemory()
+      },
+      onStatus: (status) => {
+        if (status.state === "error") console.warn("[realtime] task memory stream error", status.error)
+      },
+    })
+    return () => {
+      stop()
+      controller.abort()
+    }
+  }, [refreshMemory, sessionToken, taskId])
+
+  const loading = loadingTaskId === taskId
+
+  if (loading) {
+    return (
+      <div className="rounded-md border bg-background p-2.5">
+        <h4 className="text-xs font-medium">任务记忆</h4>
+        <p className="mt-1.5 text-xs text-muted-foreground">Loading memory...</p>
+      </div>
+    )
+  }
+
+  return (
+    <TaskRecoveryCockpit entries={entries} compact />
+  )
+}
+
+function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activity: ActivityItem[]; sessionToken?: string | null }) {
   const source = task.data?.source
   const evidence = task.data?.evidence
   const entries = evidence?.entries ?? []
@@ -453,6 +524,7 @@ function TaskDetailInline({ task, activity }: { task: Task; activity: ActivityIt
           </div>
         </div>
       )}
+      <TaskMemoryInline taskId={task.id} sessionToken={sessionToken} />
     </div>
   )
 }
@@ -535,7 +607,7 @@ export function TaskBoard({
       signal: controller.signal,
       scope: { kind: "task" },
       onEvent: (event) => {
-        if (event.type !== "task.created" && event.type !== "task.updated") return
+        if (event.type !== "task.created" && event.type !== "task.updated" && !event.type.startsWith("memory.")) return
         const decision = applyHighWater(highWaterRef.current, event)
         if (decision.action === "drop") return
         scheduleRefresh()
@@ -787,7 +859,7 @@ export function TaskBoard({
               关闭
             </button>
           </div>
-          <TaskDetailInline task={selectedTask} activity={activity} />
+          <TaskDetailInline task={selectedTask} activity={activity} sessionToken={sessionToken} />
         </div>
       )}
     </div>
