@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { getTranslations } from "next-intl/server"
 import { Hash, MessageSquare } from "lucide-react"
 import { redirect } from "next/navigation"
 
@@ -41,6 +42,7 @@ function dmAvatarMember(dm: DmInfo): Member {
 
 export default async function ChatPage() {
   const session = await requireCurrentAccount()
+  const t = await getTranslations("chat")
   // 注意：这是服务端组件，必须用 serverApiHeaders() 从 cookie 读 session token。
   // 不能用 apiGet() 不带 token 的形式——那会落到 browserSessionToken()，
   // 在服务端拿不到浏览器 localStorage 的 token，导致请求被当作匿名，返回空列表。
@@ -74,16 +76,16 @@ export default async function ChatPage() {
   return (
     <ProductShell
       active="chat"
-      title="Chat"
-      description="Channels and direct messages for human-agent collaboration."
+      title={t("landingTitle")}
+      description={t("landingDescription")}
       session={session}
-      sidebarTitle="Conversation Tabs"
-      sidebarDescription="Each conversation will host Chat, Tasks, and Files tabs."
+      sidebarTitle={t("conversationTabs")}
+      sidebarDescription={t("conversationTabsDesc")}
       sidebar={
         <div className="space-y-2">
-          <RuntimeChip>Chat</RuntimeChip>
-          <RuntimeChip className="border-sky-200 bg-sky-50 text-sky-700">Tasks</RuntimeChip>
-          <RuntimeChip className="border-slate-200 bg-slate-50 text-slate-700">Files</RuntimeChip>
+          <RuntimeChip>{t("tabChat")}</RuntimeChip>
+          <RuntimeChip className="border-sky-200 bg-sky-50 text-sky-700">{t("tabTasks")}</RuntimeChip>
+          <RuntimeChip className="border-slate-200 bg-slate-50 text-slate-700">{t("tabFiles")}</RuntimeChip>
         </div>
       }
     >
@@ -92,9 +94,9 @@ export default async function ChatPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Hash className="size-4 text-primary" />
-              Channels
+              {t("channels")}
             </CardTitle>
-            <CardDescription>Open a channel to send messages, use threads, and add members.</CardDescription>
+            <CardDescription>{t("openChannelDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {channels.map((channel) => (
@@ -108,7 +110,7 @@ export default async function ChatPage() {
                 <span className="text-xs text-muted-foreground">{channel.type}</span>
               </Link>
             ))}
-            {channels.length === 0 && <EmptyState title="No channels" description="Create a channel from the workbench quick start." />}
+            {channels.length === 0 && <EmptyState title={t("noChannels")} description={t("noChannelsDesc")} />}
           </CardContent>
         </Card>
 
@@ -116,9 +118,9 @@ export default async function ChatPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <MessageSquare className="size-4 text-primary" />
-              Direct Messages
+              {t("directMessage")}
             </CardTitle>
-            <CardDescription>Continue human-agent or human-human conversations.</CardDescription>
+            <CardDescription>{t("continueDmDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {dms.map((dm) => (
@@ -131,10 +133,10 @@ export default async function ChatPage() {
                 <span className="min-w-0 flex-1 truncate font-medium">
                   {dm.peer?.displayName || dm.displayName}
                 </span>
-                <span className="text-xs text-muted-foreground">DM</span>
+                <span className="text-xs text-muted-foreground">{t("dms")}</span>
               </Link>
             ))}
-            {dms.length === 0 && <EmptyState title="No DMs" description="Start a DM from the workbench quick start." />}
+            {dms.length === 0 && <EmptyState title={t("noDms")} description={t("noDmsDesc")} />}
             <DmStarter agents={agents} />
           </CardContent>
         </Card>

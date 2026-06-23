@@ -77,6 +77,93 @@ def test_task_event_scope_prefers_task_id_over_channel_id():
     assert event["payload"]["channelId"] == str(channel_id)
 
 
+def test_channel_memory_event_uses_channel_scope():
+    channel_id = uuid.uuid4()
+    memory_id = uuid.uuid4()
+    record = _record(
+        event_type="memory.updated",
+        channel_id=channel_id,
+        message_id=None,
+        payload={
+            "memoryId": str(memory_id),
+            "scopeType": "channel",
+            "scopeId": str(channel_id),
+            "path": "decisions/channel-memory.md",
+            "channel": "#window",
+        },
+    )
+
+    event = public_event_envelope_from_record(record)
+
+    assert event["type"] == "memory.updated"
+    assert event["scope"] == {
+        "kind": "channel",
+        "id": str(channel_id),
+        "name": "window",
+    }
+    assert event["payload"]["memoryId"] == str(memory_id)
+    assert event["payload"]["path"] == "decisions/channel-memory.md"
+
+
+def test_task_memory_event_uses_task_scope():
+    channel_id = uuid.uuid4()
+    task_id = uuid.uuid4()
+    record = _record(
+        event_type="memory.proposal.created",
+        channel_id=channel_id,
+        task_id=task_id,
+        message_id=None,
+        payload={
+            "scopeType": "task",
+            "scopeId": str(task_id),
+            "path": "final-summary.md",
+            "channelId": str(channel_id),
+        },
+    )
+
+    event = public_event_envelope_from_record(record)
+
+    assert event["type"] == "memory.proposal.created"
+    assert event["scope"] == {"kind": "task", "id": str(task_id)}
+    assert event["payload"]["channelId"] == str(channel_id)
+
+
+def test_memory_delete_and_proposal_resolved_events_use_memory_scope():
+    channel_id = uuid.uuid4()
+    memory_id = uuid.uuid4()
+    deleted = public_event_envelope_from_record(_record(
+        event_type="memory.deleted",
+        channel_id=channel_id,
+        message_id=None,
+        payload={
+            "memoryId": str(memory_id),
+            "scopeType": "channel",
+            "scopeId": str(channel_id),
+            "path": "references/old.md",
+            "channel": "#window",
+        },
+    ))
+    resolved = public_event_envelope_from_record(_record(
+        event_type="memory.proposal.resolved",
+        channel_id=channel_id,
+        message_id=None,
+        payload={
+            "proposalId": str(uuid.uuid4()),
+            "scopeType": "channel",
+            "scopeId": str(channel_id),
+            "path": "MEMORY.md",
+            "status": "accepted",
+            "channel": "#window",
+        },
+    ))
+
+    assert deleted["type"] == "memory.deleted"
+    assert deleted["scope"] == {"kind": "channel", "id": str(channel_id), "name": "window"}
+    assert resolved["type"] == "memory.proposal.resolved"
+    assert resolved["scope"] == {"kind": "channel", "id": str(channel_id), "name": "window"}
+    assert resolved["payload"]["status"] == "accepted"
+
+
 def test_public_event_type_aliases_match_ui_contract():
     record = _record(event_type="member.updated", payload={"memberId": str(uuid.uuid4())})
     assert public_event_envelope_from_record(record)["type"] == "member.status.updated"

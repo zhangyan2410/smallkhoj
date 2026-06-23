@@ -22,6 +22,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Runtime Slock Integration](./runtime-slock-integration.md) | Claude runtime, slock CLI, local proxy, and MCP compatibility contracts | Active |
 | [Event Delivery Contracts](./event-delivery-contracts.md) | Activity/event filtering, daemon delivery, and runtime token-safety contracts | Active |
 | [Threading Contracts](./threading-contracts.md) | Single-level thread APIs, summary metadata, DM display, and daemon thread events | Active |
+| [Memory Contracts](./memory-contracts.md) | Server-owned scoped memory, proposal audit, selective context manifests, and task recovery contracts | Active |
 
 ---
 

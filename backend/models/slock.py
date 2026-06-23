@@ -282,6 +282,104 @@ class Task(Base):
     assignee = relationship("Member", foreign_keys=[assignee_id])
 
 
+# ── Server-owned Memory ──────────────────────────────────────
+
+class MemoryEntry(Base):
+    __tablename__ = "memory_entries"
+    __table_args__ = (
+        Index(
+            "uq_memory_entries_scope_path_active",
+            "server_id",
+            "scope_type",
+            "scope_id",
+            "path",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index("idx_memory_entries_scope_updated", "server_id", "scope_type", "scope_id", text("updated_at DESC")),
+        Index(
+            "idx_memory_entries_source_message",
+            "server_id",
+            "source_message_id",
+            postgresql_where=text("source_message_id IS NOT NULL"),
+        ),
+        Index(
+            "idx_memory_entries_source_task",
+            "server_id",
+            "source_task_id",
+            postgresql_where=text("source_task_id IS NOT NULL"),
+        ),
+        CheckConstraint("scope_type IN ('agent', 'channel', 'task', 'thread')", name="ck_memory_entries_scope_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    scope_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entry_kind: Mapped[str] = mapped_column(String(40), nullable=False, default="note")
+    content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blob_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("files.id", ondelete="SET NULL"), nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+    source_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    source_channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    source_thread_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    source_task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    source_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author_member_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    visibility: Mapped[str] = mapped_column(String(20), nullable=False, default="inherited", server_default=text("'inherited'"))
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    server = relationship("Server")
+    file = relationship("FileEntry")
+    source_message = relationship("Message", foreign_keys=[source_message_id])
+    source_channel = relationship("Channel", foreign_keys=[source_channel_id])
+    source_thread = relationship("Message", foreign_keys=[source_thread_id])
+    source_task = relationship("Task", foreign_keys=[source_task_id])
+    author = relationship("Member")
+
+
+class MemoryProposal(Base):
+    __tablename__ = "memory_proposals"
+    __table_args__ = (
+        Index("idx_memory_proposals_scope_status", "server_id", "scope_type", "scope_id", "status", text("updated_at DESC")),
+        CheckConstraint("scope_type IN ('agent', 'channel', 'task', 'thread')", name="ck_memory_proposals_scope_type"),
+        CheckConstraint("status IN ('open', 'accepted', 'rejected', 'superseded')", name="ck_memory_proposals_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    scope_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    base_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("memory_entries.id", ondelete="SET NULL"), nullable=True)
+    base_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    proposed_content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposed_blob_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author_member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open", server_default=text("'open'"))
+    reviewer_member_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    server = relationship("Server")
+    base_entry = relationship("MemoryEntry")
+    author = relationship("Member", foreign_keys=[author_member_id])
+    reviewer = relationship("Member", foreign_keys=[reviewer_member_id])
+
+
 # ── Activity Logs ────────────────────────────────────────────
 
 class ActivityLog(Base):

@@ -29,7 +29,7 @@ function printUsage(): never {
   stderr.write(JSON.stringify({
     ok: false,
     code: 'USAGE',
-    message: 'Usage: slock message check|send|read|search|resolve|react, slock channel members|join|leave, slock thread read|summary|unfollow, slock server info, slock task list|claim|unclaim|update|create, slock profile show|get|update, slock integration list|login, slock reminder list|schedule|create|snooze|update|cancel|delete|log, slock attachment view|download|upload',
+    message: 'Usage: slock message check|send|read|search|resolve|react, slock channel members|join|leave, slock thread read|summary|unfollow, slock server info, slock task list|claim|unclaim|update|create|summary|promote, slock memory read|search|context|write|propose|proposals|accept-proposal|reject-proposal|delete, slock profile show|get|update, slock integration list|login, slock reminder list|schedule|create|snooze|update|cancel|delete|log, slock attachment view|download|upload',
   }) + '\n');
   exit(2);
 }
@@ -194,6 +194,34 @@ function dmTargetHint(target: string): string | undefined {
   return undefined;
 }
 
+function requireMemoryScope(args: string[]): { type: string; id: string } {
+  const type = getOption(args, '--scope') ?? getOption(args, '--scope-type') ?? getOption(args, '-s');
+  const id = getOption(args, '--id') ?? getOption(args, '--scope-id');
+  if (!type) throw Object.assign(new Error('Missing --scope'), { code: 'MISSING_SCOPE' });
+  if (!['agent', 'channel', 'thread', 'task'].includes(type)) {
+    throw Object.assign(new Error(`Unsupported memory scope: ${type}`), { code: 'INVALID_SCOPE' });
+  }
+  if (!id) throw Object.assign(new Error('Missing --id'), { code: 'MISSING_SCOPE_ID' });
+  return { type, id };
+}
+
+function requireMemoryPath(args: string[]): string {
+  const raw = getOption(args, '--path') ?? getOption(args, '-p');
+  const normalized = raw?.trim().replace(/^\/+/, '');
+  if (!normalized) throw Object.assign(new Error('Missing --path'), { code: 'MISSING_PATH' });
+  if (normalized.split('/').some((part) => part === '..' || part === '.')) {
+    throw Object.assign(new Error('Invalid memory path'), { code: 'INVALID_PATH' });
+  }
+  return normalized.split('/').map((part) => encodeURIComponent(part)).join('/');
+}
+
+async function readMemoryContent(args: string[]): Promise<string> {
+  const inline = getOption(args, '--content') ?? getOption(args, '--text');
+  const contentText = inline ?? await readStdinText();
+  if (!contentText) throw Object.assign(new Error('Missing memory content'), { code: 'MISSING_CONTENT' });
+  return contentText;
+}
+
 function enrichProxyFailure(text: string, status: number): string {
   const lower = text.toLowerCase();
   if (lower.includes('machine api key required') || lower.includes('machine api key')) {
@@ -203,6 +231,21 @@ function enrichProxyFailure(text: string, status: number): string {
       code: 'MACHINE_API_KEY_REQUIRED_HINT',
       hint: 'Real aaa-daemon/Slock tests should import a local Slock runtime and route through this project AgentProxy; do not point the test CLI directly at the official/running daemon proxy.',
     })}\n`;
+  }
+  try {
+    const parsed = JSON.parse(text) as { detail?: unknown; code?: unknown; instruction?: unknown };
+    const detail = parsed.detail && typeof parsed.detail === 'object' ? parsed.detail as Record<string, unknown> : parsed;
+    if (detail.code === 'MEMORY_CONFLICT') {
+      return JSON.stringify({
+        ok: false,
+        code: 'MEMORY_CONFLICT',
+        instruction: typeof detail.instruction === 'string'
+          ? detail.instruction
+          : 'Memory changed since you read it. Re-read the memory, merge your update, then retry or create a proposal.',
+      }) + '\n';
+    }
+  } catch {
+    // Preserve the original upstream error when it is not JSON.
   }
   if (!text) return JSON.stringify({ ok: false, code: `HTTP_${status}` }) + '\n';
   return text;
@@ -446,6 +489,143 @@ async function parseRequest(args: string[], source: NodeJS.ProcessEnv): Promise<
         data: parseJsonOption(rest, '--json'),
       });
     return { method: 'POST', path: `${agentPrefix}/tasks`, body, safety: writeSafety(channel) };
+  }
+
+  if (group === 'task' && command === 'summary') {
+    const taskId = getOption(rest, '--id') ?? getOption(rest, '--task-id') ?? positionalArgs(rest)[0];
+    if (!taskId) throw Object.assign(new Error('Missing task id'), { code: 'MISSING_TASK_ID' });
+    const inline = getOption(rest, '--summary') ?? getOption(rest, '--final-summary') ?? getOption(rest, '--text');
+    const finalSummary = inline || await readStdinText();
+    if (!finalSummary) throw Object.assign(new Error('Missing --summary'), { code: 'MISSING_SUMMARY' });
+    const evidence = getOptions(rest, '--evidence');
+    const artifacts = getOptions(rest, '--artifact');
+    const nextSteps = getOptions(rest, '--next-step');
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/tasks/${encodeURIComponent(taskId)}/memory/summary`,
+      body: compactBody({
+        finalSummary,
+        progress: getOption(rest, '--progress'),
+        evidence: evidence.length > 0 ? evidence : undefined,
+        artifacts: artifacts.length > 0 ? artifacts : undefined,
+        nextSteps: nextSteps.length > 0 ? nextSteps : undefined,
+      }),
+      safety: writeSafety(`task:${taskId}:memory`),
+    };
+  }
+
+  if (group === 'task' && command === 'promote') {
+    const taskId = getOption(rest, '--id') ?? getOption(rest, '--task-id') ?? positionalArgs(rest)[0];
+    if (!taskId) throw Object.assign(new Error('Missing task id'), { code: 'MISSING_TASK_ID' });
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/tasks/${encodeURIComponent(taskId)}/memory/promote`,
+      body: compactBody({
+        sourcePath: getOption(rest, '--source-path') ?? getOption(rest, '--path'),
+        channelPath: getOption(rest, '--channel-path'),
+        reason: getOption(rest, '--reason'),
+        proposal: hasFlag(rest, '--proposal') || undefined,
+      }),
+      safety: writeSafety(`task:${taskId}:memory`, getOption(rest, '--channel-path')),
+    };
+  }
+
+  if (group === 'memory' && command === 'read') {
+    const scope = requireMemoryScope(rest);
+    const path = requireMemoryPath(rest);
+    return { method: 'GET', path: `${agentPrefix}/memory/scopes/${scope.type}/${encodeURIComponent(scope.id)}/path/${path}` };
+  }
+
+  if (group === 'memory' && command === 'search') {
+    const scope = requireMemoryScope(rest);
+    const queryText = getOption(rest, '--query') ?? getOption(rest, '-q') ?? positionalArgs(rest).join(' ').trim();
+    if (!queryText) throw Object.assign(new Error('Missing --query'), { code: 'MISSING_QUERY' });
+    const query = new URLSearchParams();
+    query.set('q', queryText);
+    const limit = getOption(rest, '--limit');
+    if (limit) query.set('limit', limit);
+    return { method: 'GET', path: `${agentPrefix}/memory/scopes/${scope.type}/${encodeURIComponent(scope.id)}/search?${query}` };
+  }
+
+  if (group === 'memory' && command === 'context') {
+    const scope = requireMemoryScope(rest);
+    const prompt = getOption(rest, '--query') ?? getOption(rest, '-q') ?? getOption(rest, '--prompt') ?? positionalArgs(rest).join(' ').trim();
+    const limit = maybeNumber(getOption(rest, '--limit'));
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/memory/context-manifest`,
+      body: compactBody({
+        scopeType: scope.type,
+        scopeId: scope.id,
+        prompt,
+        topK: limit,
+      }),
+    };
+  }
+
+  if (group === 'memory' && command === 'write') {
+    const scope = requireMemoryScope(rest);
+    const path = requireMemoryPath(rest);
+    const contentText = await readMemoryContent(rest);
+    return {
+      method: 'PUT',
+      path: `${agentPrefix}/memory/scopes/${scope.type}/${encodeURIComponent(scope.id)}/path/${path}`,
+      body: compactBody({ contentText, baseSha: getOption(rest, '--base-sha') }),
+      safety: writeSafety(`memory:${scope.type}:${scope.id}:${path}`),
+    };
+  }
+
+  if (group === 'memory' && command === 'propose') {
+    const scope = requireMemoryScope(rest);
+    const path = requireMemoryPath(rest);
+    const contentText = await readMemoryContent(rest);
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/memory/scopes/${scope.type}/${encodeURIComponent(scope.id)}/proposals`,
+      body: compactBody({
+        path: path.split('/').map((part) => decodeURIComponent(part)).join('/'),
+        contentText,
+        reason: getOption(rest, '--reason'),
+        baseSha: getOption(rest, '--base-sha'),
+      }),
+      safety: writeSafety(`memory:${scope.type}:${scope.id}:${path}`),
+    };
+  }
+
+  if (group === 'memory' && (command === 'proposals' || command === 'list-proposals')) {
+    const scope = requireMemoryScope(rest);
+    const query = new URLSearchParams();
+    const status = getOption(rest, '--status');
+    if (status) query.set('status', status);
+    const suffix = query.toString() ? `?${query}` : '';
+    return {
+      method: 'GET',
+      path: `${agentPrefix}/memory/scopes/${scope.type}/${encodeURIComponent(scope.id)}/proposals${suffix}`,
+    };
+  }
+
+  if (group === 'memory' && (command === 'accept-proposal' || command === 'reject-proposal')) {
+    const proposalId = getOption(rest, '--id') ?? getOption(rest, '--proposal-id') ?? positionalArgs(rest)[0];
+    if (!proposalId) throw Object.assign(new Error('Missing proposal id'), { code: 'MISSING_PROPOSAL_ID' });
+    const action = command === 'accept-proposal' ? 'accept' : 'reject';
+    return {
+      method: 'POST',
+      path: `${agentPrefix}/memory/proposals/${encodeURIComponent(proposalId)}/${action}`,
+      body: compactBody({
+        reviewNote: getOption(rest, '--review-note') ?? getOption(rest, '--note'),
+      }),
+      safety: writeSafety(`memory:proposal:${proposalId}`),
+    };
+  }
+
+  if (group === 'memory' && (command === 'delete' || command === 'remove')) {
+    const scope = requireMemoryScope(rest);
+    const path = requireMemoryPath(rest);
+    return {
+      method: 'DELETE',
+      path: `${agentPrefix}/memory/scopes/${scope.type}/${encodeURIComponent(scope.id)}/path/${path}`,
+      safety: writeSafety(`memory:${scope.type}:${scope.id}:${path}`),
+    };
   }
 
   if (group === 'profile' && (command === 'get' || command === 'show')) {
@@ -704,7 +884,7 @@ export async function runSlockCli(argv: string[], io: {
 
     const text = await response.text();
     if (!response.ok) {
-      err.write(text || JSON.stringify({ ok: false, code: `HTTP_${response.status}` }) + '\n');
+      err.write(enrichProxyFailure(text, response.status));
       return 1;
     }
     out.write(text.endsWith('\n') ? text : `${text}\n`);

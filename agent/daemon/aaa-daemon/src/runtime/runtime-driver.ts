@@ -17,11 +17,20 @@ export type RuntimeStreamEvent = Record<string, unknown> & {
   sessionId?: string;
 };
 
+export interface RuntimeSendOptions {
+  /**
+   * Undefined keeps the driver's current/default provider session behavior.
+   * Null explicitly starts a fresh scoped provider session.
+   */
+  sessionId?: string | null;
+  sessionScopeKey?: string;
+}
+
 export interface ManagedRuntimeDriver {
   start(): void;
   stop(): void;
   killUnresponsive(): void;
-  sendUserMessage(text: string): boolean;
+  sendUserMessage(text: string, options?: RuntimeSendOptions): boolean;
   readonly pid: number | undefined;
   readonly sessionId: string | undefined;
   readonly queuedMessageCount: number;

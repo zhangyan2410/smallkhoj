@@ -1,6 +1,6 @@
 "use client"
 
-import { type DragEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
+import { type DragEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -23,6 +23,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import {
+  Bell,
   Camera,
   Columns3,
   Database,
@@ -34,13 +35,17 @@ import {
 } from "lucide-react"
 
 import { EmptyState, StatusPill } from "@/components/product-ui"
+import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { apiGet, apiHeaders, apiPatch, badgeClass, formatTime, statusLabel, type Member } from "@/lib/control-plane"
+import { apiGet, apiHeaders, apiPatch, apiPost, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
 import { AGENT_DRAG_MIME, parseAgentDragPayload, type AgentDragPayload } from "@/lib/drag-data"
 import { applyHighWater, connectRealtimeEvents, type HighWater } from "@/lib/realtime-events"
 
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
+const TASK_BOARD_DND_CONTEXT_ID = "smallkhoj-task-board"
+const MEMORY_OUTPUT_DIRECTIONS = ["final_summary", "evidence", "artifacts", "next_steps", "channel_memory"] as const
+type MemoryOutputDirection = (typeof MEMORY_OUTPUT_DIRECTIONS)[number]
 
 type EvidenceEntry = {
   type: "screenshot" | "trace" | "api_proof" | "note" | "reviewer_decision" | "review_note"
@@ -391,7 +396,168 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
   )
 }
 
-function TaskDetailInline({ task, activity }: { task: Task; activity: ActivityItem[] }) {
+function memoryOutputDirectionLabel(direction: MemoryOutputDirection) {
+  switch (direction) {
+    case "final_summary":
+      return "最终总结"
+    case "evidence":
+      return "证据"
+    case "artifacts":
+      return "产物"
+    case "next_steps":
+      return "后续步骤"
+    case "channel_memory":
+      return "频道提案"
+  }
+}
+
+function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionToken?: string | null }) {
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle")
+  const [error, setError] = useState<string | null>(null)
+  const hasAgentAssignee = Boolean(task.assignee || task.assigneeMember)
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!hasAgentAssignee || status === "sending") return
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const outputDirections = formData.getAll("outputDirection").map((item) => String(item))
+    setStatus("sending")
+    setError(null)
+    try {
+      await apiPost(
+        `/api/v1/tasks/${encodeURIComponent(task.id)}/memory/request`,
+        {
+          instruction: String(formData.get("memoryInstruction") || "").trim() || null,
+          outputDirections,
+        },
+        sessionToken,
+      )
+      setStatus("sent")
+      form.reset()
+    } catch (err) {
+      setStatus("error")
+      setError(err instanceof Error ? err.message : "发送失败")
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-md border border-dashed bg-muted/30 p-2.5">
+      <div className="flex items-start gap-2">
+        <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-medium">提醒产出记忆</div>
+          <p className="mt-0.5 text-[0.7rem] leading-4 text-muted-foreground">
+            给负责人发送一次性提醒，让它用 slock task summary 产出结果。
+          </p>
+        </div>
+      </div>
+      <textarea
+        name="memoryInstruction"
+        placeholder="补充要求，例如测试证据、剩余风险"
+        className="mt-2 min-h-14 w-full resize-none rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+        disabled={!hasAgentAssignee || status === "sending"}
+      />
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {MEMORY_OUTPUT_DIRECTIONS.map((direction) => (
+          <label key={direction} className="cursor-pointer">
+            <input
+              type="checkbox"
+              name="outputDirection"
+              value={direction}
+              defaultChecked={direction === "final_summary" || direction === "evidence"}
+              className="peer sr-only"
+              disabled={!hasAgentAssignee || status === "sending"}
+            />
+            <span className="inline-flex rounded-md border bg-background px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
+              {memoryOutputDirectionLabel(direction)}
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="text-[0.68rem] text-muted-foreground">
+          {!hasAgentAssignee ? "先分配智能体" : status === "sent" ? "已发送" : error}
+        </span>
+        <Button type="submit" size="sm" variant="outline" className="h-7 text-xs" disabled={!hasAgentAssignee || status === "sending"}>
+          {status === "sending" ? "发送中" : "发送提醒"}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionToken?: string | null }) {
+  const [entries, setEntries] = useState<MemoryEntry[]>([])
+  const [loadingTaskId, setLoadingTaskId] = useState(taskId)
+  const highWaterRef = useRef(new Map<string, HighWater>())
+
+  const refreshMemory = useCallback(async () => {
+    const data = await apiGet<{ entries: MemoryEntry[] }>(
+      `/api/v1/tasks/${encodeURIComponent(taskId)}/memory`,
+      { entries: [] },
+      sessionToken,
+    )
+    setEntries(data.entries || [])
+    setLoadingTaskId("")
+  }, [taskId, sessionToken])
+
+  useEffect(() => {
+    let cancelled = false
+    void apiGet<{ entries: MemoryEntry[] }>(
+      `/api/v1/tasks/${encodeURIComponent(taskId)}/memory`,
+      { entries: [] },
+      sessionToken,
+    ).then((data) => {
+      if (!cancelled) {
+        setEntries(data.entries || [])
+        setLoadingTaskId("")
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [taskId, sessionToken])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const stop = connectRealtimeEvents({
+      headers: apiHeaders(sessionToken),
+      signal: controller.signal,
+      scope: { kind: "task", id: taskId },
+      onEvent: (event) => {
+        if (!event.type.startsWith("memory.")) return
+        const decision = applyHighWater(highWaterRef.current, event)
+        if (decision.action === "drop") return
+        void refreshMemory()
+      },
+      onStatus: (status) => {
+        if (status.state === "error") console.warn("[realtime] task memory stream error", status.error)
+      },
+    })
+    return () => {
+      stop()
+      controller.abort()
+    }
+  }, [refreshMemory, sessionToken, taskId])
+
+  const loading = loadingTaskId === taskId
+
+  if (loading) {
+    return (
+      <div className="rounded-md border bg-background p-2.5">
+        <h4 className="text-xs font-medium">任务记忆</h4>
+        <p className="mt-1.5 text-xs text-muted-foreground">Loading memory...</p>
+      </div>
+    )
+  }
+
+  return (
+    <TaskRecoveryCockpit entries={entries} compact />
+  )
+}
+
+function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activity: ActivityItem[]; sessionToken?: string | null }) {
   const source = task.data?.source
   const evidence = task.data?.evidence
   const entries = evidence?.entries ?? []
@@ -453,6 +619,8 @@ function TaskDetailInline({ task, activity }: { task: Task; activity: ActivityIt
           </div>
         </div>
       )}
+      <TaskMemoryRequestInline task={task} sessionToken={sessionToken} />
+      <TaskMemoryInline taskId={task.id} sessionToken={sessionToken} />
     </div>
   )
 }
@@ -474,6 +642,8 @@ export type TaskBoardProps = {
   dragDisabled?: boolean
   /** Session token for API calls (for PATCH updates) */
   sessionToken?: string | null
+  /** Optional initial selected task, used by tests or embedded focused views */
+  initialSelectedTaskId?: string | null
   /** Callback when a task is moved (for optimistic updates in parent) */
   onTaskMoved?: (taskId: string, newStatus: string) => void
 }
@@ -487,12 +657,15 @@ export function TaskBoard({
   compact = false,
   dragDisabled = false,
   sessionToken,
+  initialSelectedTaskId,
   onTaskMoved,
 }: TaskBoardProps) {
   const [view, setView] = useState<"board" | "list">(initialView)
   const [tasks, setTasks] = useState<Task[]>(preloadedTasks ?? [])
   const [loading, setLoading] = useState(!preloadedTasks)
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(
+    initialSelectedTaskId ? (preloadedTasks ?? []).find((task) => task.id === initialSelectedTaskId) ?? null : null,
+  )
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [dragError, setDragError] = useState<string | null>(null)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
@@ -535,7 +708,7 @@ export function TaskBoard({
       signal: controller.signal,
       scope: { kind: "task" },
       onEvent: (event) => {
-        if (event.type !== "task.created" && event.type !== "task.updated") return
+        if (event.type !== "task.created" && event.type !== "task.updated" && !event.type.startsWith("memory.")) return
         const decision = applyHighWater(highWaterRef.current, event)
         if (decision.action === "drop") return
         scheduleRefresh()
@@ -732,6 +905,7 @@ export function TaskBoard({
 
       {view === "board" && !dragDisabled ? (
         <DndContext
+          id={TASK_BOARD_DND_CONTEXT_ID}
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
@@ -787,7 +961,7 @@ export function TaskBoard({
               关闭
             </button>
           </div>
-          <TaskDetailInline task={selectedTask} activity={activity} />
+          <TaskDetailInline task={selectedTask} activity={activity} sessionToken={sessionToken} />
         </div>
       )}
     </div>

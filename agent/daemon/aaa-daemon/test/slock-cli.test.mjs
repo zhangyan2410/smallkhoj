@@ -223,6 +223,221 @@ test('slock CLI parity commands map to canonical local proxy endpoints', async (
   }
 });
 
+test('slock memory commands map to scoped memory endpoints and write gates', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-cli-memory-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+
+  try {
+    const tokenFile = join(root, 'token.txt');
+    writeFileSync(tokenFile, 'sap_cli_token', 'utf-8');
+    const env = {
+      SLOCK_AGENT_PROXY_URL: server.url,
+      SLOCK_AGENT_PROXY_TOKEN_FILE: tokenFile,
+      SLOCK_AGENT_ID: 'agent-1',
+      SLOCK_ALLOW_WRITES: '1',
+    };
+
+    assert.equal((await runCli(['memory', 'read', '--scope', 'channel', '--id', 'ch-1', '--path', 'MEMORY.md'], env)).code, 0);
+    assert.equal((await runCli(['memory', 'read', '--scope', 'agent', '--id', 'agent-1', '--path', 'private.md'], env)).code, 0);
+    assert.equal((await runCli(['memory', 'search', '--scope', 'task', '--id', 'task-1', '--query', 'evidence'], env)).code, 0);
+    assert.equal((await runCli(['memory', 'context', '--scope', 'task', '--id', 'task-1', '--query', 'recovery evidence', '--limit', '2'], env)).code, 0);
+    assert.equal((await runCli(['memory', 'write', '--scope', 'task', '--id', 'task-1', '--path', 'progress.md'], env, 'progress body')).code, 0);
+    assert.equal((await runCli(['memory', 'propose', '--scope', 'channel', '--id', 'ch-1', '--path', 'decisions/foo.md', '--reason', 'durable'], env, 'decision body')).code, 0);
+    assert.equal((await runCli(['memory', 'proposals', '--scope', 'channel', '--id', 'ch-1', '--status', 'all'], env)).code, 0);
+    assert.equal((await runCli(['memory', 'accept-proposal', '--id', 'proposal-1', '--note', 'promote durable decision'], env)).code, 0);
+    assert.equal((await runCli(['memory', 'reject-proposal', '--id', 'proposal-2', '--note', 'keep task-local'], env)).code, 0);
+    assert.equal((await runCli(['memory', 'delete', '--scope', 'task', '--id', 'task-1', '--path', 'progress/old.md'], env)).code, 0);
+
+    assert.deepEqual(server.requests.map(({ req, body }) => ({ method: req.method, url: req.url, body })), [
+      {
+        method: 'GET',
+        url: '/internal/agent/agent-1/memory/scopes/channel/ch-1/path/MEMORY.md',
+        body: '',
+      },
+      {
+        method: 'GET',
+        url: '/internal/agent/agent-1/memory/scopes/agent/agent-1/path/private.md',
+        body: '',
+      },
+      {
+        method: 'GET',
+        url: '/internal/agent/agent-1/memory/scopes/task/task-1/search?q=evidence',
+        body: '',
+      },
+      {
+        method: 'POST',
+        url: '/internal/agent/agent-1/memory/context-manifest',
+        body: JSON.stringify({ scopeType: 'task', scopeId: 'task-1', prompt: 'recovery evidence', topK: 2 }),
+      },
+      {
+        method: 'PUT',
+        url: '/internal/agent/agent-1/memory/scopes/task/task-1/path/progress.md',
+        body: JSON.stringify({ contentText: 'progress body' }),
+      },
+      {
+        method: 'POST',
+        url: '/internal/agent/agent-1/memory/scopes/channel/ch-1/proposals',
+        body: JSON.stringify({ path: 'decisions/foo.md', contentText: 'decision body', reason: 'durable' }),
+      },
+      {
+        method: 'GET',
+        url: '/internal/agent/agent-1/memory/scopes/channel/ch-1/proposals?status=all',
+        body: '',
+      },
+      {
+        method: 'POST',
+        url: '/internal/agent/agent-1/memory/proposals/proposal-1/accept',
+        body: JSON.stringify({ reviewNote: 'promote durable decision' }),
+      },
+      {
+        method: 'POST',
+        url: '/internal/agent/agent-1/memory/proposals/proposal-2/reject',
+        body: JSON.stringify({ reviewNote: 'keep task-local' }),
+      },
+      {
+        method: 'DELETE',
+        url: '/internal/agent/agent-1/memory/scopes/task/task-1/path/progress/old.md',
+        body: '',
+      },
+    ]);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('slock task summary and promote map to task memory handoff endpoints', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-cli-task-memory-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+
+  try {
+    const tokenFile = join(root, 'token.txt');
+    writeFileSync(tokenFile, 'sap_cli_token', 'utf-8');
+    const env = {
+      SLOCK_AGENT_PROXY_URL: server.url,
+      SLOCK_AGENT_PROXY_TOKEN_FILE: tokenFile,
+      SLOCK_AGENT_ID: 'agent-1',
+      SLOCK_ALLOW_WRITES: '1',
+    };
+
+    assert.equal((await runCli([
+      'task',
+      'summary',
+      '--id',
+      'task-1',
+      '--summary',
+      'final result',
+      '--progress',
+      'implemented and tested',
+      '--evidence',
+      'evidence/ui.png',
+    ], env)).code, 0);
+    assert.equal((await runCli([
+      'task',
+      'promote',
+      '--id',
+      'task-1',
+      '--source-path',
+      'final-summary.md',
+      '--channel-path',
+      'tasks/task-1/final-summary.md',
+      '--reason',
+      'durable output',
+      '--proposal',
+    ], env)).code, 0);
+
+    assert.deepEqual(server.requests.map(({ req, body }) => ({ method: req.method, url: req.url, body })), [
+      {
+        method: 'POST',
+        url: '/internal/agent/agent-1/tasks/task-1/memory/summary',
+        body: JSON.stringify({
+          finalSummary: 'final result',
+          progress: 'implemented and tested',
+          evidence: ['evidence/ui.png'],
+        }),
+      },
+      {
+        method: 'POST',
+        url: '/internal/agent/agent-1/tasks/task-1/memory/promote',
+        body: JSON.stringify({
+          sourcePath: 'final-summary.md',
+          channelPath: 'tasks/task-1/final-summary.md',
+          reason: 'durable output',
+          proposal: true,
+        }),
+      },
+    ]);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('slock memory write requires explicit write opt-in', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-cli-memory-gate-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+
+  try {
+    const tokenFile = join(root, 'token.txt');
+    writeFileSync(tokenFile, 'sap_cli_token', 'utf-8');
+    const result = await runCli(['memory', 'write', '--scope', 'channel', '--id', 'ch-1', '--path', 'MEMORY.md'], {
+      SLOCK_AGENT_PROXY_URL: server.url,
+      SLOCK_AGENT_PROXY_TOKEN_FILE: tokenFile,
+      SLOCK_AGENT_ID: 'agent-1',
+    }, 'body');
+
+    assert.equal(result.code, 1);
+    assert.equal(JSON.parse(result.stderr).code, 'WRITES_NOT_ALLOWED');
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('slock memory write conflict returns actionable instruction without sha bookkeeping', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-cli-memory-conflict-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(409, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      detail: {
+        code: 'MEMORY_CONFLICT',
+        currentSha256: 'abc123secretsha',
+        instruction: 'Memory changed since you read it. Re-read, merge, then retry or create a proposal.',
+      },
+    }));
+  });
+
+  try {
+    const tokenFile = join(root, 'token.txt');
+    writeFileSync(tokenFile, 'sap_cli_token', 'utf-8');
+    const result = await runCli(['memory', 'write', '--scope', 'channel', '--id', 'ch-1', '--path', 'MEMORY.md', '--base-sha', 'oldsha'], {
+      SLOCK_AGENT_PROXY_URL: server.url,
+      SLOCK_AGENT_PROXY_TOKEN_FILE: tokenFile,
+      SLOCK_AGENT_ID: 'agent-1',
+      SLOCK_ALLOW_WRITES: '1',
+    }, 'body');
+
+    assert.equal(result.code, 1);
+    const error = JSON.parse(result.stderr);
+    assert.equal(error.code, 'MEMORY_CONFLICT');
+    assert.match(error.instruction, /Re-read/);
+    assert.doesNotMatch(result.stderr, /abc123secretsha/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('AgentProxy holds sends until pending messages are read', async () => {
   const upstream = await startServer((req, res, body) => {
     const url = new URL(req.url, 'http://upstream.test');
@@ -639,6 +854,14 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
       res.end(JSON.stringify({ unclaimed: true, taskId: 'task-1' }));
       return;
     }
+    if (url.pathname === '/internal/agent-api/tasks/task-1/memory/summary') {
+      res.end(JSON.stringify({ summarized: true, body: JSON.parse(body) }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/tasks/task-1/memory/promote') {
+      res.end(JSON.stringify({ promoted: true, body: JSON.parse(body) }));
+      return;
+    }
     if (url.pathname === '/internal/agent-api/reminders/rem-1/log') {
       res.end(JSON.stringify({ reminderId: 'rem-1', entries: [] }));
       return;
@@ -649,6 +872,30 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
     }
     if (url.pathname === '/internal/agent-api/knowledge/search') {
       res.end(JSON.stringify({ results: [{ id: 'k-1', q: url.searchParams.get('q') }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/memory/scopes/agent/agent-1/path/private.md') {
+      res.end(JSON.stringify({ entry: { scopeType: 'agent', scopeId: 'agent-1', path: 'private.md' } }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/memory/scopes/channel/ch-1/proposals') {
+      res.end(JSON.stringify({ proposals: [{ id: 'proposal-1', status: url.searchParams.get('status') }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/memory/proposals/proposal-1/accept') {
+      res.end(JSON.stringify({ proposal: { id: 'proposal-1', status: 'accepted' }, body: JSON.parse(body) }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/memory/proposals/proposal-2/reject') {
+      res.end(JSON.stringify({ proposal: { id: 'proposal-2', status: 'rejected' }, body: JSON.parse(body) }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/memory/scopes/task/task-1/path/progress/old.md') {
+      res.end(JSON.stringify({ deleted: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/memory/context-manifest') {
+      res.end(JSON.stringify({ manifest: true, body: JSON.parse(body) }));
       return;
     }
     if (url.pathname === '/internal/agent-api/threads/follow') {
@@ -725,6 +972,136 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
     assert.equal(upstream.requests.length, 2);
     assert.equal(upstream.requests[1].req.url, '/internal/agent-api/knowledge/search?q=runtime');
 
+    const memoryRead = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 30,
+      method: 'daemon/memory.read',
+      params: { scope: 'agent', id: 'agent-1', path: 'private.md' },
+    });
+
+    assert.deepEqual(memoryRead, {
+      jsonrpc: '2.0',
+      id: 30,
+      result: { entry: { scopeType: 'agent', scopeId: 'agent-1', path: 'private.md' } },
+    });
+    assert.equal(upstream.requests.length, 3);
+    assert.equal(upstream.requests[2].req.url, '/internal/agent-api/memory/scopes/agent/agent-1/path/private.md');
+
+    const memoryProposals = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 34,
+      method: 'daemon/memory.proposals',
+      params: { scope: 'channel', id: 'ch-1', status: 'all' },
+    });
+
+    assert.deepEqual(memoryProposals, {
+      jsonrpc: '2.0',
+      id: 34,
+      result: { proposals: [{ id: 'proposal-1', status: 'all' }] },
+    });
+    assert.equal(upstream.requests.length, 4);
+    assert.equal(upstream.requests[3].req.url, '/internal/agent-api/memory/scopes/channel/ch-1/proposals?status=all');
+
+    const memoryProposalAccept = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 35,
+      method: 'daemon/memory.proposal.accept',
+      params: { proposalId: 'proposal-1', reviewNote: 'durable' },
+    });
+
+    assert.deepEqual(memoryProposalAccept, {
+      jsonrpc: '2.0',
+      id: 35,
+      result: { proposal: { id: 'proposal-1', status: 'accepted' }, body: { reviewNote: 'durable' } },
+    });
+    assert.equal(upstream.requests.length, 5);
+    assert.equal(upstream.requests[4].req.url, '/internal/agent-api/memory/proposals/proposal-1/accept');
+    assert.deepEqual(JSON.parse(upstream.requests[4].body), { reviewNote: 'durable' });
+
+    const memoryProposalReject = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 36,
+      method: 'daemon/memory.proposal.reject',
+      params: { proposalId: 'proposal-2', note: 'task-local' },
+    });
+
+    assert.deepEqual(memoryProposalReject, {
+      jsonrpc: '2.0',
+      id: 36,
+      result: { proposal: { id: 'proposal-2', status: 'rejected' }, body: { reviewNote: 'task-local' } },
+    });
+    assert.equal(upstream.requests.length, 6);
+    assert.equal(upstream.requests[5].req.url, '/internal/agent-api/memory/proposals/proposal-2/reject');
+    assert.deepEqual(JSON.parse(upstream.requests[5].body), { reviewNote: 'task-local' });
+
+    const memoryDelete = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 37,
+      method: 'daemon/memory.delete',
+      params: { scope: 'task', id: 'task-1', path: 'progress/old.md' },
+    });
+
+    assert.deepEqual(memoryDelete, {
+      jsonrpc: '2.0',
+      id: 37,
+      result: { deleted: true },
+    });
+    assert.equal(upstream.requests.length, 7);
+    assert.equal(upstream.requests[6].req.url, '/internal/agent-api/memory/scopes/task/task-1/path/progress/old.md');
+
+    const memoryContext = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 33,
+      method: 'daemon/memory.context',
+      params: { scope: 'task', id: 'task-1', prompt: 'recovery evidence', topK: 2 },
+    });
+
+    assert.deepEqual(memoryContext, {
+      jsonrpc: '2.0',
+      id: 33,
+      result: { manifest: true, body: { scopeType: 'task', scopeId: 'task-1', prompt: 'recovery evidence', topK: 2 } },
+    });
+    assert.equal(upstream.requests.length, 8);
+    assert.equal(upstream.requests[7].req.url, '/internal/agent-api/memory/context-manifest');
+    assert.deepEqual(JSON.parse(upstream.requests[7].body), {
+      scopeType: 'task',
+      scopeId: 'task-1',
+      prompt: 'recovery evidence',
+      topK: 2,
+    });
+
+    const taskMemorySummary = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 31,
+      method: 'daemon/task.memory.summary',
+      params: { taskId: 'task-1', finalSummary: 'Done', evidence: ['evidence/ui.png'] },
+    });
+
+    assert.deepEqual(taskMemorySummary, {
+      jsonrpc: '2.0',
+      id: 31,
+      result: { summarized: true, body: { finalSummary: 'Done', evidence: ['evidence/ui.png'] } },
+    });
+    assert.equal(upstream.requests.length, 9);
+    assert.equal(upstream.requests[8].req.url, '/internal/agent-api/tasks/task-1/memory/summary');
+    assert.deepEqual(JSON.parse(upstream.requests[8].body), { finalSummary: 'Done', evidence: ['evidence/ui.png'] });
+
+    const taskMemoryPromote = await handler.handleMessage({
+      jsonrpc: '2.0',
+      id: 32,
+      method: 'daemon/task.memory.promote',
+      params: { taskId: 'task-1', sourcePath: 'final-summary.md', proposal: true },
+    });
+
+    assert.deepEqual(taskMemoryPromote, {
+      jsonrpc: '2.0',
+      id: 32,
+      result: { promoted: true, body: { sourcePath: 'final-summary.md', proposal: true } },
+    });
+    assert.equal(upstream.requests.length, 10);
+    assert.equal(upstream.requests[9].req.url, '/internal/agent-api/tasks/task-1/memory/promote');
+    assert.deepEqual(JSON.parse(upstream.requests[9].body), { sourcePath: 'final-summary.md', proposal: true });
+
     const follow = await handler.handleMessage({
       jsonrpc: '2.0',
       id: 3,
@@ -737,9 +1114,9 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
       id: 3,
       result: { followed: true },
     });
-    assert.equal(upstream.requests.length, 3);
-    assert.equal(upstream.requests[2].req.url, '/internal/agent-api/threads/follow');
-    assert.deepEqual(JSON.parse(upstream.requests[2].body), { threadId: 'thread-1' });
+    assert.equal(upstream.requests.length, 11);
+    assert.equal(upstream.requests[10].req.url, '/internal/agent-api/threads/follow');
+    assert.deepEqual(JSON.parse(upstream.requests[10].body), { threadId: 'thread-1' });
 
     const threadRead = await handler.handleMessage({
       jsonrpc: '2.0',
@@ -753,8 +1130,8 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
       id: 4,
       result: { thread: { id: 'thread-1' }, replies: [] },
     });
-    assert.equal(upstream.requests.length, 4);
-    assert.equal(upstream.requests[3].req.url, '/internal/agent-api/threads/thread-1');
+    assert.equal(upstream.requests.length, 12);
+    assert.equal(upstream.requests[11].req.url, '/internal/agent-api/threads/thread-1');
 
     const threadSummary = await handler.handleMessage({
       jsonrpc: '2.0',
@@ -768,9 +1145,9 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
       id: 5,
       result: { updated: true, body: { summary: 'Current state is clear.' } },
     });
-    assert.equal(upstream.requests.length, 5);
-    assert.equal(upstream.requests[4].req.url, '/internal/agent-api/threads/thread-1/summary');
-    assert.deepEqual(JSON.parse(upstream.requests[4].body), { summary: 'Current state is clear.' });
+    assert.equal(upstream.requests.length, 13);
+    assert.equal(upstream.requests[12].req.url, '/internal/agent-api/threads/thread-1/summary');
+    assert.deepEqual(JSON.parse(upstream.requests[12].body), { summary: 'Current state is clear.' });
 
     const messageResolve = await handler.handleMessage({
       jsonrpc: '2.0',
@@ -784,8 +1161,8 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
       id: 6,
       result: { resolved: true, messageId: 'msg-1' },
     });
-    assert.equal(upstream.requests.length, 6);
-    assert.equal(upstream.requests[5].req.url, '/internal/agent-api/messages/msg-1/resolve');
+    assert.equal(upstream.requests.length, 14);
+    assert.equal(upstream.requests[13].req.url, '/internal/agent-api/messages/msg-1/resolve');
 
     const taskUnclaim = await handler.handleMessage({
       jsonrpc: '2.0',
@@ -799,8 +1176,8 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
       id: 7,
       result: { unclaimed: true, taskId: 'task-1' },
     });
-    assert.equal(upstream.requests.length, 7);
-    assert.equal(upstream.requests[6].req.url, '/internal/agent-api/tasks/task-1/unclaim');
+    assert.equal(upstream.requests.length, 15);
+    assert.equal(upstream.requests[14].req.url, '/internal/agent-api/tasks/task-1/unclaim');
 
     const reminderSnooze = await handler.handleMessage({
       jsonrpc: '2.0',
@@ -814,9 +1191,9 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
       id: 8,
       result: { reminderId: 'rem-1', method: 'PATCH', body: { delaySeconds: 300 } },
     });
-    assert.equal(upstream.requests.length, 8);
-    assert.equal(upstream.requests[7].req.url, '/internal/agent-api/reminders/rem-1');
-    assert.deepEqual(JSON.parse(upstream.requests[7].body), { delaySeconds: 300 });
+    assert.equal(upstream.requests.length, 16);
+    assert.equal(upstream.requests[15].req.url, '/internal/agent-api/reminders/rem-1');
+    assert.deepEqual(JSON.parse(upstream.requests[15].body), { delaySeconds: 300 });
 
     const reminderLog = await handler.handleMessage({
       jsonrpc: '2.0',
@@ -830,8 +1207,8 @@ test('ClientHandler forwards extended daemon methods through local proxy bearer 
       id: 9,
       result: { reminderId: 'rem-1', entries: [] },
     });
-    assert.equal(upstream.requests.length, 9);
-    assert.equal(upstream.requests[8].req.url, '/internal/agent-api/reminders/rem-1/log');
+    assert.equal(upstream.requests.length, 17);
+    assert.equal(upstream.requests[16].req.url, '/internal/agent-api/reminders/rem-1/log');
   } finally {
     proxy.stop();
     await upstream.close();

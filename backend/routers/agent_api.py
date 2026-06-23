@@ -35,6 +35,23 @@ from services.daemon_control import (
     push_latest_events_for_server,
 )
 from services.latency_trace import LatencyTrace, trace_id_from_request
+from services.memory_store import build_memory_context_manifest
+from services.memory_api import (
+    create_memory_proposal,
+    delete_memory_entry,
+    get_memory_entry,
+    list_memory_entries,
+    list_memory_proposals,
+    promote_task_memory_to_channel,
+    resolve_memory_proposal,
+    resolve_memory_scope,
+    search_memory,
+    serialize_memory_entry,
+    serialize_memory_proposal,
+    write_task_memory_summary,
+    write_memory_entry,
+)
+from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.thread_summary import (
     SUMMARY_MAX_CHARS,
     serialize_thread_summary,
@@ -209,6 +226,7 @@ EVENT_TYPE_ALIASES = {
     "task.created": "task_created",
     "task.claimed": "task_claimed",
     "task.updated": "task_updated",
+    "task.memory_requested": "task_memory_requested",
     "task.unclaimed": "task_updated",
     "member.updated": "member_updated",
     "member.profile_updated": "member_profile_updated",
@@ -2425,6 +2443,7 @@ async def update_task_status(
     if not task:
         raise HTTPException(404, f"Task {task_number} not found")
 
+    previous_status = task.status
     _apply_agent_status_transition(task, new_status, member)
     await _record_activity(
         db,
@@ -2436,6 +2455,16 @@ async def update_task_status(
         channel_id=task.channel_id,
         task_id=task.id,
     )
+    if previous_status != "in_review" and task.status == "in_review":
+        await add_task_memory_request_event(
+            db,
+            server,
+            task,
+            actor=member,
+            instruction=str(body.get("memoryInstruction") or "").strip() or None,
+            output_directions=normalize_output_directions(body.get("outputDirections")),
+            trigger="status_in_review",
+        )
     await db.commit()
     await db.refresh(task)
     await _push_committed_events(db, server_id=server.id)
@@ -2550,6 +2579,7 @@ async def submit_task_by_id(
     _require_permission(member, "updateTask")
     body = await request.json()
     task = await _resolve_task_by_id(db, server, task_id)
+    previous_status = task.status
     _apply_agent_status_transition(task, "in_review", member)
     if body.get("data"):
         task.data = {**(task.data or {}), **body["data"]}
@@ -2563,10 +2593,73 @@ async def submit_task_by_id(
         channel_id=task.channel_id,
         task_id=task.id,
     )
+    if previous_status != "in_review":
+        await add_task_memory_request_event(
+            db,
+            server,
+            task,
+            actor=member,
+            instruction=str(body.get("memoryInstruction") or "").strip() or None,
+            output_directions=normalize_output_directions(body.get("outputDirections")),
+            trigger="status_in_review",
+        )
     await db.commit()
     await db.refresh(task)
     await _push_committed_events(db, server_id=server.id)
     return {"submitted": True, "task": await _serialize_task(db, task)}
+
+
+@router.post("/tasks/{task_id}/memory/summary")
+async def write_task_memory_summary_route(
+    task_id: str,
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    _require_permission(member, "updateTask")
+    body = await request.json()
+    result = await write_task_memory_summary(db, server, task_id, body, author=member)
+    await db.commit()
+    await db.refresh(result["summaryEntry"])
+    if result.get("progressEntry"):
+        await db.refresh(result["progressEntry"])
+    await _push_committed_events(db, server_id=server.id)
+    task = result["task"]
+    return {
+        "created": result["created"],
+        "task": {
+            "id": str(task.id),
+            "data": task.data or {},
+        },
+        "entry": serialize_memory_entry(result["summaryEntry"]),
+        "progressEntry": serialize_memory_entry(result["progressEntry"]) if result.get("progressEntry") else None,
+    }
+
+
+@router.post("/tasks/{task_id}/memory/promote")
+async def promote_task_memory_route(
+    task_id: str,
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    _require_permission(member, "updateTask")
+    body = await request.json()
+    result = await promote_task_memory_to_channel(db, server, task_id, body, author=member)
+    await db.commit()
+    if result.get("channelEntry"):
+        await db.refresh(result["channelEntry"])
+    if result.get("proposal"):
+        await db.refresh(result["proposal"])
+    await _push_committed_events(db, server_id=server.id)
+    return {
+        "created": result["created"],
+        "sourceEntry": serialize_memory_entry(result["sourceEntry"]),
+        "channelEntry": serialize_memory_entry(result["channelEntry"]) if result.get("channelEntry") else None,
+        "proposal": serialize_memory_proposal(result["proposal"]) if result.get("proposal") else None,
+    }
 
 
 @router.patch("/tasks/{task_id}")
@@ -2581,6 +2674,7 @@ async def update_task_by_id(
     body = await request.json()
 
     task = await _resolve_task_by_id(db, server, task_id)
+    previous_status = task.status
 
     disallowed_fields = {"title", "description", "assignee"}
     if disallowed_fields.intersection(body):
@@ -2602,6 +2696,16 @@ async def update_task_by_id(
         channel_id=task.channel_id,
         task_id=task.id,
     )
+    if previous_status != "in_review" and task.status == "in_review":
+        await add_task_memory_request_event(
+            db,
+            server,
+            task,
+            actor=member,
+            instruction=str(body.get("memoryInstruction") or "").strip() or None,
+            output_directions=normalize_output_directions(body.get("outputDirections")),
+            trigger="status_in_review",
+        )
     await db.commit()
     await db.refresh(task)
     await _push_committed_events(db, server_id=server.id)
@@ -3299,6 +3403,234 @@ async def download_attachment(
     if not path.exists():
         raise HTTPException(404, "Attachment file missing")
     return FileResponse(path, media_type=entry.mime_type, filename=entry.original_name)
+
+
+# ── Scoped Memory ────────────────────────────────────────────
+
+@router.post("/memory/context-manifest")
+async def build_agent_memory_context_manifest_route(
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    body = await request.json()
+    scope_type = str(body.get("scopeType") or body.get("scope") or "").strip()
+    scope_id = str(body.get("scopeId") or body.get("id") or "").strip()
+    if not scope_type or not scope_id:
+        raise HTTPException(400, "Missing scopeType or scopeId")
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=member)
+    prompt = str(body.get("prompt") or body.get("query") or "")
+    top_k = int(body.get("topK") or body.get("limit") or 3)
+
+    channel_entries = []
+    task_entries = []
+    if context.scope.type == "channel":
+        channel_entries = await list_memory_entries(db, server, context)
+    else:
+        task_entries = await list_memory_entries(db, server, context)
+        if context.channel:
+            try:
+                channel_context = await resolve_memory_scope(
+                    db,
+                    server,
+                    "channel",
+                    str(context.channel.id),
+                    viewer=member,
+                )
+            except HTTPException as exc:
+                if exc.status_code != 403:
+                    raise
+            else:
+                channel_entries = await list_memory_entries(db, server, channel_context)
+
+    return build_memory_context_manifest(
+        session_scope=context.scope,
+        prompt=prompt,
+        channel_entries=channel_entries,
+        task_entries=task_entries,
+        top_k=top_k,
+    )
+
+
+@router.get("/memory/scopes/{scope_type}/{scope_id}")
+async def list_agent_scoped_memory(
+    scope_type: str,
+    scope_id: str,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=member)
+    entries = await list_memory_entries(db, server, context)
+    return {"scope": context.scope.as_dict(), "entries": [serialize_memory_entry(entry) for entry in entries]}
+
+
+@router.get("/memory/scopes/{scope_type}/{scope_id}/path/{path:path}")
+async def read_agent_scoped_memory_path(
+    scope_type: str,
+    scope_id: str,
+    path: str,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=member)
+    entry = await get_memory_entry(db, server, context, path)
+    return {"entry": serialize_memory_entry(entry)}
+
+
+@router.get("/memory/scopes/{scope_type}/{scope_id}/search")
+async def search_agent_scoped_memory_get(
+    scope_type: str,
+    scope_id: str,
+    q: str = Query(""),
+    limit: int = Query(10),
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=member)
+    entries = await search_memory(db, server, context, q, limit=limit)
+    return {"scope": context.scope.as_dict(), "entries": [serialize_memory_entry(entry) for entry in entries]}
+
+
+@router.post("/memory/scopes/{scope_type}/{scope_id}/search")
+async def search_agent_scoped_memory_post(
+    scope_type: str,
+    scope_id: str,
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    body = await request.json()
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=member)
+    entries = await search_memory(
+        db,
+        server,
+        context,
+        str(body.get("query") or body.get("q") or ""),
+        limit=int(body.get("limit") or 10),
+    )
+    return {"scope": context.scope.as_dict(), "entries": [serialize_memory_entry(entry) for entry in entries]}
+
+
+@router.put("/memory/scopes/{scope_type}/{scope_id}/path/{path:path}")
+async def write_agent_scoped_memory_path(
+    scope_type: str,
+    scope_id: str,
+    path: str,
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    body = await request.json()
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=member)
+    entry, created = await write_memory_entry(db, server, context, path, body, author=member)
+    await db.commit()
+    await db.refresh(entry)
+    await _push_committed_events(db, server_id=server.id)
+    return {"created": created, "entry": serialize_memory_entry(entry)}
+
+
+@router.post("/memory/scopes/{scope_type}/{scope_id}/proposals")
+async def propose_agent_scoped_memory(
+    scope_type: str,
+    scope_id: str,
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    body = await request.json()
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=member)
+    proposal = await create_memory_proposal(db, server, context, body, author=member)
+    await db.commit()
+    await db.refresh(proposal)
+    await _push_committed_events(db, server_id=server.id)
+    return {"proposal": serialize_memory_proposal(proposal)}
+
+
+@router.get("/memory/scopes/{scope_type}/{scope_id}/proposals")
+async def list_agent_scoped_memory_proposals(
+    scope_type: str,
+    scope_id: str,
+    status: str = Query("open"),
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=member)
+    proposals = await list_memory_proposals(db, server, context, status=status)
+    return {"scope": context.scope.as_dict(), "proposals": [serialize_memory_proposal(proposal) for proposal in proposals]}
+
+
+@router.post("/memory/proposals/{proposal_id}/accept")
+async def accept_agent_memory_proposal(
+    proposal_id: str,
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    body = await request.json()
+    result = await resolve_memory_proposal(
+        db,
+        server,
+        proposal_id,
+        {**body, "status": "accepted"},
+        reviewer=member,
+    )
+    await db.commit()
+    await db.refresh(result["proposal"])
+    if result.get("entry"):
+        await db.refresh(result["entry"])
+    await _push_committed_events(db, server_id=server.id)
+    return {
+        "proposal": serialize_memory_proposal(result["proposal"]),
+        "entry": serialize_memory_entry(result["entry"]) if result.get("entry") else None,
+    }
+
+
+@router.post("/memory/proposals/{proposal_id}/reject")
+async def reject_agent_memory_proposal(
+    proposal_id: str,
+    request: Request,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    body = await request.json()
+    result = await resolve_memory_proposal(
+        db,
+        server,
+        proposal_id,
+        {**body, "status": "rejected"},
+        reviewer=member,
+    )
+    await db.commit()
+    await db.refresh(result["proposal"])
+    await _push_committed_events(db, server_id=server.id)
+    return {"proposal": serialize_memory_proposal(result["proposal"]), "entry": None}
+
+
+@router.delete("/memory/scopes/{scope_type}/{scope_id}/path/{path:path}")
+async def delete_agent_scoped_memory_path(
+    scope_type: str,
+    scope_id: str,
+    path: str,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=member)
+    entry = await delete_memory_entry(db, server, context, path, author=member)
+    await db.commit()
+    await db.refresh(entry)
+    await _push_committed_events(db, server_id=server.id)
+    return {"deleted": True, "entry": serialize_memory_entry(entry)}
 
 
 # ── Profiles ─────────────────────────────────────────────────

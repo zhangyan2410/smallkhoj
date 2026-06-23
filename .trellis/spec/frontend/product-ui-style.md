@@ -33,6 +33,18 @@
   - Messages, assigned tasks, and targeted thread requests are actionable work.
 - When a view mixes UI and backend facts, show both with clear labels instead of implying that backend state alone proves browser behavior.
 
+## Memory And Recovery Surfaces
+
+- Channel Memory and Task Recovery are post-compaction recovery surfaces, not debug dumps. They must make the next agent or human able to resume work without reading the full chat thread.
+- Channel Memory should group entries by product meaning, such as channel knowledge, task outputs, promotions, and proposals, instead of showing one undifferentiated list.
+- Task Recovery should show at least brief, plan, progress, output/evidence, final summary, task breakdown, and provenance when those rows exist.
+- Artifact entries should render as typed viewers where possible:
+  - images as inspectable previews with loaded dimensions
+  - videos as `<video controls>`
+  - files/proofs as labeled evidence rows with source path or URL
+- Show version/hash/provenance compactly for audit, but do not let hashes dominate the visual hierarchy.
+- A browser smoke for these surfaces must verify both visible labels and actual media elements; API rows alone do not prove recoverability.
+
 ## Evidence Expectations
 
 For browser-facing work, final evidence should show the actual visible product surface, not only curl output or database rows. Use `project-webdriver-cli` for the browser portion and cross-check API/DB/trace only when those layers matter.

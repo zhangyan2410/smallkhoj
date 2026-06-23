@@ -36,6 +36,16 @@ test('rewriteAgentPath preserves query strings and normalizes receive', () => {
   );
 
   assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/memory/scopes/channel/ch-1/path/MEMORY.md', '', agentId),
+    '/internal/agent-api/memory/scopes/channel/ch-1/path/MEMORY.md',
+  );
+
+  assert.equal(
+    rewriteAgentPath('/internal/agent/agent%201/memory/scopes/task/task-1/search', '?q=evidence', agentId),
+    '/internal/agent-api/memory/scopes/task/task-1/search?q=evidence',
+  );
+
+  assert.equal(
     rewriteAgentPath('/internal/agent/agent%201/tasks/task-1/claim', '', agentId),
     '/internal/agent-api/tasks/task-1/claim',
   );

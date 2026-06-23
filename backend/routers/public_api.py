@@ -41,12 +41,26 @@ from services.daemon_control import (
     runtime_start_command,
 )
 from services.latency_trace import LatencyTrace, trace_id_from_request
+from services.memory_api import (
+    create_memory_proposal,
+    delete_memory_entry,
+    get_memory_entry,
+    list_memory_entries,
+    list_memory_proposals,
+    resolve_memory_scope,
+    resolve_memory_proposal,
+    search_memory,
+    serialize_memory_entry,
+    serialize_memory_proposal,
+    write_memory_entry,
+)
 from services.public_events import (
     public_event_heartbeat_frame,
     public_event_hub,
     public_event_sse_frame,
     should_deliver_public_event,
 )
+from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.thread_summary import (
     load_thread_metadata,
     resolve_thread_root,
@@ -82,6 +96,7 @@ DANGEROUS_MIME_TYPES = {
 ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 TASK_NUMBER_RETRY_LIMIT = 5
 DELETE_BLOCKING_WORKSPACE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"busy", "starting", "restarting"}
+STALE_STARTING_WORKSPACE_GRACE = timedelta(minutes=5)
 
 PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_message_sent": "message.created",
@@ -103,6 +118,7 @@ EVENT_TYPE_ALIASES = {
     "reaction.updated": "reaction_updated",
     "task.created": "task_created",
     "task.updated": "task_updated",
+    "task.memory_requested": "task_memory_requested",
     "member.updated": "member_updated",
     "member.created": "member_created",
     "member.status.updated": "member_updated",
@@ -337,6 +353,19 @@ async def _resolve_human_actor(
     if required:
         raise HTTPException(401, f"Login required for {role}")
     return None
+
+
+async def _resolve_memory_viewer(db: AsyncSession, server: Server, request: Request) -> Member:
+    return await _resolve_human_actor(db, server, request, None, role="memory viewer")
+
+
+def _ensure_memory_actor_matches_viewer(body: dict, viewer: Member) -> None:
+    explicit_actor = body.get("actor")
+    if not explicit_actor:
+        return
+    actor_ref = str(explicit_actor).strip().lstrip("@")
+    if actor_ref not in {str(viewer.id), viewer.display_name}:
+        raise HTTPException(403, "Memory actor must match the current account")
 
 
 async def _serialize_account(db: AsyncSession, account: Account, server: Server, member: Member) -> dict:
@@ -641,7 +670,23 @@ def _serialize_workspace(
 
 
 def _delete_blocking_workspace_statuses(workspaces: list[AgentWorkspace]) -> list[str]:
-    return sorted({workspace.status for workspace in workspaces if workspace.status in DELETE_BLOCKING_WORKSPACE_STATUSES})
+    now = datetime.now(timezone.utc)
+    blocking = set()
+    for workspace in workspaces:
+        status = workspace.status
+        if status not in DELETE_BLOCKING_WORKSPACE_STATUSES:
+            continue
+        if status in {"starting", "restarting"}:
+            started_at = workspace.started_at
+            if started_at is None:
+                blocking.add(status)
+                continue
+            if started_at.tzinfo is None:
+                started_at = started_at.replace(tzinfo=timezone.utc)
+            if now - started_at > STALE_STARTING_WORKSPACE_GRACE:
+                continue
+        blocking.add(status)
+    return sorted(blocking)
 
 
 def _detach_agent_from_computer(agent: Member) -> None:
@@ -1648,6 +1693,261 @@ async def get_task(task_id: str, _auth: None = Depends(verify_public_api_key), d
     return await _serialize_task(db, task)
 
 
+@router.get("/memory/scopes/{scope_type}/{scope_id}")
+async def list_scoped_memory(
+    scope_type: str,
+    scope_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    viewer = await _resolve_memory_viewer(db, server, request)
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
+    entries = await list_memory_entries(db, server, context)
+    return {"scope": context.scope.as_dict(), "entries": [serialize_memory_entry(entry) for entry in entries]}
+
+
+@router.get("/memory/scopes/{scope_type}/{scope_id}/path/{path:path}")
+async def read_scoped_memory_path(
+    scope_type: str,
+    scope_id: str,
+    path: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    viewer = await _resolve_memory_viewer(db, server, request)
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
+    entry = await get_memory_entry(db, server, context, path)
+    return {"entry": serialize_memory_entry(entry)}
+
+
+@router.post("/memory/scopes/{scope_type}/{scope_id}/search")
+async def search_scoped_memory(
+    scope_type: str,
+    scope_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    viewer = await _resolve_memory_viewer(db, server, request)
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
+    entries = await search_memory(db, server, context, str(body.get("query") or body.get("q") or ""), limit=int(body.get("limit") or 10))
+    return {"scope": context.scope.as_dict(), "entries": [serialize_memory_entry(entry) for entry in entries]}
+
+
+@router.put("/memory/scopes/{scope_type}/{scope_id}/path/{path:path}")
+async def write_scoped_memory_path(
+    scope_type: str,
+    scope_id: str,
+    path: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    viewer = await _resolve_memory_viewer(db, server, request)
+    _ensure_memory_actor_matches_viewer(body, viewer)
+    actor = viewer
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
+    entry, created = await write_memory_entry(db, server, context, path, body, author=actor)
+    await db.commit()
+    await db.refresh(entry)
+    await _push_committed_events(db, server_id=server.id)
+    return {"created": created, "entry": serialize_memory_entry(entry)}
+
+
+@router.post("/memory/scopes/{scope_type}/{scope_id}/proposals")
+async def propose_scoped_memory(
+    scope_type: str,
+    scope_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    viewer = await _resolve_memory_viewer(db, server, request)
+    _ensure_memory_actor_matches_viewer(body, viewer)
+    actor = viewer
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
+    proposal = await create_memory_proposal(db, server, context, body, author=actor)
+    await db.commit()
+    await db.refresh(proposal)
+    await _push_committed_events(db, server_id=server.id)
+    return {"proposal": serialize_memory_proposal(proposal)}
+
+
+@router.get("/memory/scopes/{scope_type}/{scope_id}/proposals")
+async def list_scoped_memory_proposals(
+    scope_type: str,
+    scope_id: str,
+    request: Request,
+    status: str = Query("open"),
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    viewer = await _resolve_memory_viewer(db, server, request)
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
+    proposals = await list_memory_proposals(db, server, context, status=status)
+    return {"scope": context.scope.as_dict(), "proposals": [serialize_memory_proposal(proposal) for proposal in proposals]}
+
+
+@router.post("/memory/proposals/{proposal_id}/accept")
+async def accept_memory_proposal(
+    proposal_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    viewer = await _resolve_memory_viewer(db, server, request)
+    _ensure_memory_actor_matches_viewer(body, viewer)
+    result = await resolve_memory_proposal(
+        db,
+        server,
+        proposal_id,
+        {**body, "status": "accepted"},
+        reviewer=viewer,
+    )
+    await db.commit()
+    await db.refresh(result["proposal"])
+    if result.get("entry"):
+        await db.refresh(result["entry"])
+    await _push_committed_events(db, server_id=server.id)
+    return {
+        "proposal": serialize_memory_proposal(result["proposal"]),
+        "entry": serialize_memory_entry(result["entry"]) if result.get("entry") else None,
+    }
+
+
+@router.post("/memory/proposals/{proposal_id}/reject")
+async def reject_memory_proposal(
+    proposal_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    viewer = await _resolve_memory_viewer(db, server, request)
+    _ensure_memory_actor_matches_viewer(body, viewer)
+    result = await resolve_memory_proposal(
+        db,
+        server,
+        proposal_id,
+        {**body, "status": "rejected"},
+        reviewer=viewer,
+    )
+    await db.commit()
+    await db.refresh(result["proposal"])
+    await _push_committed_events(db, server_id=server.id)
+    return {"proposal": serialize_memory_proposal(result["proposal"]), "entry": None}
+
+
+@router.delete("/memory/scopes/{scope_type}/{scope_id}/path/{path:path}")
+async def delete_scoped_memory_path(
+    scope_type: str,
+    scope_id: str,
+    path: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    viewer = await _resolve_memory_viewer(db, server, request)
+    context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
+    entry = await delete_memory_entry(db, server, context, path, author=viewer)
+    await db.commit()
+    await db.refresh(entry)
+    await _push_committed_events(db, server_id=server.id)
+    return {"deleted": True, "entry": serialize_memory_entry(entry)}
+
+
+@router.get("/channels/{channel_name}/memory")
+async def list_channel_memory_alias(
+    channel_name: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    viewer = await _resolve_memory_viewer(db, server, request)
+    context = await resolve_memory_scope(db, server, "channel", channel_name, viewer=viewer)
+    entries = await list_memory_entries(db, server, context)
+    return {"scope": context.scope.as_dict(), "entries": [serialize_memory_entry(entry) for entry in entries]}
+
+
+@router.get("/tasks/{task_id}/memory")
+async def list_task_memory_alias(
+    task_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    viewer = await _resolve_memory_viewer(db, server, request)
+    context = await resolve_memory_scope(db, server, "task", task_id, viewer=viewer)
+    entries = await list_memory_entries(db, server, context)
+    return {"scope": context.scope.as_dict(), "entries": [serialize_memory_entry(entry) for entry in entries]}
+
+
+async def _resolve_task_by_id_or_number(db: AsyncSession, server: Server, task_id: str) -> Task:
+    try:
+        parsed_task_id = uuid.UUID(task_id)
+    except ValueError:
+        parsed_task_id = None
+
+    q = select(Task).join(Channel).where(Channel.server_id == server.id)
+    if parsed_task_id:
+        q = q.where(Task.id == parsed_task_id)
+    else:
+        try:
+            q = q.where(Task.task_number == int(task_id))
+        except ValueError:
+            raise HTTPException(400, "Invalid task id")
+    result = await db.execute(q)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    return task
+
+
+@router.post("/tasks/{task_id}/memory/request")
+async def request_task_memory_result(
+    task_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    body = await request.json()
+    task = await _resolve_task_by_id_or_number(db, server, task_id)
+    actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="task memory requester")
+    event = await add_task_memory_request_event(
+        db,
+        server,
+        task,
+        actor=actor,
+        instruction=str(body.get("instruction") or "").strip() or None,
+        output_directions=normalize_output_directions(body.get("outputDirections")),
+        trigger="manual",
+    )
+    if event is None:
+        await db.rollback()
+        return {"requested": False, "reason": "task has no agent assignee"}
+    await db.commit()
+    await _push_committed_events(db, server_id=server.id)
+    return {"requested": True, "eventType": "task.memory_requested"}
+
+
 @router.post("/tasks")
 async def create_task(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     server = await _get_server(db)
@@ -1765,23 +2065,8 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
 async def update_task(task_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     server = await _get_server(db)
     body = await request.json()
-    try:
-        parsed_task_id = uuid.UUID(task_id)
-    except ValueError:
-        parsed_task_id = None
-
-    q = select(Task).join(Channel).where(Channel.server_id == server.id)
-    if parsed_task_id:
-        q = q.where(Task.id == parsed_task_id)
-    else:
-        try:
-            q = q.where(Task.task_number == int(task_id))
-        except ValueError:
-            raise HTTPException(400, "Invalid task id")
-    result = await db.execute(q)
-    task = result.scalar_one_or_none()
-    if not task:
-        raise HTTPException(404, "Task not found")
+    task = await _resolve_task_by_id_or_number(db, server, task_id)
+    previous_status = task.status
 
     if "title" in body:
         task.title = body["title"]
@@ -1818,6 +2103,16 @@ async def update_task(task_id: str, request: Request, _auth: None = Depends(veri
         channel_id=task.channel_id,
         task_id=task.id,
     )
+    if previous_status != "in_review" and task.status == "in_review":
+        await add_task_memory_request_event(
+            db,
+            server,
+            task,
+            actor=actor,
+            instruction=str(body.get("memoryInstruction") or "").strip() or None,
+            output_directions=normalize_output_directions(body.get("outputDirections")),
+            trigger="status_in_review",
+        )
     await db.commit()
     await db.refresh(task)
     await _push_committed_events(db, server_id=server.id)

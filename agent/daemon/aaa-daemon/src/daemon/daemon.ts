@@ -28,6 +28,11 @@ import { CodexAcpRuntimeDriver } from '../runtime/codex-acp-runtime.js';
 import type { ManagedRuntimeDriver } from '../runtime/runtime-driver.js';
 import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
 import {
+  chooseRuntimeSessionScope,
+  ScopedProviderSessionStore,
+  type RuntimeSessionScope,
+} from './session-scope.js';
+import {
   detectedRuntimesForInventory,
   detectRuntimeProviders,
   resolveRuntimeProviderLaunch,
@@ -45,7 +50,10 @@ export interface RuntimeIncomingMessage {
   eventType?: string;
   eventSeq?: string;
   target?: string;
+  channelType?: string;
   channelId?: string;
+  rootMessageId?: string;
+  peerMemberId?: string;
   messageId?: string;
   taskId?: string;
   taskNumber?: string;
@@ -58,6 +66,24 @@ export interface RuntimeIncomingMessage {
   assignee?: string;
   assigneeId?: string;
   content: string;
+}
+
+export interface RuntimeMemoryContextManifest {
+  policy?: string;
+  sessionScope?: {
+    type?: string;
+    id?: string;
+    key?: string;
+  };
+  channelMemories?: RuntimeMemoryContextItem[];
+  taskMemories?: RuntimeMemoryContextItem[];
+  readMore?: string[] | Record<string, string>;
+}
+
+export interface RuntimeMemoryContextItem {
+  path?: string;
+  title?: string;
+  snippet?: string;
 }
 
 export interface DaemonControlCommand {
@@ -91,6 +117,8 @@ interface RuntimeRecord {
   runtimeModel?: string;
   runtimeProvider?: string;
   sessionId: string | null;
+  activeSessionScope?: RuntimeSessionScope;
+  sessionScopesByKey: Map<string, RuntimeSessionScope>;
   activeTraceId?: string;
   activeTraceStartedAt?: number;
   activeTraceFirstOutputSeen?: boolean;
@@ -135,6 +163,7 @@ export class DaemonCore extends EventEmitter {
   private isRunning = false;
   private proxyToken: string | null = null;
   private runtimeSessionIds = new Map<string, string>();
+  private scopedProviderSessions = new ScopedProviderSessionStore();
   private daemonHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private wrapper: SlockWrapperResult | null = null;
   private stopping = false;
@@ -210,6 +239,13 @@ export class DaemonCore extends EventEmitter {
       return false;
     }
 
+    const sessionScope = selectRuntimeSessionScope(message);
+    const scopedSession = sessionScope ? this.scopedProviderSessions.lookup(runtime.agentId, sessionScope) : undefined;
+    if (sessionScope) {
+      runtime.sessionScopesByKey.set(sessionScope.key, sessionScope);
+      runtime.activeSessionScope = sessionScope;
+    }
+
     if (message.traceId) {
       runtime.activeTraceId = message.traceId;
       runtime.activeTraceStartedAt = Date.now();
@@ -222,10 +258,32 @@ export class DaemonCore extends EventEmitter {
         target: message.target,
         messageId: message.messageId,
         eventSeq: message.eventSeq,
+        sessionScope: sessionScope?.key,
+        providerSessionId: scopedSession?.providerSessionId,
       });
     }
+    void this.deliverRuntimeMessageToDriver(runtime, message, source, sessionScope, scopedSession?.providerSessionId);
+    return true;
+  }
+
+  private async deliverRuntimeMessageToDriver(
+    runtime: RuntimeRecord,
+    message: RuntimeIncomingMessage,
+    source: string,
+    sessionScope: RuntimeSessionScope | undefined,
+    scopedProviderSessionId: string | undefined,
+  ): Promise<void> {
+    const sendOptions = sessionScope
+      ? {
+        sessionId: scopedProviderSessionId ?? null,
+        sessionScopeKey: sessionScope.key,
+      }
+      : undefined;
     const deliveryStarted = Date.now();
-    const delivered = runtime.driver.sendUserMessage(formatRuntimeIncomingMessage(message));
+    const basePrompt = formatRuntimeIncomingMessage(message);
+    const manifest = await this.loadRuntimeMemoryContextManifest(runtime, sessionScope, basePrompt);
+    const prompt = formatRuntimeIncomingMessageWithMemoryContext(message, manifest);
+    const delivered = runtime.driver.sendUserMessage(prompt, sendOptions);
     if (message.traceId) {
       this.emitLatencyTrace(message.traceId, 'daemon.runtime_delivery.sent_or_queued', {
         flow: 'message_to_agent_reply',
@@ -234,6 +292,7 @@ export class DaemonCore extends EventEmitter {
         delivered,
         queued: !delivered,
         durationMs: Date.now() - deliveryStarted,
+        sessionScope: sessionScope?.key,
       });
     }
     // Working state: a message reached the runtime, reset per-turn dedup sets
@@ -248,11 +307,50 @@ export class DaemonCore extends EventEmitter {
       });
     }
     this.log(
-      `Runtime message ${delivered ? 'delivered' : 'queued'} from ${source}: agent=${runtime.agentId} target=${message.target ?? 'unknown'}`,
+      `Runtime message ${delivered ? 'delivered' : 'queued'} from ${source}: agent=${runtime.agentId} target=${message.target ?? 'unknown'} scope=${sessionScope?.key ?? 'default'}`,
       delivered ? 'info' : 'debug',
     );
-    this.emit('runtime_delivery', { source, delivered, agentId: runtime.agentId, message });
-    return delivered;
+    this.emit('runtime_delivery', { source, delivered, agentId: runtime.agentId, message, sessionScope: sessionScope?.key });
+  }
+
+  private async loadRuntimeMemoryContextManifest(
+    runtime: RuntimeRecord,
+    sessionScope: RuntimeSessionScope | undefined,
+    prompt: string,
+  ): Promise<RuntimeMemoryContextManifest | null> {
+    const request = buildRuntimeMemoryContextRequest(sessionScope, prompt);
+    if (!request) return null;
+
+    try {
+      const response = await fetch(new URL(
+        `/internal/agent/${encodeURIComponent(runtime.agentId)}/memory/context-manifest`,
+        this.proxy.getProxyUrl(),
+      ), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${runtime.proxyToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(2500),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        this.log(
+          `Runtime memory context skipped: agent=${runtime.agentId} scope=${sessionScope?.key ?? 'default'} status=${response.status} ${text.slice(0, 160)}`,
+          'debug',
+        );
+        return null;
+      }
+      const manifest = await response.json().catch(() => null);
+      return isRecord(manifest) ? manifest as RuntimeMemoryContextManifest : null;
+    } catch (err) {
+      this.log(
+        `Runtime memory context skipped: agent=${runtime.agentId} scope=${sessionScope?.key ?? 'default'} error=${(err as Error).message}`,
+        'debug',
+      );
+      return null;
+    }
   }
 
   getRuntimeForAgent(agentId: string): ManagedRuntimeDriver | undefined {
@@ -653,6 +751,7 @@ export class DaemonCore extends EventEmitter {
       runtimeModel: model,
       runtimeProvider: providerLaunch.runtimeProvider ?? runtimeProvider,
       sessionId: resumeSessionId ?? null,
+      sessionScopesByKey: new Map(),
       activeTraceId: undefined,
       activeTraceStartedAt: undefined,
       activeTraceFirstOutputSeen: false,
@@ -850,6 +949,15 @@ export class DaemonCore extends EventEmitter {
       this.markRuntimeProgress(runtime);
       runtime.sessionId = sessionId;
       this.runtimeSessionIds.set(agentId, sessionId);
+      const activeSessionScope = runtime.activeSessionScope;
+      if (activeSessionScope) {
+        this.scopedProviderSessions.remember({
+          agentId,
+          runtimeWorkspaceId: runtime.workspaceId,
+          scope: activeSessionScope,
+          providerSessionId: sessionId,
+        });
+      }
       const now = Date.now();
       this.sessionManager.upsert({
         sessionId,
@@ -860,17 +968,24 @@ export class DaemonCore extends EventEmitter {
         createdAt: now,
         updatedAt: now,
       });
-      this.emitRuntimeTrace({ type: 'session', agentId, sessionId });
-      this.emit('runtime_session', { agentId, sessionId });
+      this.emitRuntimeTrace({ type: 'session', agentId, sessionId, sessionScope: activeSessionScope?.key });
+      this.emit('runtime_session', { agentId, sessionId, sessionScope: activeSessionScope?.key });
       if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
     });
     driver.on('message_sent', (payload) => {
       this.markRuntimeProgress(runtime);
+      const sessionScopeKey = isRecord(payload) && typeof payload.sessionScopeKey === 'string'
+        ? payload.sessionScopeKey
+        : undefined;
+      if (sessionScopeKey) {
+        runtime.activeSessionScope = runtime.sessionScopesByKey.get(sessionScopeKey) ?? runtime.activeSessionScope;
+      }
       if (runtime.activeTraceId) {
         this.emitLatencyTrace(runtime.activeTraceId, 'daemon.runtime.stdin_write', {
           flow: 'message_to_agent_reply',
           agentId,
           hasSessionId: isRecord(payload) && typeof payload.session_id === 'string',
+          sessionScope: sessionScopeKey,
           elapsedMs: runtime.activeTraceStartedAt ? Date.now() - runtime.activeTraceStartedAt : undefined,
         });
       }
@@ -878,6 +993,7 @@ export class DaemonCore extends EventEmitter {
         type: 'message_sent',
         agentId,
         sessionId: driver.sessionId,
+        sessionScope: sessionScopeKey,
         hasSessionId: isRecord(payload) && typeof payload.session_id === 'string',
       });
     });
@@ -1113,6 +1229,13 @@ export class DaemonCore extends EventEmitter {
       runtimeProvider: runtime.runtimeProvider,
       status: runtime.status,
       sessionId: runtime.sessionId,
+      scopedSessions: this.scopedProviderSessions.snapshot(runtime.agentId).map((item) => ({
+        scope: item.scope.key,
+        scopeType: item.scope.type,
+        providerSessionId: item.providerSessionId,
+        status: item.status,
+        lastUsedAt: new Date(item.lastUsedAt).toISOString(),
+      })),
       cwd: runtime.workspacePath,
       pid: runtime.driver.pid,
     }));
@@ -1370,7 +1493,15 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
   assignIfPresent(message, 'messageId', firstString(value.msg, value.messageId, value.message_id, value.id, value.shortId));
   assignIfPresent(message, 'eventSeq', firstString(value.eventSeq, value.eventLogCursor, value.eventCursor));
   assignIfPresent(message, 'traceId', firstString(value.traceId, value.trace_id, isRecord(value.details) ? value.details.traceId : undefined));
+  const channelType = firstString(value.channelType, value.channel_type);
+  assignIfPresent(message, 'channelType', channelType);
   assignIfPresent(message, 'channelId', firstString(value.channelId, value.channel_id));
+  if (channelType === 'thread') {
+    assignIfPresent(message, 'rootMessageId', firstString(value.rootMessageId, value.root_message_id, value.threadRootId, value.thread_root_id, value.threadId, value.thread_id));
+  }
+  if ((channelType === 'dm' || message.target?.startsWith('dm:')) && !eventType?.startsWith('task')) {
+    assignIfPresent(message, 'peerMemberId', firstString(value.peerMemberId, value.peer_member_id, value.senderId, value.sender_id, value.actor, value.actorId, value.actor_id, value.memberId, value.member_id));
+  }
   assignIfPresent(message, 'taskId', firstString(value.taskId, value.task_id));
   assignIfPresent(message, 'taskNumber', firstString(value.taskNumber, value.task_number, value.number));
   assignIfPresent(message, 'status', firstString(value.status, value.taskStatus));
@@ -1386,6 +1517,54 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
     message.eventType = eventType;
   }
   return message;
+}
+
+export function selectRuntimeSessionScope(message: RuntimeIncomingMessage): RuntimeSessionScope | undefined {
+  try {
+    const isThread = message.channelType === 'thread';
+    const targetDmPeer = message.target?.startsWith('dm:')
+      ? message.target.slice(3).split(':')[0]
+      : undefined;
+    const channelType = message.channelType ?? (targetDmPeer ? 'dm' : undefined);
+    return chooseRuntimeSessionScope({
+      channelType,
+      peerMemberId: message.peerMemberId ?? targetDmPeer,
+      channelId: message.channelId,
+      rootMessageId: isThread ? message.rootMessageId : undefined,
+      taskId: message.taskId,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildRuntimeMemoryContextRequest(
+  sessionScope: RuntimeSessionScope | undefined,
+  prompt: string,
+): { scopeType: string; scopeId: string; prompt: string; topK: number } | null {
+  if (!sessionScope || sessionScope.type === 'dm') return null;
+  if (sessionScope.type === 'channel') {
+    return {
+      scopeType: 'channel',
+      scopeId: sessionScope.channelId,
+      prompt,
+      topK: 3,
+    };
+  }
+  if (sessionScope.type === 'task') {
+    return {
+      scopeType: 'task',
+      scopeId: sessionScope.taskId,
+      prompt,
+      topK: 3,
+    };
+  }
+  return {
+    scopeType: 'thread',
+    scopeId: sessionScope.rootMessageId,
+    prompt,
+    topK: 3,
+  };
 }
 
 export function formatRuntimeIncomingMessage(message: RuntimeIncomingMessage): string {
@@ -1412,7 +1591,93 @@ export function formatRuntimeIncomingMessage(message: RuntimeIncomingMessage): s
   return `[${header}] ${senderPrefix}${content}`;
 }
 
+export function formatRuntimeIncomingMessageWithMemoryContext(
+  message: RuntimeIncomingMessage,
+  manifest?: RuntimeMemoryContextManifest | null,
+): string {
+  const base = formatRuntimeIncomingMessage(message);
+  const block = formatMemoryContextBlock(manifest);
+  return block ? `${block}\n\n${base}` : base;
+}
+
+function formatMemoryContextBlock(manifest?: RuntimeMemoryContextManifest | null): string {
+  if (!manifest || !isRecord(manifest)) return '';
+
+  const taskMemories = formatMemoryContextItems(manifest.taskMemories);
+  const channelMemories = formatMemoryContextItems(manifest.channelMemories);
+  const readMore = formatReadMoreCommands(manifest.readMore);
+  if (taskMemories.length === 0 && channelMemories.length === 0 && readMore.length === 0) return '';
+
+  const sessionScope = isRecord(manifest.sessionScope) ? manifest.sessionScope : undefined;
+  const scopeKey = formatManifestScopeKey(sessionScope);
+  const lines = [
+    '## Slock Memory Context',
+    `policy=${manifest.policy === 'selective' ? 'selective' : 'selective'} scope=${scopeKey}`,
+    'Use these snippets as orientation only. For full details, call `slock memory read` or `slock memory search`.',
+  ];
+
+  if (taskMemories.length > 0) {
+    lines.push('', 'Task memory:');
+    for (const item of taskMemories) lines.push(`- ${item}`);
+  }
+  if (channelMemories.length > 0) {
+    lines.push('', 'Channel memory:');
+    for (const item of channelMemories) lines.push(`- ${item}`);
+  }
+  if (readMore.length > 0) {
+    lines.push('', 'Read more:');
+    for (const command of readMore) lines.push(`- ${truncateMemoryContextText(command, 240)}`);
+  }
+  return lines.join('\n');
+}
+
+function formatMemoryContextItems(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter(isRecord)
+    .map((item) => {
+      const path = firstString(item.path) ?? 'memory';
+      const title = firstString(item.title);
+      const snippet = firstString(item.snippet);
+      if (!snippet) return undefined;
+      const label = title ? `${path} - ${title}` : path;
+      return `${label}: ${truncateMemoryContextText(snippet, 500)}`;
+    })
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 6);
+}
+
+function formatReadMoreCommands(readMore: unknown): string[] {
+  if (Array.isArray(readMore)) {
+    return readMore
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .slice(0, 5);
+  }
+  if (!isRecord(readMore)) return [];
+  return Object.values(readMore)
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .slice(0, 5);
+}
+
+function formatManifestScopeKey(scope: Record<string, unknown> | undefined): string {
+  const explicit = firstString(scope?.key);
+  if (explicit) return explicit;
+  const type = firstString(scope?.type);
+  const id = firstString(scope?.id);
+  if (type && id) return `${type}:${id}`;
+  return firstString(type, id, 'unknown') ?? 'unknown';
+}
+
+function truncateMemoryContextText(value: string, maxLength: number): string {
+  const collapsed = value.replace(/\s+/g, ' ').trim();
+  if (collapsed.length <= maxLength) return collapsed;
+  return `${collapsed.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
 function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
+  if (isTaskMemoryRequestEvent(message.eventType)) {
+    return message.content;
+  }
   if (!isTaskCreatedEvent(message.eventType)) {
     return message.content;
   }
@@ -1718,9 +1983,15 @@ function isTaskCreatedEvent(type?: string): boolean {
   return type === 'task_created' || type === 'task.created';
 }
 
+function isTaskMemoryRequestEvent(type?: string): boolean {
+  return type === 'task_memory_requested' || type === 'task.memory_requested';
+}
+
 export function isRuntimeActionableEventType(type?: string): boolean {
   return type === 'task_created'
     || type === 'task.created'
+    || type === 'task_memory_requested'
+    || type === 'task.memory_requested'
     || type === 'thread_summary_requested'
     || type === 'thread.summary_requested';
 }

@@ -117,6 +117,66 @@ export type Computer = {
   lastHeartbeatAt?: string | null
 }
 
+export type MemoryEntry = {
+  id: string
+  serverId?: string
+  scopeType: "agent" | "channel" | "task" | "thread" | string
+  scopeId: string
+  path: string
+  title?: string | null
+  entryKind?: string | null
+  contentText?: string | null
+  blobKey?: string | null
+  fileId?: string | null
+  mimeType?: string | null
+  sizeBytes?: number
+  contentSha256?: string
+  version?: number
+  sourceMessageId?: string | null
+  sourceChannelId?: string | null
+  sourceThreadId?: string | null
+  sourceTaskId?: string | null
+  sourcePath?: string | null
+  authorMemberId?: string | null
+  visibility?: string | null
+  metadata?: Record<string, unknown>
+  createdAt?: string | null
+  updatedAt?: string | null
+  deletedAt?: string | null
+}
+
+export type MemoryProposal = {
+  id: string
+  serverId?: string
+  scopeType: "agent" | "channel" | "task" | "thread" | string
+  scopeId: string
+  path: string
+  baseEntryId?: string | null
+  baseSha256?: string | null
+  proposedContentText?: string | null
+  authorMemberId?: string | null
+  reason?: string | null
+  status: "open" | "accepted" | "rejected" | "superseded" | string
+  reviewerMemberId?: string | null
+  reviewNote?: string | null
+  metadata?: Record<string, unknown>
+  createdAt?: string | null
+  updatedAt?: string | null
+  resolvedAt?: string | null
+}
+
+function apiErrorMessage(error: unknown, fallback: string) {
+  if (!error || typeof error !== "object") return fallback
+  const detail = (error as { detail?: unknown }).detail
+  if (typeof detail === "string") return detail
+  if (detail && typeof detail === "object") {
+    const record = detail as { instruction?: unknown; code?: unknown }
+    if (typeof record.instruction === "string") return record.instruction
+    if (typeof record.code === "string") return record.code
+  }
+  return fallback
+}
+
 export async function apiGet<T>(path: string, fallback: T, sessionToken?: string | null): Promise<T> {
   try {
     const response = await fetch(`${API_BASE}${path}`, {
@@ -138,7 +198,20 @@ export async function apiPost<T>(path: string, body: Record<string, unknown>, se
   })
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    throw new Error((error as { detail?: string }).detail || `HTTP ${response.status}`)
+    throw new Error(apiErrorMessage(error, `HTTP ${response.status}`))
+  }
+  return response.json()
+}
+
+export async function apiPut<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "PUT",
+    headers: apiHeaders(sessionToken, true),
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(apiErrorMessage(error, `HTTP ${response.status}`))
   }
   return response.json()
 }
@@ -150,7 +223,7 @@ export async function apiDelete<T>(path: string, sessionToken?: string | null): 
   })
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    throw new Error((error as { detail?: string }).detail || `HTTP ${response.status}`)
+    throw new Error(apiErrorMessage(error, `HTTP ${response.status}`))
   }
   return response.json()
 }
@@ -163,7 +236,7 @@ export async function apiPatch<T>(path: string, body: Record<string, unknown>, s
   })
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    throw new Error((error as { detail?: string }).detail || `HTTP ${response.status}`)
+    throw new Error(apiErrorMessage(error, `HTTP ${response.status}`))
   }
   return response.json()
 }

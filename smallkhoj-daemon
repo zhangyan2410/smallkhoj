@@ -7,8 +7,44 @@ SERVER_URL="http://localhost:8000"
 CONNECT_TOKEN=""
 MACHINE_TOKEN=""
 PROXY_PORT="0"
-LOCK_FILE="${SMALLKHOJ_DAEMON_LOCK:-${HOME}/.smallkhoj/daemon.pid}"
+LOCK_DIR="${SMALLKHOJ_DAEMON_LOCK_DIR:-${HOME}/.smallkhoj/daemons}"
+LOCK_FILE="${SMALLKHOJ_DAEMON_LOCK:-}"
 DAEMON_PID=""
+
+normalize_server_url_for_lock() {
+  local raw="${1%/}"
+  raw="$(printf '%s' "$raw" | awk '{
+    scheme = $0
+    sub("://.*", "", scheme)
+    rest = $0
+    sub("^[^:]+://", "", rest)
+    host_port = rest
+    sub("/.*", "", host_port)
+    suffix = rest
+    sub("^[^/]*", "", suffix)
+    host = host_port
+    port = ""
+    if (host_port ~ /^\\[[^]]+\\]/) {
+      host = host_port
+      sub("^\\[", "", host)
+      sub("\\].*", "", host)
+      port = host_port
+      sub("^\\[[^]]+\\]", "", port)
+    } else if (host_port ~ /:/) {
+      host = host_port
+      sub(":.*", "", host)
+      port = host_port
+      sub("^[^:]+", "", port)
+    }
+    scheme = tolower(scheme)
+    host = tolower(host)
+    if (host == "localhost") {
+      host = "127.0.0.1"
+    }
+    print scheme "://" host port suffix
+  }')"
+  printf '%s' "$raw"
+}
 
 kill_pid_tree() {
   local pid="$1" sig="${2:-TERM}"
@@ -40,7 +76,7 @@ cleanup_old() {
   old_pid="$(cat "$LOCK_FILE" 2>/dev/null || true)"
   rm -f "$LOCK_FILE"
   if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
-    echo "Stopping existing daemon (PID $old_pid) and its runtime children..." >&2
+    echo "Stopping existing daemon for $SERVER_URL (PID $old_pid) from $LOCK_FILE and its runtime children..." >&2
     stop_pid_tree "$old_pid"
   fi
 }
@@ -113,6 +149,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -z "$LOCK_FILE" ]]; then
+  LOCK_SERVER_URL="$(normalize_server_url_for_lock "$SERVER_URL")"
+  LOCK_KEY="$(printf '%s' "$LOCK_SERVER_URL" | shasum -a 256 | awk '{print substr($1, 1, 16)}')"
+  LOCK_FILE="${LOCK_DIR}/daemon-${LOCK_KEY}.pid"
+fi
+
 if [[ ! -f "$DAEMON_DIR/dist/cmd/main.js" ]]; then
   echo "Daemon build missing — running npm install && npm run build ..." >&2
   cd "$DAEMON_DIR"
@@ -141,8 +183,8 @@ WS_URL="${WS_URL/#https:/wss:}"
 # Ensure the WS path includes the agent API route prefix
 WS_URL="${WS_URL%/}/internal/agent-api/ws"
 
-# Singleton enforcement: stop any previous daemon wrapper (and its runtime
-# children) before starting a new one, then record our own PID.
+# Singleton enforcement is scoped to the selected backend server. Starting a
+# preview daemon on another port must not terminate a daemon attached to main.
 cleanup_old
 mkdir -p "$(dirname "$LOCK_FILE")"
 echo "$$" > "$LOCK_FILE"

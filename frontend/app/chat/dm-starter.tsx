@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -9,6 +10,7 @@ import { apiPost, type Member } from "@/lib/control-plane"
 
 export function DmStarter({ agents }: { agents: Member[] }) {
   const router = useRouter()
+  const t = useTranslations("chat")
   const [selected, setSelected] = useState("")
   const [creating, setCreating] = useState(false)
 
@@ -31,12 +33,12 @@ export function DmStarter({ agents }: { agents: Member[] }) {
   return (
     <div className="flex items-center gap-2">
       <select
-        aria-label="Select agent to DM"
+        aria-label={t("selectAgentToDm")}
         value={selected}
         onChange={(e) => setSelected(e.target.value)}
         className="flex-1 rounded-md border bg-background px-2 py-1.5 text-sm"
       >
-        <option value="">Select agent...</option>
+        <option value="">{t("selectAgent")}</option>
         {agents.map((agent) => (
           <option key={agent.id} value={agent.displayName}>
             {agent.displayName}
@@ -50,7 +52,7 @@ export function DmStarter({ agents }: { agents: Member[] }) {
         disabled={!selected || creating}
       >
         <Plus className="size-4" />
-        Start DM
+        {t("startDm")}
       </Button>
     </div>
   )

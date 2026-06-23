@@ -627,6 +627,7 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
   const registerBodies = [];
   const activityBodies = [];
   const sendBodies = [];
+  const memoryContextBodies = [];
   let releaseInbound = false;
   let inboundDelivered = false;
   const upstream = await startServer((req, res, body) => {
@@ -653,6 +654,24 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     if (url.pathname === '/internal/agent-api/send') {
       sendBodies.push({ headers: req.headers, body: JSON.parse(body) });
       res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/memory/context-manifest') {
+      memoryContextBodies.push({ headers: req.headers, body: JSON.parse(body) });
+      res.end(JSON.stringify({
+        policy: 'selective',
+        sessionScope: { type: 'channel', id: 'channel-general' },
+        channelMemories: [{
+          path: 'MEMORY.md',
+          title: 'Runtime memory policy',
+          snippet: 'Inject only short channel memory snippets.',
+          contentText: 'FULL CHANNEL MEMORY MUST NOT BE SENT TO RUNTIME',
+        }],
+        taskMemories: [],
+        readMore: {
+          channel: 'slock memory search --scope channel --id channel-general --query <terms>',
+        },
+      }));
       return;
     }
     if (url.pathname === '/internal/agent-api/events') {
@@ -742,6 +761,21 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     assert.equal(sendBodies[0].headers['x-agent-id'], 'agent-acp');
     assert.equal(sendBodies[0].body.target, '#general');
     assert.equal(sendBodies[0].body.content, 'fake codex acp reply');
+    await waitFor(() => memoryContextBodies.length > 0);
+    assert.equal(memoryContextBodies[0].headers['x-agent-id'], 'agent-acp');
+    assert.deepEqual(memoryContextBodies[0].body, {
+      scopeType: 'channel',
+      scopeId: 'channel-general',
+      prompt: '[eventSeq=1 target=#general channel=channel-general msg=msg-acp-1 sender=human actor=human-1 type=message_received] human: please reply from codex acp',
+      topK: 3,
+    });
+    await waitFor(() => {
+      const latestRuntime = JSON.parse(readFileSync(marker, 'utf-8'));
+      return latestRuntime.prompt.includes('## Slock Memory Context');
+    });
+    const inboundRuntime = JSON.parse(readFileSync(marker, 'utf-8'));
+    assert.match(inboundRuntime.prompt, /MEMORY\.md - Runtime memory policy: Inject only short channel memory snippets\./);
+    assert.doesNotMatch(inboundRuntime.prompt, /FULL CHANNEL MEMORY MUST NOT BE SENT TO RUNTIME/);
 
     await waitFor(() => activityBodies.some(item => item.type === 'runtime_working'));
     const working = activityBodies.find(item => item.type === 'runtime_working');

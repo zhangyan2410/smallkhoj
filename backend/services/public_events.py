@@ -210,6 +210,25 @@ def _public_event_type(event_type: str) -> str:
 def _event_scope(record: EventRecord) -> dict[str, Any]:
     payload = record.payload or {}
     event_type = _public_event_type(record.event_type)
+    if event_type.startswith("memory."):
+        scope_type = payload.get("scopeType") or payload.get("scope_type")
+        scope_id = payload.get("scopeId") or payload.get("scope_id")
+        if scope_type == "task":
+            return {"kind": "task", "id": str(record.task_id or scope_id) if (record.task_id or scope_id) else None}
+        if scope_type == "thread":
+            return {"kind": "thread", "id": str(scope_id) if scope_id else None}
+        if scope_type == "agent":
+            return {"kind": "member", "id": str(scope_id) if scope_id else None}
+        scope: dict[str, Any] = {"kind": "channel"}
+        channel_id = record.channel_id or scope_id or payload.get("channelId")
+        if channel_id:
+            scope["id"] = str(channel_id)
+        channel_name = payload.get("channel")
+        if isinstance(channel_name, str) and channel_name.startswith("#"):
+            scope["name"] = channel_name[1:]
+        elif isinstance(channel_name, str) and channel_name:
+            scope["name"] = channel_name
+        return scope
     if event_type.startswith("message.") or event_type == "reaction.updated":
         scope: dict[str, Any] = {"kind": "channel"}
         channel_id = record.channel_id or payload.get("channelId")

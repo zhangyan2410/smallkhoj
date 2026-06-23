@@ -16,10 +16,13 @@ import {
   ClaudeRuntimeDriver,
 } from '../dist/runtime/claude-runtime.js';
 import {
+  buildRuntimeMemoryContextRequest,
   formatRuntimeIncomingMessage,
+  formatRuntimeIncomingMessageWithMemoryContext,
   isRuntimeActionableEventType,
   normalizeRuntimeIncomingMessage,
   parseDaemonControlCommand,
+  selectRuntimeSessionScope,
 } from '../dist/daemon/daemon.js';
 import { buildAckPayload, buildActivityPayload, parseWebSocketPayload } from '../dist/websocket.js';
 
@@ -108,6 +111,11 @@ test('claude args and prompt force slock CLI communication', () => {
   assert.match(prompt, /slock task claim/);
   assert.match(prompt, /slock task unclaim/);
   assert.match(prompt, /slock task update/);
+  assert.match(prompt, /slock memory context/);
+  assert.match(prompt, /slock memory proposals/);
+  assert.match(prompt, /slock memory accept-proposal/);
+  assert.match(prompt, /slock memory reject-proposal/);
+  assert.match(prompt, /slock memory delete/);
   assert.match(prompt, /slock reminder snooze/);
   assert.match(prompt, /slock reminder log/);
   assert.match(prompt, /slock attachment upload/);
@@ -186,6 +194,82 @@ test('daemon formats inbound Slock messages for Claude runtime delivery', () => 
   );
 });
 
+test('daemon injects a selective memory context manifest into runtime prompts', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'message.created',
+    channelId: 'channel-1',
+    target: '#general',
+    messageId: 'msg-1',
+    sender: '@alice',
+    content: 'continue the memory work',
+  });
+  const manifest = {
+    policy: 'selective',
+    sessionScope: { type: 'task', id: 'task-1' },
+    taskMemories: [
+      {
+        path: 'brief.md',
+        title: 'Task brief',
+        snippet: 'Implement scoped memory context injection.',
+        contentText: 'FULL TASK MEMORY SHOULD NOT BE INSERTED',
+      },
+      {
+        path: 'progress.md',
+        snippet: 'Backend and CLI are done; daemon injection remains.',
+      },
+    ],
+    channelMemories: [
+      {
+        path: 'MEMORY.md',
+        title: 'Channel memory',
+        snippet: 'Use selective manifests, not full channel memory.',
+        contentText: 'FULL CHANNEL MEMORY SHOULD NOT BE INSERTED',
+      },
+    ],
+    readMore: {
+      task: 'slock memory read --scope task --id task-1 --path brief.md',
+      channel: 'slock memory search --scope channel --id channel-1 --query "scoped memory"',
+    },
+  };
+
+  const formatted = formatRuntimeIncomingMessageWithMemoryContext(message, manifest);
+
+  assert.match(formatted, /## Slock Memory Context/);
+  assert.match(formatted, /policy=selective/);
+  assert.match(formatted, /scope=task:task-1/);
+  assert.match(formatted, /Task memory/);
+  assert.match(formatted, /brief\.md - Task brief: Implement scoped memory context injection\./);
+  assert.match(formatted, /Channel memory/);
+  assert.match(formatted, /MEMORY\.md - Channel memory: Use selective manifests, not full channel memory\./);
+  assert.match(formatted, /slock memory read --scope task --id task-1 --path brief\.md/);
+  assert.match(formatted, /\[event=message\.created/);
+  assert.doesNotMatch(formatted, /FULL TASK MEMORY SHOULD NOT BE INSERTED/);
+  assert.doesNotMatch(formatted, /FULL CHANNEL MEMORY SHOULD NOT BE INSERTED/);
+});
+
+test('daemon omits memory context block when manifest has no useful entries', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'message_received',
+    message: {
+      target: 'dm:@alice',
+      id: 'msg-2',
+      sender: '@alice',
+      content: 'hello in dm',
+    },
+  });
+
+  assert.equal(
+    formatRuntimeIncomingMessageWithMemoryContext(message, {
+      policy: 'selective',
+      sessionScope: { type: 'dm', id: 'alice', key: 'dm:alice' },
+      channelMemories: [],
+      taskMemories: [],
+      readMore: [],
+    }),
+    formatRuntimeIncomingMessage(message),
+  );
+});
+
 test('daemon normalizes dotted backend message events for Claude runtime delivery', () => {
   const message = normalizeRuntimeIncomingMessage({
     type: 'message.created',
@@ -217,6 +301,77 @@ test('daemon normalizes dotted backend message events for Claude runtime deliver
     formatRuntimeIncomingMessage(message),
     '[event=message.created eventSeq=99 trace=trace-99 target=#general channel=channel-1 msg=msg-12 time=2026-06-05T10:00:00.000Z type=message.created] from dotted event',
   );
+});
+
+test('daemon selects runtime session scope from normalized event payloads', () => {
+  const topLevel = normalizeRuntimeIncomingMessage({
+    type: 'message.created',
+    channelType: 'public',
+    channelId: 'ch-1',
+    messageId: 'msg-1',
+    threadId: 'msg-1',
+    senderId: 'human-1',
+    content: 'top level',
+  });
+  const threadReply = normalizeRuntimeIncomingMessage({
+    type: 'message.created',
+    channelType: 'thread',
+    channelId: 'ch-1',
+    messageId: 'msg-2',
+    threadId: 'msg-1',
+    senderId: 'human-1',
+    content: 'thread reply',
+  });
+  const taskMessage = normalizeRuntimeIncomingMessage({
+    type: 'task.created',
+    channelType: 'thread',
+    channelId: 'ch-1',
+    messageId: 'msg-3',
+    threadId: 'msg-1',
+    taskId: 'task-1',
+    senderId: 'human-1',
+    content: 'task work',
+  });
+
+  assert.equal(selectRuntimeSessionScope(topLevel)?.key, 'channel:ch-1');
+  assert.equal(selectRuntimeSessionScope(threadReply)?.key, 'thread:ch-1:msg-1');
+  assert.equal(selectRuntimeSessionScope(taskMessage)?.key, 'task:task-1');
+});
+
+test('daemon requests memory manifests only for shared channel thread and task scopes', () => {
+  assert.deepEqual(buildRuntimeMemoryContextRequest({ type: 'channel', channelId: 'ch-1', key: 'channel:ch-1' }, 'prompt'), {
+    scopeType: 'channel',
+    scopeId: 'ch-1',
+    prompt: 'prompt',
+    topK: 3,
+  });
+  assert.deepEqual(buildRuntimeMemoryContextRequest({ type: 'task', taskId: 'task-1', key: 'task:task-1' }, 'prompt'), {
+    scopeType: 'task',
+    scopeId: 'task-1',
+    prompt: 'prompt',
+    topK: 3,
+  });
+  assert.deepEqual(buildRuntimeMemoryContextRequest({ type: 'thread', channelId: 'ch-1', rootMessageId: 'msg-1', key: 'thread:ch-1:msg-1' }, 'prompt'), {
+    scopeType: 'thread',
+    scopeId: 'msg-1',
+    prompt: 'prompt',
+    topK: 3,
+  });
+  assert.equal(buildRuntimeMemoryContextRequest({ type: 'dm', peerMemberId: 'human-1', key: 'dm:human-1' }, 'prompt'), null);
+});
+
+test('daemon treats reply-safe DM targets as DM scope even when channelType is absent', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'message_received',
+    target: 'dm:@alice',
+    channelId: 'dm-channel-1',
+    senderId: 'human-1',
+    content: 'private question',
+  });
+  const scope = selectRuntimeSessionScope(message);
+
+  assert.equal(scope?.key, 'dm:human-1');
+  assert.equal(buildRuntimeMemoryContextRequest(scope, 'prompt'), null);
 });
 
 test('daemon formats non-message Slock events for Claude runtime delivery', () => {
@@ -390,15 +545,57 @@ test('daemon formats thread summary requests for runtime delivery', () => {
   );
 });
 
+test('daemon formats task memory requests as actionable one-shot reminders', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'task.memory_requested',
+    eventSeq: 66,
+    payload: {
+      targetAgentId: 'agent-123',
+      actorId: 'operator-1',
+      target: '#general:abc123ef',
+      taskId: 'task-1',
+      taskNumber: 8,
+      status: 'in_review',
+      title: 'Pick up worker slice',
+      content: 'Write final task memory with slock task summary.',
+    },
+    timestamp: '2026-06-05T10:09:00.000Z',
+  });
+
+  assert.equal(isRuntimeActionableEventType('task.memory_requested'), true);
+  assert.equal(isRuntimeActionableEventType('task_memory_requested'), true);
+  assert.deepEqual(message, {
+    eventType: 'task.memory_requested',
+    eventSeq: '66',
+    target: '#general:abc123ef',
+    taskId: 'task-1',
+    taskNumber: '8',
+    status: 'in_review',
+    title: 'Pick up worker slice',
+    timestamp: '2026-06-05T10:09:00.000Z',
+    actor: 'operator-1',
+    senderType: 'task.memory_requested',
+    content: 'Write final task memory with slock task summary.',
+  });
+  assert.equal(
+    formatRuntimeIncomingMessage(message),
+    '[event=task.memory_requested eventSeq=66 target=#general:abc123ef task=#8 status=in_review time=2026-06-05T10:09:00.000Z actor=operator-1 type=task.memory_requested] Write final task memory with slock task summary.',
+  );
+});
+
 test('daemon runtime delivery gate ignores non-actionable event noise', () => {
   assert.equal(isRuntimeActionableEventType('task.created'), true);
   assert.equal(isRuntimeActionableEventType('task_created'), true);
+  assert.equal(isRuntimeActionableEventType('task.memory_requested'), true);
+  assert.equal(isRuntimeActionableEventType('task_memory_requested'), true);
   assert.equal(isRuntimeActionableEventType('thread.summary_requested'), true);
   assert.equal(isRuntimeActionableEventType('thread_summary_requested'), true);
 
   assert.equal(isRuntimeActionableEventType('task.updated'), false);
   assert.equal(isRuntimeActionableEventType('task.claimed'), false);
   assert.equal(isRuntimeActionableEventType('thread.followed'), false);
+  assert.equal(isRuntimeActionableEventType('memory.updated'), false);
+  assert.equal(isRuntimeActionableEventType('memory.proposal.created'), false);
   assert.equal(isRuntimeActionableEventType('runtime.idle'), false);
   assert.equal(isRuntimeActionableEventType('workspace.heartbeat'), false);
 });
@@ -590,6 +787,54 @@ test('claude runtime uses resume session id before init event arrives', () => {
   assert.equal(driver.sessionId, 'session-resume-1');
   assert.equal(driver.sendUserMessage('hello after resume'), true);
   assert.equal(JSON.parse(writes[0]).session_id, 'session-resume-1');
+});
+
+test('claude runtime send options can isolate a new scoped session from the current session', () => {
+  const driver = new ClaudeRuntimeDriver({
+    credential,
+    workspacePath: 'D:/workspace',
+    wrapperDir: 'D:/workspace/.slock',
+    resumeSessionId: 'session-resume-1',
+  });
+  const writes = [];
+  driver.child = {
+    stdin: {
+      writable: true,
+      write(chunk) {
+        writes.push(String(chunk));
+        return true;
+      },
+    },
+  };
+
+  assert.equal(driver.sendUserMessage('new task scope', { sessionId: null, sessionScopeKey: 'task:task-1' }), true);
+  assert.equal(JSON.parse(writes[0]).session_id, undefined);
+});
+
+test('claude runtime send options can route to an existing scoped provider session', () => {
+  const driver = new ClaudeRuntimeDriver({
+    credential,
+    workspacePath: 'D:/workspace',
+    wrapperDir: 'D:/workspace/.slock',
+    resumeSessionId: 'session-channel-1',
+  });
+  const writes = [];
+  const sent = [];
+  driver.on('message_sent', (payload) => sent.push(payload));
+  driver.child = {
+    stdin: {
+      writable: true,
+      write(chunk) {
+        writes.push(String(chunk));
+        return true;
+      },
+    },
+  };
+
+  assert.equal(driver.sendUserMessage('existing task scope', { sessionId: 'session-task-1', sessionScopeKey: 'task:task-1' }), true);
+  assert.equal(JSON.parse(writes[0]).session_id, 'session-task-1');
+  assert.equal(sent[0].sessionScopeKey, 'task:task-1');
+  assert.equal(sent[0].session_id, 'session-task-1');
 });
 
 test('claude runtime queues messages while busy and flushes at result boundary', () => {
