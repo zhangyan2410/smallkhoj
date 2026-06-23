@@ -1,6 +1,7 @@
 export type AgentStatusBucket = "OFFLINE" | "IDLE" | "STARTING" | "THINKING" | "ACTIVE" | "ERROR"
+export type StatusBucket = AgentStatusBucket
 
-const STATUS_BUCKET_MAP: Record<string, AgentStatusBucket> = {
+export const STATUS_BUCKET_MAP: Record<string, StatusBucket> = {
   offline: "OFFLINE",
   disconnected: "OFFLINE",
   stopped: "OFFLINE",
@@ -35,7 +36,7 @@ const STATUS_BUCKET_MAP: Record<string, AgentStatusBucket> = {
   timeout: "ERROR",
 }
 
-const STATUS_LABELS: Record<string, string> = {
+export const STATUS_LABELS: Record<string, string> = {
   offline: "离线",
   disconnected: "离线",
   stopped: "已停止",
@@ -70,7 +71,7 @@ const STATUS_LABELS: Record<string, string> = {
   timeout: "超时",
 }
 
-const BUCKET_DOT_CLASS: Record<AgentStatusBucket, string> = {
+const BUCKET_DOT_CLASS: Record<StatusBucket, string> = {
   OFFLINE: "bg-slate-400",
   IDLE: "bg-emerald-500",
   STARTING: "bg-orange-400 animate-pulse",
@@ -79,13 +80,17 @@ const BUCKET_DOT_CLASS: Record<AgentStatusBucket, string> = {
   ERROR: "bg-red-500",
 }
 
-export function getStatusBucket(status?: string | null): AgentStatusBucket {
-  return STATUS_BUCKET_MAP[(status || "").toLowerCase()] ?? "OFFLINE"
+function normalizeStatus(status?: string | null): string {
+  return (status || "").toLowerCase()
+}
+
+export function getStatusBucket(status?: string | null): StatusBucket {
+  return STATUS_BUCKET_MAP[normalizeStatus(status)] ?? "OFFLINE"
 }
 
 export function getStatusLabel(status?: string | null): string {
   if (!status) return "离线"
-  return STATUS_LABELS[status.toLowerCase()] ?? status
+  return STATUS_LABELS[normalizeStatus(status)] ?? status
 }
 
 export function statusDotClass(status?: string | null): string {

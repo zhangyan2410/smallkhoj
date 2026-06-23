@@ -48,6 +48,17 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, oklch(0.60 0.18 260), oklch(0.55 0.20 290));
+  --gradient-active: linear-gradient(135deg, oklch(0.60 0.18 260), oklch(0.65 0.18 200));
+  --gradient-brand: linear-gradient(135deg, oklch(0.60 0.18 260), oklch(0.55 0.20 290));
+  /* Agent identity colors (cycling palette) */
+  --agent-color-1: oklch(0.65 0.20 260);
+  --agent-color-2: oklch(0.62 0.22 290);
+  --agent-color-3: oklch(0.72 0.18 200);
+  --agent-color-4: oklch(0.68 0.20 155);
+  --agent-color-5: oklch(0.75 0.18 75);
+  --agent-color-6: oklch(0.65 0.22 15);
 }
 
 :root {
@@ -85,7 +96,7 @@
   --agent-color-4: oklch(0.68 0.20 155);
   --agent-color-5: oklch(0.75 0.18 75);
   --agent-color-6: oklch(0.65 0.22 15);
-  --radius: 0.625rem;
+  --radius: 0.875rem;
   --sidebar: oklch(0.978 0.005 258.3);
   --sidebar-foreground: oklch(0.30 0.030 258);
   --sidebar-primary: oklch(0.541 0.170 260);
@@ -141,6 +152,9 @@
   }
   html {
     @apply font-sans;
+  }
+  .dark body {
+    background-image: radial-gradient(ellipse at top left, oklch(0.26 0.042 265 / 0.6) 0%, transparent 55%);
   }
 }
 
