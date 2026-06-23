@@ -87,7 +87,7 @@ async function createComputerConnectCommandAction(formData: FormData) {
   const response = await fetch(`${API_BASE}/api/v1/computers/connect-command`, {
     method: "POST",
     headers: await serverApiHeaders(true),
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, serverUrl: API_BASE }),
   })
 
   if (!response.ok) {
@@ -122,7 +122,7 @@ async function createComputerReconnectCommandAction(formData: FormData) {
   const response = await fetch(`${API_BASE}/api/v1/computers/${computerId}/reconnect-command`, {
     method: "POST",
     headers: await serverApiHeaders(true),
-    body: JSON.stringify({}),
+    body: JSON.stringify({ serverUrl: API_BASE }),
   })
 
   if (!response.ok) {
