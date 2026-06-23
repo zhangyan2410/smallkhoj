@@ -760,6 +760,8 @@ SLOCKMSG
   - The returned `machineToken` is kept in memory and used for `/daemon/register`, `/daemon/heartbeat`, and agent-facing calls after a user-created agent exists.
   - Heartbeat interval is 15 seconds; backend lease window is 90 seconds.
   - No `agentId` means no workspace registration and no inbox polling.
+  - Product-facing wrappers such as `smallkhoj-daemon` may keep a server-scoped pid lock for diagnostics, but must not automatically terminate an existing daemon before proving their own token is valid. If the same-server lock points at a live process, the wrapper must fail fast with a clear message; stale locks may be removed.
+  - `smallkhoj-daemon` must `exec` the foreground daemon process instead of running it as a background child and waiting from a parent shell. The visible process should be the daemon that receives `SIGINT`/`SIGTERM`; otherwise wrapper-level signal handling can mask the real stop source.
 - Agent creation:
   - `POST /api/v1/members/agents` creates both a `Member(kind="agent")` and an `AgentWorkspace` bound to a selected computer/runtime.
   - Daemon connect must not auto-create an agent.
@@ -793,9 +795,11 @@ SLOCKMSG
 - Good: browser generates a connect command; no computer row appears until daemon calls `/daemon/connect`.
 - Good: daemon connects with a persistent `machineId`; backend creates/reuses one computer and returns a fresh `sk_machine_...` token.
 - Good: second daemon for the same online `machineId` is rejected until heartbeat lease expiry.
+- Good: an expired, reused, or invalid connect command cannot kill a healthy same-server daemon; it exits before launching when the server-scoped wrapper lock points at a live process.
 - Good: user creates an agent later on Members and binds it to the connected computer.
 - Good: browser creates a channel, adds the agent by channel id/member id, sends a human message, and verifies an agent-authored response through `/internal/agent-api/send`.
 - Bad: generating a long-lived machine token from the browser and creating a computer before the daemon has proven it can connect.
+- Bad: wrapper startup reads a pid lock, sends `SIGTERM` to that process, and only then attempts `/daemon/connect`; a stale retry with an invalid one-time token can otherwise kill a healthy daemon and fail authentication itself.
 - Bad: putting `--agent-id aaaa...` into the default computer connection command, because daemon connect must not auto-create or steal an agent workspace.
 - Bad: testing agent replies by posting to public `/api/v1/channels/{channel}/messages` with `sender: agentName`; that proves message rendering, not agent-facing auth/send contracts.
 
@@ -813,6 +817,7 @@ SLOCKMSG
   - `--proxy-port 0` starts on an available port.
   - No `--agent-id` means no workspace payload.
   - Heartbeat renews the lease.
+  - `smallkhoj-daemon` uses server-scoped locks only as a guard: different server URLs can run together, same-server startup exits without killing the existing daemon, and connect/start modes `exec` the foreground daemon process.
 - Browser E2E:
   - Generated command includes `SLOCK_CONNECT_TOKEN` and excludes `sk_machine_`.
   - Computer list does not show the pending computer until daemon connect succeeds.

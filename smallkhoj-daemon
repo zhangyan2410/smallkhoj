@@ -9,7 +9,6 @@ MACHINE_TOKEN=""
 PROXY_PORT="0"
 LOCK_DIR="${SMALLKHOJ_DAEMON_LOCK_DIR:-${HOME}/.smallkhoj/daemons}"
 LOCK_FILE="${SMALLKHOJ_DAEMON_LOCK:-}"
-DAEMON_PID=""
 
 normalize_server_url_for_lock() {
   local raw="${1%/}"
@@ -46,52 +45,16 @@ normalize_server_url_for_lock() {
   printf '%s' "$raw"
 }
 
-kill_pid_tree() {
-  local pid="$1" sig="${2:-TERM}"
-  [[ -n "$pid" ]] || return 0
-  kill -0 "$pid" 2>/dev/null || return 0
-  local child
-  for child in $(pgrep -P "$pid" 2>/dev/null || true); do
-    kill_pid_tree "$child" "$sig"
-  done
-  kill -"$sig" "$pid" 2>/dev/null || true
-}
-
-stop_pid_tree() {
-  local pid="$1"
-  [[ -n "$pid" ]] || return 0
-  kill -0 "$pid" 2>/dev/null || return 0
-  kill_pid_tree "$pid" TERM
-  local i
-  for i in 1 2 3 4 5; do
-    kill -0 "$pid" 2>/dev/null || return 0
-    sleep 1
-  done
-  kill_pid_tree "$pid" KILL
-}
-
-cleanup_old() {
+guard_existing_daemon() {
   [[ -f "$LOCK_FILE" ]] || return 0
   local old_pid
   old_pid="$(cat "$LOCK_FILE" 2>/dev/null || true)"
-  rm -f "$LOCK_FILE"
   if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
-    echo "Stopping existing daemon for $SERVER_URL (PID $old_pid) from $LOCK_FILE and its runtime children..." >&2
-    stop_pid_tree "$old_pid"
+    echo "Existing daemon for $SERVER_URL is already running (PID $old_pid) from $LOCK_FILE. Stop it before starting another daemon for the same server." >&2
+    exit 3
   fi
+  rm -f "$LOCK_FILE"
 }
-
-cleanup_on_exit() {
-  if [[ -n "${DAEMON_PID:-}" ]]; then
-    stop_pid_tree "$DAEMON_PID"
-  fi
-  rm -f "$LOCK_FILE" 2>/dev/null || true
-}
-
-trap 'cleanup_on_exit' EXIT
-trap 'cleanup_on_exit; exit 130' INT
-trap 'cleanup_on_exit; exit 143' TERM
-trap 'cleanup_on_exit; exit 129' HUP
 
 usage() {
   cat <<'USAGE'
@@ -183,18 +146,11 @@ WS_URL="${WS_URL/#https:/wss:}"
 # Ensure the WS path includes the agent API route prefix
 WS_URL="${WS_URL%/}/internal/agent-api/ws"
 
-# Singleton enforcement is scoped to the selected backend server. Starting a
-# preview daemon on another port must not terminate a daemon attached to main.
-cleanup_old
+# Singleton detection is scoped to the selected backend server. A stale or
+# invalid connect command must never terminate a healthy daemon.
+guard_existing_daemon
 mkdir -p "$(dirname "$LOCK_FILE")"
 echo "$$" > "$LOCK_FILE"
-
-run_daemon() {
-  # Run daemon in background so we can trap signals and clean up its process tree.
-  "$@" &
-  DAEMON_PID=$!
-  wait "$DAEMON_PID" || true
-}
 
 case "$MODE" in
   connect)
@@ -202,7 +158,7 @@ case "$MODE" in
       echo "Missing --token sk_connect_..." >&2
       exit 2
     fi
-    run_daemon env SLOCK_CONNECT_TOKEN="$CONNECT_TOKEN" SLOCK_ALLOW_WRITES=1 \
+    exec env SLOCK_CONNECT_TOKEN="$CONNECT_TOKEN" SLOCK_ALLOW_WRITES=1 \
       node dist/cmd/main.js start --foreground \
         --runtime none \
         --server "$SERVER_URL" \
@@ -215,7 +171,7 @@ case "$MODE" in
       echo "Missing --machine-token sk_machine_..." >&2
       exit 2
     fi
-    run_daemon env SLOCK_AGENT_TOKEN="$MACHINE_TOKEN" SLOCK_ALLOW_WRITES=1 \
+    exec env SLOCK_AGENT_TOKEN="$MACHINE_TOKEN" SLOCK_ALLOW_WRITES=1 \
       node dist/cmd/main.js start --foreground \
         --runtime none \
         --server "$SERVER_URL" \

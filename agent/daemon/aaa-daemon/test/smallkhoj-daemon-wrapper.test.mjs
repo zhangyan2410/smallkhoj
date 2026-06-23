@@ -33,17 +33,42 @@ test('smallkhoj-daemon wrapper scopes its default lock by server URL', async () 
   );
 });
 
-test('smallkhoj-daemon wrapper explains why it stops an existing daemon', async () => {
+test('smallkhoj-daemon wrapper explains when an existing daemon blocks startup', async () => {
   const source = await readFile(wrapperPath, 'utf8');
 
   assert.match(
     source,
-    /Stopping existing daemon for \$SERVER_URL .*from \$LOCK_FILE/,
-    'singleton cleanup log should include the server URL and lock file that caused the stop',
+    /Existing daemon for \$SERVER_URL is already running .*from \$LOCK_FILE/,
+    'singleton guard log should include the server URL and lock file that blocked startup',
+  );
+  assert.doesNotMatch(
+    source,
+    /stop_pid_tree "\$old_pid"/,
+    'a wrapper with an invalid or reused connect token must not terminate an already-running daemon',
   );
 });
 
-test('smallkhoj-daemon wrapper only replaces daemons for the same server URL', async () => {
+test('smallkhoj-daemon wrapper execs the daemon as the foreground process', async () => {
+  const source = await readFile(wrapperPath, 'utf8');
+
+  assert.doesNotMatch(
+    source,
+    /\n\s*"\$@"\s*&\s*\n\s*DAEMON_PID=\$!\s*\n\s*wait "\$DAEMON_PID"/,
+    'wrapper must not background the daemon and wait from a parent shell that can receive its own TERM',
+  );
+  assert.match(
+    source,
+    /\bexec env SLOCK_CONNECT_TOKEN=/,
+    'connect mode should replace the wrapper with the daemon process',
+  );
+  assert.match(
+    source,
+    /\bexec env SLOCK_AGENT_TOKEN=/,
+    'machine-token start mode should replace the wrapper with the daemon process',
+  );
+});
+
+test('smallkhoj-daemon wrapper isolates servers and refuses same-server auto-replacement', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'smallkhoj-daemon-wrapper-'));
   const fakeBin = join(tempRoot, 'bin');
   const lockDir = join(tempRoot, 'locks');
@@ -75,7 +100,7 @@ test('smallkhoj-daemon wrapper only replaces daemons for the same server URL', a
     FAKE_NODE_LOG: fakeNodeLog,
   };
 
-  const launch = async (serverUrl) => {
+  const launch = async (serverUrl, options = {}) => {
     const child = spawn(
       'bash',
       [wrapperFile, 'connect', '--token', 'sk_connect_test', '--server', serverUrl],
@@ -86,7 +111,11 @@ test('smallkhoj-daemon wrapper only replaces daemons for the same server URL', a
     child.stderr.on('data', (chunk) => {
       child.stderrText += String(chunk);
     });
-    await waitFor(() => childHasDaemonLog(fakeNodeLog, serverUrl), 3000);
+    if (options.expectDaemonStart === false) {
+      await waitFor(() => child.exitCode !== null, 3000);
+    } else {
+      await waitFor(() => childHasDaemonLog(fakeNodeLog, serverUrl), 3000);
+    }
     return child;
   };
 
@@ -97,13 +126,14 @@ test('smallkhoj-daemon wrapper only replaces daemons for the same server URL', a
     assert.equal(first.exitCode, null, 'different server URL must not stop the first wrapper');
     assert.equal(second.exitCode, null, 'second wrapper should keep running');
 
-    const replacement = await launch('http://127.0.0.1:8015');
-    await waitFor(() => first.exitCode !== null, 6000);
+    const replacement = await launch('http://127.0.0.1:8015', { expectDaemonStart: false });
+    await waitFor(() => replacement.exitCode !== null, 6000);
 
-    assert.notEqual(first.exitCode, null, 'same server URL should replace the existing wrapper even if localhost is written as 127.0.0.1');
+    assert.equal(first.exitCode, null, 'same-server startup must not stop an existing daemon automatically');
+    assert.notEqual(replacement.exitCode, 0, 'same-server startup should fail fast when a daemon is already running');
     assert.match(
       replacement.stderrText,
-      /Stopping existing daemon for http:\/\/127\.0\.0\.1:8015 .*from .*daemon-[0-9a-f]{16}\.pid/,
+      /Existing daemon for http:\/\/127\.0\.0\.1:8015 is already running .*from .*daemon-[0-9a-f]{16}\.pid/,
     );
     assert.equal(second.exitCode, null, 'same-server replacement must not stop another server wrapper');
   } finally {
