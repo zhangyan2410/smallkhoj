@@ -1,0 +1,229 @@
+
+
+Z
+
+
+
+
+SmallKhoj
+Tasks
+Create, assign, scan, and move work with visible status, source links, and review evidence.
+Control Plane
+
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+
+Board/List surface1 visible of 1
+BoardList
+
+
+
+Total
+1
+
+
+Open
+1
+
+
+Agents
+2
+
+
+
+Create Task
+Creates a backend task and emits task.created for agent pickup.
+
+Title
+[INPUT #task-title name=title type=text "Implement bounded worker task"]
+
+Description
+[INPUT #task-description name=description type=text "Instructions and expected evidence"]
+
+Channel
+[SELECT #task-channel name=channel ="#slock"]
+
+Assignee
+[SELECT #task-assignee name=assignee ="@minimax"]
+
+Status
+[SELECT #task-status name=status ="todo"]
+
+Create
+
+
+Update Task
+Move status or reassign while preserving create/update behavior.
+
+Task
+[SELECT #update-task-id name=taskId ="d5a0b61b-2631-4999-a23a-ab51dba0c5e0"]
+
+Title
+[INPUT #update-task-title name=title type=text "Leave blank to keep"]
+
+Description
+[INPUT #update-task-description name=description type=text "Leave blank to keep"]
+
+Status
+[SELECT #update-task-status name=status ="in_review"]
+
+Assignee
+[SELECT #update-task-assignee name=assignee ="@minimax"]
+
+Update
+Filters
+Channel
+[SELECT #filter-channel name=channel]
+
+Creator
+[SELECT #filter-creator name=creator]
+
+Assignee
+[SELECT #filter-assignee name=assignee]
+
+Status
+[SELECT #filter-status name=status]
+
+ApplyClear
+
+
+
+
+待办0
+
+空
+
+进行中1
+
+
+
+
+
+
+
+#slock #1
+REAL_memory_ui_202606230131 task recovery
+进行中
+创建 @zy-ean06/22 17:31
+
+审核中0
+
+空
+
+完成0
+
+空
+
+关闭0
+
+空
+
+
+Task Detail
+Source and evidence for the selected work item.
+
+
+#slock #1
+REAL_memory_ui_202606230131 task recovery
+Verify task memory panel renders server-owned entries.
+
+Status进行中
+AssigneeUnassigned
+Creator@zy-ean
+
+Activity
+
+
+
+supervisor_task_created@zy-ean
+@zy-ean created task #106/22 17:31
+
+Source
+No source message linked yet.
+
+Evidence
+
+No evidence entries yet. Add screenshots, traces, API proofs, or notes below.
+
+[SELECT name=entryType ="note"]
+
+[INPUT #base-ui-_R_9uql5esnelb_ name=entryPath type=text "Path or reference"]
+
+[INPUT #base-ui-_R_2eql5esnelb_ name=entryContent type=text "Evidence content or description"]
+Add Evidence
+
+
+
+Task Recovery
+4/4 recovery signals
+BriefPlanProgressOutput
+
+
+Task breakdown
+
+REAL_memory_rich_outputs_202606230153 store server-owned memory rows
+Render task recovery cockpit
+Render image artifact preview
+Add provider session id persistence
+Add retention/delete policy
+API-backed task memory
+Artifact preview in task detail
+Scoped provider sessions
+
+
+
+Rich recovery briefbrief
+brief.md
+REAL_memory_rich_outputs_202606230153 original objective: make task and channel memory recoverable after compaction with visible outputs.
+v1d56a8acb137 B06/22 17:54d5a0b61b-2631-4999-a23a-ab51dba0c5e0
+
+
+Rich task breakdownplan
+plan.md
+- [x] REAL_memory_rich_outputs_202606230153 store server-owned memory rows
+- [x] Render task recovery cockpit
+- [x] Render image artifact preview
+- [ ] Add provider session id persistence
+- [ ] Add retention/delete policy
+v2a9f2c9b1221 B06/22 17:54d5a0b61b-2631-4999-a23a-ab51dba0c5e0
+
+
+Compaction recovery progressprogress
+progress.md
+REAL_memory_rich_outputs_202606230153 backend, daemon, frontend presentation model are connected. Remaining runtime-session persistence is explicitly tracked.
+v1a458847f158 B06/22 17:54d5a0b61b-2631-4999-a23a-ab51dba0c5e0
+
+
+Recoverable final summarysummary
+final-summary.md
+REAL_memory_rich_outputs_202606230153 final summary: task/channel memory now shows recovery signals, task breakdown, typed outputs, and source provenance.
+v1a4e373d2154 B06/22 17:54d5a0b61b-2631-4999-a23a-ab51dba0c5e0
+
+Outputs and evidence
+
+
+
+Demo video placeholderartifact
+artifacts/demo-video.md
+REAL_memory_rich_outputs_202606230153 video artifact row uses video viewer classification when a real video URL is attached.
+v1d30432084.0 KB06/22 17:54https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4
+
+
+Rich output screenshot previewartifact
+artifacts/rich-output.svg
+REAL_memory_rich_outputs_202606230153 image artifact rendered from task memory metadata URL.
+v1516da088824 B06/22 17:54.trellis/tasks/06-22-channel-memory-store-and-scoped-sessions/evidence/rich-output.svg
+
+
+Task evidence indexevidence
+evidence.md
+Screenshot and API evidence for REAL_memory_ui_202606230131.
+v1df626ac260 B06/22 17:31d5a0b61b-2631-4999-a23a-ab51dba0c5e0
+
+Review
+[SELECT name=reviewDecision]
+
+[INPUT #base-ui-_R_2bql5esnelb_ name=reviewNote type=text "Review or reopen note"]
+Submit Review

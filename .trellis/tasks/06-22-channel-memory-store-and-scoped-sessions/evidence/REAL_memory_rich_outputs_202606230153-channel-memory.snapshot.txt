@@ -1,0 +1,73 @@
+
+
+
+SmallKhojChat workbench
+
+关注
+ActivitySaved
+
+频道
+slockch
+
+私信
+minimax
+
+在线成员
+zezy-eanhuman
+minimaxagent
+
+
+
+#s
+
+#slock
+Channel0 root messages2
+ChatTasksMemoryFilesActivity
+
+
+
+
+
+
+Memory
+#slock3 entries
+
+
+
+Channel knowledge1
+
+
+
+Channel memory UI proofsummary
+MEMORY.md
+REAL_memory_ui_202606230131 channel memory visible in Chat Memory tab.
+v1472b0ddf70 B06/22 17:31
+
+
+Task outputs1
+
+
+
+Task output promoted summarysummary
+tasks/d5a0b61b/final-summary.md
+REAL_memory_rich_outputs_202606230153 channel-visible task output: recovery cockpit and artifact previews are visible from task memory.
+v139273723135 B06/22 17:54d5a0b61b-2631-4999-a23a-ab51dba0c5e0
+
+
+Promotions1
+
+
+
+Promotion audit for rich outputpromotion
+promotions/d5a0b61b-rich-output.md
+REAL_memory_rich_outputs_202606230153 promotion audit: task final-summary.md is safe to reuse as channel knowledge; raw progress remains task-scoped.
+v12168f79a149 B06/22 17:54d5a0b61b-2631-4999-a23a-ab51dba0c5e0
+Members (2)
+
+zezy-ean在线
+
+minimax离线
+
+Add Member
+
+[SELECT name=memberId]

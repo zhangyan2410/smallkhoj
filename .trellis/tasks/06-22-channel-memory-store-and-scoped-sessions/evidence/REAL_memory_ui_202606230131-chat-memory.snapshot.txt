@@ -1,0 +1,49 @@
+
+
+
+SmallKhojChat workbench
+
+关注
+ActivitySaved
+
+频道
+slockch
+
+私信
+minimax
+
+在线成员
+zezy-eanhuman
+minimaxagent
+
+
+
+#s
+
+#slock
+Channel0 root messages2
+ChatTasksMemoryFilesActivity
+
+
+
+
+
+
+Memory
+#slock1 entries
+
+
+
+Channel memory UI proofsummary
+MEMORY.md
+REAL_memory_ui_202606230131 channel memory visible in Chat Memory tab.
+v1472b0ddf70 B06/22 17:31
+Members (2)
+
+zezy-ean在线
+
+minimax离线
+
+Add Member
+
+[SELECT name=memberId]

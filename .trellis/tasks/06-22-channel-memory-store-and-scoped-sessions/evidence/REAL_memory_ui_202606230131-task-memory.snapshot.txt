@@ -1,0 +1,177 @@
+
+
+Z
+
+
+
+
+SmallKhoj
+Tasks
+Create, assign, scan, and move work with visible status, source links, and review evidence.
+Control Plane
+
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+
+Board/List surface1 visible of 1
+BoardList
+
+
+
+Total
+1
+
+
+Open
+1
+
+
+Agents
+2
+
+
+
+Create Task
+Creates a backend task and emits task.created for agent pickup.
+
+Title
+[INPUT #task-title name=title type=text "Implement bounded worker task"]
+
+Description
+[INPUT #task-description name=description type=text "Instructions and expected evidence"]
+
+Channel
+[SELECT #task-channel name=channel ="#slock"]
+
+Assignee
+[SELECT #task-assignee name=assignee ="@minimax"]
+
+Status
+[SELECT #task-status name=status ="todo"]
+
+Create
+
+
+Update Task
+Move status or reassign while preserving create/update behavior.
+
+Task
+[SELECT #update-task-id name=taskId ="d5a0b61b-2631-4999-a23a-ab51dba0c5e0"]
+
+Title
+[INPUT #update-task-title name=title type=text "Leave blank to keep"]
+
+Description
+[INPUT #update-task-description name=description type=text "Leave blank to keep"]
+
+Status
+[SELECT #update-task-status name=status ="in_review"]
+
+Assignee
+[SELECT #update-task-assignee name=assignee ="@minimax"]
+
+Update
+Filters
+Channel
+[SELECT #filter-channel name=channel]
+
+Creator
+[SELECT #filter-creator name=creator]
+
+Assignee
+[SELECT #filter-assignee name=assignee]
+
+Status
+[SELECT #filter-status name=status]
+
+ApplyClear
+
+
+
+
+待办0
+
+空
+
+进行中1
+
+
+
+
+
+
+
+#slock #1
+REAL_memory_ui_202606230131 task recovery
+进行中
+创建 @zy-ean06/22 17:31
+
+审核中0
+
+空
+
+完成0
+
+空
+
+关闭0
+
+空
+
+
+Task Detail
+Source and evidence for the selected work item.
+
+
+#slock #1
+REAL_memory_ui_202606230131 task recovery
+Verify task memory panel renders server-owned entries.
+
+Status进行中
+AssigneeUnassigned
+Creator@zy-ean
+
+Activity
+
+
+
+supervisor_task_created@zy-ean
+@zy-ean created task #106/22 17:31
+
+Source
+No source message linked yet.
+
+Evidence
+
+No evidence entries yet. Add screenshots, traces, API proofs, or notes below.
+
+[SELECT name=entryType ="note"]
+
+[INPUT #base-ui-_R_9uql5esnelb_ name=entryPath type=text "Path or reference"]
+
+[INPUT #base-ui-_R_2eql5esnelb_ name=entryContent type=text "Evidence content or description"]
+Add Evidence
+
+
+Task Memory2 entries
+
+
+
+Task recovery planplan
+plan.md
+REAL_memory_ui_202606230131 task memory visible in Task Detail.
+v1272b7b8806/22 17:31
+
+
+Task evidence indexevidence
+evidence.md
+Screenshot and API evidence for REAL_memory_ui_202606230131.
+v1df626ac206/22 17:31
+
+Review
+[SELECT name=reviewDecision]
+
+[INPUT #base-ui-_R_2bql5esnelb_ name=reviewNote type=text "Review or reopen note"]
+Submit Review
