@@ -112,7 +112,7 @@ def _runtime_member(*, config=None, backend=None, status="offline"):
     )
 
 
-def _workspace(*, status="stopped"):
+def _workspace(*, status="stopped", started_at=None):
     return SimpleNamespace(
         id=uuid.uuid4(),
         runtime="claude_code",
@@ -120,7 +120,7 @@ def _workspace(*, status="stopped"):
         runtime_model=None,
         cwd=None,
         session_id=None,
-        started_at=None,
+        started_at=started_at,
         status=status,
         pid=1234,
         stopped_at=datetime.now(timezone.utc),
@@ -143,14 +143,14 @@ def _computer(*, active_daemon_id="old-daemon", lease_expires_at=None, status="o
     )
 
 
-def _event(seq, *, event_type="message.created", actor_id=None, channel_id=None, payload=None):
+def _event(seq, *, event_type="message.created", actor_id=None, channel_id=None, task_id=None, payload=None):
     return SimpleNamespace(
         id=uuid.uuid4(),
         seq=seq,
         event_type=event_type,
         actor_id=actor_id,
         channel_id=channel_id,
-        task_id=None,
+        task_id=task_id,
         message_id=None,
         payload=payload or {"content": f"event {seq}"},
         created_at=None,
@@ -480,6 +480,43 @@ def test_public_api_delete_blocking_workspace_statuses():
     assert public_api._delete_blocking_workspace_statuses(workspaces) == ["running"]
 
 
+def test_public_api_stale_starting_workspace_does_not_block_delete():
+    old_started_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+    workspaces = [
+        _workspace(status="starting", started_at=old_started_at),
+        _workspace(status="restarting", started_at=old_started_at),
+    ]
+
+    assert public_api._delete_blocking_workspace_statuses(workspaces) == []
+
+
+def test_public_api_fresh_starting_workspace_blocks_delete():
+    recent_started_at = datetime.now(timezone.utc)
+    workspaces = [_workspace(status="starting", started_at=recent_started_at)]
+
+    assert public_api._delete_blocking_workspace_statuses(workspaces) == ["starting"]
+
+
+@pytest.mark.asyncio
+async def test_missing_starting_workspace_is_rearmed_when_autostart_enabled():
+    workspace = _workspace(status="starting")
+    agent = _runtime_member(config={"runtimeDesiredStatus": "running"}, status="active")
+    db = _FakeSession(_ExecuteResult(rows=[(workspace, agent)]))
+
+    stale = await mark_missing_runtimes_pending_start(
+        db,
+        server_id=uuid.uuid4(),
+        computer_id=uuid.uuid4(),
+        reported_workspace_ids=set(),
+    )
+
+    assert stale == [(workspace, agent)]
+    assert workspace.status == "pending_start"
+    assert workspace.pid is None
+    assert workspace.stopped_at is None
+    assert agent.status == "offline"
+
+
 def test_public_api_member_patch_updates_human_avatar_url():
     member = _profile_member(kind="human")
 
@@ -747,6 +784,44 @@ async def test_pending_visible_events_filters_self_messages_and_advances_scanned
     assert [event["content"] for event in events] == ["human prompt"]
     assert events[0]["eventSeq"] == 102
     assert events[0]["targetAgentId"] == str(agent_id)
+
+
+@pytest.mark.asyncio
+async def test_pending_visible_task_events_are_scoped_to_task_assignee():
+    server_id = uuid.uuid4()
+    computer_id = uuid.uuid4()
+    assignee_id = uuid.uuid4()
+    other_agent_id = uuid.uuid4()
+    channel_id = uuid.uuid4()
+    task_id = uuid.uuid4()
+    assignee = _member(assignee_id, computer_id=computer_id)
+    other_agent = _member(other_agent_id, computer_id=computer_id)
+    task_update = _event(
+        150,
+        event_type="task.updated",
+        actor_id=assignee_id,
+        channel_id=channel_id,
+        task_id=task_id,
+        payload={"taskNumber": 7, "status": "in_review"},
+    )
+    db = _FakeSession(
+        _ExecuteResult(scalar_rows=[assignee, other_agent]),
+        _ExecuteResult(rows=[(assignee_id, channel_id), (other_agent_id, channel_id)]),
+        _ExecuteResult(scalar_rows=[task_update]),
+        _ExecuteResult(scalar_one=assignee_id),
+    )
+
+    events, scanned_cursor = await pending_visible_events_for_computer(
+        db,
+        server_id=server_id,
+        computer_id=computer_id,
+        event_cursor=149,
+    )
+
+    assert scanned_cursor == 150
+    assert len(events) == 1
+    assert events[0]["targetAgentId"] == str(assignee_id)
+    assert events[0]["assigneeId"] == str(assignee_id)
 
 
 @pytest.mark.asyncio

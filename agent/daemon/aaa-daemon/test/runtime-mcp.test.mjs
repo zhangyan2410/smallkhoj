@@ -545,9 +545,49 @@ test('daemon formats thread summary requests for runtime delivery', () => {
   );
 });
 
+test('daemon formats task memory requests as actionable one-shot reminders', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'task.memory_requested',
+    eventSeq: 66,
+    payload: {
+      targetAgentId: 'agent-123',
+      actorId: 'operator-1',
+      target: '#general:abc123ef',
+      taskId: 'task-1',
+      taskNumber: 8,
+      status: 'in_review',
+      title: 'Pick up worker slice',
+      content: 'Write final task memory with slock task summary.',
+    },
+    timestamp: '2026-06-05T10:09:00.000Z',
+  });
+
+  assert.equal(isRuntimeActionableEventType('task.memory_requested'), true);
+  assert.equal(isRuntimeActionableEventType('task_memory_requested'), true);
+  assert.deepEqual(message, {
+    eventType: 'task.memory_requested',
+    eventSeq: '66',
+    target: '#general:abc123ef',
+    taskId: 'task-1',
+    taskNumber: '8',
+    status: 'in_review',
+    title: 'Pick up worker slice',
+    timestamp: '2026-06-05T10:09:00.000Z',
+    actor: 'operator-1',
+    senderType: 'task.memory_requested',
+    content: 'Write final task memory with slock task summary.',
+  });
+  assert.equal(
+    formatRuntimeIncomingMessage(message),
+    '[event=task.memory_requested eventSeq=66 target=#general:abc123ef task=#8 status=in_review time=2026-06-05T10:09:00.000Z actor=operator-1 type=task.memory_requested] Write final task memory with slock task summary.',
+  );
+});
+
 test('daemon runtime delivery gate ignores non-actionable event noise', () => {
   assert.equal(isRuntimeActionableEventType('task.created'), true);
   assert.equal(isRuntimeActionableEventType('task_created'), true);
+  assert.equal(isRuntimeActionableEventType('task.memory_requested'), true);
+  assert.equal(isRuntimeActionableEventType('task_memory_requested'), true);
   assert.equal(isRuntimeActionableEventType('thread.summary_requested'), true);
   assert.equal(isRuntimeActionableEventType('thread_summary_requested'), true);
 

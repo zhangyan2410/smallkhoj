@@ -11,14 +11,14 @@ from fastapi import WebSocket
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import AgentWorkspace, Channel, ChannelMember, Computer, EventRecord, Member, Message
+from models import AgentWorkspace, Channel, ChannelMember, Computer, EventRecord, Member, Message, Task
 from services.public_events import publish_latest_public_events
 
 
 PENDING_RUNTIME_START_STATUS = "pending_start"
 RUNTIME_CONFIGURATION_FAILED_STATUS = "failed"
 RUNTIME_ACTIVE_STATUSES = {"running", "active", "idle"}
-RUNTIME_REARMABLE_STATUSES = RUNTIME_ACTIVE_STATUSES
+RUNTIME_REARMABLE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"starting", "restarting"}
 RUNTIME_TERMINAL_STATUSES = {"stopped", "offline", "exited"}
 
 
@@ -392,6 +392,7 @@ async def pending_visible_events_for_computer(
     scanned_cursor = event_cursor
     for record in records:
         scanned_cursor = max(scanned_cursor, int(record.seq or 0))
+        await _backfill_task_event_target(db, record)
         for agent in agents:
             if not _event_visible_to_agent(record, agent, visible_channels.get(agent.id, set())):
                 continue
@@ -400,6 +401,24 @@ async def pending_visible_events_for_computer(
             event["targetAgentId"] = str(agent.id)
             events.append(event)
     return events, scanned_cursor
+
+
+async def _backfill_task_event_target(db: AsyncSession, record: EventRecord) -> None:
+    event_type = _dotted_event_type(record.event_type)
+    if event_type not in {"task.created", "task.claimed", "task.updated"}:
+        return
+    payload = dict(record.payload or {})
+    if payload.get("targetAgentId") or payload.get("assigneeId") or record.task_id is None:
+        return
+
+    result = await db.execute(select(Task.assignee_id).where(Task.id == record.task_id))
+    assignee_id = result.scalar_one_or_none()
+    if not assignee_id:
+        return
+
+    payload["assigneeId"] = str(assignee_id)
+    payload["targetAgentId"] = str(assignee_id)
+    record.payload = payload
 
 
 async def push_latest_events_for_server(db: AsyncSession, *, server_id: uuid.UUID) -> int:
@@ -526,6 +545,7 @@ def _dotted_event_type(event_type: str) -> str:
         "task_created": "task.created",
         "task_claimed": "task.claimed",
         "task_updated": "task.updated",
+        "task_memory_requested": "task.memory_requested",
         "message_reaction_added": "message.reaction_added",
         "message_reaction_removed": "message.reaction_removed",
     }
@@ -538,6 +558,7 @@ def _legacy_event_type(event_type: str) -> str:
         "task.created": "task_created",
         "task.claimed": "task_claimed",
         "task.updated": "task_updated",
+        "task.memory_requested": "task_memory_requested",
         "task.unclaimed": "task_updated",
         "message.reaction_added": "message_reaction_added",
         "message.reaction_removed": "message_reaction_removed",

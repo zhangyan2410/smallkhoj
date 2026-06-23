@@ -28,6 +28,76 @@ import {
   type MemoryArtifactView,
 } from "@/lib/memory-presentation"
 
+export type TaskRecoveryCopy = {
+  title: string
+  scoreLabel: (score: number) => string
+  brief: string
+  plan: string
+  progress: string
+  output: string
+  noMemory: string
+  taskBreakdown: string
+  outputsAndEvidence: string
+}
+
+export type ChannelMemoryCopy = {
+  title: string
+  entryCount: (count: number) => string
+  loading: string
+  empty: string
+  channelKnowledge: string
+  taskOutputs: string
+  artifactsAndProofs: string
+  promotions: string
+  otherMemory: string
+}
+
+export type MemoryProposalCopy = {
+  reviewQueue: string
+  loading: string
+  openProposals: string
+  accept: string
+  reject: string
+  acceptAria: (path: string) => string
+  rejectAria: (path: string) => string
+  base: string
+}
+
+const defaultTaskRecoveryCopy: TaskRecoveryCopy = {
+  title: "Task Recovery",
+  scoreLabel: (score) => `${score}/4 recovery signals`,
+  brief: "Brief",
+  plan: "Plan",
+  progress: "Progress",
+  output: "Output",
+  noMemory: "No server-owned task memory has been written yet.",
+  taskBreakdown: "Task breakdown",
+  outputsAndEvidence: "Outputs and evidence",
+}
+
+const defaultChannelMemoryCopy: ChannelMemoryCopy = {
+  title: "Memory",
+  entryCount: (count) => `${count} entries`,
+  loading: "Loading memory...",
+  empty: "No channel memory has been written yet.",
+  channelKnowledge: "Channel knowledge",
+  taskOutputs: "Task outputs",
+  artifactsAndProofs: "Artifacts and proofs",
+  promotions: "Promotions",
+  otherMemory: "Other memory",
+}
+
+const defaultMemoryProposalCopy: MemoryProposalCopy = {
+  reviewQueue: "Review queue",
+  loading: "Loading memory proposals...",
+  openProposals: "Open channel memory proposals",
+  accept: "Accept",
+  reject: "Reject",
+  acceptAria: (path) => `Accept ${path}`,
+  rejectAria: (path) => `Reject ${path}`,
+  base: "base",
+}
+
 function formatFileSize(bytes?: number) {
   const value = bytes || 0
   if (value < 1024) return `${value} B`
@@ -66,7 +136,12 @@ function MemoryArtifactPreview({ view, compact = false }: { view: MemoryArtifact
   }
   if (view.viewer === "video" && src) {
     return (
-      <video className={compact ? "mt-2 max-h-28 w-full rounded-md border bg-black" : "mt-2 max-h-48 w-full rounded-md border bg-black"} controls src={src}>
+      <video
+        suppressHydrationWarning
+        className={compact ? "mt-2 max-h-28 w-full rounded-md border bg-black" : "mt-2 max-h-48 w-full rounded-md border bg-black"}
+        controls
+        src={src}
+      >
         <a href={src}>Open video</a>
       </video>
     )
@@ -113,24 +188,24 @@ export function MemoryEntryRow({ entry, compact = false, showPreview = true }: {
   )
 }
 
-export function TaskRecoveryCockpit({ entries, compact = false }: { entries: MemoryEntry[]; compact?: boolean }) {
+export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTaskRecoveryCopy }: { entries: MemoryEntry[]; compact?: boolean; copy?: TaskRecoveryCopy }) {
   const model = buildTaskRecoveryModel(entries)
   const completeness = model.recoveryCompleteness
-  const scoreLabel = `${completeness.score}/4 recovery signals`
+  const scoreLabel = copy.scoreLabel(completeness.score)
   const primaryEntries = [model.brief, model.plan, model.progress, model.finalSummary].filter((entry): entry is MemoryEntry => Boolean(entry))
   return (
     <div className="rounded-md border bg-background p-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-medium">Task Recovery</h3>
+          <h3 className="text-sm font-medium">{copy.title}</h3>
           <p className="text-xs text-muted-foreground">{scoreLabel}</p>
         </div>
         <div className="grid grid-cols-4 gap-1 text-[0.65rem] text-muted-foreground">
           {[
-            ["Brief", completeness.hasBrief],
-            ["Plan", completeness.hasPlan],
-            ["Progress", completeness.hasProgress],
-            ["Output", completeness.hasOutput],
+            [copy.brief, completeness.hasBrief],
+            [copy.plan, completeness.hasPlan],
+            [copy.progress, completeness.hasProgress],
+            [copy.output, completeness.hasOutput],
           ].map(([label, active]) => (
             <span key={String(label)} className={active ? "rounded bg-primary/10 px-1.5 py-0.5 text-primary" : "rounded bg-muted px-1.5 py-0.5"}>
               {label}
@@ -139,12 +214,12 @@ export function TaskRecoveryCockpit({ entries, compact = false }: { entries: Mem
         </div>
       </div>
       {entries.length === 0 ? (
-        <p className="mt-2 text-xs text-muted-foreground">No server-owned task memory has been written yet.</p>
+        <p className="mt-2 text-xs text-muted-foreground">{copy.noMemory}</p>
       ) : (
         <div className="mt-3 space-y-3">
           {model.subtasks.length > 0 && (
             <div className="rounded-md bg-muted/50 p-2">
-              <div className="mb-1 text-xs font-medium">Task breakdown</div>
+              <div className="mb-1 text-xs font-medium">{copy.taskBreakdown}</div>
               <div className="space-y-1">
                 {model.subtasks.slice(0, compact ? 4 : 8).map((item) => (
                   <div key={`${item.sourcePath}:${item.text}`} className="flex items-start gap-2 text-xs">
@@ -166,7 +241,7 @@ export function TaskRecoveryCockpit({ entries, compact = false }: { entries: Mem
             <div>
               <div className="mb-1 flex items-center gap-1 text-xs font-medium">
                 <Camera className="size-3.5" />
-                Outputs and evidence
+                {copy.outputsAndEvidence}
               </div>
               <div className="space-y-2">
                 {model.outputs.slice(0, compact ? 3 : 8).map((view) => (
@@ -181,40 +256,40 @@ export function TaskRecoveryCockpit({ entries, compact = false }: { entries: Mem
   )
 }
 
-export function ChannelMemorySurface({ entries, loading, channelTitle }: { entries: MemoryEntry[]; loading: boolean; channelTitle: string }) {
+export function ChannelMemorySurface({ entries, loading, channelTitle, copy = defaultChannelMemoryCopy }: { entries: MemoryEntry[]; loading: boolean; channelTitle: string; copy?: ChannelMemoryCopy }) {
   const groups = groupMemoryEntries(entries)
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Memory</h2>
+          <h2 className="text-sm font-semibold">{copy.title}</h2>
           <p className="text-xs text-muted-foreground">{channelTitle}</p>
         </div>
-        <span className="text-xs text-muted-foreground">{entries.length} entries</span>
+        <span className="text-xs text-muted-foreground">{copy.entryCount(entries.length)}</span>
       </div>
       {loading ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">Loading memory...</p>
+        <p className="py-12 text-center text-sm text-muted-foreground">{copy.loading}</p>
       ) : entries.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
           <Database className="mx-auto size-8 text-muted-foreground/50" />
-          <p className="mt-2 text-sm text-muted-foreground">No channel memory has been written yet.</p>
+          <p className="mt-2 text-sm text-muted-foreground">{copy.empty}</p>
         </div>
       ) : (
         <div className="space-y-4">
           {groups.knowledge.length > 0 && (
-            <MemorySection title="Channel knowledge" entries={groups.knowledge} />
+            <MemorySection title={copy.channelKnowledge} entries={groups.knowledge} />
           )}
           {groups.taskSummaries.length > 0 && (
-            <MemorySection title="Task outputs" entries={groups.taskSummaries} />
+            <MemorySection title={copy.taskOutputs} entries={groups.taskSummaries} />
           )}
           {groups.outputs.length > 0 && (
-            <MemorySection title="Artifacts and proofs" entries={groups.outputs} preview />
+            <MemorySection title={copy.artifactsAndProofs} entries={groups.outputs} preview />
           )}
           {groups.promotions.length > 0 && (
-            <MemorySection title="Promotions" entries={groups.promotions} />
+            <MemorySection title={copy.promotions} entries={groups.promotions} />
           )}
           {groups.other.length > 0 && (
-            <MemorySection title="Other memory" entries={groups.other} />
+            <MemorySection title={copy.otherMemory} entries={groups.other} />
           )}
         </div>
       )}
@@ -227,17 +302,19 @@ export function MemoryProposalQueue({
   loading,
   onAccept,
   onReject,
+  copy = defaultMemoryProposalCopy,
 }: {
   proposals: MemoryProposal[]
   loading: boolean
   onAccept?: (proposal: MemoryProposal) => void
   onReject?: (proposal: MemoryProposal) => void
+  copy?: MemoryProposalCopy
 }) {
   if (loading && proposals.length === 0) {
     return (
       <section className="mb-4 rounded-md border bg-muted/30 p-3">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review queue</h3>
-        <p className="mt-2 text-xs text-muted-foreground">Loading memory proposals...</p>
+        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.reviewQueue}</h3>
+        <p className="mt-2 text-xs text-muted-foreground">{copy.loading}</p>
       </section>
     )
   }
@@ -246,8 +323,8 @@ export function MemoryProposalQueue({
     <section className="mb-4 rounded-md border bg-background p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review queue</h3>
-          <p className="text-xs text-muted-foreground">Open channel memory proposals</p>
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.reviewQueue}</h3>
+          <p className="text-xs text-muted-foreground">{copy.openProposals}</p>
         </div>
         <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-primary">{proposals.length}</span>
       </div>
@@ -269,10 +346,10 @@ export function MemoryProposalQueue({
                     type="button"
                     onClick={() => onAccept(proposal)}
                     className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-[0.7rem] text-emerald-700 hover:bg-emerald-50"
-                    aria-label={`Accept ${proposal.path}`}
+                    aria-label={copy.acceptAria(proposal.path)}
                   >
                     <CheckCircle2 className="size-3.5" />
-                    Accept
+                    {copy.accept}
                   </button>
                 )}
                 {onReject && (
@@ -280,10 +357,10 @@ export function MemoryProposalQueue({
                     type="button"
                     onClick={() => onReject(proposal)}
                     className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-[0.7rem] text-destructive hover:bg-destructive/10"
-                    aria-label={`Reject ${proposal.path}`}
+                    aria-label={copy.rejectAria(proposal.path)}
                   >
                     <XCircle className="size-3.5" />
-                    Reject
+                    {copy.reject}
                   </button>
                 )}
               </div>
@@ -294,7 +371,7 @@ export function MemoryProposalQueue({
               </pre>
             )}
             <div className="mt-2 flex flex-wrap gap-2 text-[0.65rem] text-muted-foreground">
-              {proposal.baseSha256 && <span className="font-mono">base {proposal.baseSha256.slice(0, 8)}</span>}
+              {proposal.baseSha256 && <span className="font-mono">{copy.base} {proposal.baseSha256.slice(0, 8)}</span>}
               <span>{formatTime(proposal.updatedAt || proposal.createdAt)}</span>
             </div>
           </div>

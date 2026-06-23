@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
+import { getTranslations } from "next-intl/server"
 import {
+  Bell,
   Camera,
   Columns3,
   Database,
@@ -17,7 +19,7 @@ import {
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, StatusPill, Toolbar } from "@/components/product-ui"
-import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
+import { TaskRecoveryCockpit, type TaskRecoveryCopy } from "@/components/memory-entry-surface"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -28,6 +30,104 @@ import { TaskDndBoard } from "@/components/task-dnd-board"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
+const TASK_STATUS_OPTIONS = TASK_STATUSES.map((status) => `${status}|${statusLabel(status)}`)
+const MEMORY_OUTPUT_DIRECTIONS = ["final_summary", "evidence", "artifacts", "next_steps", "channel_memory"]
+
+type TranslationFn = (key: string, values?: Record<string, string | number>) => string
+
+function makeTasksCopy(t: TranslationFn) {
+  return {
+    title: t("title"),
+    description: t("description"),
+    detailTitle: t("detailTitle"),
+    detailDescription: t("detailDescription"),
+    controlPlane: t("controlPlane"),
+    boardListSurface: t("boardListSurface"),
+    visibleCount: (visible: number, total: number) => t("visibleCount", { visible, total }),
+    board: t("board"),
+    list: t("list"),
+    total: t("total"),
+    open: t("open"),
+    agents: t("agents"),
+    createTask: t("createTask"),
+    createTaskDesc: t("createTaskDesc"),
+    updateTask: t("updateTask"),
+    updateTaskDesc: t("updateTaskDesc"),
+    titleLabel: t("titleLabel"),
+    descriptionLabel: t("descriptionLabel"),
+    channel: t("channel"),
+    assignee: t("assignee"),
+    status: t("status"),
+    create: t("create"),
+    update: t("update"),
+    task: t("task"),
+    filters: t("filters"),
+    creator: t("creator"),
+    apply: t("apply"),
+    clear: t("clear"),
+    unassigned: t("unassigned"),
+    anyChannel: t("anyChannel"),
+    anyCreator: t("anyCreator"),
+    anyAssignee: t("anyAssignee"),
+    anyStatus: t("anyStatus"),
+    createTitlePlaceholder: t("createTitlePlaceholder"),
+    createDescPlaceholder: t("createDescPlaceholder"),
+    keepBlankPlaceholder: t("keepBlankPlaceholder"),
+    noTaskSelectedTitle: t("noTaskSelectedTitle"),
+    noTaskSelectedDesc: t("noTaskSelectedDesc"),
+    unknown: t("unknown"),
+    activity: t("activity"),
+    noActivity: t("noActivity"),
+    source: t("source"),
+    sourceType: t("sourceType"),
+    sourceMessage: t("sourceMessage"),
+    sourceThread: t("sourceThread"),
+    openSourceChannel: (channel: string) => t("openSourceChannel", { channel }),
+    noSource: t("noSource"),
+    evidence: t("evidence"),
+    evidenceLink: t("evidenceLink"),
+    noEvidence: t("noEvidence"),
+    evidencePathPlaceholder: t("evidencePathPlaceholder"),
+    evidenceContentPlaceholder: t("evidenceContentPlaceholder"),
+    addEvidence: t("addEvidence"),
+    review: t("review"),
+    memoryRequest: t("memoryRequest"),
+    memoryRequestDesc: t("memoryRequestDesc"),
+    memoryInstructionPlaceholder: t("memoryInstructionPlaceholder"),
+    triggerMemoryRequest: t("triggerMemoryRequest"),
+    outputDirections: t("outputDirections"),
+    directionFinalSummary: t("directionFinalSummary"),
+    directionEvidence: t("directionEvidence"),
+    directionArtifacts: t("directionArtifacts"),
+    directionNextSteps: t("directionNextSteps"),
+    directionChannelMemory: t("directionChannelMemory"),
+    selectDecision: t("selectDecision"),
+    approved: t("approved"),
+    rejected: t("rejected"),
+    needsWork: t("needsWork"),
+    reopened: t("reopened"),
+    reviewNotePlaceholder: t("reviewNotePlaceholder"),
+    submitReview: t("submitReview"),
+    byReviewer: (reviewer: string) => t("byReviewer", { reviewer }),
+    evidenceTypeScreenshot: t("evidenceTypeScreenshot"),
+    evidenceTypeTrace: t("evidenceTypeTrace"),
+    evidenceTypeApiProof: t("evidenceTypeApiProof"),
+    evidenceTypeNote: t("evidenceTypeNote"),
+    evidenceTypeReviewDecision: t("evidenceTypeReviewDecision"),
+    evidenceTypeReviewNote: t("evidenceTypeReviewNote"),
+    taskRecovery: {
+      title: t("taskRecoveryTitle"),
+      scoreLabel: (score: number) => t("taskRecoveryScore", { score }),
+      brief: t("taskRecoveryBrief"),
+      plan: t("taskRecoveryPlan"),
+      progress: t("taskRecoveryProgress"),
+      output: t("taskRecoveryOutput"),
+      noMemory: t("taskRecoveryNoMemory"),
+      taskBreakdown: t("taskRecoveryBreakdown"),
+      outputsAndEvidence: t("taskRecoveryOutputs"),
+    } satisfies TaskRecoveryCopy,
+  }
+}
 
 type Channel = {
   id: string
@@ -217,6 +317,22 @@ async function addReviewNoteAction(formData: FormData) {
   revalidatePath("/tasks")
 }
 
+async function requestTaskMemoryAction(formData: FormData) {
+  "use server"
+  const taskId = String(formData.get("taskId") || "")
+  if (!taskId) return
+  const outputDirections = formData.getAll("outputDirection").map((item) => String(item))
+  await writeTask(
+    `/api/v1/tasks/${taskId}/memory/request`,
+    {
+      instruction: String(formData.get("memoryInstruction") || "").trim() || null,
+      outputDirections,
+    },
+    "POST"
+  )
+  revalidatePath("/tasks")
+}
+
 function firstParam(value: string | string[] | undefined, fallback = "") {
   if (Array.isArray(value)) return value[0] ?? fallback
   return value ?? fallback
@@ -233,7 +349,7 @@ function Select({
   fallback,
   splitValue = false,
   defaultValue,
-  emptyLabel = "Unassigned",
+  emptyLabel = "",
 }: {
   id: string
   name: string
@@ -332,24 +448,26 @@ function EvidenceIcon({ type }: { type: EvidenceEntry["type"] }) {
   }
 }
 
-function entryLabel(type: EvidenceEntry["type"]) {
+type TasksCopy = ReturnType<typeof makeTasksCopy>
+
+function entryLabel(type: EvidenceEntry["type"], copy: TasksCopy) {
   switch (type) {
-    case "screenshot": return "Screenshot"
-    case "trace": return "Trace"
-    case "api_proof": return "API/DB proof"
-    case "note": return "Note"
-    case "reviewer_decision": return "Review decision"
-    case "review_note": return "Review note"
+    case "screenshot": return copy.evidenceTypeScreenshot
+    case "trace": return copy.evidenceTypeTrace
+    case "api_proof": return copy.evidenceTypeApiProof
+    case "note": return copy.evidenceTypeNote
+    case "reviewer_decision": return copy.evidenceTypeReviewDecision
+    case "review_note": return copy.evidenceTypeReviewNote
   }
 }
 
-function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
+function EvidenceEntryRow({ entry, copy }: { entry: EvidenceEntry; copy: TasksCopy }) {
   return (
     <div className="flex items-start gap-2 rounded-md border bg-background px-2.5 py-2">
       <EvidenceIcon type={entry.type} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium">{entryLabel(entry.type)}</span>
+          <span className="text-xs font-medium">{entryLabel(entry.type, copy)}</span>
           {entry.timestamp && (
             <span className="text-[0.65rem] text-muted-foreground">{formatTime(entry.timestamp)}</span>
           )}
@@ -377,16 +495,27 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
           <p className="mt-1 text-xs text-muted-foreground">{entry.note}</p>
         )}
         {entry.reviewer && (
-          <div className="mt-1 text-[0.65rem] text-muted-foreground">by @{entry.reviewer}</div>
+          <div className="mt-1 text-[0.65rem] text-muted-foreground">{copy.byReviewer(entry.reviewer)}</div>
         )}
       </div>
     </div>
   )
 }
 
-function TaskDetail({ task, activity = [], memoryEntries = [] }: { task?: Task; activity?: ActivityItem[]; memoryEntries?: MemoryEntry[] }) {
+function outputDirectionLabel(direction: string, copy: TasksCopy) {
+  switch (direction) {
+    case "final_summary": return copy.directionFinalSummary
+    case "evidence": return copy.directionEvidence
+    case "artifacts": return copy.directionArtifacts
+    case "next_steps": return copy.directionNextSteps
+    case "channel_memory": return copy.directionChannelMemory
+    default: return direction
+  }
+}
+
+function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: Task; activity?: ActivityItem[]; memoryEntries?: MemoryEntry[]; copy: TasksCopy }) {
   if (!task) {
-    return <EmptyState title="No task selected" description="Open a task from board or list to inspect source and evidence." />
+    return <EmptyState title={copy.noTaskSelectedTitle} description={copy.noTaskSelectedDesc} />
   }
   const source = task.data?.source
   const evidence = task.data?.evidence
@@ -403,20 +532,20 @@ function TaskDetail({ task, activity = [], memoryEntries = [] }: { task?: Task; 
       </div>
       <div className="grid gap-2 text-sm">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Status</span>
+          <span className="text-muted-foreground">{copy.status}</span>
           <StatusBadge status={task.status} />
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Assignee</span>
-          <span>{task.assignee ? `@${task.assignee}` : "Unassigned"}</span>
+          <span className="text-muted-foreground">{copy.assignee}</span>
+          <span>{task.assignee ? `@${task.assignee}` : copy.unassigned}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Creator</span>
-          <span>{task.creator ? `@${task.creator}` : "Unknown"}</span>
+          <span className="text-muted-foreground">{copy.creator}</span>
+          <span>{task.creator ? `@${task.creator}` : copy.unknown}</span>
         </div>
       </div>
       <div className="rounded-md border bg-background p-3">
-        <h3 className="text-sm font-medium">Activity</h3>
+        <h3 className="text-sm font-medium">{copy.activity}</h3>
         {activity.length > 0 ? (
           <div className="mt-2 space-y-2">
             {activity.map((item) => (
@@ -434,24 +563,24 @@ function TaskDetail({ task, activity = [], memoryEntries = [] }: { task?: Task; 
             ))}
           </div>
         ) : (
-          <p className="mt-2 text-xs text-muted-foreground">No activity recorded yet.</p>
+          <p className="mt-2 text-xs text-muted-foreground">{copy.noActivity}</p>
         )}
       </div>
       <div className="rounded-md border bg-background p-3">
-        <h3 className="text-sm font-medium">Source</h3>
+        <h3 className="text-sm font-medium">{copy.source}</h3>
         {source ? (
           <div className="mt-2 space-y-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
-              <span className="font-medium">Type:</span> {source.type || "message"}
+              <span className="font-medium">{copy.sourceType}</span> {source.type || "message"}
             </div>
             {source.messageId && (
               <div className="flex items-center gap-1">
-                <span className="font-medium">Message:</span> {source.messageShortId || source.messageId.slice(0, 8)}
+                <span className="font-medium">{copy.sourceMessage}</span> {source.messageShortId || source.messageId.slice(0, 8)}
               </div>
             )}
             {source.threadId && (
               <div className="flex items-center gap-1">
-                <span className="font-medium">Thread:</span> {source.threadId.slice(0, 8)}
+                <span className="font-medium">{copy.sourceThread}</span> {source.threadId.slice(0, 8)}
               </div>
             )}
             {source.channel && sourceLink && (
@@ -460,16 +589,16 @@ function TaskDetail({ task, activity = [], memoryEntries = [] }: { task?: Task; 
                 className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/15"
               >
                 <MessageSquare className="size-3" />
-                Open {source.channel}
+                {copy.openSourceChannel(source.channel)}
               </Link>
             )}
           </div>
         ) : (
-          <p className="mt-2 text-xs text-muted-foreground">No source message linked yet.</p>
+          <p className="mt-2 text-xs text-muted-foreground">{copy.noSource}</p>
         )}
       </div>
       <div className="rounded-md border bg-background p-3">
-        <h3 className="text-sm font-medium">Evidence</h3>
+        <h3 className="text-sm font-medium">{copy.evidence}</h3>
         <div className="mt-2 space-y-2 text-xs text-muted-foreground">
           {(evidence?.notes || []).map((note) => (
             <div key={note} className="rounded-md border border-dashed bg-muted/30 px-2 py-1.5">{note}</div>
@@ -477,18 +606,18 @@ function TaskDetail({ task, activity = [], memoryEntries = [] }: { task?: Task; 
           {(evidence?.links || []).map((link) => (
             <div key={`${link.label}-${link.href}`} className="flex items-center gap-1.5 rounded-md border border-dashed bg-muted/30 px-2 py-1.5">
               <ExternalLink className="size-3" />
-              {link.label || link.href || "Evidence link"}
+              {link.label || link.href || copy.evidenceLink}
             </div>
           ))}
           {entries.length > 0 && (
             <div className="space-y-1.5">
               {entries.map((entry, i) => (
-                <EvidenceEntryRow key={`${entry.type}-${entry.timestamp}-${i}`} entry={entry} />
+                <EvidenceEntryRow key={`${entry.type}-${entry.timestamp}-${i}`} entry={entry} copy={copy} />
               ))}
             </div>
           )}
           {(evidence?.notes?.length || 0) + (evidence?.links?.length || 0) + entries.length === 0 && (
-            <p className="text-muted-foreground">No evidence entries yet. Add screenshots, traces, API proofs, or notes below.</p>
+            <p className="text-muted-foreground">{copy.noEvidence}</p>
           )}
         </div>
         <form action={addEvidenceAction} className="mt-3 space-y-2 border-t pt-3">
@@ -500,23 +629,59 @@ function TaskDetail({ task, activity = [], memoryEntries = [] }: { task?: Task; 
               className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs"
               defaultValue="note"
             >
-              <option value="note">Note</option>
-              <option value="screenshot">Screenshot</option>
-              <option value="trace">Trace</option>
-              <option value="api_proof">API/DB proof</option>
+              <option value="note">{copy.evidenceTypeNote}</option>
+              <option value="screenshot">{copy.evidenceTypeScreenshot}</option>
+              <option value="trace">{copy.evidenceTypeTrace}</option>
+              <option value="api_proof">{copy.evidenceTypeApiProof}</option>
             </select>
-            <Input name="entryPath" placeholder="Path or reference" className="h-7 text-xs" />
+            <Input name="entryPath" placeholder={copy.evidencePathPlaceholder} className="h-7 text-xs" />
           </div>
-          <Input name="entryContent" placeholder="Evidence content or description" className="h-7 text-xs" />
+          <Input name="entryContent" placeholder={copy.evidenceContentPlaceholder} className="h-7 text-xs" />
           <Button type="submit" size="sm" variant="outline" className="w-full text-xs">
             <Plus className="size-3" />
-            Add Evidence
+            {copy.addEvidence}
           </Button>
         </form>
       </div>
-      <TaskRecoveryCockpit entries={memoryEntries} />
+      <TaskRecoveryCockpit entries={memoryEntries} copy={copy.taskRecovery} />
+      <div className="rounded-md border border-dashed bg-muted/30 p-2.5">
+        <div className="flex items-start gap-2">
+          <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <h3 className="text-xs font-medium">{copy.memoryRequest}</h3>
+            <p className="mt-0.5 text-[0.7rem] leading-4 text-muted-foreground">{copy.memoryRequestDesc}</p>
+          </div>
+        </div>
+        <form action={requestTaskMemoryAction} className="mt-2 space-y-2">
+          <input type="hidden" name="taskId" value={task.id} />
+          <textarea
+            name="memoryInstruction"
+            placeholder={copy.memoryInstructionPlaceholder}
+            className="min-h-14 w-full resize-none rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+          />
+          <div className="flex flex-wrap gap-1.5" aria-label={copy.outputDirections}>
+            {MEMORY_OUTPUT_DIRECTIONS.map((direction) => (
+              <label key={direction} className="cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="outputDirection"
+                  value={direction}
+                  defaultChecked={direction === "final_summary" || direction === "evidence"}
+                  className="peer sr-only"
+                />
+                <span className="inline-flex rounded-md border bg-background px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
+                  {outputDirectionLabel(direction, copy)}
+                </span>
+              </label>
+            ))}
+          </div>
+          <Button type="submit" size="sm" variant="outline" className="h-7 w-full text-xs">
+            {copy.triggerMemoryRequest}
+          </Button>
+        </form>
+      </div>
       <div className="rounded-md border bg-background p-3">
-        <h3 className="text-sm font-medium">Review</h3>
+        <h3 className="text-sm font-medium">{copy.review}</h3>
         <form action={addReviewNoteAction} className="mt-2 space-y-2">
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="currentData" value={JSON.stringify(task.data ?? {})} />
@@ -524,15 +689,15 @@ function TaskDetail({ task, activity = [], memoryEntries = [] }: { task?: Task; 
             name="reviewDecision"
             className="h-7 w-full rounded-md border bg-background px-2 text-xs"
           >
-            <option value="">Select decision...</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="needs_work">Needs work</option>
-            <option value="reopened">Reopened</option>
+            <option value="">{copy.selectDecision}</option>
+            <option value="approved">{copy.approved}</option>
+            <option value="rejected">{copy.rejected}</option>
+            <option value="needs_work">{copy.needsWork}</option>
+            <option value="reopened">{copy.reopened}</option>
           </select>
-          <Input name="reviewNote" placeholder="Review or reopen note" className="h-7 text-xs" />
+          <Input name="reviewNote" placeholder={copy.reviewNotePlaceholder} className="h-7 text-xs" />
           <Button type="submit" size="sm" variant="outline" className="w-full text-xs">
-            Submit Review
+            {copy.submitReview}
           </Button>
         </form>
       </div>
@@ -542,6 +707,8 @@ function TaskDetail({ task, activity = [], memoryEntries = [] }: { task?: Task; 
 
 export default async function TasksPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await requireCurrentAccount()
+  const t = await getTranslations("tasks")
+  const copy = makeTasksCopy(t)
   const sessionToken = await getSessionToken()
   const params = await searchParams
   const view = firstParam(params.view, "board") === "list" ? "list" : "board"
@@ -586,16 +753,16 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   return (
     <ProductShell
       active="tasks"
-      title="Tasks"
-      description="Create, assign, scan, and move work with visible status, source links, and review evidence."
+      title={copy.title}
+      description={copy.description}
       session={session}
-      sidebarTitle="Task Detail"
-      sidebarDescription="Source and evidence for the selected work item."
-      sidebar={<TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} />}
+      sidebarTitle={copy.detailTitle}
+      sidebarDescription={copy.detailDescription}
+      sidebar={<TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} copy={copy} />}
       actions={
         <Link href="/daemon">
           <Button variant="outline" size="sm">
-            Control Plane
+            {copy.controlPlane}
           </Button>
         </Link>
       }
@@ -604,19 +771,19 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
       <div className="space-y-5">
         <Toolbar>
           <ListChecks className="size-4 text-primary" />
-          <span className="text-sm font-medium">Board/List surface</span>
-          <span className="text-xs text-muted-foreground">{visibleTasks.length} visible of {tasks.length}</span>
+          <span className="text-sm font-medium">{copy.boardListSurface}</span>
+          <span className="text-xs text-muted-foreground">{copy.visibleCount(visibleTasks.length, tasks.length)}</span>
           <div className="ml-auto flex gap-1">
             <Link href={`/tasks?${new URLSearchParams({ ...filterRecord, view: "board" }).toString()}`}>
               <Button variant={view === "board" ? "default" : "outline"} size="sm">
                 <Columns3 className="size-4" />
-                Board
+                {copy.board}
               </Button>
             </Link>
             <Link href={`/tasks?${new URLSearchParams({ ...filterRecord, view: "list" }).toString()}`}>
               <Button variant={view === "list" ? "default" : "outline"} size="sm">
                 <ListChecks className="size-4" />
-                List
+                {copy.list}
               </Button>
             </Link>
           </div>
@@ -625,19 +792,19 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
         <div className="grid gap-3 sm:grid-cols-3">
           <Card size="sm">
             <CardHeader>
-              <CardDescription>Total</CardDescription>
+              <CardDescription>{copy.total}</CardDescription>
               <CardTitle className="text-2xl">{tasks.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card size="sm">
             <CardHeader>
-              <CardDescription>Open</CardDescription>
+              <CardDescription>{copy.open}</CardDescription>
               <CardTitle className="text-2xl">{openTasks.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card size="sm">
             <CardHeader>
-              <CardDescription>Agents</CardDescription>
+              <CardDescription>{copy.agents}</CardDescription>
               <CardTitle className="text-2xl">{agents.length}</CardTitle>
             </CardHeader>
           </Card>
@@ -648,35 +815,35 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Plus className="size-4" />
-                Create Task
+                {copy.createTask}
               </CardTitle>
-              <CardDescription>Creates a backend task and emits task.created for agent pickup.</CardDescription>
+              <CardDescription>{copy.createTaskDesc}</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={createTaskAction} className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <FieldLabel htmlFor="task-title">Title</FieldLabel>
-                  <Input id="task-title" name="title" required placeholder="Implement bounded worker task" />
+                  <FieldLabel htmlFor="task-title">{copy.titleLabel}</FieldLabel>
+                  <Input id="task-title" name="title" required placeholder={copy.createTitlePlaceholder} />
                 </div>
                 <div className="sm:col-span-2">
-                  <FieldLabel htmlFor="task-description">Description</FieldLabel>
-                  <Input id="task-description" name="description" placeholder="Instructions and expected evidence" />
+                  <FieldLabel htmlFor="task-description">{copy.descriptionLabel}</FieldLabel>
+                  <Input id="task-description" name="description" placeholder={copy.createDescPlaceholder} />
                 </div>
                 <div>
-                  <FieldLabel htmlFor="task-channel">Channel</FieldLabel>
+                  <FieldLabel htmlFor="task-channel">{copy.channel}</FieldLabel>
                   <Select id="task-channel" name="channel" items={channels.map((channel) => channel.name)} fallback="#all" />
                 </div>
                 <div>
-                  <FieldLabel htmlFor="task-assignee">Assignee</FieldLabel>
-                  <Select id="task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} />
+                  <FieldLabel htmlFor="task-assignee">{copy.assignee}</FieldLabel>
+                  <Select id="task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} emptyLabel={copy.unassigned} />
                 </div>
                 <div>
-                  <FieldLabel htmlFor="task-status">Status</FieldLabel>
-                  <Select id="task-status" name="status" items={TASK_STATUSES} fallback="todo" />
+                  <FieldLabel htmlFor="task-status">{copy.status}</FieldLabel>
+                  <Select id="task-status" name="status" items={TASK_STATUS_OPTIONS} fallback="todo" splitValue />
                 </div>
                 <div className="flex items-end">
                   <Button type="submit" size="sm" className="w-full">
-                    Create
+                    {copy.create}
                   </Button>
                 </div>
               </form>
@@ -687,40 +854,41 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <PanelRight className="size-4" />
-                Update Task
+                {copy.updateTask}
               </CardTitle>
-              <CardDescription>Move status or reassign while preserving create/update behavior.</CardDescription>
+              <CardDescription>{copy.updateTaskDesc}</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={updateTaskAction} className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <FieldLabel htmlFor="update-task-id">Task</FieldLabel>
+                  <FieldLabel htmlFor="update-task-id">{copy.task}</FieldLabel>
                   <Select
                     id="update-task-id"
                     name="taskId"
                     items={tasks.map((task) => `${task.id}|#${task.number} ${task.title}`)}
                     splitValue
+                    emptyLabel={copy.task}
                   />
                 </div>
                 <div>
-                  <FieldLabel htmlFor="update-task-title">Title</FieldLabel>
-                  <Input id="update-task-title" name="title" placeholder="Leave blank to keep" />
+                  <FieldLabel htmlFor="update-task-title">{copy.titleLabel}</FieldLabel>
+                  <Input id="update-task-title" name="title" placeholder={copy.keepBlankPlaceholder} />
                 </div>
                 <div>
-                  <FieldLabel htmlFor="update-task-description">Description</FieldLabel>
-                  <Input id="update-task-description" name="description" placeholder="Leave blank to keep" />
+                  <FieldLabel htmlFor="update-task-description">{copy.descriptionLabel}</FieldLabel>
+                  <Input id="update-task-description" name="description" placeholder={copy.keepBlankPlaceholder} />
                 </div>
                 <div>
-                  <FieldLabel htmlFor="update-task-status">Status</FieldLabel>
-                  <Select id="update-task-status" name="status" items={TASK_STATUSES} fallback="in_review" />
+                  <FieldLabel htmlFor="update-task-status">{copy.status}</FieldLabel>
+                  <Select id="update-task-status" name="status" items={TASK_STATUS_OPTIONS} fallback="in_review" splitValue />
                 </div>
                 <div>
-                  <FieldLabel htmlFor="update-task-assignee">Assignee</FieldLabel>
-                  <Select id="update-task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} />
+                  <FieldLabel htmlFor="update-task-assignee">{copy.assignee}</FieldLabel>
+                  <Select id="update-task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} emptyLabel={copy.unassigned} />
                 </div>
                 <div className="sm:col-span-2">
                   <Button type="submit" size="sm" variant="outline" className="w-full">
-                    Update
+                    {copy.update}
                   </Button>
                 </div>
               </form>
@@ -732,31 +900,31 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
           <input type="hidden" name="view" value={view} />
           <div className="xl:col-span-5 flex items-center gap-2 text-sm font-medium">
             <Filter className="size-4 text-primary" />
-            Filters
+            {copy.filters}
           </div>
           <div>
-            <FieldLabel htmlFor="filter-channel">Channel</FieldLabel>
-            <Select id="filter-channel" name="channel" items={channels.map((channel) => channel.name)} defaultValue={filters.channel} emptyLabel="Any channel" />
+            <FieldLabel htmlFor="filter-channel">{copy.channel}</FieldLabel>
+            <Select id="filter-channel" name="channel" items={channels.map((channel) => channel.name)} defaultValue={filters.channel} emptyLabel={copy.anyChannel} />
           </div>
           <div>
-            <FieldLabel htmlFor="filter-creator">Creator</FieldLabel>
-            <Select id="filter-creator" name="creator" items={creators} defaultValue={filters.creator} emptyLabel="Any creator" />
+            <FieldLabel htmlFor="filter-creator">{copy.creator}</FieldLabel>
+            <Select id="filter-creator" name="creator" items={creators} defaultValue={filters.creator} emptyLabel={copy.anyCreator} />
           </div>
           <div>
-            <FieldLabel htmlFor="filter-assignee">Assignee</FieldLabel>
-            <Select id="filter-assignee" name="assignee" items={assignees} defaultValue={filters.assignee} emptyLabel="Any assignee" />
+            <FieldLabel htmlFor="filter-assignee">{copy.assignee}</FieldLabel>
+            <Select id="filter-assignee" name="assignee" items={assignees} defaultValue={filters.assignee} emptyLabel={copy.anyAssignee} />
           </div>
           <div>
-            <FieldLabel htmlFor="filter-status">Status</FieldLabel>
-            <Select id="filter-status" name="status" items={TASK_STATUSES} defaultValue={filters.status} emptyLabel="Any status" />
+            <FieldLabel htmlFor="filter-status">{copy.status}</FieldLabel>
+            <Select id="filter-status" name="status" items={TASK_STATUS_OPTIONS} defaultValue={filters.status} emptyLabel={copy.anyStatus} splitValue />
           </div>
           <div className="flex items-end gap-2">
             <Button type="submit" size="sm" className="flex-1">
-              Apply
+              {copy.apply}
             </Button>
             <Link href={`/tasks?view=${view}`}>
               <Button type="button" size="sm" variant="outline">
-                Clear
+                {copy.clear}
               </Button>
             </Link>
           </div>

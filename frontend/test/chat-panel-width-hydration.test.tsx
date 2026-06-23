@@ -1,9 +1,27 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
+import { NextIntlClientProvider } from "next-intl"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import { ChannelClient } from "../app/chat/[channel]/channel-client"
+import zhMessages from "../messages/zh-CN.json"
+
+type ChannelClientProps = Parameters<typeof ChannelClient>[0]
+
+function renderChannelClient(props: ChannelClientProps) {
+  return renderToStaticMarkup(
+    <NextIntlClientProvider
+      locale="zh-CN"
+      messages={zhMessages}
+      onError={(error) => {
+        if (error.code !== "ENVIRONMENT_FALLBACK") throw error
+      }}
+    >
+      <ChannelClient {...props} />
+    </NextIntlClientProvider>
+  )
+}
 
 test("ChannelClient server markup uses stable default panel widths for hydration", () => {
   const originalWindow = globalThis.window
@@ -21,17 +39,15 @@ test("ChannelClient server markup uses stable default panel widths for hydration
   })
 
   try {
-    const markup = renderToStaticMarkup(
-      <ChannelClient
-        initialChannel="ccc"
-        initialChannelId="channel-1"
-        initialChannels={[{ id: "channel-1", name: "#ccc", type: "public" }]}
-        initialMembers={[]}
-        initialAllMembers={[]}
-        initialDms={[]}
-        initialMessages={[]}
-      />
-    )
+    const markup = renderChannelClient({
+      initialChannel: "ccc",
+      initialChannelId: "channel-1",
+      initialChannels: [{ id: "channel-1", name: "#ccc", type: "public" }],
+      initialMembers: [],
+      initialAllMembers: [],
+      initialDms: [],
+      initialMessages: [],
+    })
 
     assert.match(markup, /style="width:260px"/)
     assert.match(markup, /aria-valuenow="260"/)
@@ -46,14 +62,13 @@ test("ChannelClient server markup uses stable default panel widths for hydration
 })
 
 test("ChannelClient preserves backend DM recency order", () => {
-  const markup = renderToStaticMarkup(
-    <ChannelClient
-      initialChannel="ccc"
-      initialChannelId="channel-1"
-      initialChannels={[{ id: "channel-1", name: "#ccc", type: "public" }]}
-      initialMembers={[]}
-      initialAllMembers={[]}
-      initialDms={[
+  const markup = renderChannelClient({
+    initialChannel: "ccc",
+    initialChannelId: "channel-1",
+    initialChannels: [{ id: "channel-1", name: "#ccc", type: "public" }],
+    initialMembers: [],
+    initialAllMembers: [],
+    initialDms: [
         {
           id: "dm-zulu",
           name: "dm:zulu",
@@ -68,10 +83,9 @@ test("ChannelClient preserves backend DM recency order", () => {
           displayName: "DM @Alpha",
           peer: { id: "alpha", name: "alpha", displayName: "Alpha", kind: "agent", status: "online" },
         },
-      ]}
-      initialMessages={[]}
-    />
-  )
+      ],
+    initialMessages: [],
+  })
 
   assert.ok(markup.indexOf("Zulu") > -1)
   assert.ok(markup.indexOf("Alpha") > -1)

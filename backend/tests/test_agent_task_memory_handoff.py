@@ -6,6 +6,7 @@ import pytest
 
 import routers.agent_api as agent_api
 import services.memory_api as memory_api
+import services.task_memory_request as task_memory_request
 from services.memory_store import MemoryScope
 
 
@@ -15,6 +16,47 @@ class _JsonRequest:
 
     async def json(self):
         return self._body
+
+
+@pytest.mark.asyncio
+async def test_task_memory_request_event_targets_assigned_agent_with_output_directions():
+    server = SimpleNamespace(id=uuid.uuid4())
+    actor = SimpleNamespace(id=uuid.uuid4())
+    assignee = SimpleNamespace(id=uuid.uuid4(), kind="agent")
+    channel = SimpleNamespace(id=uuid.uuid4(), kind="public", name="slock")
+    task = SimpleNamespace(
+        id=uuid.uuid4(),
+        task_number=7,
+        title="Produce final output",
+        status="in_review",
+        assignee_id=assignee.id,
+        channel_id=channel.id,
+        data={"source": {"channel": "#slock", "messageShortId": "abc123ef"}},
+    )
+    session = _FakeMemoryRequestSession(assignee=assignee, channel=channel)
+
+    event = await task_memory_request.add_task_memory_request_event(
+        session,
+        server,
+        task,
+        actor=actor,
+        instruction="include browser evidence",
+        output_directions=["final_summary", "evidence", "channel_memory", "unknown"],
+        trigger="manual",
+    )
+
+    assert event is not None
+    assert session.added == [event]
+    assert event.event_type == "task.memory_requested"
+    assert event.actor_id == actor.id
+    assert event.task_id == task.id
+    assert event.channel_id == channel.id
+    assert event.payload["targetAgentId"] == str(assignee.id)
+    assert event.payload["target"] == "#slock:abc123ef"
+    assert event.payload["outputDirections"] == ["final_summary", "evidence", "channel_memory"]
+    assert "slock task summary" in event.payload["content"]
+    assert "slock task promote" in event.payload["content"]
+    assert "include browser evidence" in event.payload["content"]
 
 
 class _FakeSession:
@@ -31,6 +73,23 @@ class _FakeSession:
 
     async def flush(self):
         self.flushed = True
+
+
+class _FakeMemoryRequestSession:
+    def __init__(self, *, assignee, channel):
+        self.assignee = assignee
+        self.channel = channel
+        self.added = []
+
+    async def get(self, model, item_id):
+        if model.__name__ == "Member" and item_id == self.assignee.id:
+            return self.assignee
+        if model.__name__ == "Channel" and item_id == self.channel.id:
+            return self.channel
+        return None
+
+    def add(self, item):
+        self.added.append(item)
 
 
 @pytest.mark.asyncio

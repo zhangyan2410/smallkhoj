@@ -18,6 +18,10 @@ type MessageFrameProps = {
   className?: string
   bodyClassName?: string
   timeVariant?: "default" | "compact"
+  roleLabels?: {
+    assistant: string
+    member: string
+  }
 }
 
 function roleLabel(senderType?: string | null) {
@@ -48,8 +52,10 @@ export function MessageFrame({
   className,
   bodyClassName,
   timeVariant = "default",
+  roleLabels,
 }: MessageFrameProps) {
   const role = roleLabel(senderType)
+  const visibleRole = role === "assistant" ? (roleLabels?.assistant ?? role) : (roleLabels?.member ?? role)
   const visibleTime = time && timeVariant === "compact" ? compactTimeLabel(time) : time
   const isAgent = senderType === "agent" || senderType === "assistant" || member.kind === "agent"
   const stripeColor = isAgent ? getAgentColor(agentId || member.id) : undefined
@@ -71,7 +77,7 @@ export function MessageFrame({
                 role === "assistant" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
               )}
             >
-              {role}
+              {visibleRole}
             </span>
             {visibleTime ? (
               <span className="whitespace-nowrap text-xs text-muted-foreground" title={time ?? undefined}>

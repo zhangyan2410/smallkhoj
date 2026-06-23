@@ -133,11 +133,11 @@ type SavedItem = {
 }
 
 const conversationTabs = [
-  { label: "Chat", icon: MessageCircle },
-  { label: "Tasks", icon: ListChecks },
-  { label: "Memory", icon: Database },
-  { label: "Files", icon: Files },
-  { label: "Activity", icon: Activity },
+  { key: "chat", labelKey: "tabChat", icon: MessageCircle },
+  { key: "tasks", labelKey: "tabTasks", icon: ListChecks },
+  { key: "memory", labelKey: "tabMemory", icon: Database },
+  { key: "files", labelKey: "tabFiles", icon: Files },
+  { key: "activity", labelKey: "tabActivity", icon: Activity },
 ]
 const CHAT_SIDEBAR_WIDTH_KEY = "smallkhoj.chat.sidebarWidth"
 const CHAT_SIDEBAR_MIN_WIDTH = 220
@@ -224,6 +224,27 @@ export function ChannelClient({
   const [channelName, setChannelName] = useState(initialChannel)
   const [messages, setMessages] = useState<ChannelMessage[]>(initialMessages)
   const tChat = useTranslations("chat")
+  const channelMemoryCopy = {
+    title: tChat("tabMemory"),
+    entryCount: (count: number) => tChat("memoryEntryCount", { count }),
+    loading: tChat("memoryLoading"),
+    empty: tChat("memoryEmpty"),
+    channelKnowledge: tChat("memoryChannelKnowledge"),
+    taskOutputs: tChat("memoryTaskOutputs"),
+    artifactsAndProofs: tChat("memoryArtifacts"),
+    promotions: tChat("memoryPromotions"),
+    otherMemory: tChat("memoryOther"),
+  }
+  const memoryProposalCopy = {
+    reviewQueue: tChat("memoryReviewQueue"),
+    loading: tChat("memoryProposalLoading"),
+    openProposals: tChat("memoryOpenProposals"),
+    accept: tChat("memoryAccept"),
+    reject: tChat("memoryReject"),
+    acceptAria: (path: string) => tChat("memoryAcceptAria", { path }),
+    rejectAria: (path: string) => tChat("memoryRejectAria", { path }),
+    base: tChat("memoryBase"),
+  }
   const [members, setMembers] = useState<Member[]>(initialMembers)
   const [allMembers, setAllMembers] = useState<Member[]>(initialAllMembers)
   const [channels, setChannels] = useState<ChannelInfo[]>(initialChannels)
@@ -283,6 +304,8 @@ export function ChannelClient({
   const allKnownMembers = [...members, ...allMembers]
   const didReact = (message: ChannelMessage, emoji: string) =>
     Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
+  const memberKindLabel = (kind: string) => kind === "agent" ? tChat("agentKind") : kind === "human" ? tChat("humanKind") : kind
+  const messageRoleLabels = { assistant: tChat("agentKind"), member: tChat("members") }
 
   function setPersistentPanelWidth(
     width: number,
@@ -946,8 +969,8 @@ export function ChannelClient({
         <button
           type="button"
           onClick={() => openThread(message)}
-          aria-label="Reply in thread"
-          title="Reply"
+          aria-label={tChat("replyInThread")}
+          title={tChat("reply")}
           className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <MessageCircle className="size-3.5" />
@@ -955,8 +978,8 @@ export function ChannelClient({
         <button
           type="button"
           onClick={() => toggleReaction(message, "👍")}
-          aria-label="React to message"
-          title="React"
+          aria-label={tChat("react")}
+          title={tChat("react")}
           className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
             hasReacted ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
@@ -966,8 +989,8 @@ export function ChannelClient({
         <button
           type="button"
           onClick={() => void toggleSaved(message.id)}
-          aria-label="Save message"
-          title="Save"
+          aria-label={tChat("saveMessage")}
+          title={tChat("saveMessage")}
           className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
             isSaved ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
@@ -977,8 +1000,8 @@ export function ChannelClient({
         <button
           type="button"
           onClick={() => handleCreateTaskFromMessage(message)}
-          aria-label="Create task from message"
-          title="As Task"
+          aria-label={tChat("createTaskFromMessage")}
+          title={tChat("asTask")}
           className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
             isTasked ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
@@ -988,8 +1011,8 @@ export function ChannelClient({
         <button
           type="button"
           onClick={() => handleCopyMessage(message)}
-          aria-label="Copy message"
-          title="Copy"
+          aria-label={tChat("copyMessage")}
+          title={tChat("copyMessage")}
           className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Clipboard className="size-3.5" />
@@ -1010,10 +1033,10 @@ export function ChannelClient({
 
   async function handleDeleteChannel() {
     if (!currentChannel?.id || currentIsDm) return
-    if (!window.confirm(`Delete ${currentChannel.name}?`)) return
+    if (!window.confirm(tChat("deleteChannelConfirm", { channel: currentChannel.name }))) return
     try {
       await apiDelete(`/api/v1/channels/${currentChannel.id}`, sessionToken)
-      window.location.href = "/chat"
+      window.location.assign("/chat")
     } catch (e) {
       console.error("Delete channel failed:", e)
     }
@@ -1050,12 +1073,12 @@ export function ChannelClient({
           <Sparkles className="size-4" />
         </Link>
         {[
-          { href: "/?focus=search", label: "Search", icon: Search },
-          { href: "/chat", label: "Chat", icon: MessageSquare, active: true },
-          { href: "/tasks", label: "Tasks", icon: CheckSquare },
-          { href: "/members", label: "Members", icon: Bot },
-          { href: "/computers", label: "Computers", icon: HardDrive },
-          { href: "/daemon", label: "Activity", icon: Bell },
+          { href: "/?focus=search", label: tChat("search"), icon: Search },
+          { href: "/chat", label: tChat("tabChat"), icon: MessageSquare, active: true },
+          { href: "/tasks", label: tChat("tabTasks"), icon: CheckSquare },
+          { href: "/members", label: tChat("members"), icon: Bot },
+          { href: "/computers", label: tChat("computers"), icon: HardDrive },
+          { href: "/daemon", label: tChat("activity"), icon: Bell },
         ].map(({ href, label, icon: Icon, active }) => (
           <Link
             key={label}
@@ -1073,8 +1096,8 @@ export function ChannelClient({
         ))}
         <Link
           href="/settings"
-          aria-label="Settings"
-          title="Settings"
+          aria-label={tChat("settings")}
+          title={tChat("settings")}
           className="mt-auto flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <Settings className="size-[18px]" />
@@ -1088,7 +1111,7 @@ export function ChannelClient({
         <div className="border-b p-3">
           <Link href="/" className="block rounded-md px-2 py-1.5 text-sm font-semibold hover:bg-sidebar-accent">
             SmallKhoj
-            <span className="block text-xs font-normal text-muted-foreground">Chat workbench</span>
+            <span className="block text-xs font-normal text-muted-foreground">{tChat("workbench")}</span>
           </Link>
         </div>
         <div className="p-3">
@@ -1096,11 +1119,11 @@ export function ChannelClient({
           <div className="space-y-1">
             <Link href="/daemon" className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
               <Activity className="size-3.5" />
-              Activity
+              {tChat("activity")}
             </Link>
             <Link href="/?focus=saved" className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
               <Bookmark className="size-3.5" />
-              Saved
+              {tChat("saved")}
             </Link>
           </div>
           <div className="mb-2 mt-5 flex items-center justify-between">
@@ -1117,7 +1140,7 @@ export function ChannelClient({
                   onDragOver={(event) => handleChannelAgentDragOver(event, ch.id)}
                   onDragLeave={(event) => handleChannelAgentDragLeave(event, ch.id)}
                   onDrop={(event) => void handleChannelAgentDrop(event, ch.id)}
-                  title="Drop an agent here to add it to this channel"
+                  title={tChat("dropAgentToChannel")}
                   className={`block truncate rounded-md border px-2 py-1.5 text-sm transition-colors ${
                     ch.name.replace("#", "") === channelName ? "border-primary/20 bg-primary/10 font-medium text-primary" : "border-transparent hover:bg-sidebar-accent"
                   } ${
@@ -1129,7 +1152,7 @@ export function ChannelClient({
                     <span className="truncate">{ch.name.replace("#", "")}</span>
                     {/* Low-density unread indicator: a subtle dot, no count. */}
                     {chUnread > 0 && (
-                      <span className="ml-auto size-1.5 rounded-full bg-primary" aria-label={`${chUnread} unread`} />
+                      <span className="ml-auto size-1.5 rounded-full bg-primary" aria-label={tChat("unread", { count: chUnread })} />
                     )}
                     {chUnread === 0 && <span className="ml-auto text-[0.7rem] text-muted-foreground">ch</span>}
                   </span>
@@ -1158,7 +1181,7 @@ export function ChannelClient({
                     event.dataTransfer.setData(AGENT_DRAG_MIME, serializeAgentDragPayload(avatarMember))
                     event.dataTransfer.setData("text/plain", avatarMember.handle || avatarMember.displayName || avatarMember.name)
                   } : undefined}
-                  title={isAgentDm ? "Drag agent to a channel or task" : undefined}
+                  title={isAgentDm ? tChat("dragAgentToChannel") : undefined}
                   style={isAgentDm && dmUnread > 0 ? { borderLeftColor: getAgentColor(avatarMember.id) } : undefined}
                   className={`block truncate rounded-md border border-l-2 px-2 py-1.5 text-sm ${
                     isActive ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
@@ -1219,7 +1242,7 @@ export function ChannelClient({
             <div key={m.id} className="flex items-center gap-2 py-1 text-sm">
               <MemberAvatar member={m} size="xs" />
               <span className="truncate">{m.displayName}</span>
-              <span className="ml-auto text-xs text-muted-foreground">{m.kind}</span>
+              <span className="ml-auto text-xs text-muted-foreground">{memberKindLabel(m.kind)}</span>
             </div>
           ))}
         </div>
@@ -1250,15 +1273,15 @@ export function ChannelClient({
               <div className="min-w-0">
                 <h1 className="truncate text-lg font-semibold">{currentTitle}</h1>
                 <div className="mt-1 flex items-center gap-2">
-                  <RuntimeChip>{currentIsDm ? "Direct message" : "Channel"}</RuntimeChip>
-                  <span className="text-xs text-muted-foreground">{messages.length} root messages</span>
+                  <RuntimeChip>{currentIsDm ? tChat("directMessageChip") : tChat("channel")}</RuntimeChip>
+                  <span className="text-xs text-muted-foreground">{tChat("rootMessages", { count: messages.length })}</span>
                 </div>
               </div>
             </div>
             <Button
               variant="outline"
               size="sm"
-              aria-label={showMembers ? "Hide channel members" : "Show channel members"}
+              aria-label={showMembers ? tChat("hideMembers") : tChat("showMembers")}
               onClick={() => setShowMembers(!showMembers)}
             >
               <Users className="size-4" />
@@ -1268,7 +1291,7 @@ export function ChannelClient({
               <Button
                 variant="outline"
                 size="sm"
-                aria-label="Delete channel"
+                aria-label={tChat("deleteChannel")}
                 onClick={handleDeleteChannel}
                 className="border-rose-200 text-rose-700 hover:bg-rose-50"
               >
@@ -1277,12 +1300,13 @@ export function ChannelClient({
             )}
           </div>
           <div className="mt-3 flex gap-1">
-            {conversationTabs.map(({ label, icon: Icon }) => {
-              const tabKey = label.toLowerCase() as "chat" | "tasks" | "memory" | "files" | "activity"
+            {conversationTabs.map(({ key, labelKey, icon: Icon }) => {
+              const tabKey = key as "chat" | "tasks" | "memory" | "files" | "activity"
+              const label = tChat(labelKey)
               const isActive = activeTab === tabKey
               return (
                 <button
-                  key={String(label)}
+                  key={key}
                   type="button"
                   onClick={() => {
                     setActiveTab(tabKey)
@@ -1319,9 +1343,9 @@ export function ChannelClient({
               <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-primary/10 backdrop-blur-sm border-2 border-dashed border-primary/40 m-2 rounded-lg">
                 <div className="rounded-lg bg-background p-6 shadow-lg border text-center">
                   <Files className="mx-auto size-10 text-primary mb-3" />
-                  <p className="text-sm font-medium">Drop file to upload</p>
+                  <p className="text-sm font-medium">{tChat("dropFileTitle")}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {channelId ? "Release to upload to this channel" : "No channel available"}
+                    {channelId ? tChat("dropFileReady") : tChat("dropFileNoChannel")}
                   </p>
                 </div>
               </div>
@@ -1335,7 +1359,7 @@ export function ChannelClient({
                     <div className="rounded-lg border border-dashed py-10 text-center">
                       <Activity className="mx-auto size-7 text-muted-foreground/50" />
                       <p className="mt-2 text-sm text-muted-foreground">
-                        Activity is only available for agent conversations.
+                        {tChat("activityAgentOnly")}
                       </p>
                     </div>
                   )}
@@ -1358,22 +1382,23 @@ export function ChannelClient({
                     loading={memoryProposalLoading}
                     onAccept={(proposal) => void handleMemoryProposalDecision(proposal, "accept")}
                     onReject={(proposal) => void handleMemoryProposalDecision(proposal, "reject")}
+                    copy={memoryProposalCopy}
                   />
                 </div>
-                <ChannelMemorySurface entries={memoryEntries} loading={memoryLoading} channelTitle={currentTitle} />
+                <ChannelMemorySurface entries={memoryEntries} loading={memoryLoading} channelTitle={currentTitle} copy={channelMemoryCopy} />
               </div>
             ) : activeTab === "files" ? (
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="mx-auto max-w-3xl">
                   <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold">Files</h2>
-                    <span className="text-xs text-muted-foreground">{files.length} file{files.length === 1 ? "" : "s"}</span>
+                    <h2 className="text-sm font-semibold">{tChat("filesTitle")}</h2>
+                    <span className="text-xs text-muted-foreground">{tChat("fileCount", { count: files.length })}</span>
                   </div>
-                  {filesLoading && <p className="py-12 text-center text-sm text-muted-foreground">Loading files...</p>}
+                  {filesLoading && <p className="py-12 text-center text-sm text-muted-foreground">{tChat("filesLoading")}</p>}
                   {!filesLoading && files.length === 0 && (
                     <div className="rounded-lg border border-dashed py-12 text-center">
                       <Files className="mx-auto size-8 text-muted-foreground/50" />
-                      <p className="mt-2 text-sm text-muted-foreground">No files in {currentTitle} yet.</p>
+                      <p className="mt-2 text-sm text-muted-foreground">{tChat("noFiles", { channel: currentTitle })}</p>
                     </div>
                   )}
                   <div className="space-y-2">
@@ -1391,7 +1416,7 @@ export function ChannelClient({
                               <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
                             </div>
                             <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>{uploader?.displayName || "Unknown"}</span>
+                              <span>{uploader?.displayName || tChat("unknown")}</span>
                               <span>·</span>
                               <span>{file.createdAt ? new Date(file.createdAt).toLocaleString() : ""}</span>
                             </div>
@@ -1411,7 +1436,7 @@ export function ChannelClient({
                                   className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
                                 >
                                   <MessageCircle className="size-3" />
-                                  Open message
+                                  {tChat("openMessage")}
                                 </button>
                               )}
                               {file.previewUrl && (
@@ -1422,7 +1447,7 @@ export function ChannelClient({
                                   className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
                                 >
                                   <ImageIcon className="size-3" />
-                                  Preview
+                                  {tChat("preview")}
                                 </a>
                               )}
                               <a
@@ -1431,7 +1456,7 @@ export function ChannelClient({
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
                               >
-                                Download
+                                {tChat("download")}
                               </a>
                             </div>
                           </div>
@@ -1464,10 +1489,11 @@ export function ChannelClient({
                         time={msg.time}
                         avatarSize="lg"
                         showStatus={senderMember.kind === "agent"}
+                        roleLabels={messageRoleLabels}
                         badges={
                           <>
                             {isSaved && (
-                              <Bookmark className="size-3 text-primary" aria-label="Saved" />
+                              <Bookmark className="size-3 text-primary" aria-label={tChat("savedBadge")} />
                             )}
                             {taskLinks[msg.id] && (
                               <Link
@@ -1475,7 +1501,7 @@ export function ChannelClient({
                                 className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
                               >
                                 <CheckSquare className="size-3" />
-                                Task
+                                {tChat("taskBadge")}
                               </Link>
                             )}
                           </>
@@ -1498,7 +1524,7 @@ export function ChannelClient({
                             className="inline-flex items-center gap-1 text-xs font-medium text-foreground hover:underline"
                           >
                             <MessageCircle className="size-3" />
-                            {msg.replyCount ? `${msg.replyCount} replies` : "Reply"}
+                            {msg.replyCount ? tChat("replyCount", { count: msg.replyCount }) : tChat("reply")}
                           </button>
                         </div>
                       )}
@@ -1514,7 +1540,7 @@ export function ChannelClient({
                                   ? "border-primary/30 bg-primary/10 text-primary"
                                   : "border-border bg-background text-muted-foreground hover:bg-muted"
                               }`}
-                              aria-label={`${count} ${emoji} reactions`}
+                              aria-label={tChat("reactionCount", { count, reaction: emoji })}
                             >
                               <span>{emoji}</span>
                               <span className="text-[0.7rem] font-medium">{count}</span>
@@ -1527,7 +1553,7 @@ export function ChannelClient({
                   )
                 })}
                 {messages.length === 0 && (
-                  <p className="py-20 text-center text-muted-foreground">No messages in {currentTitle} yet.</p>
+                  <p className="py-20 text-center text-muted-foreground">{tChat("noMessages", { channel: currentTitle })}</p>
                 )}
                 <div ref={messageEndRef} data-testid="chat-message-list-end" aria-hidden="true" />
               </div>
@@ -1549,8 +1575,8 @@ export function ChannelClient({
                 />
                 <button
                   type="button"
-                  aria-label="Attach file"
-                  title="Attach file"
+                  aria-label={tChat("attachFile")}
+                  title={tChat("attachFile")}
                   disabled={uploading || !channelId}
                   onClick={() => openFilePicker()}
                   className={`inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 ${
@@ -1563,8 +1589,8 @@ export function ChannelClient({
                 </button>
                 <button
                   type="button"
-                  aria-label="Attach image"
-                  title="Attach image"
+                  aria-label={tChat("attachImage")}
+                  title={tChat("attachImage")}
                   disabled={uploading || !channelId}
                   onClick={() => openFilePicker("image/*")}
                   className={`inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 ${
@@ -1580,24 +1606,24 @@ export function ChannelClient({
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Type a message..."
+                  placeholder={currentDm ? tChat("dmComposePlaceholder", { peer: currentTitle.replace(/^DM @/, "") }) : tChat("composePlaceholder", { channel: currentTitle.replace(/^#/, "") })}
                   className="flex-1"
                 />
                 <button
                   type="button"
                   onClick={() => setAsTask(!asTask)}
                   aria-pressed={asTask}
-                  aria-label="Send as task"
+                  aria-label={tChat("sendAsTask")}
                   className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground select-none hover:text-foreground"
                 >
                   <span className={`inline-flex size-5 items-center justify-center rounded border ${asTask ? "border-primary" : "border-muted-foreground/30"}`}>
                     {asTask && <CheckSquare className="size-3.5 text-primary pointer-events-none" />}
                   </span>
-                  As Task
+                  {tChat("asTask")}
                 </button>
                 <button
                   type="button"
-                  aria-label="Send message"
+                  aria-label={tChat("sendMessage")}
                   onClick={handleSend}
                   disabled={!input.trim()}
                   className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
@@ -1612,13 +1638,13 @@ export function ChannelClient({
 
           {activeThreadId && (
             <aside
-              aria-label="Thread"
+              aria-label={tChat("thread")}
               className="relative shrink-0 border-l bg-background p-4"
               style={{ width: threadWidth }}
             >
               <div
                 role="separator"
-                aria-label="Resize thread panel"
+                aria-label={tChat("thread")}
                 aria-orientation="vertical"
                 aria-valuemin={THREAD_PANEL_MIN_WIDTH}
                 aria-valuemax={THREAD_PANEL_MAX_WIDTH}
@@ -1633,16 +1659,16 @@ export function ChannelClient({
                 <div className="mb-3 space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <h2 className="truncate text-sm font-semibold">Thread</h2>
+                      <h2 className="truncate text-sm font-semibold">{tChat("thread")}</h2>
                       {activeRoot && (
                         <p className="truncate text-xs text-muted-foreground">
-                          {activeRoot.sender.replace(/^@/, "")} · {threadData?.replyCount ?? 0} {threadData?.replyCount === 1 ? "reply" : "replies"}
+                          {activeRoot.sender.replace(/^@/, "")} · {tChat("replyCount", { count: threadData?.replyCount ?? 0 })}
                         </p>
                       )}
                     </div>
                     <button
                     type="button"
-                    aria-label="Close thread"
+                    aria-label={tChat("closeThread")}
                     onClick={() => {
                       setActiveThreadId(null)
                       setThreadData(null)
@@ -1654,7 +1680,7 @@ export function ChannelClient({
                 </div>
                 {threadData?.threadSummary?.summary && (
                   <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-foreground">
-                    <span className="font-medium">Summary:</span> {threadData.threadSummary.summary}
+                    <span className="font-medium">{tChat("summary")}</span> {threadData.threadSummary.summary}
                   </div>
                 )}
                 </div>
@@ -1670,6 +1696,7 @@ export function ChannelClient({
                         timeVariant="compact"
                         avatarSize="sm"
                         showStatus={activeRoot.senderType === "agent"}
+                        roleLabels={messageRoleLabels}
                         actions={
                           <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
                             {renderMessageActions(activeRoot)}
@@ -1682,7 +1709,7 @@ export function ChannelClient({
                           className="mt-2 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
                         >
                           <CheckSquare className="size-3" />
-                          Open task
+                          {tChat("openTask")}
                         </Link>
                       )}
                       <MarkdownMessage content={activeRoot.content} compact />
@@ -1698,7 +1725,7 @@ export function ChannelClient({
                                   ? "border-primary/30 bg-primary/10 text-primary"
                                   : "border-border bg-background text-muted-foreground hover:bg-muted"
                               }`}
-                              aria-label={`${count} ${emoji} reactions`}
+                              aria-label={tChat("reactionCount", { count, reaction: emoji })}
                             >
                               <span>{emoji}</span>
                               <span className="text-[0.7rem] font-medium">{count}</span>
@@ -1715,7 +1742,7 @@ export function ChannelClient({
                     </div>
                   )}
 
-                  {threadLoading && <p className="py-8 text-center text-sm text-muted-foreground">Loading...</p>}
+                  {threadLoading && <p className="py-8 text-center text-sm text-muted-foreground">{tChat("threadLoading")}</p>}
                   {activeReplies.map((msg) => (
                     <div key={msg.id} className="group/message relative rounded-md border bg-card p-3 focus-within:ring-1 focus-within:ring-ring" tabIndex={0}>
                       <MessageFrame
@@ -1726,6 +1753,7 @@ export function ChannelClient({
                         timeVariant="compact"
                         avatarSize="sm"
                         showStatus={msg.senderType === "agent"}
+                        roleLabels={messageRoleLabels}
                         actions={
                           <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
                             {renderMessageActions(msg)}
@@ -1738,7 +1766,7 @@ export function ChannelClient({
                           className="mt-2 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
                         >
                           <CheckSquare className="size-3" />
-                          Open task
+                          {tChat("openTask")}
                         </Link>
                       )}
                       <MarkdownMessage content={msg.content} compact />
@@ -1754,7 +1782,7 @@ export function ChannelClient({
                                   ? "border-primary/30 bg-primary/10 text-primary"
                                   : "border-border bg-background text-muted-foreground hover:bg-muted"
                               }`}
-                              aria-label={`${count} ${emoji} reactions`}
+                              aria-label={tChat("reactionCount", { count, reaction: emoji })}
                             >
                               <span>{emoji}</span>
                               <span className="text-[0.7rem] font-medium">{count}</span>
@@ -1766,7 +1794,7 @@ export function ChannelClient({
                     </div>
                   ))}
                   {!threadLoading && activeReplies.length === 0 && (
-                    <p className="py-8 text-center text-sm text-muted-foreground">No replies yet.</p>
+                    <p className="py-8 text-center text-sm text-muted-foreground">{tChat("noReplies")}</p>
                   )}
                 </div>
 
@@ -1775,12 +1803,12 @@ export function ChannelClient({
                     value={threadInput}
                     onChange={(e) => setThreadInput(e.target.value)}
                     onKeyDown={handleThreadKeyDown}
-                    placeholder="Reply in thread..."
+                    placeholder={tChat("replyPlaceholder")}
                     className="flex-1"
                   />
                   <button
                     type="button"
-                    aria-label="Send thread reply"
+                    aria-label={tChat("sendThreadReply")}
                     onClick={handleThreadSend}
                     disabled={!threadInput.trim()}
                     className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
@@ -1794,10 +1822,10 @@ export function ChannelClient({
 
           {!activeThreadId && showMembers && (
             <aside
-              aria-label="Channel members"
+              aria-label={tChat("channelMembers")}
               className="w-64 shrink-0 border-l bg-background p-4 space-y-4 overflow-y-auto"
             >
-              <h3 className="text-sm font-semibold">Members ({members.length})</h3>
+              <h3 className="text-sm font-semibold">{tChat("membersCount", { count: members.length })}</h3>
               {members.map((m) => (
                 <div
                   key={m.id}
@@ -1811,7 +1839,7 @@ export function ChannelClient({
                   </div>
                   {m.kind === "agent" && !currentIsDm && (
                     <button
-                      aria-label={`Remove ${m.displayName}`}
+                      aria-label={tChat("removeMember", { member: m.displayName || m.name })}
                       onClick={() => handleRemoveMember(m.id)}
                       className="text-muted-foreground hover:text-destructive"
                     >
@@ -1823,27 +1851,27 @@ export function ChannelClient({
 
               {!currentIsDm && (
               <div className="border-t pt-3 space-y-2">
-                <h4 className="text-xs font-medium uppercase text-muted-foreground">Add Member</h4>
+                <h4 className="text-xs font-medium uppercase text-muted-foreground">{tChat("addMember")}</h4>
                 <div className="flex gap-2">
                   <select
-                    aria-label="Add channel member"
+                    aria-label={tChat("addChannelMember")}
                     data-testid="add-channel-member-select"
                     name="memberId"
                     ref={addMemberSelectRef}
                     className="flex-1 rounded-md border bg-background px-2 py-1 text-sm"
                   >
-                    <option value="">Select...</option>
+                    <option value="">{tChat("selectMember")}</option>
                     {allMembers
                       .filter((m) => !members.some((cm) => cm.id === m.id))
                       .map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.displayName} ({m.kind})
+                          {m.displayName} ({memberKindLabel(m.kind)})
                         </option>
                       ))}
                   </select>
                   <button
                     type="button"
-                    aria-label="Add member to channel"
+                    aria-label={tChat("addMemberToChannel")}
                     onClick={handleAddMember}
                     className="inline-flex h-7 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-[0.8rem] font-medium text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   >

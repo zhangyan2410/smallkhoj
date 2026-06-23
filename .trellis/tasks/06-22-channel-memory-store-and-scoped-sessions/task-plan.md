@@ -14,6 +14,28 @@ The implementation should deliver a real first slice:
 
 FUSE/macFUSE/WinFsp stays a later projection after the API contract is stable.
 
+## Operator-Reported Regressions 2026-06-23
+
+- [x] Runtime delivery isolation: DM and channel agent runtime sessions are still not separated correctly. When a task is explicitly claimed by `kimi`, `minimax` can still receive the related message/work, so task assignment and runtime delivery targeting need another pass.
+  - Fixed by backfilling missing `targetAgentId`/`assigneeId` for assigned task events during daemon event expansion before per-agent visibility checks.
+  - Regression coverage: `test_pending_visible_task_events_are_scoped_to_task_assignee`.
+- [x] Frontend i18n completion: the product default should remain Chinese. The language switcher path exists, but Chat, Tasks, and Computers still have untranslated or unsynchronized text from the previous UI work.
+  - Fixed default locale to ignore `Accept-Language` unless the user explicitly sets `smallkhoj_locale`.
+  - Localized Chat landing/channel, Tasks, task detail/recovery, Computers, and shared message/memory surfaces used by those pages.
+  - Browser evidence:
+    - `evidence/REAL_regression_i18n_runtime_20260623_chat_final.png`
+    - `evidence/REAL_regression_i18n_runtime_20260623_tasks_final.png`
+    - `evidence/REAL_regression_i18n_runtime_20260623_computers_final.png`
+- [x] Computer/member lifecycle cleanup: the previously created `glm1` agent does not start correctly and cannot be deleted from the product surface/API flow.
+  - Fixed stale `starting`/`restarting` workspace delete blocking with a five-minute grace threshold while keeping fresh starts protected.
+  - Re-arming now includes missing `starting`/`restarting` workspaces when autostart is enabled.
+  - Regression coverage: stale starting delete allowed, fresh starting delete blocked, missing starting workspace rearmed.
+- [x] Task memory output reminder: do not put the reminder into the persistent runtime system prompt. When a task moves into `in_review`, or a supervisor manually clicks the task detail action, send a targeted one-shot reminder to the assigned agent.
+  - Added `task.memory_requested` / `task_memory_requested` event creation with `targetAgentId`/`assigneeId`, filtered output directions, and prompt text that tells the agent to use `slock task summary` and optionally `slock task promote`.
+  - Added a Tasks detail form for operator instruction text plus output direction checkboxes.
+  - Regression coverage: service payload targeting, public route manual trigger, public `in_review` transition hook, daemon runtime-actionable gate/formatting, frontend lint/build, real browser DOM evidence.
+  - Browser evidence: `evidence/REAL_task_memory_request_ui_20260623.png`
+
 ## Reference Research
 
 - [x] Study `/Users/code/project/agent-platform/memory-fuse`.
@@ -144,7 +166,8 @@ FUSE/macFUSE/WinFsp stays a later projection after the API contract is stable.
   - task session summary -> task memory
   - durable conclusions -> channel memory proposal/write
   - Agent API and CLI routes are available through `slock task summary` and `slock task promote`.
-  - Automatic invocation on status transition remains a follow-up.
+  - Task status transitions into `in_review` now create a one-shot targeted `task.memory_requested` runtime reminder instead of changing the persistent system prompt.
+  - Supervisors can manually resend the same reminder from the Tasks detail UI with free-text instruction and output direction choices.
 - [x] Add tests proving unrelated DM/channel/task messages do not reuse the same conversation context by default.
   - Scope store tests prove DM/channel/task provider IDs do not collide.
   - Daemon normalization tests prove top-level channel, thread reply, and task events choose distinct scope keys.

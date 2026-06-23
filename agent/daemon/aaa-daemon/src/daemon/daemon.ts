@@ -1675,6 +1675,9 @@ function truncateMemoryContextText(value: string, maxLength: number): string {
 }
 
 function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
+  if (isTaskMemoryRequestEvent(message.eventType)) {
+    return message.content;
+  }
   if (!isTaskCreatedEvent(message.eventType)) {
     return message.content;
   }
@@ -1980,9 +1983,15 @@ function isTaskCreatedEvent(type?: string): boolean {
   return type === 'task_created' || type === 'task.created';
 }
 
+function isTaskMemoryRequestEvent(type?: string): boolean {
+  return type === 'task_memory_requested' || type === 'task.memory_requested';
+}
+
 export function isRuntimeActionableEventType(type?: string): boolean {
   return type === 'task_created'
     || type === 'task.created'
+    || type === 'task_memory_requested'
+    || type === 'task.memory_requested'
     || type === 'thread_summary_requested'
     || type === 'thread.summary_requested';
 }

@@ -51,6 +51,7 @@ from services.memory_api import (
     write_task_memory_summary,
     write_memory_entry,
 )
+from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.thread_summary import (
     SUMMARY_MAX_CHARS,
     serialize_thread_summary,
@@ -225,6 +226,7 @@ EVENT_TYPE_ALIASES = {
     "task.created": "task_created",
     "task.claimed": "task_claimed",
     "task.updated": "task_updated",
+    "task.memory_requested": "task_memory_requested",
     "task.unclaimed": "task_updated",
     "member.updated": "member_updated",
     "member.profile_updated": "member_profile_updated",
@@ -2441,6 +2443,7 @@ async def update_task_status(
     if not task:
         raise HTTPException(404, f"Task {task_number} not found")
 
+    previous_status = task.status
     _apply_agent_status_transition(task, new_status, member)
     await _record_activity(
         db,
@@ -2452,6 +2455,16 @@ async def update_task_status(
         channel_id=task.channel_id,
         task_id=task.id,
     )
+    if previous_status != "in_review" and task.status == "in_review":
+        await add_task_memory_request_event(
+            db,
+            server,
+            task,
+            actor=member,
+            instruction=str(body.get("memoryInstruction") or "").strip() or None,
+            output_directions=normalize_output_directions(body.get("outputDirections")),
+            trigger="status_in_review",
+        )
     await db.commit()
     await db.refresh(task)
     await _push_committed_events(db, server_id=server.id)
@@ -2566,6 +2579,7 @@ async def submit_task_by_id(
     _require_permission(member, "updateTask")
     body = await request.json()
     task = await _resolve_task_by_id(db, server, task_id)
+    previous_status = task.status
     _apply_agent_status_transition(task, "in_review", member)
     if body.get("data"):
         task.data = {**(task.data or {}), **body["data"]}
@@ -2579,6 +2593,16 @@ async def submit_task_by_id(
         channel_id=task.channel_id,
         task_id=task.id,
     )
+    if previous_status != "in_review":
+        await add_task_memory_request_event(
+            db,
+            server,
+            task,
+            actor=member,
+            instruction=str(body.get("memoryInstruction") or "").strip() or None,
+            output_directions=normalize_output_directions(body.get("outputDirections")),
+            trigger="status_in_review",
+        )
     await db.commit()
     await db.refresh(task)
     await _push_committed_events(db, server_id=server.id)
@@ -2650,6 +2674,7 @@ async def update_task_by_id(
     body = await request.json()
 
     task = await _resolve_task_by_id(db, server, task_id)
+    previous_status = task.status
 
     disallowed_fields = {"title", "description", "assignee"}
     if disallowed_fields.intersection(body):
@@ -2671,6 +2696,16 @@ async def update_task_by_id(
         channel_id=task.channel_id,
         task_id=task.id,
     )
+    if previous_status != "in_review" and task.status == "in_review":
+        await add_task_memory_request_event(
+            db,
+            server,
+            task,
+            actor=member,
+            instruction=str(body.get("memoryInstruction") or "").strip() or None,
+            output_directions=normalize_output_directions(body.get("outputDirections")),
+            trigger="status_in_review",
+        )
     await db.commit()
     await db.refresh(task)
     await _push_committed_events(db, server_id=server.id)

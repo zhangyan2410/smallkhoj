@@ -28,6 +28,23 @@ class _FakeSession:
         self.refreshed.append(item)
 
 
+class _ScalarResult:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+
+class _FakeTaskSession(_FakeSession):
+    def __init__(self, *, assignee=None):
+        super().__init__()
+        self.assignee = assignee
+
+    async def execute(self, _statement):
+        return _ScalarResult(self.assignee)
+
+
 @pytest.mark.asyncio
 async def test_public_memory_route_resolves_scope_with_current_viewer(monkeypatch):
     server = SimpleNamespace(id=uuid.uuid4())
@@ -115,6 +132,185 @@ async def test_public_task_memory_alias_resolves_scope_with_current_viewer(monke
         "scope_id": "42",
         "viewer": viewer,
     }
+
+
+@pytest.mark.asyncio
+async def test_public_task_memory_request_route_queues_targeted_reminder(monkeypatch):
+    server = SimpleNamespace(id=uuid.uuid4())
+    actor = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean")
+    task = SimpleNamespace(id=uuid.uuid4(), task_number=9, status="in_review")
+    event = SimpleNamespace(id=uuid.uuid4())
+    db = _FakeSession()
+    seen = {}
+
+    async def fake_get_server(session):
+        return server
+
+    async def fake_resolve_task(session, resolved_server, task_id):
+        seen["task_lookup"] = (resolved_server, task_id)
+        return task
+
+    async def fake_resolve_human_actor(session, resolved_server, request, actor_ref, *, role):
+        seen["actor"] = (resolved_server, actor_ref, role)
+        return actor
+
+    async def fake_add_task_memory_request_event(
+        session,
+        resolved_server,
+        resolved_task,
+        *,
+        actor,
+        instruction,
+        output_directions,
+        trigger,
+    ):
+        seen["memory_request"] = {
+            "server": resolved_server,
+            "task": resolved_task,
+            "actor": actor,
+            "instruction": instruction,
+            "output_directions": output_directions,
+            "trigger": trigger,
+        }
+        return event
+
+    async def fake_push(session, *, server_id):
+        seen["push_server_id"] = server_id
+        return 1
+
+    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    monkeypatch.setattr(public_api, "_resolve_task_by_id_or_number", fake_resolve_task)
+    monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
+    monkeypatch.setattr(public_api, "add_task_memory_request_event", fake_add_task_memory_request_event)
+    monkeypatch.setattr(public_api, "_push_committed_events", fake_push)
+
+    response = await public_api.request_task_memory_result(
+        str(task.id),
+        _JsonRequest({
+            "actor": "zy-ean",
+            "instruction": "prioritize browser evidence",
+            "outputDirections": ["final_summary", "evidence", "invalid"],
+        }),
+        _auth=None,
+        db=db,
+    )
+
+    assert response == {"requested": True, "eventType": "task.memory_requested"}
+    assert seen["task_lookup"] == (server, str(task.id))
+    assert seen["actor"] == (server, "zy-ean", "task memory requester")
+    assert seen["memory_request"] == {
+        "server": server,
+        "task": task,
+        "actor": actor,
+        "instruction": "prioritize browser evidence",
+        "output_directions": ["final_summary", "evidence"],
+        "trigger": "manual",
+    }
+    assert db.committed is True
+    assert seen["push_server_id"] == server.id
+
+
+@pytest.mark.asyncio
+async def test_public_task_update_to_in_review_queues_memory_request(monkeypatch):
+    server = SimpleNamespace(id=uuid.uuid4())
+    actor = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean")
+    assignee = SimpleNamespace(id=uuid.uuid4(), display_name="kimi", kind="agent")
+    task = SimpleNamespace(
+        id=uuid.uuid4(),
+        task_number=12,
+        title="Finish worker slice",
+        description="Do the work",
+        status="in_progress",
+        assignee_id=assignee.id,
+        channel_id=uuid.uuid4(),
+        data={},
+    )
+    db = _FakeTaskSession(assignee=assignee)
+    seen = {}
+
+    async def fake_get_server(session):
+        return server
+
+    async def fake_resolve_task(session, resolved_server, task_id):
+        seen["task_lookup"] = (resolved_server, task_id)
+        return task
+
+    async def fake_resolve_human_actor(session, resolved_server, request, actor_ref, *, role):
+        seen["actor"] = (resolved_server, actor_ref, role)
+        return actor
+
+    async def fake_record_activity(session, resolved_server, resolved_actor, kind, description, details, *, channel_id=None, task_id=None):
+        seen["activity"] = {
+            "kind": kind,
+            "description": description,
+            "details": details,
+            "channel_id": channel_id,
+            "task_id": task_id,
+        }
+
+    async def fake_add_task_memory_request_event(
+        session,
+        resolved_server,
+        resolved_task,
+        *,
+        actor,
+        instruction,
+        output_directions,
+        trigger,
+    ):
+        seen["memory_request"] = {
+            "server": resolved_server,
+            "task": resolved_task,
+            "actor": actor,
+            "instruction": instruction,
+            "output_directions": output_directions,
+            "trigger": trigger,
+        }
+        return SimpleNamespace(id=uuid.uuid4())
+
+    async def fake_push(session, *, server_id):
+        seen["push_server_id"] = server_id
+        return 1
+
+    async def fake_serialize_task(session, resolved_task):
+        return {"id": str(resolved_task.id), "status": resolved_task.status}
+
+    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    monkeypatch.setattr(public_api, "_resolve_task_by_id_or_number", fake_resolve_task)
+    monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
+    monkeypatch.setattr(public_api, "_record_activity", fake_record_activity)
+    monkeypatch.setattr(public_api, "add_task_memory_request_event", fake_add_task_memory_request_event)
+    monkeypatch.setattr(public_api, "_push_committed_events", fake_push)
+    monkeypatch.setattr(public_api, "_serialize_task", fake_serialize_task)
+
+    response = await public_api.update_task(
+        str(task.id),
+        _JsonRequest({
+            "actor": "zy-ean",
+            "status": "in_review",
+            "memoryInstruction": "include remaining risks",
+            "outputDirections": ["final_summary", "next_steps", "unknown"],
+        }),
+        _auth=None,
+        db=db,
+    )
+
+    assert response == {"updated": True, "task": {"id": str(task.id), "status": "in_review"}}
+    assert task.status == "in_review"
+    assert seen["task_lookup"] == (server, str(task.id))
+    assert seen["activity"]["kind"] == "supervisor_task_updated"
+    assert seen["activity"]["details"]["targetAgentId"] == str(assignee.id)
+    assert seen["memory_request"] == {
+        "server": server,
+        "task": task,
+        "actor": actor,
+        "instruction": "include remaining risks",
+        "output_directions": ["final_summary", "next_steps"],
+        "trigger": "status_in_review",
+    }
+    assert db.committed is True
+    assert db.refreshed == [task]
+    assert seen["push_server_id"] == server.id
 
 
 def test_public_memory_actor_must_match_current_viewer():
