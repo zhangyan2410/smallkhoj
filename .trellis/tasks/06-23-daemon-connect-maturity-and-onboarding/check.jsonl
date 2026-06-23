@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "Verify singleton cleanup does not break daemon/runtime lifecycle expectations."}
+{"file": ".trellis/spec/guides/runtime-debugging-sop.md", "reason": "Verify logs and tests make SIGTERM source diagnosable."}

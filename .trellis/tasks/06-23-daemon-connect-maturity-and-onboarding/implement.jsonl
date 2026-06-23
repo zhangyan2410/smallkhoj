@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "Daemon runtime lifecycle and process tree contracts apply to wrapper-started runtime children."}
+{"file": ".trellis/spec/guides/runtime-debugging-sop.md", "reason": "SIGTERM and runtime stop symptoms need lifecycle diagnostics rather than ad hoc process cleanup."}
