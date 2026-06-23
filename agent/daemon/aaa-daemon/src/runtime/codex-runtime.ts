@@ -11,7 +11,7 @@ import {
   type ClaudeStreamEvent,
   extractClaudeSessionId,
 } from './claude-runtime.js';
-import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeStreamEvent } from './runtime-driver.js';
+import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
 
 export interface CodexRuntimeOptions {
   credential: Credential;
@@ -30,6 +30,7 @@ export interface CodexRuntimeOptions {
 export type CodexRuntimeEvent = RuntimeLineEvent;
 export type CodexRuntimeExitEvent = RuntimeExitEvent;
 export type CodexStreamEvent = RuntimeStreamEvent;
+type PendingUserMessage = { text: string; options?: RuntimeSendOptions };
 
 export function buildCodexSlockPrompt(options: Pick<CodexRuntimeOptions, 'credential' | 'workspacePath'>): string {
   return [
@@ -154,7 +155,7 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
   private child: ChildProcessWithoutNullStreams | null = null;
   private stdoutRemainder = '';
   private stderrRemainder = '';
-  private readonly pendingUserMessages: string[] = [];
+  private readonly pendingUserMessages: PendingUserMessage[] = [];
   private currentSessionId: string | undefined;
   private started = false;
   private stopping = false;
@@ -218,13 +219,13 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     return Boolean(this.child);
   }
 
-  sendUserMessage(text: string): boolean {
+  sendUserMessage(text: string, options?: RuntimeSendOptions): boolean {
     if (!this.started || this.child) {
-      this.pendingUserMessages.push(text);
+      this.pendingUserMessages.push({ text, options });
       return false;
     }
 
-    this.spawnTurn(text);
+    this.spawnTurn(text, options);
     return true;
   }
 
@@ -232,14 +233,17 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     if (!this.started || this.child) return;
     const next = this.pendingUserMessages.shift();
     if (next === undefined) return;
-    this.spawnTurn(next);
+    this.spawnTurn(next.text, next.options);
   }
 
-  private spawnTurn(text: string): void {
+  private spawnTurn(text: string, options?: RuntimeSendOptions): void {
     const command = this.options.command ?? 'codex';
+    const effectiveSessionId = options && 'sessionId' in options
+      ? options.sessionId ?? undefined
+      : this.currentSessionId;
     // 已有会话则 resume 续接（保持上下文连续），否则首条用 exec 生成会话。
-    const baseArgs = this.currentSessionId
-      ? buildCodexResumeArgs(this.currentSessionId, { model: this.options.model })
+    const baseArgs = effectiveSessionId
+      ? buildCodexResumeArgs(effectiveSessionId, { model: this.options.model })
       : buildCodexArgs({ model: this.options.model });
     const args = [
       ...(this.options.commandArgs ?? []),
@@ -294,7 +298,9 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     this.emit('message_sent', {
       type: 'codex_exec',
       promptBytes: Buffer.byteLength(prompt, 'utf-8'),
-      hasSessionId: Boolean(this.currentSessionId),
+      hasSessionId: Boolean(effectiveSessionId),
+      session_id: effectiveSessionId,
+      sessionScopeKey: options?.sessionScopeKey,
     });
   }
 

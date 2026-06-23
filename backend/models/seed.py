@@ -169,6 +169,87 @@ async def create_tables():
             "ON event_records(task_id) WHERE task_id IS NOT NULL"
         ))
         await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS memory_entries (
+                id UUID PRIMARY KEY,
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                scope_type VARCHAR(20) NOT NULL,
+                scope_id UUID NOT NULL,
+                path TEXT NOT NULL,
+                title TEXT,
+                entry_kind VARCHAR(40) NOT NULL DEFAULT 'note',
+                content_text TEXT,
+                blob_key TEXT,
+                file_id UUID REFERENCES files(id) ON DELETE SET NULL,
+                mime_type VARCHAR(120),
+                size_bytes BIGINT NOT NULL DEFAULT 0,
+                content_sha256 VARCHAR(64) NOT NULL,
+                version INTEGER NOT NULL DEFAULT 1,
+                source_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+                source_channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
+                source_thread_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+                source_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+                source_path TEXT,
+                author_member_id UUID REFERENCES members(id) ON DELETE SET NULL,
+                visibility VARCHAR(20) NOT NULL DEFAULT 'inherited',
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                deleted_at TIMESTAMP WITH TIME ZONE,
+                CONSTRAINT ck_memory_entries_scope_type CHECK (scope_type IN ('agent', 'channel', 'task', 'thread'))
+            )
+        """))
+        await conn.execute(text("ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS entry_kind VARCHAR(40) NOT NULL DEFAULT 'note'"))
+        await conn.execute(text("ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS file_id UUID REFERENCES files(id) ON DELETE SET NULL"))
+        await conn.execute(text("ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'inherited'"))
+        await conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_memory_entries_scope_path_active
+            ON memory_entries(server_id, scope_type, scope_id, path)
+            WHERE deleted_at IS NULL
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_memory_entries_scope_updated
+            ON memory_entries(server_id, scope_type, scope_id, updated_at DESC)
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_memory_entries_source_message
+            ON memory_entries(server_id, source_message_id)
+            WHERE source_message_id IS NOT NULL
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_memory_entries_source_task
+            ON memory_entries(server_id, source_task_id)
+            WHERE source_task_id IS NOT NULL
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS memory_proposals (
+                id UUID PRIMARY KEY,
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                scope_type VARCHAR(20) NOT NULL,
+                scope_id UUID NOT NULL,
+                path TEXT NOT NULL,
+                base_entry_id UUID REFERENCES memory_entries(id) ON DELETE SET NULL,
+                base_sha256 VARCHAR(64),
+                proposed_content_text TEXT,
+                proposed_blob_key TEXT,
+                author_member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                reason TEXT,
+                status VARCHAR(20) NOT NULL DEFAULT 'open',
+                reviewer_member_id UUID REFERENCES members(id) ON DELETE SET NULL,
+                review_note TEXT,
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                resolved_at TIMESTAMP WITH TIME ZONE,
+                CONSTRAINT ck_memory_proposals_scope_type CHECK (scope_type IN ('agent', 'channel', 'task', 'thread')),
+                CONSTRAINT ck_memory_proposals_status CHECK (status IN ('open', 'accepted', 'rejected', 'superseded'))
+            )
+        """))
+        await conn.execute(text("ALTER TABLE memory_proposals ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb"))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_memory_proposals_scope_status
+            ON memory_proposals(server_id, scope_type, scope_id, status, updated_at DESC)
+        """))
+        await conn.execute(text("""
             UPDATE members AS m
             SET computer_id = (m.config->>'computerId')::uuid
             WHERE m.computer_id IS NULL

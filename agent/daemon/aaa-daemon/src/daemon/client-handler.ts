@@ -111,6 +111,12 @@ export class ClientHandler extends EventEmitter {
       case DaemonMethods.TaskUpdate:
         return this.forwardToProxy(id, 'task.update', params);
 
+      case DaemonMethods.TaskMemorySummary:
+        return this.forwardToProxy(id, 'task.memory.summary', params);
+
+      case DaemonMethods.TaskMemoryPromote:
+        return this.forwardToProxy(id, 'task.memory.promote', params);
+
       case DaemonMethods.ChannelMembers:
         return this.forwardToProxy(id, 'channel.members', params);
 
@@ -185,6 +191,33 @@ export class ClientHandler extends EventEmitter {
 
       case DaemonMethods.KnowledgeSearch:
         return this.forwardToProxy(id, 'knowledge.search', params);
+
+      case DaemonMethods.MemoryRead:
+        return this.forwardToProxy(id, 'memory.read', params);
+
+      case DaemonMethods.MemorySearch:
+        return this.forwardToProxy(id, 'memory.search', params);
+
+      case DaemonMethods.MemoryContext:
+        return this.forwardToProxy(id, 'memory.context', params);
+
+      case DaemonMethods.MemoryWrite:
+        return this.forwardToProxy(id, 'memory.write', params);
+
+      case DaemonMethods.MemoryPropose:
+        return this.forwardToProxy(id, 'memory.propose', params);
+
+      case DaemonMethods.MemoryProposals:
+        return this.forwardToProxy(id, 'memory.proposals', params);
+
+      case DaemonMethods.MemoryProposalAccept:
+        return this.forwardToProxy(id, 'memory.proposal.accept', params);
+
+      case DaemonMethods.MemoryProposalReject:
+        return this.forwardToProxy(id, 'memory.proposal.reject', params);
+
+      case DaemonMethods.MemoryDelete:
+        return this.forwardToProxy(id, 'memory.delete', params);
 
       case DaemonMethods.SessionList:
         return buildResponse(id, {
@@ -392,11 +425,103 @@ export class ClientHandler extends EventEmitter {
         case 'knowledge.search':
           apiPath = `${agentPath}/knowledge/search${queryString(p, ['q', 'query', 'channel', 'target', 'limit'])}`;
           break;
+        case 'memory.read': {
+          const scope = memoryScopePath(p);
+          apiPath = `${agentPath}/memory/scopes/${scope}/path/${memoryPath(p)}`;
+          break;
+        }
+        case 'memory.search': {
+          const scope = memoryScopePath(p);
+          apiPath = `${agentPath}/memory/scopes/${scope}/search${queryString(p, ['q', 'query', 'limit'])}`;
+          break;
+        }
+        case 'memory.context': {
+          const scope = memoryScopeParts(p);
+          if (!scope.type || !scope.id) {
+            return buildError(id, ErrorCode.InvalidParams, `Missing required identifier for ${method}`);
+          }
+          apiPath = `${agentPath}/memory/context-manifest`;
+          httpMethod = 'POST';
+          body = compactBody({
+            scopeType: scope.type,
+            scopeId: scope.id,
+            prompt: p.prompt ?? p.query ?? p.q,
+            topK: p.topK ?? p.limit,
+          });
+          break;
+        }
+        case 'memory.write': {
+          const scope = memoryScopePath(p);
+          apiPath = `${agentPath}/memory/scopes/${scope}/path/${memoryPath(p)}`;
+          httpMethod = 'PUT';
+          body = compactBody({ contentText: p.contentText ?? p.content ?? p.text, baseSha: p.baseSha ?? p.base_sha });
+          break;
+        }
+        case 'memory.propose': {
+          const scope = memoryScopePath(p);
+          apiPath = `${agentPath}/memory/scopes/${scope}/proposals`;
+          httpMethod = 'POST';
+          body = compactBody({
+            path: p.path,
+            contentText: p.contentText ?? p.content ?? p.text,
+            reason: p.reason,
+            baseSha: p.baseSha ?? p.base_sha,
+          });
+          break;
+        }
+        case 'memory.proposals': {
+          const scope = memoryScopePath(p);
+          apiPath = `${agentPath}/memory/scopes/${scope}/proposals${queryString(p, ['status'])}`;
+          break;
+        }
+        case 'memory.proposal.accept':
+        case 'memory.proposal.reject': {
+          const proposalId = String(p.proposalId ?? p.proposal_id ?? p.id ?? '');
+          if (!proposalId) {
+            return buildError(id, ErrorCode.InvalidParams, `Missing required identifier for ${method}`);
+          }
+          const action = method === 'memory.proposal.accept' ? 'accept' : 'reject';
+          apiPath = `${agentPath}/memory/proposals/${encodeURIComponent(proposalId)}/${action}`;
+          httpMethod = 'POST';
+          body = compactBody({
+            reviewNote: p.reviewNote ?? p.review_note ?? p.note,
+          });
+          break;
+        }
+        case 'memory.delete': {
+          const scope = memoryScopePath(p);
+          apiPath = `${agentPath}/memory/scopes/${scope}/path/${memoryPath(p)}`;
+          httpMethod = 'DELETE';
+          break;
+        }
+        case 'task.memory.summary': {
+          apiPath = `${agentPath}/tasks/${encodeURIComponent(String(p.taskId ?? p.task_id ?? p.id ?? ''))}/memory/summary`;
+          httpMethod = 'POST';
+          body = compactBody({
+            finalSummary: p.finalSummary ?? p.summary ?? p.contentText ?? p.content ?? p.text,
+            progress: p.progress,
+            evidence: p.evidence,
+            artifacts: p.artifacts,
+            nextSteps: p.nextSteps ?? p.next_steps,
+          });
+          break;
+        }
+        case 'task.memory.promote': {
+          apiPath = `${agentPath}/tasks/${encodeURIComponent(String(p.taskId ?? p.task_id ?? p.id ?? ''))}/memory/promote`;
+          httpMethod = 'POST';
+          body = compactBody({
+            sourcePath: p.sourcePath ?? p.source_path,
+            channelPath: p.channelPath ?? p.channel_path,
+            reason: p.reason,
+            proposal: p.proposal,
+          });
+          break;
+        }
         default:
           return buildError(id, ErrorCode.MethodNotFound, `Unknown method for proxy: ${method}`);
       }
 
-      if (apiPath.endsWith('//resolve') || apiPath.endsWith('//reactions') || apiPath.endsWith('/tasks/') || apiPath.endsWith('/tasks//unclaim') || apiPath.endsWith('/channels//join') || apiPath.endsWith('/channels//leave') || apiPath.endsWith('/threads/') || apiPath.endsWith('/threads//summary') || apiPath.endsWith('/reminders/') || apiPath.endsWith('/reminders//log') || apiPath.endsWith('/attachments/') || apiPath.endsWith('/knowledge/')) {
+      if (apiPath.endsWith('//resolve') || apiPath.endsWith('//reactions') || apiPath.endsWith('/tasks/') || apiPath.includes('/tasks//') || apiPath.endsWith('/tasks//unclaim') || apiPath.endsWith('/channels//join') || apiPath.endsWith('/channels//leave') || apiPath.endsWith('/threads/') || apiPath.endsWith('/threads//summary') || apiPath.endsWith('/reminders/') || apiPath.endsWith('/reminders//log') || apiPath.endsWith('/attachments/') || apiPath.endsWith('/knowledge/')) {
         return buildError(id, ErrorCode.InvalidParams, `Missing required identifier for ${method}`);
       }
 
@@ -575,4 +700,23 @@ function queryString(values: Record<string, unknown>, keys: string[]): string {
   }
   const encoded = query.toString();
   return encoded ? `?${encoded}` : '';
+}
+
+function memoryScopePath(values: Record<string, unknown>): string {
+  const scope = memoryScopeParts(values);
+  if (!scope.type || !scope.id) return '/';
+  return `${scope.type}/${encodeURIComponent(scope.id)}`;
+}
+
+function memoryScopeParts(values: Record<string, unknown>): { type: string; id: string } {
+  const type = String(values.scope ?? values.scopeType ?? values.scope_type ?? '');
+  const id = String(values.id ?? values.scopeId ?? values.scope_id ?? '');
+  if (!['agent', 'channel', 'thread', 'task'].includes(type) || !id) return { type: '', id: '' };
+  return { type, id };
+}
+
+function memoryPath(values: Record<string, unknown>): string {
+  const raw = String(values.path ?? '');
+  if (!raw) return '';
+  return raw.replace(/^\/+/, '').split('/').map((part) => encodeURIComponent(part)).join('/');
 }

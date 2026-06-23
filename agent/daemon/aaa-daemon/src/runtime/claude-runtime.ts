@@ -5,7 +5,7 @@ import { join } from 'path';
 import type { Credential } from '../types.js';
 import { prependPathEnv } from './slock-wrapper.js';
 import { runtimeProcessSpawnOptions, scheduleRuntimeProcessTreeKill, signalRuntimeProcessTree } from './process-tree.js';
-import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeStreamEvent } from './runtime-driver.js';
+import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
 
 export interface ClaudeRuntimeOptions {
   credential: Credential;
@@ -23,6 +23,7 @@ export interface ClaudeRuntimeOptions {
 export type ClaudeRuntimeEvent = RuntimeLineEvent;
 export type ClaudeRuntimeExitEvent = RuntimeExitEvent;
 export type ClaudeStreamEvent = RuntimeStreamEvent;
+type PendingUserMessage = { text: string; options?: RuntimeSendOptions };
 
 export interface ClaudeUserMessagePayload {
   type: 'user';
@@ -69,16 +70,22 @@ export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'cred
     '14. **`slock task claim`** — Claim tasks by number or message ID (supports batch, handles conflicts).',
     '15. **`slock task unclaim`** — Release your claim on a task.',
     '16. **`slock task update`** — Change a task\'s status (e.g. to in_review or done).',
-    '17. **`slock attachment upload`** — Upload a file to attach to a message.',
-    '18. **`slock attachment view`** — Download an attached file by its attachment ID so you can inspect it locally.',
-    '19. **`slock profile show`** — Show your own profile, or another visible profile via `@handle`.',
-    '20. **`slock profile update`** — Update your own profile (display name, description, avatar).',
-    '21. **`slock reminder schedule`** — Schedule a reminder for yourself later, at a specific time, or on a recurring cadence.',
-    '22. **`slock reminder list`** — List your reminders, including lifecycle history for each reminder.',
-    '23. **`slock reminder snooze`** — Push a reminder later without replacing it.',
-    '24. **`slock reminder update`** — Change a reminder\'s title, schedule, or recurrence without creating a new reminder.',
-    '25. **`slock reminder cancel`** — Cancel one of your reminders by ID.',
-    '26. **`slock reminder log`** — Show the event log for a reminder, including fires, dismissals, and reschedules.',
+    '17. **`slock memory context`** — Ask the server for a selective task/channel memory manifest before or during focused work.',
+    '18. **`slock memory read` / `slock memory search`** — Read exact server-owned task/channel memory or search visible memory without loading everything.',
+    '19. **`slock memory write` / `slock memory propose`** — Write task memory directly, or propose durable channel memory when a human/channel decision should review it.',
+    '20. **`slock memory proposals`** — List open or historical memory proposals for a scope.',
+    '21. **`slock memory accept-proposal` / `slock memory reject-proposal`** — Resolve a memory proposal when you are authorized to review it.',
+    '22. **`slock memory delete`** — Soft-delete obsolete task/channel memory when you are authorized to mutate that scope.',
+    '23. **`slock attachment upload`** — Upload a file to attach to a message.',
+    '24. **`slock attachment view`** — Download an attached file by its attachment ID so you can inspect it locally.',
+    '25. **`slock profile show`** — Show your own profile, or another visible profile via `@handle`.',
+    '26. **`slock profile update`** — Update your own profile (display name, description, avatar).',
+    '27. **`slock reminder schedule`** — Schedule a reminder for yourself later, at a specific time, or on a recurring cadence.',
+    '28. **`slock reminder list`** — List your reminders, including lifecycle history for each reminder.',
+    '29. **`slock reminder snooze`** — Push a reminder later without replacing it.',
+    '30. **`slock reminder update`** — Change a reminder\'s title, schedule, or recurrence without creating a new reminder.',
+    '31. **`slock reminder cancel`** — Cancel one of your reminders by ID.',
+    '32. **`slock reminder log`** — Show the event log for a reminder, including fires, dismissals, and reschedules.',
     '',
     'The CLI prints human-readable canonical text on success (matching the format you see in received messages and history). On failure it prints JSON to stderr:',
     '- failure → stderr `{"ok":false,"code":"...","message":"..."}` with non-zero exit',
@@ -268,6 +275,18 @@ export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'cred
     '',
     'Your working directory (cwd) is your **persistent, agent-owned workspace**; files you create here survive across sessions. Use it for memory, notes, artifacts, code checkouts, and task-specific files. Keep **MEMORY.md** easy to scan as the recovery entry point.',
     '',
+    '### Server-owned task and channel memory',
+    '',
+    'Slock also has server-owned memory that survives agent restarts, computer outages, and context compaction. Use it for shared channel knowledge and recoverable task state; do not rely only on your private workspace files for facts the channel or task must preserve.',
+    '',
+    '- Before resuming a task or channel decision after compaction, call `slock memory context --scope task --id <task-id> --query "<what you are doing>"` or the equivalent channel scope to get a selective manifest.',
+    '- Use `slock memory read --scope task --id <task-id> --path plan.md` or `slock memory search --scope channel --id <channel-id> --query "<terms>"` to pull exact details without injecting all memory into every turn.',
+    '- Record task progress, plans, evidence, output summaries, artifact references, and review notes into task memory. Use `slock task summary` and `slock task promote` when wrapping durable task results.',
+    '- Promote durable channel facts through `slock memory propose --scope channel --id <channel-id> --path decisions/<name>.md --reason "<why>"` unless you are explicitly authorized to write the channel memory directly.',
+    '- Review pending channel/task proposals with `slock memory proposals --scope channel --id <channel-id> --status open`; resolve them with `slock memory accept-proposal --id <proposal-id> --note "<why>"` or `slock memory reject-proposal --id <proposal-id> --note "<why>"`.',
+    '- Use `slock memory delete --scope task --id <task-id> --path <path>` only for obsolete or incorrect memory. Delete is an audited soft delete; prefer adding a corrective entry when history matters.',
+    '- Private channel memory remains private to that channel. Never disclose private channel names, content, proposals, or summaries into another channel or DM unless the authorized human context explicitly asks for it.',
+    '',
     '### MEMORY.md — Your Memory Index (CRITICAL)',
     '',
     '`MEMORY.md` is the **entry point** to all your knowledge. It is the first file read on every startup (including after context compression). Structure it as an index that points to everything you know. Keep it updated after every significant interaction or learning.',
@@ -433,7 +452,7 @@ export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeD
   private readonly options: ClaudeRuntimeOptions;
   private child: ChildProcessWithoutNullStreams | null = null;
   private stdoutRemainder = '';
-  private readonly pendingUserMessages: string[] = [];
+  private readonly pendingUserMessages: PendingUserMessage[] = [];
   private readonly outstandingToolUses = new Set<string>();
   private awaitingTurnResult = false;
   private compacting = false;
@@ -519,13 +538,13 @@ export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeD
     return this.isBusy();
   }
 
-  sendUserMessage(text: string): boolean {
+  sendUserMessage(text: string, options?: RuntimeSendOptions): boolean {
     if (!this.getWritableChild() || this.isBusy()) {
-      this.pendingUserMessages.push(text);
+      this.pendingUserMessages.push({ text, options });
       return false;
     }
 
-    this.writeUserMessage(text);
+    this.writeUserMessage(text, options);
     return true;
   }
 
@@ -620,17 +639,23 @@ export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeD
 
     const next = this.pendingUserMessages.shift();
     if (next === undefined) return;
-    this.writeUserMessage(next);
+    this.writeUserMessage(next.text, next.options);
   }
 
-  private writeUserMessage(text: string): void {
+  private writeUserMessage(text: string, options?: RuntimeSendOptions): void {
     const child = this.getWritableChild();
     if (!child) {
-      this.pendingUserMessages.unshift(text);
+      this.pendingUserMessages.unshift({ text, options });
       return;
     }
 
-    const payload = buildClaudeUserMessage(text, this.currentSessionId);
+    const effectiveSessionId = options && 'sessionId' in options
+      ? options.sessionId ?? undefined
+      : this.currentSessionId;
+    const payload = {
+      ...buildClaudeUserMessage(text, effectiveSessionId),
+      ...(options?.sessionScopeKey ? { sessionScopeKey: options.sessionScopeKey } : {}),
+    };
     child.stdin.write(`${JSON.stringify(payload)}\n`);
     this.awaitingTurnResult = true;
     this.emit('message_sent', payload);

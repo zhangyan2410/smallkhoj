@@ -66,6 +66,8 @@ export const DaemonMethods = {
   TaskClaim: 'daemon/task.claim',
   TaskUnclaim: 'daemon/task.unclaim',
   TaskUpdate: 'daemon/task.update',
+  TaskMemorySummary: 'daemon/task.memory.summary',
+  TaskMemoryPromote: 'daemon/task.memory.promote',
 
   // ── Channel operations (Slock-specific) ────────────────
 
@@ -98,6 +100,15 @@ export const DaemonMethods = {
   KnowledgeList: 'daemon/knowledge.list',
   KnowledgeGet: 'daemon/knowledge.get',
   KnowledgeSearch: 'daemon/knowledge.search',
+  MemoryRead: 'daemon/memory.read',
+  MemorySearch: 'daemon/memory.search',
+  MemoryContext: 'daemon/memory.context',
+  MemoryWrite: 'daemon/memory.write',
+  MemoryPropose: 'daemon/memory.propose',
+  MemoryProposals: 'daemon/memory.proposals',
+  MemoryProposalAccept: 'daemon/memory.proposal.accept',
+  MemoryProposalReject: 'daemon/memory.proposal.reject',
+  MemoryDelete: 'daemon/memory.delete',
 } as const;
 
 // ── ACP methods (internal, forwarded to agent process) ────────

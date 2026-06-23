@@ -6,7 +6,7 @@ import type { Credential } from '../types.js';
 import { buildSlockSystemPrompt, type ClaudeRuntimeOptions } from './claude-runtime.js';
 import { buildCodexPrompt, buildCodexRuntimeEnv } from './codex-runtime.js';
 import { CodexAcpBridge, translateAcpUpdate } from './codex-acp-bridge.js';
-import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeStreamEvent } from './runtime-driver.js';
+import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
 
 const DEFAULT_CODEX_ACP_PACKAGE = '@zed-industries/codex-acp@0.16.0';
 
@@ -25,6 +25,7 @@ export interface CodexAcpRuntimeOptions {
 export type CodexAcpRuntimeEvent = RuntimeLineEvent;
 export type CodexAcpRuntimeExitEvent = RuntimeExitEvent;
 export type CodexAcpStreamEvent = RuntimeStreamEvent;
+type PendingUserMessage = { text: string; options?: RuntimeSendOptions };
 
 export function resolveCodexAcpLaunchCommand(options: Pick<CodexAcpRuntimeOptions, 'command' | 'commandArgs'> = {}): { command: string; args: string[] } {
   const command = options.command?.trim() || 'npx';
@@ -68,7 +69,7 @@ export function writeCodexAcpPromptFile(options: Pick<CodexAcpRuntimeOptions, 'c
 export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntimeDriver {
   private readonly options: CodexAcpRuntimeOptions;
   private bridge: CodexAcpBridge | null = null;
-  private readonly pendingUserMessages: string[] = [];
+  private readonly pendingUserMessages: PendingUserMessage[] = [];
   private currentSessionId: string | undefined;
   private started = false;
   private stopping = false;
@@ -144,42 +145,52 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
     return Boolean(this.bootstrapping || this.activePrompt);
   }
 
-  sendUserMessage(text: string): boolean {
-    if (!this.started || this.busy || !this.currentSessionId) {
-      this.pendingUserMessages.push(text);
+  sendUserMessage(text: string, options?: RuntimeSendOptions): boolean {
+    if (!this.started || this.busy || (!this.currentSessionId && !options)) {
+      this.pendingUserMessages.push({ text, options });
       void this.flushQueuedMessages();
       return false;
     }
 
-    void this.runPrompt(text);
+    void this.runPrompt(text, options);
     return true;
   }
 
   private async flushQueuedMessages(): Promise<void> {
     if (!this.started || this.activePrompt) return;
-    try {
-      await this.ensureSession();
-    } catch (err) {
-      this.emit('error', err);
-      return;
-    }
-    if (!this.started || this.activePrompt) return;
     const next = this.pendingUserMessages.shift();
     if (next === undefined) return;
-    await this.runPrompt(next);
+    await this.runPrompt(next.text, next.options);
   }
 
-  private async ensureSession(): Promise<void> {
-    if (this.currentSessionId && this.bridge?.alive) return;
-    if (this.bootstrapping) return this.bootstrapping;
+  private async ensureSession(options?: RuntimeSendOptions): Promise<string> {
+    const requestedSessionId = options && 'sessionId' in options ? options.sessionId : undefined;
+    if (requestedSessionId !== null && requestedSessionId && this.currentSessionId === requestedSessionId && this.bridge?.alive) {
+      return requestedSessionId;
+    }
+    if (requestedSessionId === undefined && this.currentSessionId && this.bridge?.alive) return this.currentSessionId;
+    if (this.bootstrapping) {
+      await this.bootstrapping;
+      if (!this.currentSessionId) throw new Error('Codex ACP session is not ready');
+      return this.currentSessionId;
+    }
 
     this.bootstrapping = (async () => {
-      const bridge = this.createBridge();
+      const bridge = this.bridge?.alive ? this.bridge : this.createBridge();
       this.bridge = bridge;
-      await bridge.start();
-      const sessionId = this.currentSessionId
-        ? await bridge.loadSession(this.currentSessionId)
-        : await bridge.createSession();
+      if (!bridge.alive) {
+        await bridge.start();
+      }
+      let sessionId: string;
+      if (requestedSessionId === null) {
+        sessionId = await bridge.createSession();
+      } else if (requestedSessionId) {
+        sessionId = await bridge.loadSession(requestedSessionId);
+      } else if (this.currentSessionId) {
+        sessionId = await bridge.loadSession(this.currentSessionId);
+      } else {
+        sessionId = await bridge.createSession();
+      }
       if (sessionId !== this.currentSessionId) {
         this.currentSessionId = sessionId;
         this.emit('session', { sessionId });
@@ -193,6 +204,8 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
     } finally {
       this.bootstrapping = null;
     }
+    if (!this.currentSessionId) throw new Error('Codex ACP session is not ready');
+    return this.currentSessionId;
   }
 
   private createBridge(): CodexAcpBridge {
@@ -224,25 +237,19 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
     return bridge;
   }
 
-  private async runPrompt(text: string): Promise<void> {
-    if (!this.currentSessionId) {
-      this.pendingUserMessages.unshift(text);
-      void this.flushQueuedMessages();
-      return;
-    }
-
+  private async runPrompt(text: string, options?: RuntimeSendOptions): Promise<void> {
     this.activePrompt = (async () => {
+      const activeSessionId = await this.ensureSession(options);
       const bridge = this.bridge;
       if (!bridge) throw new Error('Codex ACP bridge is not started');
-      const sessionId = this.currentSessionId;
-      if (!sessionId) throw new Error('Codex ACP session is not ready');
       const prompt = buildCodexPrompt(this.systemPrompt || buildCodexAcpSlockPrompt(this.options), text);
       this.emit('message_sent', {
         type: 'codex_acp_prompt',
-        session_id: sessionId,
+        session_id: activeSessionId,
+        sessionScopeKey: options?.sessionScopeKey,
         promptBytes: Buffer.byteLength(prompt, 'utf-8'),
       });
-      const result = await bridge.prompt(sessionId, prompt);
+      const result = await bridge.prompt(activeSessionId, prompt);
       this.emit('stream_event', this.buildResultEvent(result));
     })();
 
