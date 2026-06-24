@@ -33,7 +33,7 @@ export class WebSocketManager extends EventEmitter {
   private _connected = false;
   private lastEventCursor = 0;
 
-  constructor(private credential: Credential) {
+  constructor(private credential: Credential, private options: { daemonId?: string } = {}) {
     super();
   }
 
@@ -49,7 +49,7 @@ export class WebSocketManager extends EventEmitter {
       return;
     }
 
-    const connectUrl = appendEventCursor(wsUrl, this.lastEventCursor);
+    const connectUrl = appendDaemonConnectionParams(wsUrl, this.lastEventCursor, this.options.daemonId);
     console.log(`[WS] Connecting to ${connectUrl}...`);
 
     this.ws = new WebSocket(connectUrl, {
@@ -225,11 +225,12 @@ function eventFromRawPayload(value: unknown): WebSocketManagerEvent[] {
   return [];
 }
 
-function appendEventCursor(wsUrl: string, cursor: number): string {
-  if (!cursor || cursor <= 0) return wsUrl;
+export function appendDaemonConnectionParams(wsUrl: string, cursor: number, daemonId?: string): string {
+  if ((!cursor || cursor <= 0) && !daemonId) return wsUrl;
   try {
     const url = new URL(wsUrl);
-    url.searchParams.set('eventLogCursor', String(cursor));
+    if (cursor && cursor > 0) url.searchParams.set('eventLogCursor', String(cursor));
+    if (daemonId) url.searchParams.set('daemonId', daemonId);
     return url.toString();
   } catch {
     return wsUrl;

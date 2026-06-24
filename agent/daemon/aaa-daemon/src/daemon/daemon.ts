@@ -93,6 +93,7 @@ export interface TaskRunLifecycleReport {
   agentId: string;
   taskRunId: string;
   status: 'dispatched' | 'running' | 'completed' | 'failed' | 'cancelled';
+  workspaceId?: string;
   runtimeSessionId?: string;
   workspaceSessionId?: string;
   contextSessionId?: string;
@@ -318,6 +319,7 @@ export class DaemonCore extends EventEmitter {
         agentId: runtime.agentId,
         taskRunId: message.taskRunId,
         status: 'dispatched',
+        workspaceId: runtime.workspaceId,
         runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
         contextSessionId: message.contextSessionId,
       });
@@ -347,6 +349,7 @@ export class DaemonCore extends EventEmitter {
           agentId: runtime.agentId,
           taskRunId: message.taskRunId,
           status: 'running',
+          workspaceId: runtime.workspaceId,
           runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
           contextSessionId: message.contextSessionId,
         });
@@ -496,7 +499,7 @@ export class DaemonCore extends EventEmitter {
     }
 
     // 5. Start WebSocket
-    this.wsManager = new WebSocketManager(this.credential);
+    this.wsManager = new WebSocketManager(this.credential, { daemonId: this.daemonId });
     this.wsManager.on('event', (event) => {
       this.emit('daemon_event', event);
       this.log(`WS event: ${event.type}`, 'debug');
@@ -957,10 +960,27 @@ export class DaemonCore extends EventEmitter {
       // would otherwise flood the timeline with Thinking/Output entries.
       if (runtime.ready) {
         if (runtime.activeTaskRunId && eventType === 'user') {
-          runtime.activeTaskRunToolResultCount += countToolResults(event);
+          const toolResultCount = countToolResults(event);
+          runtime.activeTaskRunToolResultCount += toolResultCount;
           const outputMessageId = extractTaskRunOutputMessageIdFromEvent(event);
           if (outputMessageId) {
             runtime.activeTaskRunOutputMessageId = outputMessageId;
+          }
+          if (toolResultCount > 0 || outputMessageId) {
+            void this.reportTaskRunLifecycle({
+              agentId,
+              taskRunId: runtime.activeTaskRunId,
+              status: 'running',
+              workspaceId: runtime.workspaceId,
+              runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
+              contextSessionId: runtime.activeTaskRunContextSessionId,
+              contextUsage: runtime.lastTurnContextUsage,
+              toolUsageSummary: {
+                toolUseCount: runtime.activeTaskRunToolUseCount,
+                toolResultCount: runtime.activeTaskRunToolResultCount,
+              },
+              outputMessageId: runtime.activeTaskRunOutputMessageId,
+            });
           }
         }
         if (eventType === 'assistant' && runtime.activityTurnState !== 'thinking') {
@@ -985,12 +1005,14 @@ export class DaemonCore extends EventEmitter {
           });
         }
         if (eventType === 'assistant') {
+          let toolUseRecorded = false;
           for (const block of getContentBlocks(event)) {
             if (block.type !== 'tool_use' || typeof block.id !== 'string') continue;
             if (runtime.recordedToolUseIds.has(block.id)) continue;
             runtime.recordedToolUseIds.add(block.id);
             if (runtime.activeTaskRunId) {
               runtime.activeTaskRunToolUseCount += 1;
+              toolUseRecorded = true;
             }
             runtime.activityTurnState = 'output';
             const name = typeof block.name === 'string' ? block.name : 'tool';
@@ -999,6 +1021,22 @@ export class DaemonCore extends EventEmitter {
             void this.reportRuntimeActivity(runtime, 'runtime_output', `Ran ${name}`, {
               toolName: name,
               commandPreview: cmd,
+            });
+          }
+          if (toolUseRecorded && runtime.activeTaskRunId) {
+            void this.reportTaskRunLifecycle({
+              agentId,
+              taskRunId: runtime.activeTaskRunId,
+              status: 'running',
+              workspaceId: runtime.workspaceId,
+              runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
+              contextSessionId: runtime.activeTaskRunContextSessionId,
+              contextUsage: runtime.lastTurnContextUsage,
+              toolUsageSummary: {
+                toolUseCount: runtime.activeTaskRunToolUseCount,
+                toolResultCount: runtime.activeTaskRunToolResultCount,
+              },
+              outputMessageId: runtime.activeTaskRunOutputMessageId,
             });
           }
         }
@@ -1028,6 +1066,7 @@ export class DaemonCore extends EventEmitter {
               agentId,
               taskRunId: runtime.activeTaskRunId,
               status: 'completed',
+              workspaceId: runtime.workspaceId,
               runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
               contextSessionId: runtime.activeTaskRunContextSessionId,
               contextUsage: completionSummary.contextUsage,
@@ -1117,6 +1156,7 @@ export class DaemonCore extends EventEmitter {
           agentId,
           taskRunId: runtime.activeTaskRunId,
           status: 'failed',
+          workspaceId: runtime.workspaceId,
           runtimeSessionId: event.sessionId ?? driver.sessionId ?? runtime.sessionId ?? undefined,
           contextSessionId: runtime.activeTaskRunContextSessionId,
           failureCode: 'RUNTIME_EXITED',
@@ -1154,6 +1194,7 @@ export class DaemonCore extends EventEmitter {
           agentId,
           taskRunId: runtime.activeTaskRunId,
           status: 'failed',
+          workspaceId: runtime.workspaceId,
           runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
           contextSessionId: runtime.activeTaskRunContextSessionId,
           failureCode: 'RUNTIME_ERROR',
@@ -1186,7 +1227,8 @@ export class DaemonCore extends EventEmitter {
     const warmupText = [
       '[event=system.warmup type=system]',
       'This is a startup readiness check, not a user message.',
-      'Run `slock server info` once to confirm Slock connectivity and your agent identity,',
+      `Run \`${runtime.wrapper.bashWrapper} server info\` once to confirm Slock connectivity and your agent identity,`,
+      'Use this exact wrapper path; do not use any globally installed `slock` command for this check.',
       'then stop and wait for real messages. Do not send any chat message during this check.',
     ].join('\n');
     runtime.driver.sendUserMessage(warmupText);
@@ -1210,6 +1252,7 @@ export class DaemonCore extends EventEmitter {
         agentId,
         taskRunId: runtime.activeTaskRunId,
         status: 'cancelled',
+        workspaceId: runtime.workspaceId,
         runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
         contextSessionId: runtime.activeTaskRunContextSessionId,
         failureCode: 'RUNTIME_STOPPED',
@@ -1551,6 +1594,7 @@ export class DaemonCore extends EventEmitter {
     const serverUrl = this.credential.serverUrl || this.config.serverUrl;
     const body = {
       status: report.status,
+      workspaceId: report.workspaceId,
       runtimeSessionId: report.runtimeSessionId,
       workspaceSessionId: report.workspaceSessionId,
       contextSessionId: report.contextSessionId,
@@ -2103,17 +2147,19 @@ export function buildTaskRunCompletionSummary(
   for (const key of Object.keys(tokenUsage)) {
     if (tokenUsage[key] === undefined) delete tokenUsage[key];
   }
+  const fallbackKnownTokens = sumNumbers(inputTokens, outputTokens);
   const knownTokens = contextUsage?.knownTokens
     ?? numberFrom(resultData.used)
     ?? numberFrom(resultData.totalTokens)
     ?? numberFrom(resultData.total_tokens)
-    ?? totalTokens;
+    ?? fallbackKnownTokens;
   const contextWindow = contextUsage?.contextWindow
     ?? numberFrom(resultData.contextWindow)
     ?? numberFrom(resultData.context_window)
     ?? numberFrom(resultData.size)
     ?? numberFrom(providerUsage.contextWindow)
-    ?? numberFrom(providerUsage.context_window);
+    ?? numberFrom(providerUsage.context_window)
+    ?? contextWindowFromModelUsage(resultData.modelUsage);
   const occupancyRatio = contextUsage?.occupancyRatio
     ?? (knownTokens !== undefined && contextWindow !== undefined && contextWindow > 0 ? knownTokens / contextWindow : undefined);
   const contextUsageSummary: Record<string, unknown> = {
@@ -2138,6 +2184,19 @@ export function buildTaskRunCompletionSummary(
 
 function numberFrom(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function contextWindowFromModelUsage(value: unknown): number | undefined {
+  if (!isRecord(value)) return undefined;
+  const modelNames = Object.keys(value);
+  for (const name of modelNames) {
+    if (name === 'total') continue;
+    const entry = isRecord(value[name]) ? value[name] : undefined;
+    const contextWindow = numberFrom(entry?.contextWindow) ?? numberFrom(entry?.context_window);
+    if (contextWindow !== undefined) return contextWindow;
+  }
+  const total = isRecord(value.total) ? value.total : undefined;
+  return numberFrom(total?.contextWindow) ?? numberFrom(total?.context_window);
 }
 
 function sumNumbers(...values: Array<number | undefined>): number | undefined {

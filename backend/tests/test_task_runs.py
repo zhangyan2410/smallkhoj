@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from datetime import datetime, timedelta, timezone
 import uuid
 
 import pytest
@@ -254,9 +255,71 @@ async def test_update_task_run_lifecycle_marks_running_with_context_usage():
     assert updated is run
     assert run.status == "running"
     assert run.started_at is not None
+    assert run.started_at.tzinfo == timezone.utc
+    assert run.updated_at.tzinfo == timezone.utc
     assert run.completed_at is None
     assert run.runtime_session_id == "provider-session-1"
     assert run.context_usage["occupancyRatio"] == 0.52
+    assert db.flushed is True
+
+
+@pytest.mark.asyncio
+async def test_update_task_run_lifecycle_backfills_workspace_from_report():
+    run_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    workspace_id = uuid.uuid4()
+    computer_id = uuid.uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        agent_id=agent_id,
+        status="queued",
+        runtime_workspace_id=None,
+        computer_id=None,
+        runtime=None,
+        runtime_provider=None,
+        runtime_model=None,
+        workspace_session_id=None,
+        cwd=None,
+        runtime_session_id=None,
+        context_session_id="context-session",
+        context_usage={},
+        token_usage={},
+        tool_usage_summary={},
+        output_message_id=None,
+        failure_code=None,
+        failure_reason=None,
+        started_at=None,
+        completed_at=None,
+        updated_at=None,
+    )
+    workspace = SimpleNamespace(
+        id=workspace_id,
+        agent_id=agent_id,
+        computer_id=computer_id,
+        runtime="claude_code",
+        runtime_provider="MiniMax",
+        runtime_model="MiniMax-M3",
+        session_id="workspace-session",
+        cwd="/tmp/work",
+    )
+    db = _FakeSession(_ExecuteResult(run), _ExecuteResult(workspace))
+
+    updated = await update_task_run_lifecycle(
+        db,
+        run_id=run_id,
+        agent_id=agent_id,
+        status="running",
+        workspace_id=workspace_id,
+    )
+
+    assert updated is run
+    assert run.runtime_workspace_id == workspace_id
+    assert run.computer_id == computer_id
+    assert run.runtime == "claude_code"
+    assert run.runtime_provider == "MiniMax"
+    assert run.runtime_model == "MiniMax-M3"
+    assert run.workspace_session_id == "workspace-session"
+    assert run.cwd == "/tmp/work"
     assert db.flushed is True
 
 
@@ -298,6 +361,9 @@ async def test_update_task_run_lifecycle_marks_completed_with_token_and_output_e
     assert run.status == "completed"
     assert run.started_at is not None
     assert run.completed_at is not None
+    assert run.started_at.tzinfo == timezone.utc
+    assert run.completed_at.tzinfo == timezone.utc
+    assert run.updated_at.tzinfo == timezone.utc
     assert run.token_usage["inputTokens"] == 100
     assert run.tool_usage_summary["calls"] == 2
     assert run.output_message_id == output_message_id
@@ -496,6 +562,58 @@ def test_serialize_completed_task_run_classifies_missing_evidence():
         "TASK_RUN_CONTEXT_USAGE_MISSING",
         "TASK_RUN_TOOL_USAGE_MISSING",
     ]
+
+
+def test_serialize_running_task_run_surfaces_pending_result_staleness():
+    run_id = uuid.uuid4()
+    task_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    stale_at = datetime.utcnow() - timedelta(minutes=8)
+    run = SimpleNamespace(
+        id=run_id,
+        task_id=task_id,
+        assignment_id=None,
+        agent_id=agent_id,
+        channel_id=uuid.uuid4(),
+        source_message_id=None,
+        thread_root_message_id=None,
+        parent_run_id=None,
+        attempt=1,
+        status="running",
+        trigger_type="task_created",
+        runtime_workspace_id=uuid.uuid4(),
+        computer_id=uuid.uuid4(),
+        daemon_id=None,
+        runtime="claude_code",
+        runtime_provider="MiniMax",
+        runtime_model="MiniMax-M3",
+        prompt_profile="task.worker",
+        workspace_session_id="workspace-session",
+        runtime_session_id="provider-session",
+        context_session_id=f"task:{task_id}:role:worker:run:{run_id}",
+        cwd="/tmp/work",
+        context_scope="task",
+        context_summary={},
+        context_usage={},
+        token_usage={},
+        tool_usage_summary={},
+        output_message_id=None,
+        failure_code=None,
+        failure_reason=None,
+        started_at=stale_at,
+        completed_at=None,
+        created_at=stale_at,
+        updated_at=stale_at,
+    )
+
+    payload = serialize_task_run(run)
+
+    assert payload["progressState"] == "working"
+    assert payload["progressLabel"] == "running_result_pending"
+    assert payload["stale"] is True
+    assert payload["runtimePendingMs"] >= 8 * 60 * 1000
+    assert payload["lastUpdateAgeMs"] >= 8 * 60 * 1000
+    assert payload["evidenceIssues"] == ["TASK_RUN_RESULT_PENDING"]
 
 
 def test_serialize_completed_task_run_classifies_missing_context_window():

@@ -10,6 +10,7 @@ import routers.public_api as public_api
 from routers.agent_api import (
     ACTIVITY_EVENT_TYPES,
     _apply_agent_status_transition,
+    _apply_daemon_ws_activity,
     _daemon_lease_conflicts,
     _daemon_shutdown_can_release,
 )
@@ -594,6 +595,34 @@ def test_daemon_shutdown_only_releases_matching_active_daemon():
 
     assert _daemon_shutdown_can_release(computer, "new-daemon") is True
     assert _daemon_shutdown_can_release(computer, "old-daemon") is False
+
+
+def test_daemon_ws_activity_does_not_extend_conflicting_active_lease():
+    now = datetime.now(timezone.utc)
+    computer = _computer(
+        active_daemon_id="old-daemon",
+        lease_expires_at=now + timedelta(seconds=30),
+    )
+
+    updated = _apply_daemon_ws_activity(computer, "new-daemon", now)
+
+    assert updated is False
+    assert computer.active_daemon_id == "old-daemon"
+    assert computer.daemon_lease_expires_at == now + timedelta(seconds=30)
+
+
+def test_daemon_ws_activity_can_take_over_expired_lease():
+    now = datetime.now(timezone.utc)
+    computer = _computer(
+        active_daemon_id="old-daemon",
+        lease_expires_at=now - timedelta(seconds=1),
+    )
+
+    updated = _apply_daemon_ws_activity(computer, "new-daemon", now)
+
+    assert updated is True
+    assert computer.active_daemon_id == "new-daemon"
+    assert computer.daemon_lease_expires_at == now + timedelta(seconds=90)
 
 
 def test_workspace_heartbeat_does_not_create_event_record_type():

@@ -34,7 +34,8 @@ export interface ClaudeUserMessagePayload {
   session_id?: string;
 }
 
-export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath'>): string {
+export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath'> & Partial<Pick<ClaudeRuntimeOptions, 'wrapperDir'>>): string {
+  const wrapperCommand = options.wrapperDir ? join(options.wrapperDir, 'slock') : 'slock';
   return [
     'You are an AI agent in Slock — a collaborative platform for human-AI collaboration, serving as a shared message service for humans and agents who may be running on different computers.',
     '',
@@ -52,7 +53,7 @@ export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'cred
     '',
     '## Communication — slock CLI ONLY',
     '',
-    'Use the `slock` CLI for chat / task / attachment operations. The daemon injects a local `slock` wrapper into PATH for you. Use ONLY these commands for communication:',
+    `Use the Slock CLI wrapper at \`${wrapperCommand}\` for chat / task / attachment operations. The daemon also tries to inject this wrapper into PATH as \`slock\`, but if bare \`slock\` resolves to another executable or reports \`MISSING_TOKEN\`, retry with the exact wrapper path. Use ONLY these commands for communication:`,
     '',
     '1. **`slock message check`** — Non-blocking check for new messages. Use freely during work — at natural breakpoints or after notifications.',
     '2. **`slock message send`** — Send a message to a channel or DM.',
@@ -355,6 +356,7 @@ export function writeSlockSystemPromptFile(options: Pick<ClaudeRuntimeOptions, '
   writeFileSync(promptFile, buildSlockSystemPrompt({
     credential: options.credential,
     workspacePath: options.workspacePath,
+    wrapperDir: options.wrapperDir,
   }), 'utf-8');
   return promptFile;
 }

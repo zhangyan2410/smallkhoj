@@ -92,6 +92,7 @@ class TaskUpdateRequest(BaseModel):
 
 class TaskRunLifecycleRequest(BaseModel):
     status: str
+    workspaceId: str | None = None
     runtimeSessionId: str | None = None
     workspaceSessionId: str | None = None
     contextSessionId: str | None = None
@@ -192,6 +193,19 @@ def _daemon_lease_conflicts(computer: Computer, daemon_id: str | None, now: date
 
 def _daemon_shutdown_can_release(computer: Computer, daemon_id: str | None) -> bool:
     return not computer.active_daemon_id or not daemon_id or computer.active_daemon_id == daemon_id
+
+
+def _apply_daemon_ws_activity(computer: Computer, daemon_id: str | None, now: datetime) -> bool:
+    if daemon_id and _daemon_lease_conflicts(computer, daemon_id, now):
+        return False
+    if not daemon_id and _lease_active(computer, now):
+        return False
+    computer.last_heartbeat_at = now
+    computer.status = "online"
+    if daemon_id:
+        computer.active_daemon_id = daemon_id
+    computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
+    return True
 
 
 def _new_machine_token() -> str:
@@ -1687,6 +1701,7 @@ async def daemon_websocket(
 
     await websocket.accept()
     raw_cursor = websocket.query_params.get("eventLogCursor") or websocket.query_params.get("activityCursor")
+    daemon_id = websocket.query_params.get("daemonId")
     event_cursor = await initial_daemon_event_cursor(db, server_id=server.id, raw_cursor=raw_cursor)
     daemon_control_hub.add(computer.id, websocket, event_cursor)
     try:
@@ -1711,10 +1726,8 @@ async def daemon_websocket(
             message_type = message.get("type") if isinstance(message, dict) else None
             if message_type in {"activity", "ack"}:
                 now = _utcnow_aware()
-                computer.last_heartbeat_at = now
-                computer.status = "online"
-                computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
-                await db.commit()
+                if _apply_daemon_ws_activity(computer, daemon_id, now):
+                    await db.commit()
     except WebSocketDisconnect:
         pass
     finally:
@@ -3953,6 +3966,13 @@ async def update_task_run_lifecycle_endpoint(
             output_message_id = uuid.UUID(body.outputMessageId)
         except ValueError:
             raise HTTPException(400, "Invalid outputMessageId")
+    workspace_id = None
+    body_workspace_id = getattr(body, "workspaceId", None)
+    if body_workspace_id:
+        try:
+            workspace_id = uuid.UUID(body_workspace_id)
+        except ValueError:
+            raise HTTPException(400, "Invalid workspaceId")
 
     try:
         run = await update_task_run_lifecycle(
@@ -3960,6 +3980,7 @@ async def update_task_run_lifecycle_endpoint(
             run_id=parsed_run_id,
             agent_id=member.id,
             status=body.status,
+            workspace_id=workspace_id,
             runtime_session_id=body.runtimeSessionId,
             workspace_session_id=body.workspaceSessionId,
             context_session_id=body.contextSessionId,

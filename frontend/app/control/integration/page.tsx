@@ -87,6 +87,10 @@ type TaskRun = {
   progressState?: string | null
   progressLabel?: string | null
   evidenceIssues?: string[]
+  runtimePendingMs?: number | null
+  lastUpdateAgeMs?: number | null
+  staleAfterMs?: number | null
+  stale?: boolean | null
   startedAt?: string | null
   completedAt?: string | null
   createdAt?: string | null
@@ -178,6 +182,7 @@ function issueLabel(code: string) {
     TASK_RUN_TOKEN_USAGE_MISSING: "缺少 token 统计",
     TASK_RUN_TOOL_USAGE_MISSING: "缺少工具统计",
     TASK_RUN_ACTIVITY_MISSING: "缺少 runtime 活动",
+    TASK_RUN_RESULT_PENDING: "缺少结束结果",
     RUNTIME_STALL_TIMEOUT: "runtime 静默超时",
     RUNTIME_RESULT_MISSING: "缺少 runtime 结果",
   }
@@ -189,7 +194,9 @@ function progressLabel(run: TaskRun) {
   const labels: Record<string, string> = {
     queued: "等待投递",
     dispatched_runtime_activity_required: "已投递，等待 runtime 活动证据",
+    dispatched_activity_missing: "已投递，但长时间没有 runtime 活动",
     running: "runtime 正在处理",
+    running_result_pending: "运行较久，等待 runtime 结果",
     awaiting_input: "等待人类输入",
     completed: "已完成",
     completed_missing_evidence: "已完成，但证据不完整",
@@ -209,6 +216,19 @@ function durationLabel(start?: string | null, end?: string | null) {
   const minutes = Math.floor(seconds / 60)
   const rest = seconds % 60
   return rest ? `${minutes}m ${rest}s` : `${minutes}m`
+}
+
+function durationMsLabel(value?: number | null) {
+  const n = asNumber(value)
+  if (n === undefined) return null
+  const seconds = Math.round(n / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  if (minutes < 60) return rest ? `${minutes}m ${rest}s` : `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const minuteRest = minutes % 60
+  return minuteRest ? `${hours}h ${minuteRest}m` : `${hours}h`
 }
 
 function basename(path?: string | null) {
@@ -486,6 +506,8 @@ function RunRow({
   computers: Computer[]
 }) {
   const duration = durationLabel(run.startedAt, run.completedAt)
+  const runtimePending = durationMsLabel(run.runtimePendingMs)
+  const lastUpdateAge = durationMsLabel(run.lastUpdateAgeMs)
   const started = run.startedAt ? formatTime(run.startedAt) : "未开始"
   const completed = run.completedAt ? formatTime(run.completedAt) : null
   const failure = hideTechnicalStrings(run.failureReason || run.failureCode)
@@ -493,7 +515,7 @@ function RunRow({
   const hasRawDetails = run.runtimeSessionId || run.workspaceSessionId || run.contextSessionId || run.cwd || run.daemonId
 
   return (
-    <div className={cn("rounded-md border p-3", runAccent(run.status))}>
+    <div className={cn("rounded-md border p-3", run.stale ? "border-amber-200 bg-amber-50/70" : runAccent(run.status))}>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -528,7 +550,8 @@ function RunRow({
         <div className="flex flex-wrap gap-1.5">
           <EvidenceBadge label="开始" value={started} />
           <EvidenceBadge label="结束" value={completed ?? "未结束"} tone={completed ? "good" : "warn"} />
-          <EvidenceBadge label="耗时" value={duration ?? "未形成"} tone={duration ? "good" : "warn"} />
+          <EvidenceBadge label="耗时" value={duration ?? runtimePending ?? "未形成"} tone={duration ? "good" : run.stale ? "warn" : "neutral"} />
+          {lastUpdateAge && <EvidenceBadge label="最后更新" value={`${lastUpdateAge} 前`} tone={run.stale ? "warn" : "neutral"} />}
           <EvidenceBadge label="输出" value={run.outputMessageId ? "已有消息" : "未记录"} tone={run.outputMessageId ? "good" : "warn"} />
         </div>
         <UsageSummary run={run} />

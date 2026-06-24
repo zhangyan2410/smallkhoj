@@ -1,7 +1,7 @@
 """Slock data models — Phase 1 core tables."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger, Boolean, CheckConstraint, Column, DateTime, ForeignKey,
@@ -14,7 +14,7 @@ from .base import Base
 
 
 def _utcnow():
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 # ── Servers ──────────────────────────────────────────────────

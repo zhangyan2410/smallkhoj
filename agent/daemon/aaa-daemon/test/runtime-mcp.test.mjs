@@ -27,7 +27,7 @@ import {
   parseDaemonControlCommand,
   selectRuntimeSessionScope,
 } from '../dist/daemon/daemon.js';
-import { buildAckPayload, buildActivityPayload, parseWebSocketPayload } from '../dist/websocket.js';
+import { appendDaemonConnectionParams, buildAckPayload, buildActivityPayload, parseWebSocketPayload } from '../dist/websocket.js';
 
 const credential = {
   agentId: 'agent-123',
@@ -104,8 +104,9 @@ test('claude args and prompt force slock CLI communication', () => {
   assert.equal(args[args.indexOf('--resume') + 1], 'session-resume-1');
   assert.equal(args.includes('--system-prompt'), false);
 
-  const prompt = buildSlockSystemPrompt({ credential, workspacePath: 'D:/workspace' });
+  const prompt = buildSlockSystemPrompt({ credential, workspacePath: 'D:/workspace', wrapperDir: 'D:/workspace/.slock' });
   assert.match(prompt, /slock CLI ONLY/);
+  assert.match(prompt, /D:\/workspace\/\.slock\/slock/);
   assert.match(prompt, /slock message check/);
   assert.match(prompt, /slock message resolve/);
   assert.match(prompt, /slock server info/);
@@ -622,6 +623,71 @@ test('daemon builds task run completion usage summary from result event', () => 
   assert.equal(summary.outputMessageId, '3a62b890-31c9-433c-9d2d-fb3c763ec1ae');
 });
 
+test('daemon extracts task run context window from model usage entries', () => {
+  const summary = buildTaskRunCompletionSummary(
+    {
+      type: 'result',
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+      },
+      modelUsage: {
+        'MiniMax-M3': {
+          inputTokens: 100,
+          outputTokens: 20,
+          contextWindow: 200000,
+        },
+        total: {
+          inputTokens: 100,
+          outputTokens: 20,
+        },
+      },
+    },
+    undefined,
+    {
+      toolUseCount: 1,
+      toolResultCount: 1,
+    },
+  );
+
+  assert.equal(summary.contextUsage.knownTokens, 120);
+  assert.equal(summary.contextUsage.contextWindow, 200000);
+  assert.equal(summary.contextUsage.occupancyRatio, 120 / 200000);
+});
+
+test('daemon excludes cache reads from fallback task run context occupancy', () => {
+  const summary = buildTaskRunCompletionSummary(
+    {
+      type: 'result',
+      usage: {
+        input_tokens: 14322,
+        output_tokens: 4754,
+        cache_read_input_tokens: 329856,
+      },
+      modelUsage: {
+        'MiniMax-M3': {
+          contextWindow: 200000,
+        },
+      },
+    },
+    {
+      source: 'provider-stream-json',
+      inputTokens: 14322,
+      outputTokens: 4754,
+      cacheReadInputTokens: 329856,
+    },
+    {
+      toolUseCount: 13,
+      toolResultCount: 13,
+    },
+  );
+
+  assert.equal(summary.tokenUsage.totalTokens, 348932);
+  assert.equal(summary.contextUsage.knownTokens, 19076);
+  assert.equal(summary.contextUsage.contextWindow, 200000);
+  assert.equal(summary.contextUsage.occupancyRatio, 19076 / 200000);
+});
+
 test('daemon normalizes dotted task events from backend payloads', () => {
   const message = normalizeRuntimeIncomingMessage({
     type: 'task.claimed',
@@ -779,6 +845,13 @@ test('websocket helpers classify messages and build ack/activity payloads', () =
   assert.equal(activity.type, 'activity');
   assert.equal(activity.status, 'active');
   assert.match(activity.at, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('websocket helper appends daemon id and event cursor to connection URL', () => {
+  assert.equal(
+    appendDaemonConnectionParams('ws://127.0.0.1:8000/internal/agent-api/ws', 42, 'daemon-123'),
+    'ws://127.0.0.1:8000/internal/agent-api/ws?eventLogCursor=42&daemonId=daemon-123',
+  );
 });
 
 test('websocket helpers accept dotted message and task event names', () => {

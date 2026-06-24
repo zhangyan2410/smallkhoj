@@ -1,7 +1,7 @@
 """Task assignment and TaskRun helpers."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -13,6 +13,7 @@ from models import AgentWorkspace, Member, Task, TaskAssignment, TaskRun
 RUN_READY_WORKSPACE_STATUSES = {"running", "active", "idle", "busy"}
 TASK_RUN_STATUSES = {"queued", "dispatched", "running", "awaiting_input", "completed", "failed", "cancelled"}
 TERMINAL_TASK_RUN_STATUSES = {"completed", "failed", "cancelled"}
+TASK_RUN_STALE_AFTER_MS = 5 * 60 * 1000
 
 
 def _as_uuid(value: Any) -> uuid.UUID | None:
@@ -137,6 +138,7 @@ async def update_task_run_lifecycle(
     run_id: uuid.UUID,
     agent_id: uuid.UUID,
     status: str,
+    workspace_id: uuid.UUID | None = None,
     runtime_session_id: str | None = None,
     workspace_session_id: str | None = None,
     context_session_id: str | None = None,
@@ -160,7 +162,7 @@ async def update_task_run_lifecycle(
     if run is None:
         return None
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     run.status = status
     if status == "running" and not run.started_at:
         run.started_at = now
@@ -169,6 +171,24 @@ async def update_task_run_lifecycle(
             run.started_at = now
         if not run.completed_at:
             run.completed_at = now
+
+    if workspace_id is not None:
+        workspace_result = await db.execute(
+            select(AgentWorkspace).where(
+                AgentWorkspace.id == workspace_id,
+                AgentWorkspace.agent_id == agent_id,
+            )
+        )
+        workspace = workspace_result.scalar_one_or_none()
+        if workspace is not None:
+            run.runtime_workspace_id = workspace.id
+            run.computer_id = getattr(workspace, "computer_id", None)
+            run.runtime = getattr(workspace, "runtime", None)
+            run.runtime_provider = getattr(workspace, "runtime_provider", None)
+            run.runtime_model = getattr(workspace, "runtime_model", None)
+            if run.workspace_session_id is None:
+                run.workspace_session_id = getattr(workspace, "session_id", None)
+            run.cwd = getattr(workspace, "cwd", None)
 
     if runtime_session_id is not None:
         run.runtime_session_id = runtime_session_id
@@ -204,6 +224,40 @@ def _uuid(value: Any) -> str | None:
 
 def _number(value: Any) -> int | float | None:
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _now_for(value: datetime | None) -> datetime:
+    return datetime.now(value.tzinfo) if value and value.tzinfo else datetime.now(timezone.utc)
+
+
+def _datetime_for_comparison(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _elapsed_ms(start: datetime | None, end: datetime | None = None) -> int | None:
+    if not start:
+        return None
+    start = _datetime_for_comparison(start)
+    effective_end = end or _now_for(start)
+    effective_end = _datetime_for_comparison(effective_end)
+    elapsed = int((effective_end - start).total_seconds() * 1000)
+    return elapsed if elapsed >= 0 else None
+
+
+def _run_timing(run: TaskRun) -> dict[str, Any]:
+    status = getattr(run, "status", None)
+    in_flight = status in {"dispatched", "running", "awaiting_input"}
+    runtime_pending_ms = _elapsed_ms(getattr(run, "started_at", None)) if in_flight else None
+    last_update_age_ms = _elapsed_ms(getattr(run, "updated_at", None)) if in_flight else None
+    stale = bool(in_flight and last_update_age_ms is not None and last_update_age_ms >= TASK_RUN_STALE_AFTER_MS)
+    return {
+        "runtimePendingMs": runtime_pending_ms,
+        "lastUpdateAgeMs": last_update_age_ms,
+        "staleAfterMs": TASK_RUN_STALE_AFTER_MS,
+        "stale": stale,
+    }
 
 
 def _usage_summary(run: TaskRun) -> dict[str, Any]:
@@ -249,13 +303,15 @@ def _usage_summary(run: TaskRun) -> dict[str, Any]:
     }
 
 
-def _evidence_issues(run: TaskRun, usage: dict[str, Any]) -> list[str]:
+def _evidence_issues(run: TaskRun, usage: dict[str, Any], timing: dict[str, Any]) -> list[str]:
     issues: list[str] = []
     status = getattr(run, "status", None)
     if not getattr(run, "runtime_workspace_id", None):
         issues.append("TASK_RUN_WORKSPACE_MISSING")
     if status in {"dispatched", "running", "awaiting_input", "completed"} and not getattr(run, "runtime_session_id", None):
         issues.append("TASK_RUN_RUNTIME_NOT_READY")
+    if status in {"dispatched", "running"} and timing.get("stale"):
+        issues.append("TASK_RUN_RESULT_PENDING")
     if status == "completed" and not getattr(run, "output_message_id", None):
         issues.append("TASK_RUN_OUTPUT_MISSING")
     if status == "completed" and usage.get("totalTokens") is None:
@@ -270,13 +326,17 @@ def _evidence_issues(run: TaskRun, usage: dict[str, Any]) -> list[str]:
     return issues
 
 
-def _progress_state(run: TaskRun, issues: list[str]) -> tuple[str, str]:
+def _progress_state(run: TaskRun, issues: list[str], timing: dict[str, Any]) -> tuple[str, str]:
     status = getattr(run, "status", None)
     if status == "queued":
         return "waiting", "queued"
     if status == "dispatched":
+        if timing.get("stale"):
+            return "working", "dispatched_activity_missing"
         return "working", "dispatched_runtime_activity_required"
     if status == "running":
+        if timing.get("stale"):
+            return "working", "running_result_pending"
         return "working", "running"
     if status == "awaiting_input":
         return "waiting", "awaiting_input"
@@ -291,8 +351,9 @@ def _progress_state(run: TaskRun, issues: list[str]) -> tuple[str, str]:
 
 def serialize_task_run(run: TaskRun) -> dict[str, Any]:
     usage_summary = _usage_summary(run)
-    evidence_issues = _evidence_issues(run, usage_summary)
-    progress_state, progress_label = _progress_state(run, evidence_issues)
+    timing = _run_timing(run)
+    evidence_issues = _evidence_issues(run, usage_summary, timing)
+    progress_state, progress_label = _progress_state(run, evidence_issues, timing)
     return {
         "id": str(run.id),
         "taskId": str(run.task_id),
@@ -328,6 +389,10 @@ def serialize_task_run(run: TaskRun) -> dict[str, Any]:
         "progressState": progress_state,
         "progressLabel": progress_label,
         "evidenceIssues": evidence_issues,
+        "runtimePendingMs": timing["runtimePendingMs"],
+        "lastUpdateAgeMs": timing["lastUpdateAgeMs"],
+        "staleAfterMs": timing["staleAfterMs"],
+        "stale": timing["stale"],
         "startedAt": _iso(run.started_at),
         "completedAt": _iso(run.completed_at),
         "createdAt": _iso(run.created_at),

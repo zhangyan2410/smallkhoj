@@ -313,6 +313,13 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
   - runtime activity remains ActivityLog/trace telemetry; do not create a separate runtime-activity table for TaskRun rows.
   - daemon-owned TaskRun lifecycle reports may update `tokenUsage`, `contextUsage`, `toolUsageSummary`, and `outputMessageId` on the existing TaskRun.
   - completed runs with missing output/token/context/tool evidence must be classified by the API serializer so `/control/integration` can show a concise human-readable gate result.
+  - `tokenUsage.totalTokens` may include `cacheReadInputTokens` because it is billing/usage evidence.
+  - `contextUsage.knownTokens` and `contextUsage.occupancyRatio` must not fall back to cache-inclusive totals. If no runtime usage event reports active context directly, use `inputTokens + outputTokens` as the fallback known-token value, then divide by `contextWindow`.
+  - `contextWindow` may arrive through provider-specific `modelUsage.{model}.contextWindow`; prefer non-`total` model entries before aggregate `total`.
+- Daemon launch / lease preflight:
+  - daemon WebSocket URLs must include `daemonId`; backend WS activity/acks may renew a computer lease only when the daemon id matches the active lease or the previous lease is expired.
+  - managed daemon starts must resolve the intended project workspace explicitly. A daemon launched from `agent/daemon/aaa-daemon` without `--workspace` can create a misleading package-directory workspace and must be treated as a launch/preflight failure for packaged flows.
+  - runtime warmup must call the generated project wrapper path such as `{workspace}/.slock/slock server info`, not a global `slock` binary on `PATH`.
 - Lifecycle:
   - busy means a child process is running.
   - queued Slock events must flush only after a terminal child exit or semantic completion.
@@ -327,6 +334,9 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - child stalls past configured timeout -> emit liveness warning, then terminate according to daemon stall policy.
 - resume fails because session id is invalid/missing -> classify as session-continuity failure and start a new session only if the control-plane policy allows it.
 - MCP server config cannot be resolved -> continue without that MCP server only if Slock CLI communication still works; otherwise fail closed.
+- conflicting daemon WS activity while an unexpired lease belongs to another daemon -> do not extend the old lease; leave takeover to lease expiry or explicit replacement policy.
+- generated Slock wrapper is missing or shadowed by a global CLI during warmup -> fail/degrade with a wrapper/preflight diagnostic; do not report runtime ready as if Slock connectivity was proven.
+- TaskRun completion has token usage and a context window but only cache-inclusive totals -> keep `totalTokens` visible, but classify context occupancy from non-cache active tokens; do not raise a context-risk warning from cache reads alone.
 
 ### 5. Good/Base/Bad Cases
 
@@ -334,6 +344,8 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - Base: Codex emits command/tool JSONL and a final answer but no token usage; daemon still records the session id and stream events, with usage omitted.
 - Bad: daemon passes the full Slock event body as a command-line argument; other local processes can inspect it through process listings.
 - Bad: daemon rewrites `~/.codex/config.toml` to add MCP or developer instructions; concurrent user Codex sessions inherit the wrong agent identity.
+- Bad: TaskRun context pressure shows 174% because `cacheReadInputTokens` was added to `knownTokens`; this confuses billing/cache reuse with current context occupancy.
+- Bad: a newly started daemon without the correct `daemonId` in WS activity keeps renewing an old daemon lease and prevents the real runtime workspace from taking over.
 
 ### 6. Tests Required
 
@@ -638,6 +650,13 @@ For product-facing runtime/control-plane changes, also use the task-local Real T
   - assert raw and JSON-RPC WebSocket message events normalize to daemon message events
   - assert ack and activity payload builders preserve message id/seq where present
   - assert `thread.summary_requested` is classified as a runtime event and formatted with target/thread context
+  - assert WebSocket connection URLs append `daemonId` and the event cursor
+  - assert backend WS activity from a conflicting daemon id does not extend an unexpired active lease
+  - assert backend WS activity may take over after the previous daemon lease expires
+- TaskRun observability tests:
+  - assert completion summaries can extract `contextWindow` from `modelUsage.{model}.contextWindow`
+  - assert fallback context occupancy excludes `cacheReadInputTokens` while preserving cache reads in `tokenUsage`
+  - assert lifecycle reports with `workspaceId` backfill runtime workspace/computer/session fields on the TaskRun
   - assert raw `control` payloads and JSON-RPC `daemon.command.*` payloads classify as control events and preserve command type, agent id, workspace id, and runtime config
   - assert backend daemon WS sends committed `message.created` records to connected computer peers with `agentId`/`targetAgentId` set to the receiving agent, and advances its per-connection event cursor past invisible events
   - assert daemon heartbeat for an existing workspace updates state without writing `ActivityLog(kind="workspace_heartbeat")` or `EventRecord(event_type="workspace.heartbeat")`.
