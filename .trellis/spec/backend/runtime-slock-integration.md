@@ -309,6 +309,10 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
   - `item.completed` for `command_execution` / `mcp_tool_call` -> tool-result telemetry.
   - `turn.completed.usage` -> token/cache/context accounting when present.
   - raw JSONL must be archived or traceable with sensitive tokens redacted.
+- TaskRun completion observability:
+  - runtime activity remains ActivityLog/trace telemetry; do not create a separate runtime-activity table for TaskRun rows.
+  - daemon-owned TaskRun lifecycle reports may update `tokenUsage`, `contextUsage`, `toolUsageSummary`, and `outputMessageId` on the existing TaskRun.
+  - completed runs with missing output/token/context/tool evidence must be classified by the API serializer so `/control/integration` can show a concise human-readable gate result.
 - Lifecycle:
   - busy means a child process is running.
   - queued Slock events must flush only after a terminal child exit or semantic completion.
@@ -390,7 +394,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
   - `agent_message_chunk` -> message delta telemetry.
   - `tool_call` -> tool-use telemetry.
   - `tool_call_update` terminal statuses -> tool-result telemetry.
-  - `usage_update` -> token/context accounting once wired.
+  - `usage_update` -> token/context accounting; preserve `used` and `size` so TaskRun summaries can compute context occupancy when a window is available.
 - `session/new` creates a new runtime session; `session/load` restores an existing runtime session. A failed load must be surfaced as a session-continuity error, not silently converted to a new session.
 - MCP servers are passed to ACP `session/new` / `session/load`, so session-scoped headers such as Slock/session tokens belong there, not in global Codex config.
 - Process cleanup must terminate the process group when launched through wrappers such as `npx`, otherwise the smoke can finish the turn but leave the ACP child alive.

@@ -64,9 +64,29 @@ type TaskRun = {
   contextUsage?: Record<string, unknown>
   tokenUsage?: Record<string, unknown>
   toolUsageSummary?: Record<string, unknown>
+  usageSummary?: {
+    inputTokens?: number | null
+    outputTokens?: number | null
+    cacheReadInputTokens?: number | null
+    totalTokens?: number | null
+    durationMs?: number | null
+    durationApiMs?: number | null
+    numTurns?: number | null
+    totalCostUsd?: number | null
+    toolCalls?: number | null
+    toolResults?: number | null
+    contextKnownTokens?: number | null
+    contextWindow?: number | null
+    contextSource?: string | null
+    contextOccupancyRatio?: number | null
+    contextOverThreshold?: boolean | null
+  }
   outputMessageId?: string | null
   failureCode?: string | null
   failureReason?: string | null
+  progressState?: string | null
+  progressLabel?: string | null
+  evidenceIssues?: string[]
   startedAt?: string | null
   completedAt?: string | null
   createdAt?: string | null
@@ -146,6 +166,39 @@ function compactNumber(value: unknown) {
   return `${n}`
 }
 
+function issueLabel(code: string) {
+  const labels: Record<string, string> = {
+    TASK_RUN_MISSING: "缺少执行记录",
+    TASK_RUN_TARGET_MISMATCH: "执行目标不匹配",
+    TASK_RUN_WORKSPACE_MISSING: "缺少工作区",
+    TASK_RUN_RUNTIME_NOT_READY: "runtime 未就绪",
+    TASK_RUN_CONTEXT_USAGE_MISSING: "缺少上下文统计",
+    TASK_RUN_CONTEXT_WINDOW_MISSING: "缺少上下文窗口",
+    TASK_RUN_OUTPUT_MISSING: "缺少输出证据",
+    TASK_RUN_TOKEN_USAGE_MISSING: "缺少 token 统计",
+    TASK_RUN_TOOL_USAGE_MISSING: "缺少工具统计",
+    TASK_RUN_ACTIVITY_MISSING: "缺少 runtime 活动",
+    RUNTIME_STALL_TIMEOUT: "runtime 静默超时",
+    RUNTIME_RESULT_MISSING: "缺少 runtime 结果",
+  }
+  return labels[code] ?? hideTechnicalStrings(code)
+}
+
+function progressLabel(run: TaskRun) {
+  const label = run.progressLabel || run.status
+  const labels: Record<string, string> = {
+    queued: "等待投递",
+    dispatched_runtime_activity_required: "已投递，等待 runtime 活动证据",
+    running: "runtime 正在处理",
+    awaiting_input: "等待人类输入",
+    completed: "已完成",
+    completed_missing_evidence: "已完成，但证据不完整",
+    failed: "失败",
+    cancelled: "已取消",
+  }
+  return labels[label] ?? hideTechnicalStrings(label)
+}
+
 function durationLabel(start?: string | null, end?: string | null) {
   if (!start || !end) return null
   const startMs = new Date(start).getTime()
@@ -218,6 +271,7 @@ function runStatusText(status: string) {
 }
 
 function runPhaseText(run: TaskRun) {
+  if (run.progressLabel) return progressLabel(run)
   if (run.status === "queued") return "还没有到达 runtime"
   if (run.status === "dispatched") return "daemon 已收到并尝试投递"
   if (run.status === "running") return "runtime 已开始处理"
@@ -319,7 +373,11 @@ function buildGates({
   const readyWorkspaces = workspaces.filter((item) => ["running", "active", "idle", "busy"].includes(item.status))
   const failedRuns = runs.filter((item) => item.status === "failed")
   const completedRuns = runs.filter((item) => item.status === "completed")
-  const runsWithUsage = runs.filter((item) => Object.keys(item.tokenUsage || {}).length > 0 || Object.keys(item.contextUsage || {}).length > 0)
+  const runsWithUsage = runs.filter((item) => {
+    const usage = item.usageSummary || {}
+    return usage.totalTokens != null || usage.contextOccupancyRatio != null || usage.toolCalls != null
+  })
+  const runsWithIssues = runs.filter((item) => (item.evidenceIssues || []).length > 0)
 
   return [
     {
@@ -336,9 +394,9 @@ function buildGates({
     },
     {
       title: "TaskRun 证据",
-      state: runs.length > 0 ? failedRuns.length > 0 ? "warn" : "pass" : tasks.length > 0 ? "warn" : "idle",
-      summary: runs.length > 0 ? `${runs.length} 次执行，${completedRuns.length} 次完成` : tasks.length > 0 ? "任务存在但没有 run" : "暂无任务执行",
-      detail: runs.length > 0 ? "任务已经有独立执行记录，可用于 gate 判断。" : "如果是分配给 agent 的任务，这里应出现 TaskRun。",
+      state: runs.length > 0 ? failedRuns.length > 0 || runsWithIssues.length > 0 ? "warn" : "pass" : tasks.length > 0 ? "warn" : "idle",
+      summary: runs.length > 0 ? `${runs.length} 次执行，${completedRuns.length} 次完成，${runsWithIssues.length} 次需补证据` : tasks.length > 0 ? "任务存在但没有 run" : "暂无任务执行",
+      detail: runs.length > 0 ? "任务已经有独立执行记录；若有缺失项，会在时间线里直接显示。" : "如果是分配给 agent 的任务，这里应出现 TaskRun。",
     },
     {
       title: "用量与上下文",
@@ -388,24 +446,31 @@ function EvidenceBadge({ label, value, tone = "neutral" }: { label: string; valu
 }
 
 function UsageSummary({ run }: { run: TaskRun }) {
-  const context = run.contextUsage || {}
-  const token = run.tokenUsage || {}
-  const occupancy = percent(context.occupancyRatio)
-  const input = compactNumber(token.inputTokens)
-  const output = compactNumber(token.outputTokens)
-  const cache = compactNumber(token.cacheReadInputTokens)
-  const hasToken = input || output || cache
+  const summary = run.usageSummary || {}
+  const occupancy = percent(summary.contextOccupancyRatio)
+  const input = compactNumber(summary.inputTokens)
+  const output = compactNumber(summary.outputTokens)
+  const cache = compactNumber(summary.cacheReadInputTokens)
+  const total = compactNumber(summary.totalTokens)
+  const tools = compactNumber(summary.toolCalls)
+  const contextKnown = compactNumber(summary.contextKnownTokens)
+  const contextWindow = compactNumber(summary.contextWindow)
+  const hasToken = Boolean(input || output || cache || total)
 
   return (
     <div className="flex flex-wrap gap-1.5">
       <EvidenceBadge
         label="上下文"
         value={occupancy ?? "未知"}
-        tone={occupancy ? asNumber(context.occupancyRatio)! >= 0.5 ? "warn" : "good" : "warn"}
+        tone={occupancy ? asNumber(summary.contextOccupancyRatio)! >= 0.5 ? "warn" : "good" : "warn"}
       />
+      {contextKnown && <EvidenceBadge label="上下文 token" value={contextKnown} />}
+      {contextWindow && <EvidenceBadge label="窗口" value={contextWindow} />}
+      <EvidenceBadge label="总 token" value={total ?? "未知"} tone={total ? "neutral" : "warn"} />
       <EvidenceBadge label="输入" value={input ?? "未知"} tone={input ? "neutral" : "warn"} />
       <EvidenceBadge label="输出" value={output ?? "未知"} tone={output ? "neutral" : "warn"} />
       {cache && <EvidenceBadge label="缓存读" value={cache} />}
+      <EvidenceBadge label="工具" value={tools ?? "未知"} tone={tools ? "neutral" : "warn"} />
       {!hasToken && <EvidenceBadge label="用量" value="未回写" tone="warn" />}
     </div>
   )
@@ -424,6 +489,7 @@ function RunRow({
   const started = run.startedAt ? formatTime(run.startedAt) : "未开始"
   const completed = run.completedAt ? formatTime(run.completedAt) : null
   const failure = hideTechnicalStrings(run.failureReason || run.failureCode)
+  const issues = run.evidenceIssues || []
   const hasRawDetails = run.runtimeSessionId || run.workspaceSessionId || run.contextSessionId || run.cwd || run.daemonId
 
   return (
@@ -440,6 +506,13 @@ function RunRow({
             <div className="mt-2 flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-sm text-rose-800">
               <ShieldAlert className="mt-0.5 size-4 shrink-0" />
               <span>{failure}</span>
+            </div>
+          )}
+          {issues.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {issues.slice(0, 5).map((issue) => (
+                <EvidenceBadge key={issue} label="待补" value={issueLabel(issue)} tone="warn" />
+              ))}
             </div>
           )}
         </div>
@@ -672,7 +745,7 @@ export default async function IntegrationControlPage() {
       <section className="grid gap-5 lg:grid-cols-3">
         <MetricPanel icon={CheckSquare} label="任务" value={`${tasks.length}`} detail={`${tasks.filter((task) => task.status !== "done" && task.status !== "closed").length} 个未完成`} />
         <MetricPanel icon={Timer} label="执行中" value={`${inFlightRuns.length}`} detail="等待投递 / 已投递 / 运行中 / 等待输入" />
-        <MetricPanel icon={Gauge} label="上下文风险" value={`${runs.filter((run) => asNumber(run.contextUsage?.occupancyRatio)! >= 0.5).length}`} detail="超过 50% 的 run 会在这里计数" />
+        <MetricPanel icon={Gauge} label="上下文风险" value={`${runs.filter((run) => asNumber(run.usageSummary?.contextOccupancyRatio)! >= 0.5).length}`} detail="超过 50% 的 run 会在这里计数" />
       </section>
 
       <section className="rounded-md border bg-muted/30 p-4">

@@ -165,6 +165,8 @@ test('codex acp runtime creates a session and emits daemon-compatible stream lif
     assert.equal(result.usage.input_tokens, 80);
     assert.equal(result.usage.cache_read_input_tokens, 20);
     assert.equal(result.usage.output_tokens, 20);
+    assert.equal(result.usage.total_tokens, 101);
+    assert.equal(result.usage.context_window, 258400);
 
     const record = JSON.parse(readFileSync(marker, 'utf-8'));
     assert.equal(record.sessions[0].cwd, workspacePath);

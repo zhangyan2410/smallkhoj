@@ -372,15 +372,18 @@ function normalizePromptUsage(result: PromptResponse, usageUpdate?: Record<strin
     ?? numberField(rawUsage, 'cache_read_input_tokens')
     ?? numberField(rawUsage, 'cachedInputTokens');
   const totalTokens = numberField(rawUsage, 'totalTokens') ?? numberField(rawUsage, 'total_tokens') ?? numberField(usageUpdate, 'used');
+  const contextWindow = numberField(usageUpdate, 'size');
 
   return {
     total_tokens: totalTokens,
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     cache_read_input_tokens: cacheReadInputTokens,
+    context_window: contextWindow,
     inputTokens,
     outputTokens,
     cacheReadInputTokens,
+    contextWindow,
   };
 }
 

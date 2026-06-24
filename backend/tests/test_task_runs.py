@@ -435,6 +435,116 @@ def test_serialize_task_run_uses_public_camel_case_contract():
     assert payload["contextSessionId"] == f"task:{task_id}:run:{run_id}"
     assert payload["promptProfile"] == "task.worker"
     assert payload["contextUsage"]["occupancyRatio"] == 0.25
+    assert payload["progressState"] == "waiting"
+    assert payload["progressLabel"] == "queued"
+    assert payload["usageSummary"]["inputTokens"] == 100
+    assert payload["usageSummary"]["totalTokens"] == 100
+    assert payload["usageSummary"]["contextOccupancyRatio"] == 0.25
+    assert payload["evidenceIssues"] == []
+
+
+def test_serialize_completed_task_run_classifies_missing_evidence():
+    run_id = uuid.uuid4()
+    task_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        task_id=task_id,
+        assignment_id=None,
+        agent_id=agent_id,
+        channel_id=uuid.uuid4(),
+        source_message_id=None,
+        thread_root_message_id=None,
+        parent_run_id=None,
+        attempt=1,
+        status="completed",
+        trigger_type="task_created",
+        runtime_workspace_id=uuid.uuid4(),
+        computer_id=uuid.uuid4(),
+        daemon_id=None,
+        runtime="claude_code",
+        runtime_provider="MiniMax",
+        runtime_model="MiniMax-M3",
+        prompt_profile="task.worker",
+        workspace_session_id="workspace-session",
+        runtime_session_id="provider-session",
+        context_session_id=f"task:{task_id}:role:worker:run:{run_id}",
+        cwd="/tmp/work",
+        context_scope="task",
+        context_summary={},
+        context_usage={},
+        token_usage={"source": "provider-stream-json"},
+        tool_usage_summary={},
+        output_message_id=None,
+        failure_code=None,
+        failure_reason=None,
+        started_at=None,
+        completed_at=None,
+        created_at=None,
+        updated_at=None,
+    )
+
+    payload = serialize_task_run(run)
+
+    assert payload["progressState"] == "completed"
+    assert payload["progressLabel"] == "completed_missing_evidence"
+    assert payload["usageSummary"]["inputTokens"] is None
+    assert payload["usageSummary"]["toolCalls"] is None
+    assert payload["evidenceIssues"] == [
+        "TASK_RUN_OUTPUT_MISSING",
+        "TASK_RUN_TOKEN_USAGE_MISSING",
+        "TASK_RUN_CONTEXT_USAGE_MISSING",
+        "TASK_RUN_TOOL_USAGE_MISSING",
+    ]
+
+
+def test_serialize_completed_task_run_classifies_missing_context_window():
+    run_id = uuid.uuid4()
+    task_id = uuid.uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        task_id=task_id,
+        assignment_id=None,
+        agent_id=uuid.uuid4(),
+        channel_id=uuid.uuid4(),
+        source_message_id=None,
+        thread_root_message_id=None,
+        parent_run_id=None,
+        attempt=1,
+        status="completed",
+        trigger_type="task_created",
+        runtime_workspace_id=uuid.uuid4(),
+        computer_id=uuid.uuid4(),
+        daemon_id=None,
+        runtime="claude_code",
+        runtime_provider="MiniMax",
+        runtime_model="MiniMax-M3",
+        prompt_profile="task.worker",
+        workspace_session_id="workspace-session",
+        runtime_session_id="provider-session",
+        context_session_id=f"task:{task_id}:role:worker:run:{run_id}",
+        cwd="/tmp/work",
+        context_scope="task",
+        context_summary={},
+        context_usage={"source": "provider-stream-json", "knownTokens": 1200},
+        token_usage={"source": "provider-stream-json", "totalTokens": 1200},
+        tool_usage_summary={"toolUseCount": 0, "toolResultCount": 0},
+        output_message_id=uuid.uuid4(),
+        failure_code=None,
+        failure_reason=None,
+        started_at=None,
+        completed_at=None,
+        created_at=None,
+        updated_at=None,
+    )
+
+    payload = serialize_task_run(run)
+
+    assert payload["usageSummary"]["contextKnownTokens"] == 1200
+    assert payload["usageSummary"]["contextWindow"] is None
+    assert "TASK_RUN_CONTEXT_WINDOW_MISSING" in payload["evidenceIssues"]
+    assert "TASK_RUN_CONTEXT_USAGE_MISSING" not in payload["evidenceIssues"]
+    assert "TASK_RUN_TOOL_USAGE_MISSING" not in payload["evidenceIssues"]
 
 
 @pytest.mark.asyncio

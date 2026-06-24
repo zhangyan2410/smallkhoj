@@ -18,6 +18,8 @@ import {
 import {
   DaemonCore,
   buildRuntimeMemoryContextRequest,
+  buildTaskRunCompletionSummary,
+  extractTaskRunOutputMessageIdFromEvent,
   formatRuntimeIncomingMessage,
   formatRuntimeIncomingMessageWithMemoryContext,
   isRuntimeActionableEventType,
@@ -541,6 +543,83 @@ test('daemon reports task run lifecycle updates to the agent API', async () => {
   assert.equal(body.status, 'completed');
   assert.equal(body.runtimeSessionId, 'provider-session-1');
   assert.deepEqual(body.tokenUsage, { inputTokens: 10, outputTokens: 2 });
+});
+
+test('daemon extracts output message id from slock send tool result', () => {
+  const event = {
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          content: '{"state":"sent","traceId":"agent-send:abc","messageId":"3a62b890-31c9-433c-9d2d-fb3c763ec1ae","shortId":"3859bf25","target":"#33"}',
+        },
+      ],
+    },
+  };
+
+  assert.equal(
+    extractTaskRunOutputMessageIdFromEvent(event),
+    '3a62b890-31c9-433c-9d2d-fb3c763ec1ae',
+  );
+});
+
+test('daemon builds task run completion usage summary from result event', () => {
+  const summary = buildTaskRunCompletionSummary(
+    {
+      type: 'result',
+      duration_ms: 493632,
+      duration_api_ms: 767509,
+      num_turns: 46,
+      total_cost_usd: 5.00946,
+      usage: {
+        input_tokens: 45177,
+        output_tokens: 13236,
+        cache_read_input_tokens: 1249553,
+      },
+    },
+    {
+      source: 'provider-stream-json',
+      inputTokens: 45177,
+      outputTokens: 13236,
+      cacheReadInputTokens: 1249553,
+    },
+    {
+      toolUseCount: 17,
+      toolResultCount: 16,
+      outputMessageId: '3a62b890-31c9-433c-9d2d-fb3c763ec1ae',
+    },
+    {
+      source: 'runtime_usage_event',
+      knownTokens: 101,
+      contextWindow: 258400,
+      occupancyRatio: 101 / 258400,
+    },
+  );
+
+  assert.deepEqual(summary.tokenUsage, {
+    source: 'provider-stream-json',
+    inputTokens: 45177,
+    outputTokens: 13236,
+    cacheReadInputTokens: 1249553,
+    totalTokens: 1307966,
+    durationMs: 493632,
+    durationApiMs: 767509,
+    numTurns: 46,
+    totalCostUsd: 5.00946,
+  });
+  assert.deepEqual(summary.toolUsageSummary, {
+    toolUseCount: 17,
+    toolResultCount: 16,
+  });
+  assert.deepEqual(summary.contextUsage, {
+    source: 'runtime_usage_event',
+    knownTokens: 101,
+    contextWindow: 258400,
+    occupancyRatio: 101 / 258400,
+  });
+  assert.equal(summary.outputMessageId, '3a62b890-31c9-433c-9d2d-fb3c763ec1ae');
 });
 
 test('daemon normalizes dotted task events from backend payloads', () => {
