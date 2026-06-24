@@ -54,9 +54,6 @@ graphify-out/
 !.trellis/
 !.agents/
 
-# MCP config (may contain secrets like API keys)
-.mcp.json
-
 # Local agent runtime/config state
 .agent/
 .cat-cafe/

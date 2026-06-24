@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "open-design": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "open-design-mcp@0.16.1"
+      ],
+      "env": {
+        "OD_DAEMON_URL": "http://localhost:7456",
+        "HTTP_PROXY": "http://127.0.0.1:7897",
+        "HTTPS_PROXY": "http://127.0.0.1:7897",
+        "ALL_PROXY": "http://127.0.0.1:7897"
+      }
+    }
+  }
+}
