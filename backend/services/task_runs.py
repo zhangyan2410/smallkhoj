@@ -14,6 +14,56 @@ RUN_READY_WORKSPACE_STATUSES = {"running", "active", "idle", "busy"}
 TASK_RUN_STATUSES = {"queued", "dispatched", "running", "awaiting_input", "completed", "failed", "cancelled"}
 TERMINAL_TASK_RUN_STATUSES = {"completed", "failed", "cancelled"}
 TASK_RUN_STALE_AFTER_MS = 5 * 60 * 1000
+DEFAULT_TASK_RUN_TEMPLATE_SNAPSHOT: dict[str, Any] = {
+    "id": None,
+    "slug": "general-task-runner",
+    "name": "General Task Runner",
+    "description": "Default structured TaskRun template for backward-compatible agent assignments.",
+    "category": "general",
+    "systemInstruction": "Work on the assigned task, use available Slock tools when needed, and post a concise result to the source channel or thread.",
+    "toolPolicy": {
+        "allowedToolGroups": ["slock", "read", "shell"],
+        "writeSlockCommands": True,
+    },
+    "skillPolicy": {
+        "allowAdditionalSkills": True,
+    },
+    "memoryPolicy": {
+        "readScopes": ["channel", "thread", "task"],
+        "writeScopes": ["task"],
+        "summaryOnCompletion": True,
+        "suggestSummaryAtContextRatio": 0.85,
+    },
+    "outputPolicy": {
+        "expectedOutputTypes": ["message"],
+        "channelMessageRequired": True,
+        "multipleOutputsAllowed": True,
+    },
+    "runtimePolicy": {
+        "defaultAgentRuntimeAllowed": True,
+        "contextIsolation": "required",
+    },
+    "startPolicy": {
+        "autoStart": True,
+        "executionStrategy": "parallel",
+    },
+    "rolePresets": [
+        {
+            "roleKey": "general",
+            "displayName": "General Task Runner",
+            "purpose": "Complete the assigned task and report the result.",
+            "instructionTemplate": "Complete the task using available context and tools.",
+            "toolPolicy": {"allowedToolGroups": ["slock", "read", "shell"]},
+            "skillPolicy": {"allowAdditionalSkills": True},
+            "memoryPolicy": {"readScopes": ["channel", "thread", "task"], "writeScopes": ["task"]},
+            "outputPolicy": {"expectedOutputTypes": ["message"], "channelMessageRequired": True},
+            "runtimePolicy": {"contextIsolation": "required"},
+            "loopPolicy": {"completionPolicy": "single_turn_result"},
+            "contextPolicy": {"suggestSummaryAtContextRatio": 0.85},
+            "editableFields": ["displayName", "purpose", "instructionTemplate", "outputPolicy"],
+        }
+    ],
+}
 
 
 def _as_uuid(value: Any) -> uuid.UUID | None:
@@ -38,13 +88,9 @@ def _thread_root_message_id(task: Task) -> uuid.UUID | None:
 
 
 def _prompt_profile(role: str) -> str:
-    if role == "leader":
-        return "task.leader"
-    if role == "reviewer":
-        return "task.reviewer"
-    if role == "participant":
-        return "task.participant"
-    return "task.worker"
+    normalized = (role or "general").strip().lower().replace("_", "-")
+    safe = "".join(ch if ch.isalnum() or ch == "-" else "-" for ch in normalized).strip("-")
+    return f"task.{safe or 'general'}"
 
 
 def _context_session_id(*, task_id: uuid.UUID, run_id: uuid.UUID, role: str) -> str:
@@ -56,6 +102,59 @@ def _merge_json(current: Any, patch: dict[str, Any] | None) -> dict[str, Any]:
     if patch:
         base.update(patch)
     return base
+
+
+def _copy_json(value: Any, fallback: Any) -> Any:
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, list):
+        return list(value)
+    return fallback
+
+
+def _template_snapshot(value: dict[str, Any] | None) -> dict[str, Any]:
+    snapshot = dict(DEFAULT_TASK_RUN_TEMPLATE_SNAPSHOT)
+    if value:
+        snapshot.update(value)
+    role_presets = snapshot.get("rolePresets")
+    if not isinstance(role_presets, list):
+        role_presets = snapshot.get("role_presets")
+    if not isinstance(role_presets, list):
+        role_presets = DEFAULT_TASK_RUN_TEMPLATE_SNAPSHOT["rolePresets"]
+    snapshot["rolePresets"] = [_copy_json(item, {}) for item in role_presets if isinstance(item, dict)]
+    for key in ("toolPolicy", "skillPolicy", "memoryPolicy", "outputPolicy", "runtimePolicy", "startPolicy"):
+        snake_key = "".join(["_" + c.lower() if c.isupper() else c for c in key]).lstrip("_")
+        snapshot[key] = _copy_json(snapshot.get(key) or snapshot.get(snake_key), DEFAULT_TASK_RUN_TEMPLATE_SNAPSHOT[key])
+    return snapshot
+
+
+def _role_snapshot(template: dict[str, Any], role_key: str | None = None, role_snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+    if role_snapshot:
+        return dict(role_snapshot)
+    desired = role_key or "general"
+    for preset in template.get("rolePresets") or []:
+        if isinstance(preset, dict) and preset.get("roleKey") == desired:
+            return dict(preset)
+    presets = template.get("rolePresets") or []
+    if presets and isinstance(presets[0], dict):
+        return dict(presets[0])
+    return dict(DEFAULT_TASK_RUN_TEMPLATE_SNAPSHOT["rolePresets"][0])
+
+
+def _template_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": snapshot.get("id"),
+        "slug": snapshot.get("slug"),
+        "name": snapshot.get("name"),
+        "description": snapshot.get("description"),
+        "category": snapshot.get("category"),
+        "toolPolicy": snapshot.get("toolPolicy") or {},
+        "skillPolicy": snapshot.get("skillPolicy") or {},
+        "memoryPolicy": snapshot.get("memoryPolicy") or {},
+        "outputPolicy": snapshot.get("outputPolicy") or {},
+        "runtimePolicy": snapshot.get("runtimePolicy") or {},
+        "startPolicy": snapshot.get("startPolicy") or {},
+    }
 
 
 async def _latest_ready_workspace(db: AsyncSession, agent_id: uuid.UUID) -> AgentWorkspace | None:
@@ -78,6 +177,12 @@ async def create_task_assignment_and_run(
     assignee: Member | None,
     assigned_by_id: uuid.UUID | None,
     role: str = "worker",
+    role_key: str | None = None,
+    template_id: uuid.UUID | None = None,
+    template_snapshot: dict[str, Any] | None = None,
+    role_snapshot: dict[str, Any] | None = None,
+    execution_strategy: str = "parallel",
+    run_order: int | None = None,
     assignment_mode: str = "task_created",
     trigger_type: str = "task_created",
 ) -> tuple[TaskAssignment | None, TaskRun | None]:
@@ -87,14 +192,24 @@ async def create_task_assignment_and_run(
     workspace = await _latest_ready_workspace(db, assignee.id)
     assignment_id = uuid.uuid4()
     run_id = uuid.uuid4()
+    resolved_template = _template_snapshot(template_snapshot)
+    resolved_role = _role_snapshot(resolved_template, role_key=role_key, role_snapshot=role_snapshot)
+    resolved_role_key = role_key or resolved_role.get("roleKey") or role or "general"
+    completion_policy = (resolved_role.get("loopPolicy") or {}).get("completionPolicy") or "single_turn_result"
     assignment = TaskAssignment(
         id=assignment_id,
         task_id=task.id,
         assignee_id=assignee.id,
         assignee_type="agent",
         role=role,
+        role_key=resolved_role_key,
+        role_snapshot=resolved_role,
         assignment_mode=assignment_mode,
         status="active",
+        template_id=template_id,
+        template_snapshot=resolved_template,
+        execution_strategy=execution_strategy,
+        run_order=run_order,
         created_by=assigned_by_id,
     )
     source_message_id = _as_uuid(getattr(task, "message_id", None))
@@ -106,6 +221,10 @@ async def create_task_assignment_and_run(
         channel_id=task.channel_id,
         source_message_id=source_message_id,
         thread_root_message_id=_thread_root_message_id(task),
+        template_id=template_id,
+        template_snapshot=resolved_template,
+        role_key=resolved_role_key,
+        role_snapshot=resolved_role,
         attempt=1,
         status="queued",
         trigger_type=trigger_type,
@@ -113,18 +232,24 @@ async def create_task_assignment_and_run(
         computer_id=getattr(workspace, "computer_id", None) if workspace else None,
         runtime=getattr(workspace, "runtime", None) if workspace else None,
         runtime_model=getattr(workspace, "runtime_model", None) if workspace else None,
-        prompt_profile=_prompt_profile(role),
+        prompt_profile=_prompt_profile(resolved_role_key),
         workspace_session_id=getattr(workspace, "session_id", None) if workspace else None,
         runtime_session_id=None,
-        context_session_id=_context_session_id(task_id=task.id, run_id=run_id, role=role),
+        context_session_id=_context_session_id(task_id=task.id, run_id=run_id, role=resolved_role_key),
         cwd=getattr(workspace, "cwd", None) if workspace else None,
         context_scope="task",
         context_summary={
-            "role": role,
+            "legacyRole": role,
+            "roleKey": resolved_role_key,
+            "role": resolved_role,
+            "template": _template_summary(resolved_template),
+            "executionStrategy": execution_strategy,
             "assignmentMode": assignment_mode,
             "triggerType": trigger_type,
             "sourceMessageId": str(source_message_id) if source_message_id else None,
         },
+        completion_policy=completion_policy,
+        output_refs=[],
     )
     db.add(assignment)
     db.add(run)
@@ -354,6 +479,9 @@ def serialize_task_run(run: TaskRun) -> dict[str, Any]:
     timing = _run_timing(run)
     evidence_issues = _evidence_issues(run, usage_summary, timing)
     progress_state, progress_label = _progress_state(run, evidence_issues, timing)
+    template_snapshot = getattr(run, "template_snapshot", None) or {}
+    role_snapshot = getattr(run, "role_snapshot", None) or {}
+    output_refs = getattr(run, "output_refs", None) or []
     return {
         "id": str(run.id),
         "taskId": str(run.task_id),
@@ -363,6 +491,10 @@ def serialize_task_run(run: TaskRun) -> dict[str, Any]:
         "sourceMessageId": _uuid(run.source_message_id),
         "threadRootMessageId": _uuid(run.thread_root_message_id),
         "parentRunId": _uuid(getattr(run, "parent_run_id", None)),
+        "templateId": _uuid(getattr(run, "template_id", None)),
+        "template": _template_summary(template_snapshot) if template_snapshot else None,
+        "roleKey": getattr(run, "role_key", None),
+        "role": role_snapshot or None,
         "attempt": run.attempt,
         "status": run.status,
         "triggerType": run.trigger_type,
@@ -383,6 +515,8 @@ def serialize_task_run(run: TaskRun) -> dict[str, Any]:
         "tokenUsage": run.token_usage or {},
         "toolUsageSummary": run.tool_usage_summary or {},
         "usageSummary": usage_summary,
+        "completionPolicy": getattr(run, "completion_policy", None) or "single_turn_result",
+        "outputs": output_refs,
         "outputMessageId": _uuid(run.output_message_id),
         "failureCode": run.failure_code,
         "failureReason": run.failure_reason,

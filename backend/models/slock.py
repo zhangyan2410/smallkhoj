@@ -290,7 +290,6 @@ class TaskAssignment(Base):
         Index("idx_task_assignments_task", "task_id"),
         Index("idx_task_assignments_assignee", "assignee_id", "status"),
         CheckConstraint("assignee_type IN ('member', 'agent')", name="ck_task_assignments_assignee_type"),
-        CheckConstraint("role IN ('leader', 'worker', 'reviewer', 'participant')", name="ck_task_assignments_role"),
         CheckConstraint(
             "assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created')",
             name="ck_task_assignments_mode",
@@ -302,15 +301,53 @@ class TaskAssignment(Base):
     task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
     assignee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
     assignee_type: Mapped[str] = mapped_column(String(20), nullable=False, default="agent")
-    role: Mapped[str] = mapped_column(String(20), nullable=False, default="worker")
+    role: Mapped[str] = mapped_column(String(80), nullable=False, default="worker")
+    role_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    role_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
     assignment_mode: Mapped[str] = mapped_column(String(40), nullable=False, default="task_created")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("task_run_templates.id", ondelete="SET NULL"), nullable=True)
+    template_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    execution_strategy: Mapped[str] = mapped_column(String(40), nullable=False, default="parallel")
+    run_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
     task = relationship("Task", back_populates="assignments")
     assignee = relationship("Member", foreign_keys=[assignee_id])
+    creator = relationship("Member", foreign_keys=[created_by])
+    template = relationship("TaskRunTemplate")
+
+
+class TaskRunTemplate(Base):
+    __tablename__ = "task_run_templates"
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_task_run_templates_slug"),
+        Index("idx_task_run_templates_status", "status"),
+        CheckConstraint("status IN ('active', 'disabled')", name="ck_task_run_templates_status"),
+        CheckConstraint("visibility IN ('builtin', 'server', 'user')", name="ck_task_run_templates_visibility"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    system_instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    tool_policy: Mapped[dict] = mapped_column(JSONB, default=dict)
+    skill_policy: Mapped[dict] = mapped_column(JSONB, default=dict)
+    memory_policy: Mapped[dict] = mapped_column(JSONB, default=dict)
+    output_policy: Mapped[dict] = mapped_column(JSONB, default=dict)
+    runtime_policy: Mapped[dict] = mapped_column(JSONB, default=dict)
+    start_policy: Mapped[dict] = mapped_column(JSONB, default=dict)
+    role_presets: Mapped[list] = mapped_column(JSONB, default=list)
+    visibility: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
     creator = relationship("Member", foreign_keys=[created_by])
 
 
@@ -343,6 +380,10 @@ class TaskRun(Base):
     source_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
     thread_root_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
     parent_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True)
+    template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("task_run_templates.id", ondelete="SET NULL"), nullable=True)
+    template_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    role_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    role_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     trigger_type: Mapped[str] = mapped_column(String(40), nullable=False, default="task_created")
@@ -362,6 +403,8 @@ class TaskRun(Base):
     context_usage: Mapped[dict] = mapped_column(JSONB, default=dict)
     token_usage: Mapped[dict] = mapped_column(JSONB, default=dict)
     tool_usage_summary: Mapped[dict] = mapped_column(JSONB, default=dict)
+    completion_policy: Mapped[str] = mapped_column(String(40), nullable=False, default="single_turn_result")
+    output_refs: Mapped[list] = mapped_column(JSONB, default=list)
     output_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
     failure_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -372,6 +415,7 @@ class TaskRun(Base):
 
     task = relationship("Task", back_populates="runs")
     assignment = relationship("TaskAssignment")
+    template = relationship("TaskRunTemplate")
     agent = relationship("Member", foreign_keys=[agent_id])
     channel = relationship("Channel")
     runtime_workspace = relationship("AgentWorkspace")

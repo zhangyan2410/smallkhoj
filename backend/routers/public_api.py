@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     get_db, Account, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
     Computer, ConnectTicket, Member, Message, MessageReaction, EventRecord, FileEntry, Reminder, SavedItem,
-    Server, Task, TaskRun, ThreadSummary,
+    Server, Task, TaskRun, TaskRunTemplate, ThreadSummary,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
 from services.daemon_control import (
@@ -61,6 +61,13 @@ from services.public_events import (
     should_deliver_public_event,
 )
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
+from services.task_run_templates import (
+    create_template,
+    get_template_by_ref,
+    serialize_task_run_template,
+    template_snapshot as task_run_template_snapshot,
+    update_template,
+)
 from services.task_runs import create_task_assignment_and_run, serialize_task_run
 from services.thread_summary import (
     load_thread_metadata,
@@ -102,6 +109,7 @@ STALE_STARTING_WORKSPACE_GRACE = timedelta(minutes=5)
 PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_message_sent": "message.created",
     "supervisor_task_created": "task.created",
+    "supervisor_task_assigned": "task.created",
     "supervisor_task_updated": "task.updated",
     "supervisor_member_updated": "member.updated",
     "supervisor_member_created": "member.created",
@@ -990,6 +998,29 @@ async def _dm_channel_payload(db: AsyncSession, channel: Channel, viewer: Member
     }
 
 
+async def _task_channel_target(db: AsyncSession, task: Task) -> str | None:
+    channel_result = await db.execute(select(Channel).where(Channel.id == task.channel_id))
+    channel = channel_result.scalar_one_or_none()
+    if not channel:
+        return None
+    return f"#{channel.name}" if channel.kind == "public" else channel.name
+
+
+def _task_run_event_details(task_run: TaskRun | None) -> dict:
+    if task_run is None:
+        return {}
+    details = {
+        "taskRunId": str(task_run.id),
+        "promptProfile": task_run.prompt_profile,
+        "contextSessionId": task_run.context_session_id,
+        "roleKey": getattr(task_run, "role_key", None),
+        "template": getattr(task_run, "template_snapshot", None) or None,
+        "role": getattr(task_run, "role_snapshot", None) or None,
+        "completionPolicy": getattr(task_run, "completion_policy", None) or None,
+    }
+    return {key: value for key, value in details.items() if value is not None}
+
+
 async def _serialize_task(db: AsyncSession, task: Task) -> dict:
     creator_result = await db.execute(select(Member).where(Member.id == task.creator_id))
     creator = creator_result.scalar_one_or_none()
@@ -1674,6 +1705,190 @@ async def list_tasks(_auth: None = Depends(verify_public_api_key), db: AsyncSess
     return {"tasks": task_list}
 
 
+@router.get("/task-run-templates")
+async def list_task_run_templates(
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(TaskRunTemplate).order_by(TaskRunTemplate.status, TaskRunTemplate.name)
+    )
+    templates = result.scalars().all()
+    return {"templates": [serialize_task_run_template(template) for template in templates]}
+
+
+@router.post("/task-run-templates")
+async def create_task_run_template(
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON body")
+    try:
+        template = await create_template(db, body)
+        await db.commit()
+        await db.refresh(template)
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(400, str(exc))
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "TaskRun template slug already exists")
+    return {"created": True, "template": serialize_task_run_template(template)}
+
+
+@router.patch("/task-run-templates/{template_ref}")
+async def update_task_run_template(
+    template_ref: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    template = await get_template_by_ref(db, template_ref)
+    if template is None:
+        raise HTTPException(404, "TaskRun template not found")
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON body")
+    try:
+        template = await update_template(db, template, body)
+        await db.commit()
+        await db.refresh(template)
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(400, str(exc))
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "TaskRun template slug already exists")
+    return {"updated": True, "template": serialize_task_run_template(template)}
+
+
+@router.post("/task-run-templates/{template_ref}/disable")
+async def disable_task_run_template(
+    template_ref: str,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    template = await get_template_by_ref(db, template_ref)
+    if template is None:
+        raise HTTPException(404, "TaskRun template not found")
+    template.status = "disabled"
+    template.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    await db.commit()
+    await db.refresh(template)
+    return {"disabled": True, "template": serialize_task_run_template(template)}
+
+
+def _role_preset_from_snapshot(snapshot: dict, role_key: str | None) -> dict:
+    presets = snapshot.get("rolePresets") if isinstance(snapshot, dict) else None
+    if not isinstance(presets, list):
+        presets = []
+    if role_key:
+        for preset in presets:
+            if isinstance(preset, dict) and preset.get("roleKey") == role_key:
+                return dict(preset)
+        raise HTTPException(400, f"Role preset not found: {role_key}")
+    for preset in presets:
+        if isinstance(preset, dict):
+            return dict(preset)
+    return {}
+
+
+async def _resolve_task_run_template_request(db: AsyncSession, body: dict) -> tuple[uuid.UUID | None, dict | None, str | None, dict | None]:
+    template_ref = body.get("template") or body.get("templateId") or body.get("templateSlug")
+    if not template_ref:
+        return None, None, body.get("roleKey"), None
+    template = await get_template_by_ref(db, template_ref)
+    if template is None:
+        raise HTTPException(404, "TaskRun template not found")
+    snapshot = task_run_template_snapshot(template)
+    requested_role_key = body.get("roleKey")
+    role_snapshot = _role_preset_from_snapshot(snapshot, requested_role_key)
+    resolved_role_key = requested_role_key or role_snapshot.get("roleKey")
+    return template.id, snapshot, resolved_role_key, role_snapshot
+
+
+@router.post("/tasks/{task_id}/assignments")
+async def create_task_assignment(
+    task_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    server = await _get_server(db)
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON body")
+    if body.get("autoStart", True) is not True:
+        raise HTTPException(400, "Manual TaskRun start is not implemented yet")
+    execution_strategy = body.get("executionStrategy") or "parallel"
+    if execution_strategy != "parallel":
+        raise HTTPException(400, "Only parallel TaskRun assignment is implemented")
+    task = await _resolve_task_by_id_or_number(db, server, task_id)
+    assignee = await _resolve_member(db, server, body.get("assignee"))
+    if assignee is None:
+        raise HTTPException(400, "Missing assignee")
+    if getattr(assignee, "kind", None) != "agent":
+        raise HTTPException(400, "TaskRun auto-start currently requires an agent assignee")
+    actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="task assignment actor")
+    template_id, snapshot, role_key, role_snapshot = await _resolve_task_run_template_request(db, body)
+    role = role_key or body.get("role") or "general"
+    assignment, task_run = await create_task_assignment_and_run(
+        db,
+        task=task,
+        assignee=assignee,
+        assigned_by_id=actor.id,
+        role=role,
+        role_key=role_key,
+        template_id=template_id,
+        template_snapshot=snapshot,
+        role_snapshot=role_snapshot,
+        execution_strategy=execution_strategy,
+        run_order=body.get("runOrder"),
+        assignment_mode="direct_drag",
+        trigger_type="direct_assignment",
+    )
+    if assignment is None or task_run is None:
+        raise HTTPException(400, "TaskRun assignment could not be created")
+    task.assignee_id = assignee.id
+    target = await _task_channel_target(db, task)
+    await _record_activity(
+        db,
+        server,
+        actor,
+        "supervisor_task_assigned",
+        f"@{actor.display_name} assigned task #{task.task_number} to @{assignee.display_name}",
+        {
+            "taskNumber": task.task_number,
+            "title": task.title,
+            "status": task.status,
+            "assignee": f"@{assignee.display_name}",
+            "assigneeId": str(assignee.id),
+            "targetAgentId": str(assignee.id),
+            "target": target,
+            "channel": target,
+            **_task_run_event_details(task_run),
+        },
+        channel_id=task.channel_id,
+        task_id=task.id,
+    )
+    await db.commit()
+    await db.refresh(task)
+    await _push_committed_events(db, server_id=server.id)
+    return {
+        "created": True,
+        "assignmentId": str(assignment.id),
+        "run": serialize_task_run(task_run),
+        "task": await _serialize_task(db, task),
+    }
+
+
 @router.get("/tasks/{task_id}")
 async def get_task(task_id: str, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     server = await _get_server(db)
@@ -1974,6 +2189,13 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
     assignee_id = assignee.id if assignee else None
     assignee_name = assignee.display_name if assignee else None
     assignee_kind = assignee.kind if assignee else None
+    has_runtime_assignment = bool(assignee_id and assignee_kind == "agent")
+    if has_runtime_assignment and body.get("autoStart", True) is not True:
+        raise HTTPException(400, "Manual TaskRun start is not implemented yet")
+    execution_strategy = body.get("executionStrategy") or "parallel"
+    if has_runtime_assignment and execution_strategy != "parallel":
+        raise HTTPException(400, "Only parallel TaskRun assignment is implemented")
+    template_id, template_snapshot, role_key, role_snapshot = await _resolve_task_run_template_request(db, body)
     parsed_message_id = None
     source_payload = None
     if body.get("messageId"):
@@ -2042,7 +2264,12 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
         task=task,
         assignee=assignee,
         assigned_by_id=creator_id,
-        role="worker",
+        role=role_key or body.get("role") or "general",
+        role_key=role_key,
+        template_id=template_id,
+        template_snapshot=template_snapshot,
+        role_snapshot=role_snapshot,
+        execution_strategy=execution_strategy,
         assignment_mode="task_created",
         trigger_type="task_created",
     )
@@ -2065,8 +2292,8 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
             "target": channel_target,
             "channel": channel_target,
             "messageId": str(parsed_message_id) if parsed_message_id else None,
-            "taskRunId": str(task_run.id) if task_run else None,
             "source": source_payload,
+            **_task_run_event_details(task_run),
         },
         channel_id=channel_id,
         task_id=task.id,

@@ -23,7 +23,7 @@ import { TaskRecoveryCockpit, type TaskRecoveryCopy } from "@/components/memory-
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { apiGet, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
+import { apiGet, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders, getSessionToken } from "@/lib/server-auth"
 
 import { TaskDndBoard } from "@/components/task-dnd-board"
@@ -57,6 +57,7 @@ function makeTasksCopy(t: TranslationFn) {
     descriptionLabel: t("descriptionLabel"),
     channel: t("channel"),
     assignee: t("assignee"),
+    taskRunTemplate: t("taskRunTemplate"),
     status: t("status"),
     create: t("create"),
     update: t("update"),
@@ -202,6 +203,10 @@ async function getMembers(sessionToken?: string | null) {
   return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }, sessionToken)
 }
 
+async function getTaskRunTemplates(sessionToken?: string | null) {
+  return apiGet<{ templates: TaskRunTemplate[] }>("/api/v1/task-run-templates", { templates: [] }, sessionToken)
+}
+
 async function getTaskActivity(taskId: string, sessionToken?: string | null) {
   return apiGet<{ activity: ActivityItem[] }>(`/api/v1/activity?taskId=${encodeURIComponent(taskId)}&limit=20`, { activity: [] }, sessionToken)
 }
@@ -231,6 +236,7 @@ async function createTaskAction(formData: FormData) {
     description: String(formData.get("description") || "").trim() || null,
     channel: formData.get("channel") || "#all",
     assignee: formData.get("assignee") || null,
+    template: formData.get("template") || null,
     status: formData.get("status") || "todo",
     data: {
       evidence: {
@@ -720,12 +726,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
     status: firstParam(params.status),
   }
   const selectedTaskId = firstParam(params.task)
-  const [{ tasks }, { channels }, { members }] = await Promise.all([
+  const [{ tasks }, { channels }, { members }, { templates }] = await Promise.all([
     getTasks(sessionToken),
     getChannels(sessionToken),
     getMembers(sessionToken),
+    getTaskRunTemplates(sessionToken),
   ])
   const agents = members.filter((member) => member.kind === "agent")
+  const activeTemplates = templates.filter((template) => template.status === "active")
   const visibleTasks = filteredTasks(tasks, filters)
   const openTasks = tasks.filter((task) => task.status !== "done" && task.status !== "closed")
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? visibleTasks[0]
@@ -836,6 +844,16 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
                 <div>
                   <FieldLabel htmlFor="task-assignee">{copy.assignee}</FieldLabel>
                   <Select id="task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} emptyLabel={copy.unassigned} />
+                </div>
+                <div>
+                  <FieldLabel htmlFor="task-template">{copy.taskRunTemplate}</FieldLabel>
+                  <Select
+                    id="task-template"
+                    name="template"
+                    items={activeTemplates.map((template) => `${template.slug}|${template.name}`)}
+                    splitValue
+                    emptyLabel="Default"
+                  />
                 </div>
                 <div>
                   <FieldLabel htmlFor="task-status">{copy.status}</FieldLabel>

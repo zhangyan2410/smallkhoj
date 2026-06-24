@@ -1,0 +1,7 @@
+{"file":".trellis/tasks/06-25-taskrun-config-templates/prd.md","reason":"Primary requirements and acceptance criteria for configurable TaskRun templates."}
+{"file":".trellis/tasks/06-25-taskrun-config-templates/design.md","reason":"Technical design for data model, API, daemon prompt, and UI boundaries."}
+{"file":".trellis/tasks/06-25-taskrun-config-templates/implement.md","reason":"Ordered implementation plan and validation commands."}
+{"file":".trellis/spec/backend/runtime-slock-integration.md","reason":"TaskRun lifecycle, daemon runtime, Slock, prompt, and evidence contracts."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Startup DDL/migration conventions for schema changes."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend mutation forms and real browser evidence requirements."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Product/control UI visual and interaction conventions."}

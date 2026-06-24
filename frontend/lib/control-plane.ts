@@ -165,6 +165,27 @@ export type MemoryProposal = {
   resolvedAt?: string | null
 }
 
+export type TaskRunTemplate = {
+  id: string
+  slug: string
+  name: string
+  description?: string | null
+  category?: string | null
+  systemInstruction: string
+  toolPolicy?: Record<string, unknown>
+  skillPolicy?: Record<string, unknown>
+  memoryPolicy?: Record<string, unknown>
+  outputPolicy?: Record<string, unknown>
+  runtimePolicy?: Record<string, unknown>
+  startPolicy?: Record<string, unknown>
+  rolePresets?: Array<Record<string, unknown>>
+  visibility: "builtin" | "server" | "user" | string
+  status: "active" | "disabled" | string
+  createdBy?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
 function apiErrorMessage(error: unknown, fallback: string) {
   if (!error || typeof error !== "object") return fallback
   const detail = (error as { detail?: unknown }).detail

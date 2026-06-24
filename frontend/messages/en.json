@@ -237,6 +237,7 @@
     "descriptionLabel": "Description",
     "channel": "Channel",
     "assignee": "Assignee",
+    "taskRunTemplate": "TaskRun template",
     "status": "Status",
     "create": "Create",
     "update": "Update",

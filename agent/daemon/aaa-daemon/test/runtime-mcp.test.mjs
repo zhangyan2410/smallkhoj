@@ -507,6 +507,52 @@ test('daemon formats task run identity and scoped context guidance for assigned 
   );
 });
 
+test('daemon formats task run template and role policy guidance for assigned tasks', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'task.created',
+    eventSeq: 62,
+    payload: {
+      taskId: 'task-11',
+      taskRunId: 'run-11',
+      taskNumber: 11,
+      channel: '#research',
+      assignee: '@minimax',
+      title: 'Research TaskRun models',
+      status: 'todo',
+      promptProfile: 'task.researcher',
+      contextSessionId: 'task:task-11:role:researcher:run:run-11',
+      template: {
+        slug: 'research-analyst',
+        name: 'Research Analyst',
+        toolPolicy: { allowedToolGroups: ['slock', 'web'], writeSlockCommands: true },
+        skillPolicy: { requiredSkills: ['research'] },
+        memoryPolicy: { readScopes: ['channel', 'task'], writeScopes: ['task'] },
+        outputPolicy: { expectedOutputTypes: ['message', 'memory'], channelMessageRequired: true },
+      },
+      role: {
+        roleKey: 'researcher',
+        displayName: 'Researcher',
+        purpose: 'Collect facts and write sourced notes.',
+        loopPolicy: { completionPolicy: 'single_turn_result' },
+      },
+      completionPolicy: 'single_turn_result',
+    },
+  });
+
+  assert.equal(message?.taskRunTemplate?.slug, 'research-analyst');
+  assert.equal(message?.taskRunRole?.roleKey, 'researcher');
+  assert.equal(message?.completionPolicy, 'single_turn_result');
+  const formatted = formatRuntimeIncomingMessage(message);
+  assert.match(formatted, /TaskRun Template:/);
+  assert.match(formatted, /- Template: Research Analyst \(research-analyst\)/);
+  assert.match(formatted, /- Role: Researcher \(researcher\) - Collect facts and write sourced notes\./);
+  assert.match(formatted, /- Tools: slock, web; slock writes allowed/);
+  assert.match(formatted, /- Skills: research/);
+  assert.match(formatted, /- Memory: read channel, task; write task/);
+  assert.match(formatted, /- Outputs: message, memory; channel message required/);
+  assert.match(formatted, /- Completion: single_turn_result/);
+});
+
 test('daemon reports task run lifecycle updates to the agent API', async () => {
   const daemon = new DaemonCore({
     agentId: 'agent-123',

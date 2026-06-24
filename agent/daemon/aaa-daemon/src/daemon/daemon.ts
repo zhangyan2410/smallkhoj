@@ -62,6 +62,9 @@ export interface RuntimeIncomingMessage {
   title?: string;
   promptProfile?: string;
   contextSessionId?: string;
+  taskRunTemplate?: Record<string, unknown>;
+  taskRunRole?: Record<string, unknown>;
+  completionPolicy?: string;
   timestamp?: string;
   sender?: string;
   actor?: string;
@@ -1751,6 +1754,11 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
   assignIfPresent(message, 'title', firstString(value.title, value.taskTitle));
   assignIfPresent(message, 'promptProfile', firstString(value.promptProfile, value.prompt_profile, details?.promptProfile, details?.prompt_profile));
   assignIfPresent(message, 'contextSessionId', firstString(value.contextSessionId, value.context_session_id, details?.contextSessionId, details?.context_session_id));
+  const taskRunTemplate = firstRecord(value.template, value.taskRunTemplate, value.task_run_template, details?.template, details?.taskRunTemplate, details?.task_run_template);
+  if (taskRunTemplate) message.taskRunTemplate = taskRunTemplate;
+  const taskRunRole = firstRecord(value.role, value.taskRunRole, value.task_run_role, value.roleSnapshot, value.role_snapshot, details?.role, details?.taskRunRole, details?.task_run_role);
+  if (taskRunRole) message.taskRunRole = taskRunRole;
+  assignIfPresent(message, 'completionPolicy', firstString(value.completionPolicy, value.completion_policy, details?.completionPolicy, details?.completion_policy));
   assignIfPresent(message, 'timestamp', firstString(value.time, value.timestamp, value.createdAt));
   assignIfPresent(message, 'sender', firstString(value.sender, value.author, value.user, value.username));
   assignIfPresent(message, 'actor', firstString(value.actor, value.actorId, value.actor_id, value.memberId, value.agentId));
@@ -1940,6 +1948,11 @@ function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
     lines.push('Treat this as a run-scoped context boundary; do not assume unrelated channel or previous task context is already loaded.');
   }
 
+  const templateBlock = formatTaskRunTemplateBlock(message);
+  if (templateBlock.length > 0) {
+    lines.push('', ...templateBlock);
+  }
+
   if (message.target) {
     lines.push(`Post progress and the final result back to ${message.target} with \`slock message send --target "${message.target}"\`.`);
   } else {
@@ -1948,6 +1961,92 @@ function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
 
   lines.push('', message.content);
   return lines.join('\n');
+}
+
+function formatTaskRunTemplateBlock(message: RuntimeIncomingMessage): string[] {
+  const template = message.taskRunTemplate;
+  const role = message.taskRunRole;
+  if (!template && !role && !message.completionPolicy) return [];
+
+  const lines = ['TaskRun Template:'];
+  const templateName = firstString(template?.name, template?.displayName);
+  const templateSlug = firstString(template?.slug, template?.key);
+  if (templateName || templateSlug) {
+    lines.push(`- Template: ${formatNameAndKey(templateName, templateSlug)}`);
+  }
+
+  const roleName = firstString(role?.displayName, role?.name);
+  const roleKey = firstString(role?.roleKey, role?.key);
+  const rolePurpose = firstString(role?.purpose);
+  if (roleName || roleKey || rolePurpose) {
+    const roleLabel = formatNameAndKey(roleName, roleKey);
+    lines.push(`- Role: ${rolePurpose ? `${roleLabel} - ${truncateMemoryContextText(rolePurpose, 180)}` : roleLabel}`);
+  }
+
+  const toolSummary = summarizeToolPolicy(firstRecord(role?.toolPolicy, role?.tool_policy, template?.toolPolicy, template?.tool_policy));
+  if (toolSummary) lines.push(`- Tools: ${toolSummary}`);
+
+  const skillSummary = summarizeSkillPolicy(firstRecord(role?.skillPolicy, role?.skill_policy, template?.skillPolicy, template?.skill_policy));
+  if (skillSummary) lines.push(`- Skills: ${skillSummary}`);
+
+  const memorySummary = summarizeMemoryPolicy(firstRecord(role?.memoryPolicy, role?.memory_policy, template?.memoryPolicy, template?.memory_policy));
+  if (memorySummary) lines.push(`- Memory: ${memorySummary}`);
+
+  const outputSummary = summarizeOutputPolicy(firstRecord(role?.outputPolicy, role?.output_policy, template?.outputPolicy, template?.output_policy));
+  if (outputSummary) lines.push(`- Outputs: ${outputSummary}`);
+
+  const loopPolicy = firstRecord(role?.loopPolicy, role?.loop_policy, template?.loopPolicy, template?.loop_policy);
+  const completionPolicy = firstString(message.completionPolicy, loopPolicy?.completionPolicy, loopPolicy?.completion_policy);
+  if (completionPolicy) lines.push(`- Completion: ${completionPolicy}`);
+
+  return lines.length > 1 ? lines : [];
+}
+
+function formatNameAndKey(name: string | undefined, key: string | undefined): string {
+  if (name && key && name !== key) return `${name} (${key})`;
+  return name ?? key ?? 'unspecified';
+}
+
+function summarizeToolPolicy(policy: Record<string, unknown> | undefined): string | undefined {
+  if (!policy) return undefined;
+  const allowed = arrayOfStrings(policy.allowedToolGroups ?? policy.allowed ?? policy.allow);
+  const parts: string[] = [];
+  if (allowed.length > 0) parts.push(allowed.join(', '));
+  if (policy.writeSlockCommands === true || policy.write_slock_commands === true) parts.push('slock writes allowed');
+  if (policy.shellExecution === true || policy.shell_execution === true) parts.push('shell allowed');
+  if (policy.browserTools === true || policy.browser_tools === true) parts.push('browser tools allowed');
+  return parts.length > 0 ? parts.join('; ') : undefined;
+}
+
+function summarizeSkillPolicy(policy: Record<string, unknown> | undefined): string | undefined {
+  if (!policy) return undefined;
+  const required = arrayOfStrings(policy.requiredSkills ?? policy.required ?? policy.required_skills);
+  const recommended = arrayOfStrings(policy.recommendedSkills ?? policy.recommended ?? policy.recommended_skills);
+  if (required.length > 0) return required.join(', ');
+  if (recommended.length > 0) return `recommended ${recommended.join(', ')}`;
+  if (policy.allowAdditionalSkills === true || policy.allow_additional_skills === true) return 'runtime may choose additional skills';
+  return undefined;
+}
+
+function summarizeMemoryPolicy(policy: Record<string, unknown> | undefined): string | undefined {
+  if (!policy) return undefined;
+  const readScopes = arrayOfStrings(policy.readScopes ?? policy.read_scopes);
+  const writeScopes = arrayOfStrings(policy.writeScopes ?? policy.write_scopes);
+  const parts: string[] = [];
+  if (readScopes.length > 0) parts.push(`read ${readScopes.join(', ')}`);
+  if (writeScopes.length > 0) parts.push(`write ${writeScopes.join(', ')}`);
+  if (policy.summaryOnCompletion === true || policy.summary_on_completion === true) parts.push('summary on completion');
+  return parts.length > 0 ? parts.join('; ') : undefined;
+}
+
+function summarizeOutputPolicy(policy: Record<string, unknown> | undefined): string | undefined {
+  if (!policy) return undefined;
+  const outputTypes = arrayOfStrings(policy.expectedOutputTypes ?? policy.required ?? policy.expected_output_types);
+  const parts: string[] = [];
+  if (outputTypes.length > 0) parts.push(outputTypes.join(', '));
+  if (policy.channelMessageRequired === true || policy.channel_message_required === true) parts.push('channel message required');
+  if (policy.multipleOutputsAllowed === true || policy.multiple_outputs_allowed === true) parts.push('multiple outputs allowed');
+  return parts.length > 0 ? parts.join('; ') : undefined;
 }
 
 export function parseDaemonControlCommand(input: unknown): DaemonControlCommand | null {
@@ -2331,6 +2430,13 @@ function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value;
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return undefined;
+}
+
+function firstRecord(...values: unknown[]): Record<string, unknown> | undefined {
+  for (const value of values) {
+    if (isRecord(value)) return value;
   }
   return undefined;
 }
