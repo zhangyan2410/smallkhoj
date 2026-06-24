@@ -56,9 +56,12 @@ export interface RuntimeIncomingMessage {
   peerMemberId?: string;
   messageId?: string;
   taskId?: string;
+  taskRunId?: string;
   taskNumber?: string;
   status?: string;
   title?: string;
+  promptProfile?: string;
+  contextSessionId?: string;
   timestamp?: string;
   sender?: string;
   actor?: string;
@@ -1489,10 +1492,11 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
   if (!content) return null;
 
   const message: RuntimeIncomingMessage = { content };
+  const details = isRecord(value.details) ? value.details : undefined;
   assignIfPresent(message, 'target', firstString(value.target, value.channel, value.channelName));
   assignIfPresent(message, 'messageId', firstString(value.msg, value.messageId, value.message_id, value.id, value.shortId));
   assignIfPresent(message, 'eventSeq', firstString(value.eventSeq, value.eventLogCursor, value.eventCursor));
-  assignIfPresent(message, 'traceId', firstString(value.traceId, value.trace_id, isRecord(value.details) ? value.details.traceId : undefined));
+  assignIfPresent(message, 'traceId', firstString(value.traceId, value.trace_id, details?.traceId));
   const channelType = firstString(value.channelType, value.channel_type);
   assignIfPresent(message, 'channelType', channelType);
   assignIfPresent(message, 'channelId', firstString(value.channelId, value.channel_id));
@@ -1503,14 +1507,16 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
     assignIfPresent(message, 'peerMemberId', firstString(value.peerMemberId, value.peer_member_id, value.senderId, value.sender_id, value.actor, value.actorId, value.actor_id, value.memberId, value.member_id));
   }
   assignIfPresent(message, 'taskId', firstString(value.taskId, value.task_id));
+  assignIfPresent(message, 'taskRunId', firstString(value.taskRunId, value.task_run_id, details?.taskRunId, details?.task_run_id));
   assignIfPresent(message, 'taskNumber', firstString(value.taskNumber, value.task_number, value.number));
   assignIfPresent(message, 'status', firstString(value.status, value.taskStatus));
   assignIfPresent(message, 'title', firstString(value.title, value.taskTitle));
+  assignIfPresent(message, 'promptProfile', firstString(value.promptProfile, value.prompt_profile, details?.promptProfile, details?.prompt_profile));
+  assignIfPresent(message, 'contextSessionId', firstString(value.contextSessionId, value.context_session_id, details?.contextSessionId, details?.context_session_id));
   assignIfPresent(message, 'timestamp', firstString(value.time, value.timestamp, value.createdAt));
   assignIfPresent(message, 'sender', firstString(value.sender, value.author, value.user, value.username));
   assignIfPresent(message, 'actor', firstString(value.actor, value.actorId, value.actor_id, value.memberId, value.agentId));
   assignIfPresent(message, 'senderType', firstString(value.senderType, value.sender_type, value.type));
-  const details = isRecord(value.details) ? value.details : undefined;
   assignIfPresent(message, 'assignee', firstString(value.assignee, value.assigneeHandle, value.assigneeName, details?.assignee));
   assignIfPresent(message, 'assigneeId', firstString(value.assigneeId, value.assignee_id, details?.assigneeId));
   if (eventType && eventType !== 'message_received') {
@@ -1578,6 +1584,7 @@ export function formatRuntimeIncomingMessage(message: RuntimeIncomingMessage): s
     message.messageId ? `msg=${message.messageId}` : undefined,
     message.taskNumber ? `task=#${message.taskNumber}` : undefined,
     !message.taskNumber && message.taskId ? `task=${message.taskId}` : undefined,
+    message.taskRunId ? `run=${message.taskRunId}` : undefined,
     message.status ? `status=${message.status}` : undefined,
     message.timestamp ? `time=${message.timestamp}` : undefined,
     message.sender ? `sender=${message.sender}` : undefined,
@@ -1686,6 +1693,14 @@ function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
     'You have been assigned this Slock task. Treat this event as an actionable work request, not as a passive system notification.',
     'Use `slock task claim` for this task if it is still todo, do the requested work, then use `slock task update --status in_review` when ready for human review.',
   ];
+
+  if (message.taskRunId || message.promptProfile || message.contextSessionId) {
+    const runLabel = message.taskRunId ?? 'this TaskRun';
+    const promptProfile = message.promptProfile ?? 'the assigned task prompt profile';
+    const contextSession = message.contextSessionId ?? 'the assigned run context session';
+    lines.push(`TaskRun ${runLabel} uses prompt profile ${promptProfile} and context session ${contextSession}.`);
+    lines.push('Treat this as a run-scoped context boundary; do not assume unrelated channel or previous task context is already loaded.');
+  }
 
   if (message.target) {
     lines.push(`Post progress and the final result back to ${message.target} with \`slock message send --target "${message.target}"\`.`);

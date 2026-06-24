@@ -468,6 +468,41 @@ test('daemon formats dotted assigned task creation as actionable runtime work', 
   );
 });
 
+test('daemon formats task run identity and scoped context guidance for assigned tasks', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'task.created',
+    eventSeq: 61,
+    payload: {
+      taskId: 'task-10',
+      taskRunId: 'run-10',
+      taskNumber: 10,
+      channel: '#work',
+      targetAgentId: 'agent-worker',
+      assignee: '@worker',
+      title: 'Implement TaskRun worker slice',
+      status: 'todo',
+      promptProfile: 'task.worker',
+      contextSessionId: 'task:task-10:role:worker:run:run-10',
+    },
+  });
+
+  assert.equal(message?.taskRunId, 'run-10');
+  assert.equal(message?.promptProfile, 'task.worker');
+  assert.equal(message?.contextSessionId, 'task:task-10:role:worker:run:run-10');
+  assert.match(
+    formatRuntimeIncomingMessage(message),
+    /\[event=task\.created eventSeq=61 target=#work task=#10 run=run-10 status=todo/,
+  );
+  assert.match(
+    formatRuntimeIncomingMessage(message),
+    /TaskRun run-10 uses prompt profile task\.worker and context session task:task-10:role:worker:run:run-10\./,
+  );
+  assert.match(
+    formatRuntimeIncomingMessage(message),
+    /Treat this as a run-scoped context boundary; do not assume unrelated channel or previous task context is already loaded\./,
+  );
+});
+
 test('daemon normalizes dotted task events from backend payloads', () => {
   const message = normalizeRuntimeIncomingMessage({
     type: 'task.claimed',
