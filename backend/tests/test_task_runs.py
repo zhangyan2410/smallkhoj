@@ -7,7 +7,7 @@ import models.seed as seed
 import routers.public_api as public_api
 import routers.agent_api as agent_api
 from models import Base, TaskAssignment, TaskRun
-from services.task_runs import create_task_assignment_and_run, serialize_task_run
+from services.task_runs import create_task_assignment_and_run, serialize_task_run, update_task_run_lifecycle
 
 
 class _ExecuteResult:
@@ -217,6 +217,171 @@ async def test_non_agent_assignment_does_not_create_runtime_run():
     assert assignment is None
     assert run is None
     assert db.added == []
+
+
+@pytest.mark.asyncio
+async def test_update_task_run_lifecycle_marks_running_with_context_usage():
+    run_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        agent_id=agent_id,
+        status="queued",
+        runtime_session_id=None,
+        workspace_session_id="workspace-session",
+        context_session_id="context-session",
+        context_usage={},
+        token_usage={},
+        tool_usage_summary={},
+        output_message_id=None,
+        failure_code=None,
+        failure_reason=None,
+        started_at=None,
+        completed_at=None,
+        updated_at=None,
+    )
+    db = _FakeSession(_ExecuteResult(run))
+
+    updated = await update_task_run_lifecycle(
+        db,
+        run_id=run_id,
+        agent_id=agent_id,
+        status="running",
+        runtime_session_id="provider-session-1",
+        context_usage={"occupancyRatio": 0.52, "source": "runtime_usage_event"},
+    )
+
+    assert updated is run
+    assert run.status == "running"
+    assert run.started_at is not None
+    assert run.completed_at is None
+    assert run.runtime_session_id == "provider-session-1"
+    assert run.context_usage["occupancyRatio"] == 0.52
+    assert db.flushed is True
+
+
+@pytest.mark.asyncio
+async def test_update_task_run_lifecycle_marks_completed_with_token_and_output_evidence():
+    run_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    output_message_id = uuid.uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        agent_id=agent_id,
+        status="running",
+        runtime_session_id="provider-session-1",
+        workspace_session_id="workspace-session",
+        context_session_id="context-session",
+        context_usage={},
+        token_usage={},
+        tool_usage_summary={},
+        output_message_id=None,
+        failure_code=None,
+        failure_reason=None,
+        started_at=None,
+        completed_at=None,
+        updated_at=None,
+    )
+    db = _FakeSession(_ExecuteResult(run))
+
+    updated = await update_task_run_lifecycle(
+        db,
+        run_id=run_id,
+        agent_id=agent_id,
+        status="completed",
+        token_usage={"inputTokens": 100, "outputTokens": 20},
+        tool_usage_summary={"calls": 2},
+        output_message_id=output_message_id,
+    )
+
+    assert updated is run
+    assert run.status == "completed"
+    assert run.started_at is not None
+    assert run.completed_at is not None
+    assert run.token_usage["inputTokens"] == 100
+    assert run.tool_usage_summary["calls"] == 2
+    assert run.output_message_id == output_message_id
+    assert db.flushed is True
+
+
+@pytest.mark.asyncio
+async def test_agent_task_run_lifecycle_endpoint_updates_current_agent_run(monkeypatch):
+    run_id = uuid.uuid4()
+    task_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    channel_id = uuid.uuid4()
+    member = SimpleNamespace(id=agent_id, display_name="worker", kind="agent")
+    server = SimpleNamespace(id=uuid.uuid4())
+    run = SimpleNamespace(
+        id=run_id,
+        task_id=task_id,
+        assignment_id=None,
+        agent_id=agent_id,
+        channel_id=channel_id,
+        source_message_id=None,
+        thread_root_message_id=None,
+        parent_run_id=None,
+        attempt=1,
+        status="running",
+        trigger_type="task_created",
+        runtime_workspace_id=None,
+        computer_id=None,
+        daemon_id=None,
+        runtime="claude_code",
+        runtime_provider=None,
+        runtime_model="minimax",
+        prompt_profile="task.worker",
+        workspace_session_id="workspace-session",
+        runtime_session_id="provider-session-1",
+        context_session_id=f"task:{task_id}:role:worker:run:{run_id}",
+        cwd="/tmp/work",
+        context_scope="task",
+        context_summary={},
+        context_usage={"occupancyRatio": 0.33},
+        token_usage={"inputTokens": 10},
+        tool_usage_summary={},
+        output_message_id=None,
+        failure_code=None,
+        failure_reason=None,
+        started_at=None,
+        completed_at=None,
+        created_at=None,
+        updated_at=None,
+    )
+    calls = []
+
+    async def fake_update_task_run_lifecycle(db_arg, **kwargs):
+        calls.append(kwargs)
+        return run
+
+    monkeypatch.setattr(agent_api, "update_task_run_lifecycle", fake_update_task_run_lifecycle, raising=False)
+
+    response = await agent_api.update_task_run_lifecycle_endpoint(
+        str(run_id),
+        SimpleNamespace(
+            status="running",
+            runtimeSessionId="provider-session-1",
+            workspaceSessionId="workspace-session",
+            contextSessionId=None,
+            contextUsage={"occupancyRatio": 0.33},
+            tokenUsage={"inputTokens": 10},
+            toolUsageSummary=None,
+            outputMessageId=None,
+            failureCode=None,
+            failureReason=None,
+        ),
+        agent=(member, server),
+        db=_FakeSession(),
+    )
+
+    assert response["ok"] is True
+    assert calls[0]["run_id"] == run_id
+    assert calls[0]["agent_id"] == agent_id
+    assert calls[0]["status"] == "running"
+    assert calls[0]["runtime_session_id"] == "provider-session-1"
+    assert calls[0]["context_usage"]["occupancyRatio"] == 0.33
+    assert response["run"]["id"] == str(run_id)
+    assert response["run"]["runtimeSessionId"] == "provider-session-1"
 
 
 def test_serialize_task_run_uses_public_camel_case_contract():

@@ -16,6 +16,7 @@ import {
   ClaudeRuntimeDriver,
 } from '../dist/runtime/claude-runtime.js';
 import {
+  DaemonCore,
   buildRuntimeMemoryContextRequest,
   formatRuntimeIncomingMessage,
   formatRuntimeIncomingMessageWithMemoryContext,
@@ -501,6 +502,45 @@ test('daemon formats task run identity and scoped context guidance for assigned 
     formatRuntimeIncomingMessage(message),
     /Treat this as a run-scoped context boundary; do not assume unrelated channel or previous task context is already loaded\./,
   );
+});
+
+test('daemon reports task run lifecycle updates to the agent API', async () => {
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'https://api.slock.ai',
+    wsUrl: 'none',
+    credentialPath: '',
+    proxyPort: 0,
+    logLevel: 'debug',
+  });
+  daemon.credential = credential;
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: String(url), options });
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+  try {
+    await daemon.reportTaskRunLifecycle({
+      agentId: 'agent-123',
+      taskRunId: 'run-10',
+      status: 'completed',
+      runtimeSessionId: 'provider-session-1',
+      tokenUsage: { inputTokens: 10, outputTokens: 2 },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.slock.ai/internal/agent-api/task-runs/run-10/lifecycle');
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer sk_machine_secret');
+  assert.equal(calls[0].options.headers['X-Agent-Id'], 'agent-123');
+  const body = JSON.parse(calls[0].options.body);
+  assert.equal(body.status, 'completed');
+  assert.equal(body.runtimeSessionId, 'provider-session-1');
+  assert.deepEqual(body.tokenUsage, { inputTokens: 10, outputTokens: 2 });
 });
 
 test('daemon normalizes dotted task events from backend payloads', () => {

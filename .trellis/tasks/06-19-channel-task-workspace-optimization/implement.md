@@ -32,17 +32,24 @@ PYTHONPATH=. uv run pytest -q
 
 ## Phase 2: Runtime Delivery
 
-- [ ] Decide whether `task.created` remains the runtime-actionable event for the first migration or whether daemon should receive `task_run.created`.
-- [ ] If keeping `task.created`, include `taskRunId` in runtime prompt formatting and trace evidence.
+- [x] Decide whether `task.created` remains the runtime-actionable event for the first migration or whether daemon should receive `task_run.created`.
+- [x] If keeping `task.created`, include `taskRunId` in runtime prompt formatting and trace evidence.
 - [ ] If adding `task_run.created`, update backend event aliases, visibility, daemon actionable gate, prompt formatting, and browser-safe public event scope.
-- [ ] Add daemon-side run lifecycle reporting:
+- [x] Add daemon-side run lifecycle reporting:
   - dispatched
   - running
   - completed
   - failed
   - cancelled
-- [ ] Store runtime session/context/token usage against TaskRun when available.
-- [ ] Keep workspace heartbeat/activity out of runtime prompt delivery.
+- [x] Store runtime session/context/token usage against TaskRun when available.
+- [x] Keep workspace heartbeat/activity out of runtime prompt delivery.
+
+Notes:
+
+- First migration keeps assigned `task.created` as the runtime-actionable event and carries `taskRunId`, `promptProfile`, and `contextSessionId` in the payload/prompt.
+- Backend exposes `POST /internal/agent-api/task-runs/{run_id}/lifecycle` for daemon/runtime lifecycle updates.
+- Daemon reports `dispatched` when it accepts an assigned TaskRun event, `running` when the message reaches runtime stdin, `completed` on runtime result, `failed` on runtime error/unexpected exit, and `cancelled` when an active runtime is explicitly stopped.
+- Current completion usage stores available token evidence; context occupancy remains best-effort until provider/session data exposes a reliable context-window denominator.
 
 ## Phase 3: Control and Product UI
 

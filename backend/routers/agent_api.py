@@ -52,7 +52,7 @@ from services.memory_api import (
     write_memory_entry,
 )
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
-from services.task_runs import create_task_assignment_and_run, serialize_task_run
+from services.task_runs import create_task_assignment_and_run, serialize_task_run, update_task_run_lifecycle
 from services.thread_summary import (
     SUMMARY_MAX_CHARS,
     serialize_thread_summary,
@@ -88,6 +88,19 @@ class TaskClaimRequest(BaseModel):
 class TaskUpdateRequest(BaseModel):
     status: str
     taskNumber: int | None = None
+
+
+class TaskRunLifecycleRequest(BaseModel):
+    status: str
+    runtimeSessionId: str | None = None
+    workspaceSessionId: str | None = None
+    contextSessionId: str | None = None
+    contextUsage: dict | None = None
+    tokenUsage: dict | None = None
+    toolUsageSummary: dict | None = None
+    outputMessageId: str | None = None
+    failureCode: str | None = None
+    failureReason: str | None = None
 
 
 class DaemonWorkspacePayload(BaseModel):
@@ -3919,6 +3932,53 @@ async def create_agent_activity(
             "timestamp": activity.occurred_at.isoformat() if activity.occurred_at else None,
         },
     }
+
+
+@router.post("/task-runs/{run_id}/lifecycle")
+async def update_task_run_lifecycle_endpoint(
+    run_id: str,
+    body: TaskRunLifecycleRequest,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, _server = agent
+    try:
+        parsed_run_id = uuid.UUID(run_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid task run id")
+
+    output_message_id = None
+    if body.outputMessageId:
+        try:
+            output_message_id = uuid.UUID(body.outputMessageId)
+        except ValueError:
+            raise HTTPException(400, "Invalid outputMessageId")
+
+    try:
+        run = await update_task_run_lifecycle(
+            db,
+            run_id=parsed_run_id,
+            agent_id=member.id,
+            status=body.status,
+            runtime_session_id=body.runtimeSessionId,
+            workspace_session_id=body.workspaceSessionId,
+            context_session_id=body.contextSessionId,
+            context_usage=body.contextUsage,
+            token_usage=body.tokenUsage,
+            tool_usage_summary=body.toolUsageSummary,
+            output_message_id=output_message_id,
+            failure_code=body.failureCode,
+            failure_reason=body.failureReason,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    if run is None:
+        raise HTTPException(404, "TaskRun not found")
+
+    await db.commit()
+    await db.refresh(run)
+    return {"ok": True, "run": serialize_task_run(run)}
 
 
 @router.post("/heartbeat")

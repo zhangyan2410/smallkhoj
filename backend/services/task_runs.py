@@ -1,6 +1,7 @@
 """Task assignment and TaskRun helpers."""
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -10,6 +11,8 @@ from models import AgentWorkspace, Member, Task, TaskAssignment, TaskRun
 
 
 RUN_READY_WORKSPACE_STATUSES = {"running", "active", "idle", "busy"}
+TASK_RUN_STATUSES = {"queued", "dispatched", "running", "awaiting_input", "completed", "failed", "cancelled"}
+TERMINAL_TASK_RUN_STATUSES = {"completed", "failed", "cancelled"}
 
 
 def _as_uuid(value: Any) -> uuid.UUID | None:
@@ -45,6 +48,13 @@ def _prompt_profile(role: str) -> str:
 
 def _context_session_id(*, task_id: uuid.UUID, run_id: uuid.UUID, role: str) -> str:
     return f"task:{task_id}:role:{role}:run:{run_id}"
+
+
+def _merge_json(current: Any, patch: dict[str, Any] | None) -> dict[str, Any]:
+    base = dict(current or {}) if isinstance(current, dict) else {}
+    if patch:
+        base.update(patch)
+    return base
 
 
 async def _latest_ready_workspace(db: AsyncSession, agent_id: uuid.UUID) -> AgentWorkspace | None:
@@ -119,6 +129,69 @@ async def create_task_assignment_and_run(
     db.add(run)
     await db.flush()
     return assignment, run
+
+
+async def update_task_run_lifecycle(
+    db: AsyncSession,
+    *,
+    run_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    status: str,
+    runtime_session_id: str | None = None,
+    workspace_session_id: str | None = None,
+    context_session_id: str | None = None,
+    context_usage: dict[str, Any] | None = None,
+    token_usage: dict[str, Any] | None = None,
+    tool_usage_summary: dict[str, Any] | None = None,
+    output_message_id: uuid.UUID | None = None,
+    failure_code: str | None = None,
+    failure_reason: str | None = None,
+) -> TaskRun | None:
+    if status not in TASK_RUN_STATUSES:
+        raise ValueError(f"Invalid TaskRun status: {status}")
+
+    result = await db.execute(
+        select(TaskRun).where(
+            TaskRun.id == run_id,
+            TaskRun.agent_id == agent_id,
+        )
+    )
+    run = result.scalar_one_or_none()
+    if run is None:
+        return None
+
+    now = datetime.utcnow()
+    run.status = status
+    if status == "running" and not run.started_at:
+        run.started_at = now
+    if status in TERMINAL_TASK_RUN_STATUSES:
+        if not run.started_at:
+            run.started_at = now
+        if not run.completed_at:
+            run.completed_at = now
+
+    if runtime_session_id is not None:
+        run.runtime_session_id = runtime_session_id
+    if workspace_session_id is not None:
+        run.workspace_session_id = workspace_session_id
+    if context_session_id is not None:
+        run.context_session_id = context_session_id
+    if context_usage is not None:
+        run.context_usage = _merge_json(run.context_usage, context_usage)
+    if token_usage is not None:
+        run.token_usage = _merge_json(run.token_usage, token_usage)
+    if tool_usage_summary is not None:
+        run.tool_usage_summary = _merge_json(run.tool_usage_summary, tool_usage_summary)
+    if output_message_id is not None:
+        run.output_message_id = output_message_id
+    if failure_code is not None:
+        run.failure_code = failure_code
+    if failure_reason is not None:
+        run.failure_reason = failure_reason
+    run.updated_at = now
+
+    await db.flush()
+    return run
 
 
 def _iso(value: Any) -> str | None:

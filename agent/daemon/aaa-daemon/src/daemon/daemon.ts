@@ -89,6 +89,21 @@ export interface RuntimeMemoryContextItem {
   snippet?: string;
 }
 
+export interface TaskRunLifecycleReport {
+  agentId: string;
+  taskRunId: string;
+  status: 'dispatched' | 'running' | 'completed' | 'failed' | 'cancelled';
+  runtimeSessionId?: string;
+  workspaceSessionId?: string;
+  contextSessionId?: string;
+  contextUsage?: Record<string, unknown>;
+  tokenUsage?: Record<string, unknown>;
+  toolUsageSummary?: Record<string, unknown>;
+  outputMessageId?: string;
+  failureCode?: string;
+  failureReason?: string;
+}
+
 export interface DaemonControlCommand {
   type: 'start_runtime' | 'stop_runtime' | 'restart_runtime';
   agentId: string;
@@ -125,6 +140,8 @@ interface RuntimeRecord {
   activeTraceId?: string;
   activeTraceStartedAt?: number;
   activeTraceFirstOutputSeen?: boolean;
+  activeTaskRunId?: string;
+  activeTaskRunContextSessionId?: string;
   restartAttempts: number;
   restartTimer: ReturnType<typeof setTimeout> | null;
   stallTimer: ReturnType<typeof setInterval> | null;
@@ -287,6 +304,15 @@ export class DaemonCore extends EventEmitter {
     const manifest = await this.loadRuntimeMemoryContextManifest(runtime, sessionScope, basePrompt);
     const prompt = formatRuntimeIncomingMessageWithMemoryContext(message, manifest);
     const delivered = runtime.driver.sendUserMessage(prompt, sendOptions);
+    if (message.taskRunId) {
+      void this.reportTaskRunLifecycle({
+        agentId: runtime.agentId,
+        taskRunId: message.taskRunId,
+        status: 'dispatched',
+        runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
+        contextSessionId: message.contextSessionId,
+      });
+    }
     if (message.traceId) {
       this.emitLatencyTrace(message.traceId, 'daemon.runtime_delivery.sent_or_queued', {
         flow: 'message_to_agent_reply',
@@ -301,10 +327,22 @@ export class DaemonCore extends EventEmitter {
     // Working state: a message reached the runtime, reset per-turn dedup sets
     // and report the start of a new turn to the Activity timeline.
     if (delivered) {
+      if (message.taskRunId) {
+        runtime.activeTaskRunId = message.taskRunId;
+        runtime.activeTaskRunContextSessionId = message.contextSessionId;
+        void this.reportTaskRunLifecycle({
+          agentId: runtime.agentId,
+          taskRunId: message.taskRunId,
+          status: 'running',
+          runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
+          contextSessionId: message.contextSessionId,
+        });
+      }
       runtime.activityTurnState = 'working';
       runtime.recordedToolUseIds.clear();
       void this.reportRuntimeActivity(runtime, 'runtime_working', 'Working on message', {
         messageId: message.messageId ?? undefined,
+        taskRunId: message.taskRunId ?? undefined,
         sourceChannel: message.channelId ?? undefined,
         target: message.target ?? undefined,
       });
@@ -758,6 +796,8 @@ export class DaemonCore extends EventEmitter {
       activeTraceId: undefined,
       activeTraceStartedAt: undefined,
       activeTraceFirstOutputSeen: false,
+      activeTaskRunId: undefined,
+      activeTaskRunContextSessionId: undefined,
       restartAttempts: 0,
       restartTimer: null,
       stallTimer: null,
@@ -937,6 +977,23 @@ export class DaemonCore extends EventEmitter {
             },
             usageSource: u?.source ?? 'provider-stream-json',
           });
+          if (runtime.activeTaskRunId) {
+            void this.reportTaskRunLifecycle({
+              agentId,
+              taskRunId: runtime.activeTaskRunId,
+              status: 'completed',
+              runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
+              contextSessionId: runtime.activeTaskRunContextSessionId,
+              tokenUsage: {
+                inputTokens: u?.inputTokens,
+                outputTokens: u?.outputTokens,
+                cacheReadInputTokens: u?.cacheReadInputTokens,
+                source: u?.source ?? 'provider-stream-json',
+              },
+            });
+            runtime.activeTaskRunId = undefined;
+            runtime.activeTaskRunContextSessionId = undefined;
+          }
         }
       }
 
@@ -1007,6 +1064,19 @@ export class DaemonCore extends EventEmitter {
         this.sessionManager.update(event.sessionId, { status: 'dead' });
       }
       runtime.status = event.intentional ? 'stopped' : 'exited';
+      if (!event.intentional && runtime.activeTaskRunId) {
+        void this.reportTaskRunLifecycle({
+          agentId,
+          taskRunId: runtime.activeTaskRunId,
+          status: 'failed',
+          runtimeSessionId: event.sessionId ?? driver.sessionId ?? runtime.sessionId ?? undefined,
+          contextSessionId: runtime.activeTaskRunContextSessionId,
+          failureCode: 'RUNTIME_EXITED',
+          failureReason: `Runtime exited unexpectedly: code=${event.code ?? 'unknown'} signal=${event.signal ?? 'unknown'}`,
+        });
+        runtime.activeTaskRunId = undefined;
+        runtime.activeTaskRunContextSessionId = undefined;
+      }
       this.stopWarmupTimer(runtime);
       this.emit('runtime_exit', { ...event, agentId });
       this.emitRuntimeTrace({ type: 'exit', agentId, ...event });
@@ -1027,6 +1097,17 @@ export class DaemonCore extends EventEmitter {
       console.error(`[Daemon] ${runtime.runtime} runtime ${agentId} error:`, (err as Error).message);
       this.emit('runtime_error', err);
       this.emitRuntimeTrace({ type: 'error', agentId, message: (err as Error).message });
+      if (runtime.activeTaskRunId) {
+        void this.reportTaskRunLifecycle({
+          agentId,
+          taskRunId: runtime.activeTaskRunId,
+          status: 'failed',
+          runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
+          contextSessionId: runtime.activeTaskRunContextSessionId,
+          failureCode: 'RUNTIME_ERROR',
+          failureReason: (err as Error).message,
+        });
+      }
     });
 
     driver.start();
@@ -1066,6 +1147,19 @@ export class DaemonCore extends EventEmitter {
     }
     this.stopWarmupTimer(runtime);
     runtime.status = 'stopped';
+    if (!this.stopping && runtime.activeTaskRunId) {
+      void this.reportTaskRunLifecycle({
+        agentId,
+        taskRunId: runtime.activeTaskRunId,
+        status: 'cancelled',
+        runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
+        contextSessionId: runtime.activeTaskRunContextSessionId,
+        failureCode: 'RUNTIME_STOPPED',
+        failureReason: 'Runtime stopped before TaskRun completed',
+      });
+      runtime.activeTaskRunId = undefined;
+      runtime.activeTaskRunContextSessionId = undefined;
+    }
     this.stopRuntimeStallWatchdog(runtime);
     runtime.driver.stop();
     if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
@@ -1387,6 +1481,44 @@ export class DaemonCore extends EventEmitter {
       });
     } catch (err) {
       this.log(`Activity report failed (${kind}): ${(err as Error).message}`, 'debug');
+    }
+  }
+
+  async reportTaskRunLifecycle(report: TaskRunLifecycleReport): Promise<void> {
+    if (!this.credential || this.stopping) return;
+    const serverUrl = this.credential.serverUrl || this.config.serverUrl;
+    const body = {
+      status: report.status,
+      runtimeSessionId: report.runtimeSessionId,
+      workspaceSessionId: report.workspaceSessionId,
+      contextSessionId: report.contextSessionId,
+      contextUsage: report.contextUsage,
+      tokenUsage: report.tokenUsage,
+      toolUsageSummary: report.toolUsageSummary,
+      outputMessageId: report.outputMessageId,
+      failureCode: report.failureCode,
+      failureReason: report.failureReason,
+    };
+    try {
+      const response = await fetch(new URL(
+        `/internal/agent-api/task-runs/${encodeURIComponent(report.taskRunId)}/lifecycle`,
+        serverUrl,
+      ), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.credential.token}`,
+          'X-Agent-Id': report.agentId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        this.log(`TaskRun lifecycle report failed (${report.status}): ${response.status} ${text.slice(0, 200)}`, 'debug');
+      }
+    } catch (err) {
+      this.log(`TaskRun lifecycle report failed (${report.status}): ${(err as Error).message}`, 'debug');
     }
   }
 
