@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     get_db, Account, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
     Computer, ConnectTicket, Member, Message, MessageReaction, EventRecord, FileEntry, Reminder, SavedItem,
-    Server, Task, ThreadSummary,
+    Server, Task, TaskRun, ThreadSummary,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
 from services.daemon_control import (
@@ -61,6 +61,7 @@ from services.public_events import (
     should_deliver_public_event,
 )
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
+from services.task_runs import create_task_assignment_and_run, serialize_task_run
 from services.thread_summary import (
     load_thread_metadata,
     resolve_thread_root,
@@ -1001,6 +1002,10 @@ async def _serialize_task(db: AsyncSession, task: Task) -> dict:
         assignee_member = await serialize_member(db, assignee) if assignee else None
     channel_result = await db.execute(select(Channel).where(Channel.id == task.channel_id))
     channel = channel_result.scalar_one_or_none()
+    runs_result = await db.execute(
+        select(TaskRun).where(TaskRun.task_id == task.id).order_by(TaskRun.created_at.desc())
+    )
+    runs = runs_result.scalars().all()
     return {
         "id": str(task.id),
         "number": task.task_number,
@@ -1017,6 +1022,7 @@ async def _serialize_task(db: AsyncSession, task: Task) -> dict:
         "assignee": assignee.display_name if assignee else None,
         "assigneeId": str(task.assignee_id) if task.assignee_id else None,
         "assigneeMember": assignee_member,
+        "runs": [serialize_task_run(run) for run in runs],
         "data": task.data or {},
         "createdAt": task.created_at.isoformat() if task.created_at else None,
         "updatedAt": task.updated_at.isoformat() if task.updated_at else None,
@@ -2031,6 +2037,16 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
             assignee = assignee_result.scalar_one_or_none()
         channel_target = f"#{channel.name}" if channel.kind == "public" else channel.name
 
+    _assignment, task_run = await create_task_assignment_and_run(
+        db,
+        task=task,
+        assignee=assignee,
+        assigned_by_id=creator_id,
+        role="worker",
+        assignment_mode="task_created",
+        trigger_type="task_created",
+    )
+
     assignee_handle = f"@{assignee_name}" if assignee_name else None
 
     await _record_activity(
@@ -2049,6 +2065,7 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
             "target": channel_target,
             "channel": channel_target,
             "messageId": str(parsed_message_id) if parsed_message_id else None,
+            "taskRunId": str(task_run.id) if task_run else None,
             "source": source_payload,
         },
         channel_id=channel_id,

@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     get_db, ActivityLog, AgentWorkspace, ApiKey, Channel, ChannelMember, Computer,
     ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction,
-    Reminder, Server, Task, ThreadSummary,
+    Reminder, Server, Task, TaskRun, ThreadSummary,
 )
 from routers.auth import resolve_agent, resolve_machine
 from services.daemon_control import (
@@ -52,6 +52,7 @@ from services.memory_api import (
     write_memory_entry,
 )
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
+from services.task_runs import create_task_assignment_and_run, serialize_task_run
 from services.thread_summary import (
     SUMMARY_MAX_CHARS,
     serialize_thread_summary,
@@ -542,6 +543,10 @@ async def _serialize_task(db: AsyncSession, task: Task) -> dict:
     if task.assignee_id:
         assignee_result = await db.execute(select(Member).where(Member.id == task.assignee_id))
         assignee = assignee_result.scalar_one_or_none()
+    runs_result = await db.execute(
+        select(TaskRun).where(TaskRun.task_id == task.id).order_by(TaskRun.created_at.desc())
+    )
+    runs = runs_result.scalars().all()
 
     return {
         "id": str(task.id),
@@ -557,6 +562,7 @@ async def _serialize_task(db: AsyncSession, task: Task) -> dict:
         "creatorId": str(task.creator_id),
         "assignee": f"@{assignee.display_name}" if assignee else None,
         "assigneeId": str(task.assignee_id) if task.assignee_id else None,
+        "runs": [serialize_task_run(run) for run in runs],
         "data": task.data or {},
         "createdAt": task.created_at.isoformat() if task.created_at else None,
         "updatedAt": task.updated_at.isoformat() if task.updated_at else None,
@@ -2282,7 +2288,7 @@ async def create_tasks(
     if not isinstance(raw_tasks, list) or not raw_tasks:
         raise HTTPException(400, "Missing tasks")
 
-    created: list[Task] = []
+    created: list[tuple[Task, Member | None]] = []
     next_number = await _next_task_number(db, channel.id)
     for item in raw_tasks:
         if not isinstance(item, dict):
@@ -2314,31 +2320,53 @@ async def create_tasks(
             data=item.get("data") or body.get("data") or {},
         )
         next_number += 1
-        created.append(task)
+        created.append((task, assignee))
         db.add(task)
 
     await db.flush()
-    for task in created:
+    for task, assignee in created:
+        _assignment, task_run = await create_task_assignment_and_run(
+            db,
+            task=task,
+            assignee=assignee,
+            assigned_by_id=member.id,
+            role="worker",
+            assignment_mode="agent_delegated",
+            trigger_type="leader_delegated",
+        )
+        assignee_handle = f"@{assignee.display_name}" if assignee else None
         await _record_activity(
             db,
             server,
             member,
             "task_created",
             f"@{member.display_name} created task #{task.task_number}",
-            {"taskNumber": task.task_number, "title": task.title},
+            {
+                "taskNumber": task.task_number,
+                "title": task.title,
+                "status": task.status,
+                "assignee": assignee_handle,
+                "assigneeId": str(assignee.id) if assignee else None,
+                "targetAgentId": str(assignee.id) if assignee and assignee.kind == "agent" else None,
+                "target": _display_channel(channel),
+                "channel": _display_channel(channel),
+                "messageId": str(task.message_id) if task.message_id else None,
+                "taskRunId": str(task_run.id) if task_run else None,
+            },
             channel_id=task.channel_id,
             task_id=task.id,
         )
 
     await db.commit()
-    for task in created:
+    task_rows = [task for task, _assignee in created]
+    for task in task_rows:
         await db.refresh(task)
     await _push_committed_events(db, server_id=server.id)
 
     return {
         "created": True,
-        "tasks": [await _serialize_task(db, task) for task in created],
-        "count": len(created),
+        "tasks": [await _serialize_task(db, task) for task in task_rows],
+        "count": len(task_rows),
     }
 
 
