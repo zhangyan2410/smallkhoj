@@ -7,6 +7,7 @@ import {
   CheckSquare,
   HardDrive,
   MessageSquare,
+  Radio,
   Search,
   Settings,
   Sparkles,
@@ -17,7 +18,7 @@ import type { AccountSession } from "@/lib/control-plane"
 import { cn } from "@/lib/utils"
 import { LanguageSwitcher } from "@/components/language-switcher"
 
-type NavKey = "search" | "chat" | "tasks" | "members" | "computers" | "activity" | "settings"
+type NavKey = "search" | "chat" | "tasks" | "members" | "computers" | "control" | "activity" | "settings"
 
 const railItems: Array<{
   key: NavKey
@@ -30,6 +31,7 @@ const railItems: Array<{
   { key: "tasks", href: "/tasks", labelKey: "tasks", icon: CheckSquare },
   { key: "members", href: "/members", labelKey: "members", icon: Bot },
   { key: "computers", href: "/computers", labelKey: "computers", icon: HardDrive },
+  { key: "control", href: "/control/integration", labelKey: "control", icon: Radio },
   { key: "activity", href: "/daemon", labelKey: "activity", icon: Bell },
 ]
 

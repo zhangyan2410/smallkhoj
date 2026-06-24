@@ -54,13 +54,17 @@ Notes:
 ## Phase 3: Control and Product UI
 
 - [ ] Task detail shows TaskRun timeline.
-- [ ] Control/integration surface shows:
+- [x] Control/integration surface shows:
   - TaskRun status
   - assignee/role
   - workspace/session/context ids
   - prompt profile
   - token/context usage
   - failure code/reason
+
+Notes:
+
+- `/control/integration` now presents these as operator-facing summaries first and keeps raw ids/session strings in collapsed technical details. Visible gate output is Chinese by default and long id/token-like strings are not shown in the main view.
 - [ ] Direct drag assignment creates assignment + TaskRun.
 - [ ] Leader/coordinator flow shows parent task and child task/run relationships.
 
