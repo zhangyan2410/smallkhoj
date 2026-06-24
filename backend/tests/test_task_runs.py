@@ -3,6 +3,7 @@ import uuid
 
 import pytest
 
+import models.seed as seed
 import routers.public_api as public_api
 import routers.agent_api as agent_api
 from models import Base, TaskAssignment, TaskRun
@@ -65,6 +66,50 @@ class _JsonRequest:
 
     async def json(self):
         return self._body
+
+
+class _SeedConn:
+    def __init__(self):
+        self.statements = []
+
+    async def run_sync(self, callback):
+        self.run_sync_callback = callback
+
+    async def execute(self, statement):
+        self.statements.append(str(statement))
+
+
+class _SeedBegin:
+    def __init__(self, conn):
+        self.conn = conn
+
+    async def __aenter__(self):
+        return self.conn
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+class _SeedEngine:
+    def __init__(self):
+        self.conn = _SeedConn()
+
+    def begin(self):
+        return _SeedBegin(self.conn)
+
+
+@pytest.mark.asyncio
+async def test_startup_seed_emits_task_assignment_and_run_table_ddl(monkeypatch):
+    fake_engine = _SeedEngine()
+    monkeypatch.setattr(seed, "engine", fake_engine)
+
+    await seed.create_tables()
+
+    statements = "\n".join(fake_engine.conn.statements)
+    assert "CREATE TABLE IF NOT EXISTS task_assignments" in statements
+    assert "CREATE TABLE IF NOT EXISTS task_runs" in statements
+    assert "CREATE INDEX IF NOT EXISTS idx_task_runs_task" in statements
+    assert "CREATE INDEX IF NOT EXISTS idx_task_assignments_assignee" in statements
 
 
 def test_task_run_tables_are_declared_with_runtime_context_columns():

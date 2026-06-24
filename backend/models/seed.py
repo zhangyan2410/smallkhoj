@@ -87,6 +87,70 @@ async def create_tables():
             "ADD COLUMN IF NOT EXISTS mentions UUID[] NOT NULL DEFAULT '{}'::uuid[]"
         ))
         await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS task_assignments (
+                id UUID PRIMARY KEY,
+                task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                assignee_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                assignee_type VARCHAR(20) NOT NULL DEFAULT 'agent',
+                role VARCHAR(20) NOT NULL DEFAULT 'worker',
+                assignment_mode VARCHAR(40) NOT NULL DEFAULT 'task_created',
+                status VARCHAR(20) NOT NULL DEFAULT 'active',
+                created_by UUID REFERENCES members(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT ck_task_assignments_assignee_type CHECK (assignee_type IN ('member', 'agent')),
+                CONSTRAINT ck_task_assignments_role CHECK (role IN ('leader', 'worker', 'reviewer', 'participant')),
+                CONSTRAINT ck_task_assignments_mode CHECK (assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created')),
+                CONSTRAINT ck_task_assignments_status CHECK (status IN ('active', 'completed', 'cancelled'))
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_assignments_task ON task_assignments(task_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_assignments_assignee ON task_assignments(assignee_id, status)"))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS task_runs (
+                id UUID PRIMARY KEY,
+                task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                assignment_id UUID REFERENCES task_assignments(id) ON DELETE SET NULL,
+                agent_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+                source_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+                thread_root_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+                parent_run_id UUID REFERENCES task_runs(id) ON DELETE SET NULL,
+                attempt INTEGER NOT NULL DEFAULT 1,
+                status VARCHAR(20) NOT NULL DEFAULT 'queued',
+                trigger_type VARCHAR(40) NOT NULL DEFAULT 'task_created',
+                runtime_workspace_id UUID REFERENCES agent_workspaces(id) ON DELETE SET NULL,
+                computer_id UUID REFERENCES computers(id) ON DELETE SET NULL,
+                daemon_id VARCHAR(80),
+                runtime VARCHAR(40),
+                runtime_provider VARCHAR(80),
+                runtime_model VARCHAR(120),
+                prompt_profile VARCHAR(80) NOT NULL DEFAULT 'task.worker',
+                workspace_session_id VARCHAR(255),
+                runtime_session_id VARCHAR(255),
+                context_session_id VARCHAR(255) NOT NULL,
+                cwd TEXT,
+                context_scope VARCHAR(20) NOT NULL DEFAULT 'task',
+                context_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+                context_usage JSONB NOT NULL DEFAULT '{}'::jsonb,
+                token_usage JSONB NOT NULL DEFAULT '{}'::jsonb,
+                tool_usage_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+                output_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+                failure_code VARCHAR(80),
+                failure_reason TEXT,
+                started_at TIMESTAMP WITH TIME ZONE,
+                completed_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT ck_task_runs_status CHECK (status IN ('queued', 'dispatched', 'running', 'awaiting_input', 'completed', 'failed', 'cancelled')),
+                CONSTRAINT ck_task_runs_context_scope CHECK (context_scope IN ('channel', 'thread', 'task', 'run'))
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs(task_id, created_at)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_agent ON task_runs(agent_id, status)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_assignment ON task_runs(assignment_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_workspace ON task_runs(runtime_workspace_id)"))
+        await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS saved_items (
                 id UUID PRIMARY KEY,
                 server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
