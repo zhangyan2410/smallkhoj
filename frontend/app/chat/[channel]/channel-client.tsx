@@ -24,6 +24,7 @@ import {
 import { MemberAvatar } from "@/components/member-avatar"
 import { MessageFrame } from "@/components/message-frame"
 import { Avatar } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { RuntimeChip } from "@/components/product-ui"
 import { MarkdownMessage } from "@/components/markdown-message"
@@ -1247,7 +1248,7 @@ export function ChannelClient({
               </div>
             </div>
 
-            <div className="shrink-0 border-t bg-background p-3">
+            <div className="shrink-0 border-t-2 border-[var(--ink)] bg-sand-card p-3">
               <div className="mx-auto flex max-w-3xl items-center gap-2">
                 <input
                   ref={fileInputRef}
@@ -1261,16 +1262,17 @@ export function ChannelClient({
                     e.target.value = ""
                   }}
                 />
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="icon"
                   aria-label={tChat("attachFile")}
                   title={tChat("attachFile")}
                   disabled={uploading || !channelId}
                   onClick={() => openFilePicker()}
-                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                 >
                   <Paperclip className="size-3.5" />
-                </button>
+                </Button>
                 <Input
                   name="content"
                   value={input}
@@ -1289,21 +1291,20 @@ export function ChannelClient({
                     asTask ? "text-primary" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <span className={`inline-flex size-4 items-center justify-center rounded ${asTask ? "bg-primary text-primary-foreground" : "border border-muted-foreground/40"}`}>
+                  <span className={`inline-flex size-4 items-center justify-center border-2 border-[var(--ink)] ${asTask ? "bg-primary text-primary-foreground" : ""}`}>
                     {asTask && <CheckSquare className="size-3 pointer-events-none" />}
                   </span>
                   {tChat("asTask")}
                 </button>
-                <button
+                <Button
                   type="button"
+                  size="icon"
                   aria-label={tChat("sendMessage")}
                   onClick={handleSend}
                   disabled={!input.trim()}
-                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-                  style={{ boxShadow: "0 0 0 0 transparent" }}
                 >
                   <Send className="size-3.5" />
-                </button>
+                </Button>
               </div>
             </div>
           </>
@@ -1313,7 +1314,7 @@ export function ChannelClient({
           {activeThreadId && (
             <aside
               aria-label={tChat("thread")}
-              className="relative flex h-full min-h-0 shrink-0 flex-col border-l bg-background p-4"
+              className="relative flex h-full min-h-0 shrink-0 flex-col border-l-2 border-[var(--ink)] bg-sand-card p-4"
               style={{ width: threadWidth }}
             >
               <div
@@ -1473,15 +1474,15 @@ export function ChannelClient({
                     placeholder={tChat("replyPlaceholder")}
                     className="flex-1"
                   />
-                  <button
+                  <Button
                     type="button"
+                    size="icon"
                     aria-label={tChat("sendThreadReply")}
                     onClick={handleThreadSend}
                     disabled={!threadInput.trim()}
-                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
                   >
                     <Send className="size-4" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             </aside>
@@ -1490,9 +1491,9 @@ export function ChannelClient({
           {!activeThreadId && showMembers && (
             <aside
               aria-label={tChat("channelMembers")}
-              className="h-full w-56 shrink-0 overflow-y-auto border-l bg-background p-3 space-y-2"
+              className="h-full w-56 shrink-0 overflow-y-auto border-l-2 border-[var(--ink)] bg-sand-card p-3 space-y-2"
             >
-              <h3 className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <h3 className="px-1 pb-1 text-xs font-semibold text-sand-muted">
                 {tChat("membersCount", { count: members.length })}
               </h3>
               <ul className="space-y-0.5">
@@ -1500,16 +1501,16 @@ export function ChannelClient({
                   <li
                     key={m.id}
                     data-testid={`channel-member-${m.displayName}`}
-                    className="group/member flex items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-muted/60"
+                    className="group/member flex items-center gap-2 px-1.5 py-1 text-sm hover:bg-muted/60"
                   >
                     <MemberAvatar member={m} size="xs" />
                     <span className="truncate">{m.displayName}</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">{statusLabel(m.status)}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{statusLabel(m.status)}</span>
                     {m.kind === "agent" && !currentIsDm && (
                       <button
                         aria-label={tChat("removeMember", { member: m.displayName || m.name })}
                         onClick={() => handleRemoveMember(m.id)}
-                        className="size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover/member:flex"
+                        className="size-5 shrink-0 items-center justify-center text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover/member:flex"
                       >
                         <Trash2 className="size-3" />
                       </button>
@@ -1519,15 +1520,15 @@ export function ChannelClient({
               </ul>
 
               {!currentIsDm && (
-                <div className="space-y-1.5 border-t pt-2">
-                  <h4 className="px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{tChat("addMember")}</h4>
+                <div className="space-y-1.5 border-t-2 border-[var(--ink)] pt-2">
+                  <h4 className="px-1 text-xs font-semibold text-sand-muted">{tChat("addMember")}</h4>
                   <div className="flex gap-1">
                     <select
                       aria-label={tChat("addChannelMember")}
                       data-testid="add-channel-member-select"
                       name="memberId"
                       ref={addMemberSelectRef}
-                      className="flex-1 rounded-md border bg-background px-1.5 py-1 text-xs"
+                      className="flex-1 rounded-none border-2 border-[var(--ink)] bg-transparent px-1.5 py-1 text-xs outline-none focus-visible:border-ring"
                     >
                       <option value="">{tChat("selectMember")}</option>
                       {allMembers
@@ -1538,14 +1539,14 @@ export function ChannelClient({
                           </option>
                         ))}
                     </select>
-                    <button
+                    <Button
                       type="button"
+                      size="icon-sm"
                       aria-label={tChat("addMemberToChannel")}
                       onClick={handleAddMember}
-                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
                     >
                       <Plus className="size-3" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
