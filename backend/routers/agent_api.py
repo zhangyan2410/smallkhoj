@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     get_db, ActivityLog, AgentWorkspace, ApiKey, Channel, ChannelMember, Computer,
     ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction,
-    Reminder, Server, Task, ThreadSummary,
+    Reminder, Server, Task, TaskRun, ThreadSummary,
 )
 from routers.auth import resolve_agent, resolve_machine
 from services.daemon_control import (
@@ -52,6 +52,7 @@ from services.memory_api import (
     write_memory_entry,
 )
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
+from services.task_runs import create_task_assignment_and_run, serialize_task_run, update_task_run_lifecycle
 from services.thread_summary import (
     SUMMARY_MAX_CHARS,
     serialize_thread_summary,
@@ -87,6 +88,20 @@ class TaskClaimRequest(BaseModel):
 class TaskUpdateRequest(BaseModel):
     status: str
     taskNumber: int | None = None
+
+
+class TaskRunLifecycleRequest(BaseModel):
+    status: str
+    workspaceId: str | None = None
+    runtimeSessionId: str | None = None
+    workspaceSessionId: str | None = None
+    contextSessionId: str | None = None
+    contextUsage: dict | None = None
+    tokenUsage: dict | None = None
+    toolUsageSummary: dict | None = None
+    outputMessageId: str | None = None
+    failureCode: str | None = None
+    failureReason: str | None = None
 
 
 class DaemonWorkspacePayload(BaseModel):
@@ -178,6 +193,19 @@ def _daemon_lease_conflicts(computer: Computer, daemon_id: str | None, now: date
 
 def _daemon_shutdown_can_release(computer: Computer, daemon_id: str | None) -> bool:
     return not computer.active_daemon_id or not daemon_id or computer.active_daemon_id == daemon_id
+
+
+def _apply_daemon_ws_activity(computer: Computer, daemon_id: str | None, now: datetime) -> bool:
+    if daemon_id and _daemon_lease_conflicts(computer, daemon_id, now):
+        return False
+    if not daemon_id and _lease_active(computer, now):
+        return False
+    computer.last_heartbeat_at = now
+    computer.status = "online"
+    if daemon_id:
+        computer.active_daemon_id = daemon_id
+    computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
+    return True
 
 
 def _new_machine_token() -> str:
@@ -542,6 +570,10 @@ async def _serialize_task(db: AsyncSession, task: Task) -> dict:
     if task.assignee_id:
         assignee_result = await db.execute(select(Member).where(Member.id == task.assignee_id))
         assignee = assignee_result.scalar_one_or_none()
+    runs_result = await db.execute(
+        select(TaskRun).where(TaskRun.task_id == task.id).order_by(TaskRun.created_at.desc())
+    )
+    runs = runs_result.scalars().all()
 
     return {
         "id": str(task.id),
@@ -557,6 +589,7 @@ async def _serialize_task(db: AsyncSession, task: Task) -> dict:
         "creatorId": str(task.creator_id),
         "assignee": f"@{assignee.display_name}" if assignee else None,
         "assigneeId": str(task.assignee_id) if task.assignee_id else None,
+        "runs": [serialize_task_run(run) for run in runs],
         "data": task.data or {},
         "createdAt": task.created_at.isoformat() if task.created_at else None,
         "updatedAt": task.updated_at.isoformat() if task.updated_at else None,
@@ -1668,6 +1701,7 @@ async def daemon_websocket(
 
     await websocket.accept()
     raw_cursor = websocket.query_params.get("eventLogCursor") or websocket.query_params.get("activityCursor")
+    daemon_id = websocket.query_params.get("daemonId")
     event_cursor = await initial_daemon_event_cursor(db, server_id=server.id, raw_cursor=raw_cursor)
     daemon_control_hub.add(computer.id, websocket, event_cursor)
     try:
@@ -1692,10 +1726,8 @@ async def daemon_websocket(
             message_type = message.get("type") if isinstance(message, dict) else None
             if message_type in {"activity", "ack"}:
                 now = _utcnow_aware()
-                computer.last_heartbeat_at = now
-                computer.status = "online"
-                computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
-                await db.commit()
+                if _apply_daemon_ws_activity(computer, daemon_id, now):
+                    await db.commit()
     except WebSocketDisconnect:
         pass
     finally:
@@ -2282,7 +2314,7 @@ async def create_tasks(
     if not isinstance(raw_tasks, list) or not raw_tasks:
         raise HTTPException(400, "Missing tasks")
 
-    created: list[Task] = []
+    created: list[tuple[Task, Member | None]] = []
     next_number = await _next_task_number(db, channel.id)
     for item in raw_tasks:
         if not isinstance(item, dict):
@@ -2314,31 +2346,53 @@ async def create_tasks(
             data=item.get("data") or body.get("data") or {},
         )
         next_number += 1
-        created.append(task)
+        created.append((task, assignee))
         db.add(task)
 
     await db.flush()
-    for task in created:
+    for task, assignee in created:
+        _assignment, task_run = await create_task_assignment_and_run(
+            db,
+            task=task,
+            assignee=assignee,
+            assigned_by_id=member.id,
+            role="worker",
+            assignment_mode="agent_delegated",
+            trigger_type="leader_delegated",
+        )
+        assignee_handle = f"@{assignee.display_name}" if assignee else None
         await _record_activity(
             db,
             server,
             member,
             "task_created",
             f"@{member.display_name} created task #{task.task_number}",
-            {"taskNumber": task.task_number, "title": task.title},
+            {
+                "taskNumber": task.task_number,
+                "title": task.title,
+                "status": task.status,
+                "assignee": assignee_handle,
+                "assigneeId": str(assignee.id) if assignee else None,
+                "targetAgentId": str(assignee.id) if assignee and assignee.kind == "agent" else None,
+                "target": _display_channel(channel),
+                "channel": _display_channel(channel),
+                "messageId": str(task.message_id) if task.message_id else None,
+                "taskRunId": str(task_run.id) if task_run else None,
+            },
             channel_id=task.channel_id,
             task_id=task.id,
         )
 
     await db.commit()
-    for task in created:
+    task_rows = [task for task, _assignee in created]
+    for task in task_rows:
         await db.refresh(task)
     await _push_committed_events(db, server_id=server.id)
 
     return {
         "created": True,
-        "tasks": [await _serialize_task(db, task) for task in created],
-        "count": len(created),
+        "tasks": [await _serialize_task(db, task) for task in task_rows],
+        "count": len(task_rows),
     }
 
 
@@ -3891,6 +3945,61 @@ async def create_agent_activity(
             "timestamp": activity.occurred_at.isoformat() if activity.occurred_at else None,
         },
     }
+
+
+@router.post("/task-runs/{run_id}/lifecycle")
+async def update_task_run_lifecycle_endpoint(
+    run_id: str,
+    body: TaskRunLifecycleRequest,
+    agent: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, _server = agent
+    try:
+        parsed_run_id = uuid.UUID(run_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid task run id")
+
+    output_message_id = None
+    if body.outputMessageId:
+        try:
+            output_message_id = uuid.UUID(body.outputMessageId)
+        except ValueError:
+            raise HTTPException(400, "Invalid outputMessageId")
+    workspace_id = None
+    body_workspace_id = getattr(body, "workspaceId", None)
+    if body_workspace_id:
+        try:
+            workspace_id = uuid.UUID(body_workspace_id)
+        except ValueError:
+            raise HTTPException(400, "Invalid workspaceId")
+
+    try:
+        run = await update_task_run_lifecycle(
+            db,
+            run_id=parsed_run_id,
+            agent_id=member.id,
+            status=body.status,
+            workspace_id=workspace_id,
+            runtime_session_id=body.runtimeSessionId,
+            workspace_session_id=body.workspaceSessionId,
+            context_session_id=body.contextSessionId,
+            context_usage=body.contextUsage,
+            token_usage=body.tokenUsage,
+            tool_usage_summary=body.toolUsageSummary,
+            output_message_id=output_message_id,
+            failure_code=body.failureCode,
+            failure_reason=body.failureReason,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    if run is None:
+        raise HTTPException(404, "TaskRun not found")
+
+    await db.commit()
+    await db.refresh(run)
+    return {"ok": True, "run": serialize_task_run(run)}
 
 
 @router.post("/heartbeat")

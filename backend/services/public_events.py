@@ -192,7 +192,9 @@ class PostgresNotifyPublicEventFanout:
     def notify_statement(self, event: dict[str, Any]):
         payload = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
         if len(payload.encode("utf-8")) > POSTGRES_NOTIFY_PAYLOAD_LIMIT:
-            raise ValueError("Public event payload is too large for Postgres NOTIFY")
+            payload = json.dumps(_compact_notify_event(event), ensure_ascii=False, separators=(",", ":"))
+        if len(payload.encode("utf-8")) > POSTGRES_NOTIFY_PAYLOAD_LIMIT:
+            payload = json.dumps(_minimal_notify_event(event), ensure_ascii=False, separators=(",", ":"))
         return text("SELECT pg_notify(:channel, :payload)"), {
             "channel": self.channel,
             "payload": payload,
@@ -205,6 +207,49 @@ class PostgresNotifyPublicEventFanout:
 
 def _public_event_type(event_type: str) -> str:
     return PUBLIC_EVENT_TYPE_ALIASES.get(event_type, event_type)
+
+
+def _compact_notify_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Keep Postgres NOTIFY as a wake-up signal when full event payloads are too large."""
+    raw_payload = event.get("payload")
+    payload = raw_payload if isinstance(raw_payload, dict) else {}
+    compact_payload: dict[str, Any] = {"compacted": True}
+    for key in (
+        "eventId",
+        "eventSeq",
+        "messageId",
+        "shortId",
+        "taskId",
+        "channelId",
+        "target",
+        "channel",
+        "channelType",
+        "parentId",
+        "threadId",
+    ):
+        value = payload.get(key)
+        if value is not None:
+            compact_payload[key] = value
+    return {
+        "id": event.get("id"),
+        "type": event.get("type"),
+        "scope": event.get("scope") or {},
+        "seq": event.get("seq"),
+        "epoch": event.get("epoch"),
+        "createdAt": event.get("createdAt"),
+        "payload": compact_payload,
+    }
+
+
+def _minimal_notify_event(event: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": event.get("id"),
+        "type": event.get("type"),
+        "seq": event.get("seq"),
+        "epoch": event.get("epoch"),
+        "createdAt": event.get("createdAt"),
+        "payload": {"compacted": True},
+    }
 
 
 def _event_scope(record: EventRecord) -> dict[str, Any]:

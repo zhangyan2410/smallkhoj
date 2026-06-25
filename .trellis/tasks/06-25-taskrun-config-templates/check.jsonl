@@ -1,0 +1,5 @@
+{"file":".trellis/tasks/06-25-taskrun-config-templates/prd.md","reason":"Verify delivered behavior against explicit acceptance criteria."}
+{"file":".trellis/tasks/06-25-taskrun-config-templates/design.md","reason":"Check implementation follows selected architecture and compatibility decisions."}
+{"file":".trellis/spec/backend/runtime-slock-integration.md","reason":"Check daemon/runtime/TaskRun evidence and prompt contracts."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check DB startup DDL/backfill safety."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check frontend mutation and real browser verification expectations."}

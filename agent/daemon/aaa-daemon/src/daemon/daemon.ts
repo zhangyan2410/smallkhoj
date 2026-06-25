@@ -56,9 +56,15 @@ export interface RuntimeIncomingMessage {
   peerMemberId?: string;
   messageId?: string;
   taskId?: string;
+  taskRunId?: string;
   taskNumber?: string;
   status?: string;
   title?: string;
+  promptProfile?: string;
+  contextSessionId?: string;
+  taskRunTemplate?: Record<string, unknown>;
+  taskRunRole?: Record<string, unknown>;
+  completionPolicy?: string;
   timestamp?: string;
   sender?: string;
   actor?: string;
@@ -84,6 +90,22 @@ export interface RuntimeMemoryContextItem {
   path?: string;
   title?: string;
   snippet?: string;
+}
+
+export interface TaskRunLifecycleReport {
+  agentId: string;
+  taskRunId: string;
+  status: 'dispatched' | 'running' | 'completed' | 'failed' | 'cancelled';
+  workspaceId?: string;
+  runtimeSessionId?: string;
+  workspaceSessionId?: string;
+  contextSessionId?: string;
+  contextUsage?: Record<string, unknown>;
+  tokenUsage?: Record<string, unknown>;
+  toolUsageSummary?: Record<string, unknown>;
+  outputMessageId?: string;
+  failureCode?: string;
+  failureReason?: string;
 }
 
 export interface DaemonControlCommand {
@@ -122,6 +144,11 @@ interface RuntimeRecord {
   activeTraceId?: string;
   activeTraceStartedAt?: number;
   activeTraceFirstOutputSeen?: boolean;
+  activeTaskRunId?: string;
+  activeTaskRunContextSessionId?: string;
+  activeTaskRunOutputMessageId?: string;
+  activeTaskRunToolUseCount: number;
+  activeTaskRunToolResultCount: number;
   restartAttempts: number;
   restartTimer: ReturnType<typeof setTimeout> | null;
   stallTimer: ReturnType<typeof setInterval> | null;
@@ -144,6 +171,12 @@ interface RuntimeRecord {
     inputTokens?: number;
     outputTokens?: number;
     cacheReadInputTokens?: number;
+  };
+  lastTurnContextUsage?: {
+    source: 'runtime_usage_event' | 'provider-stream-json';
+    knownTokens?: number;
+    contextWindow?: number;
+    occupancyRatio?: number;
   };
 }
 
@@ -284,6 +317,16 @@ export class DaemonCore extends EventEmitter {
     const manifest = await this.loadRuntimeMemoryContextManifest(runtime, sessionScope, basePrompt);
     const prompt = formatRuntimeIncomingMessageWithMemoryContext(message, manifest);
     const delivered = runtime.driver.sendUserMessage(prompt, sendOptions);
+    if (message.taskRunId) {
+      void this.reportTaskRunLifecycle({
+        agentId: runtime.agentId,
+        taskRunId: message.taskRunId,
+        status: 'dispatched',
+        workspaceId: runtime.workspaceId,
+        runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
+        contextSessionId: message.contextSessionId,
+      });
+    }
     if (message.traceId) {
       this.emitLatencyTrace(message.traceId, 'daemon.runtime_delivery.sent_or_queued', {
         flow: 'message_to_agent_reply',
@@ -298,10 +341,27 @@ export class DaemonCore extends EventEmitter {
     // Working state: a message reached the runtime, reset per-turn dedup sets
     // and report the start of a new turn to the Activity timeline.
     if (delivered) {
+      if (message.taskRunId) {
+        runtime.activeTaskRunId = message.taskRunId;
+        runtime.activeTaskRunContextSessionId = message.contextSessionId;
+        runtime.activeTaskRunOutputMessageId = undefined;
+        runtime.activeTaskRunToolUseCount = 0;
+        runtime.activeTaskRunToolResultCount = 0;
+        runtime.lastTurnContextUsage = undefined;
+        void this.reportTaskRunLifecycle({
+          agentId: runtime.agentId,
+          taskRunId: message.taskRunId,
+          status: 'running',
+          workspaceId: runtime.workspaceId,
+          runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
+          contextSessionId: message.contextSessionId,
+        });
+      }
       runtime.activityTurnState = 'working';
       runtime.recordedToolUseIds.clear();
       void this.reportRuntimeActivity(runtime, 'runtime_working', 'Working on message', {
         messageId: message.messageId ?? undefined,
+        taskRunId: message.taskRunId ?? undefined,
         sourceChannel: message.channelId ?? undefined,
         target: message.target ?? undefined,
       });
@@ -442,7 +502,7 @@ export class DaemonCore extends EventEmitter {
     }
 
     // 5. Start WebSocket
-    this.wsManager = new WebSocketManager(this.credential);
+    this.wsManager = new WebSocketManager(this.credential, { daemonId: this.daemonId });
     this.wsManager.on('event', (event) => {
       this.emit('daemon_event', event);
       this.log(`WS event: ${event.type}`, 'debug');
@@ -755,6 +815,12 @@ export class DaemonCore extends EventEmitter {
       activeTraceId: undefined,
       activeTraceStartedAt: undefined,
       activeTraceFirstOutputSeen: false,
+      activeTaskRunId: undefined,
+      activeTaskRunContextSessionId: undefined,
+      activeTaskRunOutputMessageId: undefined,
+      activeTaskRunToolUseCount: 0,
+      activeTaskRunToolResultCount: 0,
+      lastTurnContextUsage: undefined,
       restartAttempts: 0,
       restartTimer: null,
       stallTimer: null,
@@ -878,10 +944,48 @@ export class DaemonCore extends EventEmitter {
         }
       }
 
+      if (eventType === 'usage') {
+        const usageEvent = isRecord(event) ? event : {};
+        const knownTokens = numberFrom(usageEvent.used) ?? numberFrom(usageEvent.totalTokens) ?? numberFrom(usageEvent.total_tokens);
+        const contextWindow = numberFrom(usageEvent.contextWindow) ?? numberFrom(usageEvent.context_window) ?? numberFrom(usageEvent.size);
+        runtime.lastTurnContextUsage = {
+          source: 'runtime_usage_event',
+          knownTokens,
+          contextWindow,
+          occupancyRatio: knownTokens !== undefined && contextWindow !== undefined && contextWindow > 0
+            ? knownTokens / contextWindow
+            : undefined,
+        };
+      }
+
       // ── Four-state activity translation (Working/Thinking/Output/Idle) ──
       // Only report after the runtime has finished warming up; warmup itself
       // would otherwise flood the timeline with Thinking/Output entries.
       if (runtime.ready) {
+        if (runtime.activeTaskRunId && eventType === 'user') {
+          const toolResultCount = countToolResults(event);
+          runtime.activeTaskRunToolResultCount += toolResultCount;
+          const outputMessageId = extractTaskRunOutputMessageIdFromEvent(event);
+          if (outputMessageId) {
+            runtime.activeTaskRunOutputMessageId = outputMessageId;
+          }
+          if (toolResultCount > 0 || outputMessageId) {
+            void this.reportTaskRunLifecycle({
+              agentId,
+              taskRunId: runtime.activeTaskRunId,
+              status: 'running',
+              workspaceId: runtime.workspaceId,
+              runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
+              contextSessionId: runtime.activeTaskRunContextSessionId,
+              contextUsage: runtime.lastTurnContextUsage,
+              toolUsageSummary: {
+                toolUseCount: runtime.activeTaskRunToolUseCount,
+                toolResultCount: runtime.activeTaskRunToolResultCount,
+              },
+              outputMessageId: runtime.activeTaskRunOutputMessageId,
+            });
+          }
+        }
         if (eventType === 'assistant' && runtime.activityTurnState !== 'thinking') {
           runtime.activityTurnState = 'thinking';
           // Extract a short prefix of the model's thinking/reasoning text so
@@ -904,10 +1008,15 @@ export class DaemonCore extends EventEmitter {
           });
         }
         if (eventType === 'assistant') {
+          let toolUseRecorded = false;
           for (const block of getContentBlocks(event)) {
             if (block.type !== 'tool_use' || typeof block.id !== 'string') continue;
             if (runtime.recordedToolUseIds.has(block.id)) continue;
             runtime.recordedToolUseIds.add(block.id);
+            if (runtime.activeTaskRunId) {
+              runtime.activeTaskRunToolUseCount += 1;
+              toolUseRecorded = true;
+            }
             runtime.activityTurnState = 'output';
             const name = typeof block.name === 'string' ? block.name : 'tool';
             const input = isRecord(block.input) ? block.input : {};
@@ -915,6 +1024,22 @@ export class DaemonCore extends EventEmitter {
             void this.reportRuntimeActivity(runtime, 'runtime_output', `Ran ${name}`, {
               toolName: name,
               commandPreview: cmd,
+            });
+          }
+          if (toolUseRecorded && runtime.activeTaskRunId) {
+            void this.reportTaskRunLifecycle({
+              agentId,
+              taskRunId: runtime.activeTaskRunId,
+              status: 'running',
+              workspaceId: runtime.workspaceId,
+              runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
+              contextSessionId: runtime.activeTaskRunContextSessionId,
+              contextUsage: runtime.lastTurnContextUsage,
+              toolUsageSummary: {
+                toolUseCount: runtime.activeTaskRunToolUseCount,
+                toolResultCount: runtime.activeTaskRunToolResultCount,
+              },
+              outputMessageId: runtime.activeTaskRunOutputMessageId,
             });
           }
         }
@@ -934,6 +1059,31 @@ export class DaemonCore extends EventEmitter {
             },
             usageSource: u?.source ?? 'provider-stream-json',
           });
+          if (runtime.activeTaskRunId) {
+            const completionSummary = buildTaskRunCompletionSummary(event, u, {
+              toolUseCount: runtime.activeTaskRunToolUseCount,
+              toolResultCount: runtime.activeTaskRunToolResultCount,
+              outputMessageId: runtime.activeTaskRunOutputMessageId,
+            }, runtime.lastTurnContextUsage);
+            void this.reportTaskRunLifecycle({
+              agentId,
+              taskRunId: runtime.activeTaskRunId,
+              status: 'completed',
+              workspaceId: runtime.workspaceId,
+              runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
+              contextSessionId: runtime.activeTaskRunContextSessionId,
+              contextUsage: completionSummary.contextUsage,
+              tokenUsage: completionSummary.tokenUsage,
+              toolUsageSummary: completionSummary.toolUsageSummary,
+              outputMessageId: completionSummary.outputMessageId,
+            });
+            runtime.activeTaskRunId = undefined;
+            runtime.activeTaskRunContextSessionId = undefined;
+            runtime.activeTaskRunOutputMessageId = undefined;
+            runtime.activeTaskRunToolUseCount = 0;
+            runtime.activeTaskRunToolResultCount = 0;
+            runtime.lastTurnContextUsage = undefined;
+          }
         }
       }
 
@@ -1004,6 +1154,24 @@ export class DaemonCore extends EventEmitter {
         this.sessionManager.update(event.sessionId, { status: 'dead' });
       }
       runtime.status = event.intentional ? 'stopped' : 'exited';
+      if (!event.intentional && runtime.activeTaskRunId) {
+        void this.reportTaskRunLifecycle({
+          agentId,
+          taskRunId: runtime.activeTaskRunId,
+          status: 'failed',
+          workspaceId: runtime.workspaceId,
+          runtimeSessionId: event.sessionId ?? driver.sessionId ?? runtime.sessionId ?? undefined,
+          contextSessionId: runtime.activeTaskRunContextSessionId,
+          failureCode: 'RUNTIME_EXITED',
+          failureReason: `Runtime exited unexpectedly: code=${event.code ?? 'unknown'} signal=${event.signal ?? 'unknown'}`,
+        });
+        runtime.activeTaskRunId = undefined;
+        runtime.activeTaskRunContextSessionId = undefined;
+        runtime.activeTaskRunOutputMessageId = undefined;
+        runtime.activeTaskRunToolUseCount = 0;
+        runtime.activeTaskRunToolResultCount = 0;
+        runtime.lastTurnContextUsage = undefined;
+      }
       this.stopWarmupTimer(runtime);
       this.emit('runtime_exit', { ...event, agentId });
       this.emitRuntimeTrace({ type: 'exit', agentId, ...event });
@@ -1024,6 +1192,24 @@ export class DaemonCore extends EventEmitter {
       console.error(`[Daemon] ${runtime.runtime} runtime ${agentId} error:`, (err as Error).message);
       this.emit('runtime_error', err);
       this.emitRuntimeTrace({ type: 'error', agentId, message: (err as Error).message });
+      if (runtime.activeTaskRunId) {
+        void this.reportTaskRunLifecycle({
+          agentId,
+          taskRunId: runtime.activeTaskRunId,
+          status: 'failed',
+          workspaceId: runtime.workspaceId,
+          runtimeSessionId: driver.sessionId ?? runtime.sessionId ?? undefined,
+          contextSessionId: runtime.activeTaskRunContextSessionId,
+          failureCode: 'RUNTIME_ERROR',
+          failureReason: (err as Error).message,
+        });
+        runtime.activeTaskRunId = undefined;
+        runtime.activeTaskRunContextSessionId = undefined;
+        runtime.activeTaskRunOutputMessageId = undefined;
+        runtime.activeTaskRunToolUseCount = 0;
+        runtime.activeTaskRunToolResultCount = 0;
+        runtime.lastTurnContextUsage = undefined;
+      }
     });
 
     driver.start();
@@ -1044,7 +1230,8 @@ export class DaemonCore extends EventEmitter {
     const warmupText = [
       '[event=system.warmup type=system]',
       'This is a startup readiness check, not a user message.',
-      'Run `slock server info` once to confirm Slock connectivity and your agent identity,',
+      `Run \`${runtime.wrapper.bashWrapper} server info\` once to confirm Slock connectivity and your agent identity,`,
+      'Use this exact wrapper path; do not use any globally installed `slock` command for this check.',
       'then stop and wait for real messages. Do not send any chat message during this check.',
     ].join('\n');
     runtime.driver.sendUserMessage(warmupText);
@@ -1063,6 +1250,24 @@ export class DaemonCore extends EventEmitter {
     }
     this.stopWarmupTimer(runtime);
     runtime.status = 'stopped';
+    if (!this.stopping && runtime.activeTaskRunId) {
+      void this.reportTaskRunLifecycle({
+        agentId,
+        taskRunId: runtime.activeTaskRunId,
+        status: 'cancelled',
+        workspaceId: runtime.workspaceId,
+        runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
+        contextSessionId: runtime.activeTaskRunContextSessionId,
+        failureCode: 'RUNTIME_STOPPED',
+        failureReason: 'Runtime stopped before TaskRun completed',
+      });
+      runtime.activeTaskRunId = undefined;
+      runtime.activeTaskRunContextSessionId = undefined;
+      runtime.activeTaskRunOutputMessageId = undefined;
+      runtime.activeTaskRunToolUseCount = 0;
+      runtime.activeTaskRunToolResultCount = 0;
+      runtime.lastTurnContextUsage = undefined;
+    }
     this.stopRuntimeStallWatchdog(runtime);
     runtime.driver.stop();
     if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
@@ -1387,6 +1592,45 @@ export class DaemonCore extends EventEmitter {
     }
   }
 
+  async reportTaskRunLifecycle(report: TaskRunLifecycleReport): Promise<void> {
+    if (!this.credential || this.stopping) return;
+    const serverUrl = this.credential.serverUrl || this.config.serverUrl;
+    const body = {
+      status: report.status,
+      workspaceId: report.workspaceId,
+      runtimeSessionId: report.runtimeSessionId,
+      workspaceSessionId: report.workspaceSessionId,
+      contextSessionId: report.contextSessionId,
+      contextUsage: report.contextUsage,
+      tokenUsage: report.tokenUsage,
+      toolUsageSummary: report.toolUsageSummary,
+      outputMessageId: report.outputMessageId,
+      failureCode: report.failureCode,
+      failureReason: report.failureReason,
+    };
+    try {
+      const response = await fetch(new URL(
+        `/internal/agent-api/task-runs/${encodeURIComponent(report.taskRunId)}/lifecycle`,
+        serverUrl,
+      ), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.credential.token}`,
+          'X-Agent-Id': report.agentId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        this.log(`TaskRun lifecycle report failed (${report.status}): ${response.status} ${text.slice(0, 200)}`, 'debug');
+      }
+    } catch (err) {
+      this.log(`TaskRun lifecycle report failed (${report.status}): ${(err as Error).message}`, 'debug');
+    }
+  }
+
   private scheduleRuntimeRestart(runtime: RuntimeRecord, sessionId?: string): void {
     if (this.stopping || this.config.runtime !== 'claude_code' || !this.config.runtimeRestartOnCrash) return;
     if (runtime.restartAttempts >= 1 || runtime.restartTimer) return;
@@ -1489,10 +1733,11 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
   if (!content) return null;
 
   const message: RuntimeIncomingMessage = { content };
+  const details = isRecord(value.details) ? value.details : undefined;
   assignIfPresent(message, 'target', firstString(value.target, value.channel, value.channelName));
   assignIfPresent(message, 'messageId', firstString(value.msg, value.messageId, value.message_id, value.id, value.shortId));
   assignIfPresent(message, 'eventSeq', firstString(value.eventSeq, value.eventLogCursor, value.eventCursor));
-  assignIfPresent(message, 'traceId', firstString(value.traceId, value.trace_id, isRecord(value.details) ? value.details.traceId : undefined));
+  assignIfPresent(message, 'traceId', firstString(value.traceId, value.trace_id, details?.traceId));
   const channelType = firstString(value.channelType, value.channel_type);
   assignIfPresent(message, 'channelType', channelType);
   assignIfPresent(message, 'channelId', firstString(value.channelId, value.channel_id));
@@ -1503,14 +1748,21 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
     assignIfPresent(message, 'peerMemberId', firstString(value.peerMemberId, value.peer_member_id, value.senderId, value.sender_id, value.actor, value.actorId, value.actor_id, value.memberId, value.member_id));
   }
   assignIfPresent(message, 'taskId', firstString(value.taskId, value.task_id));
+  assignIfPresent(message, 'taskRunId', firstString(value.taskRunId, value.task_run_id, details?.taskRunId, details?.task_run_id));
   assignIfPresent(message, 'taskNumber', firstString(value.taskNumber, value.task_number, value.number));
   assignIfPresent(message, 'status', firstString(value.status, value.taskStatus));
   assignIfPresent(message, 'title', firstString(value.title, value.taskTitle));
+  assignIfPresent(message, 'promptProfile', firstString(value.promptProfile, value.prompt_profile, details?.promptProfile, details?.prompt_profile));
+  assignIfPresent(message, 'contextSessionId', firstString(value.contextSessionId, value.context_session_id, details?.contextSessionId, details?.context_session_id));
+  const taskRunTemplate = firstRecord(value.template, value.taskRunTemplate, value.task_run_template, details?.template, details?.taskRunTemplate, details?.task_run_template);
+  if (taskRunTemplate) message.taskRunTemplate = taskRunTemplate;
+  const taskRunRole = firstRecord(value.role, value.taskRunRole, value.task_run_role, value.roleSnapshot, value.role_snapshot, details?.role, details?.taskRunRole, details?.task_run_role);
+  if (taskRunRole) message.taskRunRole = taskRunRole;
+  assignIfPresent(message, 'completionPolicy', firstString(value.completionPolicy, value.completion_policy, details?.completionPolicy, details?.completion_policy));
   assignIfPresent(message, 'timestamp', firstString(value.time, value.timestamp, value.createdAt));
   assignIfPresent(message, 'sender', firstString(value.sender, value.author, value.user, value.username));
   assignIfPresent(message, 'actor', firstString(value.actor, value.actorId, value.actor_id, value.memberId, value.agentId));
   assignIfPresent(message, 'senderType', firstString(value.senderType, value.sender_type, value.type));
-  const details = isRecord(value.details) ? value.details : undefined;
   assignIfPresent(message, 'assignee', firstString(value.assignee, value.assigneeHandle, value.assigneeName, details?.assignee));
   assignIfPresent(message, 'assigneeId', firstString(value.assigneeId, value.assignee_id, details?.assigneeId));
   if (eventType && eventType !== 'message_received') {
@@ -1578,6 +1830,7 @@ export function formatRuntimeIncomingMessage(message: RuntimeIncomingMessage): s
     message.messageId ? `msg=${message.messageId}` : undefined,
     message.taskNumber ? `task=#${message.taskNumber}` : undefined,
     !message.taskNumber && message.taskId ? `task=${message.taskId}` : undefined,
+    message.taskRunId ? `run=${message.taskRunId}` : undefined,
     message.status ? `status=${message.status}` : undefined,
     message.timestamp ? `time=${message.timestamp}` : undefined,
     message.sender ? `sender=${message.sender}` : undefined,
@@ -1687,6 +1940,19 @@ function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
     'Use `slock task claim` for this task if it is still todo, do the requested work, then use `slock task update --status in_review` when ready for human review.',
   ];
 
+  if (message.taskRunId || message.promptProfile || message.contextSessionId) {
+    const runLabel = message.taskRunId ?? 'this TaskRun';
+    const promptProfile = message.promptProfile ?? 'the assigned task prompt profile';
+    const contextSession = message.contextSessionId ?? 'the assigned run context session';
+    lines.push(`TaskRun ${runLabel} uses prompt profile ${promptProfile} and context session ${contextSession}.`);
+    lines.push('Treat this as a run-scoped context boundary; do not assume unrelated channel or previous task context is already loaded.');
+  }
+
+  const templateBlock = formatTaskRunTemplateBlock(message);
+  if (templateBlock.length > 0) {
+    lines.push('', ...templateBlock);
+  }
+
   if (message.target) {
     lines.push(`Post progress and the final result back to ${message.target} with \`slock message send --target "${message.target}"\`.`);
   } else {
@@ -1695,6 +1961,92 @@ function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
 
   lines.push('', message.content);
   return lines.join('\n');
+}
+
+function formatTaskRunTemplateBlock(message: RuntimeIncomingMessage): string[] {
+  const template = message.taskRunTemplate;
+  const role = message.taskRunRole;
+  if (!template && !role && !message.completionPolicy) return [];
+
+  const lines = ['TaskRun Template:'];
+  const templateName = firstString(template?.name, template?.displayName);
+  const templateSlug = firstString(template?.slug, template?.key);
+  if (templateName || templateSlug) {
+    lines.push(`- Template: ${formatNameAndKey(templateName, templateSlug)}`);
+  }
+
+  const roleName = firstString(role?.displayName, role?.name);
+  const roleKey = firstString(role?.roleKey, role?.key);
+  const rolePurpose = firstString(role?.purpose);
+  if (roleName || roleKey || rolePurpose) {
+    const roleLabel = formatNameAndKey(roleName, roleKey);
+    lines.push(`- Role: ${rolePurpose ? `${roleLabel} - ${truncateMemoryContextText(rolePurpose, 180)}` : roleLabel}`);
+  }
+
+  const toolSummary = summarizeToolPolicy(firstRecord(role?.toolPolicy, role?.tool_policy, template?.toolPolicy, template?.tool_policy));
+  if (toolSummary) lines.push(`- Tools: ${toolSummary}`);
+
+  const skillSummary = summarizeSkillPolicy(firstRecord(role?.skillPolicy, role?.skill_policy, template?.skillPolicy, template?.skill_policy));
+  if (skillSummary) lines.push(`- Skills: ${skillSummary}`);
+
+  const memorySummary = summarizeMemoryPolicy(firstRecord(role?.memoryPolicy, role?.memory_policy, template?.memoryPolicy, template?.memory_policy));
+  if (memorySummary) lines.push(`- Memory: ${memorySummary}`);
+
+  const outputSummary = summarizeOutputPolicy(firstRecord(role?.outputPolicy, role?.output_policy, template?.outputPolicy, template?.output_policy));
+  if (outputSummary) lines.push(`- Outputs: ${outputSummary}`);
+
+  const loopPolicy = firstRecord(role?.loopPolicy, role?.loop_policy, template?.loopPolicy, template?.loop_policy);
+  const completionPolicy = firstString(message.completionPolicy, loopPolicy?.completionPolicy, loopPolicy?.completion_policy);
+  if (completionPolicy) lines.push(`- Completion: ${completionPolicy}`);
+
+  return lines.length > 1 ? lines : [];
+}
+
+function formatNameAndKey(name: string | undefined, key: string | undefined): string {
+  if (name && key && name !== key) return `${name} (${key})`;
+  return name ?? key ?? 'unspecified';
+}
+
+function summarizeToolPolicy(policy: Record<string, unknown> | undefined): string | undefined {
+  if (!policy) return undefined;
+  const allowed = arrayOfStrings(policy.allowedToolGroups ?? policy.allowed ?? policy.allow);
+  const parts: string[] = [];
+  if (allowed.length > 0) parts.push(allowed.join(', '));
+  if (policy.writeSlockCommands === true || policy.write_slock_commands === true) parts.push('slock writes allowed');
+  if (policy.shellExecution === true || policy.shell_execution === true) parts.push('shell allowed');
+  if (policy.browserTools === true || policy.browser_tools === true) parts.push('browser tools allowed');
+  return parts.length > 0 ? parts.join('; ') : undefined;
+}
+
+function summarizeSkillPolicy(policy: Record<string, unknown> | undefined): string | undefined {
+  if (!policy) return undefined;
+  const required = arrayOfStrings(policy.requiredSkills ?? policy.required ?? policy.required_skills);
+  const recommended = arrayOfStrings(policy.recommendedSkills ?? policy.recommended ?? policy.recommended_skills);
+  if (required.length > 0) return required.join(', ');
+  if (recommended.length > 0) return `recommended ${recommended.join(', ')}`;
+  if (policy.allowAdditionalSkills === true || policy.allow_additional_skills === true) return 'runtime may choose additional skills';
+  return undefined;
+}
+
+function summarizeMemoryPolicy(policy: Record<string, unknown> | undefined): string | undefined {
+  if (!policy) return undefined;
+  const readScopes = arrayOfStrings(policy.readScopes ?? policy.read_scopes);
+  const writeScopes = arrayOfStrings(policy.writeScopes ?? policy.write_scopes);
+  const parts: string[] = [];
+  if (readScopes.length > 0) parts.push(`read ${readScopes.join(', ')}`);
+  if (writeScopes.length > 0) parts.push(`write ${writeScopes.join(', ')}`);
+  if (policy.summaryOnCompletion === true || policy.summary_on_completion === true) parts.push('summary on completion');
+  return parts.length > 0 ? parts.join('; ') : undefined;
+}
+
+function summarizeOutputPolicy(policy: Record<string, unknown> | undefined): string | undefined {
+  if (!policy) return undefined;
+  const outputTypes = arrayOfStrings(policy.expectedOutputTypes ?? policy.required ?? policy.expected_output_types);
+  const parts: string[] = [];
+  if (outputTypes.length > 0) parts.push(outputTypes.join(', '));
+  if (policy.channelMessageRequired === true || policy.channel_message_required === true) parts.push('channel message required');
+  if (policy.multipleOutputsAllowed === true || policy.multiple_outputs_allowed === true) parts.push('multiple outputs allowed');
+  return parts.length > 0 ? parts.join('; ') : undefined;
 }
 
 export function parseDaemonControlCommand(input: unknown): DaemonControlCommand | null {
@@ -1810,6 +2162,145 @@ function truncateDetails(obj: Record<string, unknown>, maxLen: number): Record<s
     }
   }
   return out;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function extractTaskRunOutputMessageIdFromEvent(event: unknown): string | undefined {
+  const record = isRecord(event) ? event : {};
+  for (const block of getContentBlocks(record)) {
+    if (block.type !== 'tool_result') continue;
+    const direct = extractMessageIdFromUnknown(block);
+    if (direct) return direct;
+  }
+  if (isRecord(event)) {
+    const direct = extractMessageIdFromUnknown(event.tool_use_result);
+    if (direct) return direct;
+  }
+  return undefined;
+}
+
+function extractMessageIdFromUnknown(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        return extractMessageIdFromUnknown(JSON.parse(trimmed));
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = extractMessageIdFromUnknown(item);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (!isRecord(value)) return undefined;
+  const messageId = firstString(value.messageId, value.message_id);
+  if (messageId && UUID_RE.test(messageId)) return messageId;
+  const stdoutId = extractMessageIdFromUnknown(value.stdout);
+  if (stdoutId) return stdoutId;
+  const contentId = extractMessageIdFromUnknown(value.content);
+  if (contentId) return contentId;
+  return undefined;
+}
+
+function countToolResults(event: unknown): number {
+  const record = isRecord(event) ? event : {};
+  return getContentBlocks(record).filter((block) => block.type === 'tool_result').length;
+}
+
+export function buildTaskRunCompletionSummary(
+  event: unknown,
+  usage: { source?: string; inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number } | undefined,
+  counters: { toolUseCount?: number; toolResultCount?: number; outputMessageId?: string | undefined },
+  contextUsage?: { source?: string; knownTokens?: number; contextWindow?: number; occupancyRatio?: number },
+): {
+  tokenUsage: Record<string, unknown>;
+  contextUsage: Record<string, unknown>;
+  toolUsageSummary: Record<string, unknown>;
+  outputMessageId?: string;
+} {
+  const resultData = isRecord(event) ? event : {};
+  const providerUsage = isRecord(resultData.usage) ? resultData.usage : {};
+  const inputTokens = usage?.inputTokens ?? numberFrom(providerUsage.input_tokens);
+  const outputTokens = usage?.outputTokens ?? numberFrom(providerUsage.output_tokens);
+  const cacheReadInputTokens = usage?.cacheReadInputTokens ?? numberFrom(providerUsage.cache_read_input_tokens);
+  const totalTokens = sumNumbers(inputTokens, outputTokens, cacheReadInputTokens);
+  const tokenUsage: Record<string, unknown> = {
+    source: usage?.source ?? 'provider-stream-json',
+    inputTokens,
+    outputTokens,
+    cacheReadInputTokens,
+    totalTokens,
+    durationMs: numberFrom(resultData.duration_ms),
+    durationApiMs: numberFrom(resultData.duration_api_ms),
+    numTurns: numberFrom(resultData.num_turns),
+    totalCostUsd: numberFrom(resultData.total_cost_usd),
+  };
+  for (const key of Object.keys(tokenUsage)) {
+    if (tokenUsage[key] === undefined) delete tokenUsage[key];
+  }
+  const fallbackKnownTokens = sumNumbers(inputTokens, outputTokens);
+  const knownTokens = contextUsage?.knownTokens
+    ?? numberFrom(resultData.used)
+    ?? numberFrom(resultData.totalTokens)
+    ?? numberFrom(resultData.total_tokens)
+    ?? fallbackKnownTokens;
+  const contextWindow = contextUsage?.contextWindow
+    ?? numberFrom(resultData.contextWindow)
+    ?? numberFrom(resultData.context_window)
+    ?? numberFrom(resultData.size)
+    ?? numberFrom(providerUsage.contextWindow)
+    ?? numberFrom(providerUsage.context_window)
+    ?? contextWindowFromModelUsage(resultData.modelUsage);
+  const occupancyRatio = contextUsage?.occupancyRatio
+    ?? (knownTokens !== undefined && contextWindow !== undefined && contextWindow > 0 ? knownTokens / contextWindow : undefined);
+  const contextUsageSummary: Record<string, unknown> = {
+    source: contextUsage?.source ?? 'provider-stream-json',
+    knownTokens,
+    contextWindow,
+    occupancyRatio,
+  };
+  for (const key of Object.keys(contextUsageSummary)) {
+    if (contextUsageSummary[key] === undefined) delete contextUsageSummary[key];
+  }
+  return {
+    tokenUsage,
+    contextUsage: contextUsageSummary,
+    toolUsageSummary: {
+      toolUseCount: counters.toolUseCount ?? 0,
+      toolResultCount: counters.toolResultCount ?? 0,
+    },
+    outputMessageId: counters.outputMessageId,
+  };
+}
+
+function numberFrom(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function contextWindowFromModelUsage(value: unknown): number | undefined {
+  if (!isRecord(value)) return undefined;
+  const modelNames = Object.keys(value);
+  for (const name of modelNames) {
+    if (name === 'total') continue;
+    const entry = isRecord(value[name]) ? value[name] : undefined;
+    const contextWindow = numberFrom(entry?.contextWindow) ?? numberFrom(entry?.context_window);
+    if (contextWindow !== undefined) return contextWindow;
+  }
+  const total = isRecord(value.total) ? value.total : undefined;
+  return numberFrom(total?.contextWindow) ?? numberFrom(total?.context_window);
+}
+
+function sumNumbers(...values: Array<number | undefined>): number | undefined {
+  const present = values.filter((value): value is number => value !== undefined);
+  return present.length ? present.reduce((total, value) => total + value, 0) : undefined;
 }
 
 /**
@@ -1939,6 +2430,13 @@ function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value;
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return undefined;
+}
+
+function firstRecord(...values: unknown[]): Record<string, unknown> | undefined {
+  for (const value of values) {
+    if (isRecord(value)) return value;
   }
   return undefined;
 }

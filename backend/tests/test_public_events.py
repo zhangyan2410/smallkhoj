@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+import json
 import sys
 import uuid
 
@@ -246,6 +247,38 @@ def test_postgres_notify_fanout_has_validated_listen_notify_seam():
     assert "pg_notify" in str(statement)
     assert params["channel"] == "smallkhoj_public_events"
     assert '"type":"task.updated"' in params["payload"]
+
+
+def test_postgres_notify_fanout_compacts_large_payloads():
+    fanout = PostgresNotifyPublicEventFanout(channel="smallkhoj_public_events")
+    event = {
+        "id": "evt-large",
+        "type": "message.created",
+        "scope": {"kind": "channel", "id": "channel-1", "name": "general"},
+        "seq": 27,
+        "epoch": "epoch",
+        "createdAt": "2026-06-21T01:02:03+00:00",
+        "payload": {
+            "eventId": "evt-large",
+            "eventSeq": 27,
+            "messageId": "message-1",
+            "shortId": "f576654b",
+            "channelId": "channel-1",
+            "content": "x" * 9000,
+        },
+    }
+
+    _statement, params = fanout.notify_statement(event)
+    payload = params["payload"]
+    parsed = json.loads(payload)
+
+    assert len(payload.encode("utf-8")) <= 7800
+    assert parsed["id"] == "evt-large"
+    assert parsed["type"] == "message.created"
+    assert parsed["scope"] == {"kind": "channel", "id": "channel-1", "name": "general"}
+    assert parsed["payload"]["compacted"] is True
+    assert parsed["payload"]["messageId"] == "message-1"
+    assert "content" not in parsed["payload"]
 
 
 def test_postgres_notify_fanout_rejects_unsafe_channel_names():

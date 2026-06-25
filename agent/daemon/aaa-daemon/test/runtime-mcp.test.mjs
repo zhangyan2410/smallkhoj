@@ -16,7 +16,10 @@ import {
   ClaudeRuntimeDriver,
 } from '../dist/runtime/claude-runtime.js';
 import {
+  DaemonCore,
   buildRuntimeMemoryContextRequest,
+  buildTaskRunCompletionSummary,
+  extractTaskRunOutputMessageIdFromEvent,
   formatRuntimeIncomingMessage,
   formatRuntimeIncomingMessageWithMemoryContext,
   isRuntimeActionableEventType,
@@ -24,7 +27,7 @@ import {
   parseDaemonControlCommand,
   selectRuntimeSessionScope,
 } from '../dist/daemon/daemon.js';
-import { buildAckPayload, buildActivityPayload, parseWebSocketPayload } from '../dist/websocket.js';
+import { appendDaemonConnectionParams, buildAckPayload, buildActivityPayload, parseWebSocketPayload } from '../dist/websocket.js';
 
 const credential = {
   agentId: 'agent-123',
@@ -101,8 +104,9 @@ test('claude args and prompt force slock CLI communication', () => {
   assert.equal(args[args.indexOf('--resume') + 1], 'session-resume-1');
   assert.equal(args.includes('--system-prompt'), false);
 
-  const prompt = buildSlockSystemPrompt({ credential, workspacePath: 'D:/workspace' });
+  const prompt = buildSlockSystemPrompt({ credential, workspacePath: 'D:/workspace', wrapperDir: 'D:/workspace/.slock' });
   assert.match(prompt, /slock CLI ONLY/);
+  assert.match(prompt, /D:\/workspace\/\.slock\/slock/);
   assert.match(prompt, /slock message check/);
   assert.match(prompt, /slock message resolve/);
   assert.match(prompt, /slock server info/);
@@ -468,6 +472,268 @@ test('daemon formats dotted assigned task creation as actionable runtime work', 
   );
 });
 
+test('daemon formats task run identity and scoped context guidance for assigned tasks', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'task.created',
+    eventSeq: 61,
+    payload: {
+      taskId: 'task-10',
+      taskRunId: 'run-10',
+      taskNumber: 10,
+      channel: '#work',
+      targetAgentId: 'agent-worker',
+      assignee: '@worker',
+      title: 'Implement TaskRun worker slice',
+      status: 'todo',
+      promptProfile: 'task.worker',
+      contextSessionId: 'task:task-10:role:worker:run:run-10',
+    },
+  });
+
+  assert.equal(message?.taskRunId, 'run-10');
+  assert.equal(message?.promptProfile, 'task.worker');
+  assert.equal(message?.contextSessionId, 'task:task-10:role:worker:run:run-10');
+  assert.match(
+    formatRuntimeIncomingMessage(message),
+    /\[event=task\.created eventSeq=61 target=#work task=#10 run=run-10 status=todo/,
+  );
+  assert.match(
+    formatRuntimeIncomingMessage(message),
+    /TaskRun run-10 uses prompt profile task\.worker and context session task:task-10:role:worker:run:run-10\./,
+  );
+  assert.match(
+    formatRuntimeIncomingMessage(message),
+    /Treat this as a run-scoped context boundary; do not assume unrelated channel or previous task context is already loaded\./,
+  );
+});
+
+test('daemon formats task run template and role policy guidance for assigned tasks', () => {
+  const message = normalizeRuntimeIncomingMessage({
+    type: 'task.created',
+    eventSeq: 62,
+    payload: {
+      taskId: 'task-11',
+      taskRunId: 'run-11',
+      taskNumber: 11,
+      channel: '#research',
+      assignee: '@minimax',
+      title: 'Research TaskRun models',
+      status: 'todo',
+      promptProfile: 'task.researcher',
+      contextSessionId: 'task:task-11:role:researcher:run:run-11',
+      template: {
+        slug: 'research-analyst',
+        name: 'Research Analyst',
+        toolPolicy: { allowedToolGroups: ['slock', 'web'], writeSlockCommands: true },
+        skillPolicy: { requiredSkills: ['research'] },
+        memoryPolicy: { readScopes: ['channel', 'task'], writeScopes: ['task'] },
+        outputPolicy: { expectedOutputTypes: ['message', 'memory'], channelMessageRequired: true },
+      },
+      role: {
+        roleKey: 'researcher',
+        displayName: 'Researcher',
+        purpose: 'Collect facts and write sourced notes.',
+        loopPolicy: { completionPolicy: 'single_turn_result' },
+      },
+      completionPolicy: 'single_turn_result',
+    },
+  });
+
+  assert.equal(message?.taskRunTemplate?.slug, 'research-analyst');
+  assert.equal(message?.taskRunRole?.roleKey, 'researcher');
+  assert.equal(message?.completionPolicy, 'single_turn_result');
+  const formatted = formatRuntimeIncomingMessage(message);
+  assert.match(formatted, /TaskRun Template:/);
+  assert.match(formatted, /- Template: Research Analyst \(research-analyst\)/);
+  assert.match(formatted, /- Role: Researcher \(researcher\) - Collect facts and write sourced notes\./);
+  assert.match(formatted, /- Tools: slock, web; slock writes allowed/);
+  assert.match(formatted, /- Skills: research/);
+  assert.match(formatted, /- Memory: read channel, task; write task/);
+  assert.match(formatted, /- Outputs: message, memory; channel message required/);
+  assert.match(formatted, /- Completion: single_turn_result/);
+});
+
+test('daemon reports task run lifecycle updates to the agent API', async () => {
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'https://api.slock.ai',
+    wsUrl: 'none',
+    credentialPath: '',
+    proxyPort: 0,
+    logLevel: 'debug',
+  });
+  daemon.credential = credential;
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: String(url), options });
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+  try {
+    await daemon.reportTaskRunLifecycle({
+      agentId: 'agent-123',
+      taskRunId: 'run-10',
+      status: 'completed',
+      runtimeSessionId: 'provider-session-1',
+      tokenUsage: { inputTokens: 10, outputTokens: 2 },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.slock.ai/internal/agent-api/task-runs/run-10/lifecycle');
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer sk_machine_secret');
+  assert.equal(calls[0].options.headers['X-Agent-Id'], 'agent-123');
+  const body = JSON.parse(calls[0].options.body);
+  assert.equal(body.status, 'completed');
+  assert.equal(body.runtimeSessionId, 'provider-session-1');
+  assert.deepEqual(body.tokenUsage, { inputTokens: 10, outputTokens: 2 });
+});
+
+test('daemon extracts output message id from slock send tool result', () => {
+  const event = {
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          content: '{"state":"sent","traceId":"agent-send:abc","messageId":"3a62b890-31c9-433c-9d2d-fb3c763ec1ae","shortId":"3859bf25","target":"#33"}',
+        },
+      ],
+    },
+  };
+
+  assert.equal(
+    extractTaskRunOutputMessageIdFromEvent(event),
+    '3a62b890-31c9-433c-9d2d-fb3c763ec1ae',
+  );
+});
+
+test('daemon builds task run completion usage summary from result event', () => {
+  const summary = buildTaskRunCompletionSummary(
+    {
+      type: 'result',
+      duration_ms: 493632,
+      duration_api_ms: 767509,
+      num_turns: 46,
+      total_cost_usd: 5.00946,
+      usage: {
+        input_tokens: 45177,
+        output_tokens: 13236,
+        cache_read_input_tokens: 1249553,
+      },
+    },
+    {
+      source: 'provider-stream-json',
+      inputTokens: 45177,
+      outputTokens: 13236,
+      cacheReadInputTokens: 1249553,
+    },
+    {
+      toolUseCount: 17,
+      toolResultCount: 16,
+      outputMessageId: '3a62b890-31c9-433c-9d2d-fb3c763ec1ae',
+    },
+    {
+      source: 'runtime_usage_event',
+      knownTokens: 101,
+      contextWindow: 258400,
+      occupancyRatio: 101 / 258400,
+    },
+  );
+
+  assert.deepEqual(summary.tokenUsage, {
+    source: 'provider-stream-json',
+    inputTokens: 45177,
+    outputTokens: 13236,
+    cacheReadInputTokens: 1249553,
+    totalTokens: 1307966,
+    durationMs: 493632,
+    durationApiMs: 767509,
+    numTurns: 46,
+    totalCostUsd: 5.00946,
+  });
+  assert.deepEqual(summary.toolUsageSummary, {
+    toolUseCount: 17,
+    toolResultCount: 16,
+  });
+  assert.deepEqual(summary.contextUsage, {
+    source: 'runtime_usage_event',
+    knownTokens: 101,
+    contextWindow: 258400,
+    occupancyRatio: 101 / 258400,
+  });
+  assert.equal(summary.outputMessageId, '3a62b890-31c9-433c-9d2d-fb3c763ec1ae');
+});
+
+test('daemon extracts task run context window from model usage entries', () => {
+  const summary = buildTaskRunCompletionSummary(
+    {
+      type: 'result',
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+      },
+      modelUsage: {
+        'MiniMax-M3': {
+          inputTokens: 100,
+          outputTokens: 20,
+          contextWindow: 200000,
+        },
+        total: {
+          inputTokens: 100,
+          outputTokens: 20,
+        },
+      },
+    },
+    undefined,
+    {
+      toolUseCount: 1,
+      toolResultCount: 1,
+    },
+  );
+
+  assert.equal(summary.contextUsage.knownTokens, 120);
+  assert.equal(summary.contextUsage.contextWindow, 200000);
+  assert.equal(summary.contextUsage.occupancyRatio, 120 / 200000);
+});
+
+test('daemon excludes cache reads from fallback task run context occupancy', () => {
+  const summary = buildTaskRunCompletionSummary(
+    {
+      type: 'result',
+      usage: {
+        input_tokens: 14322,
+        output_tokens: 4754,
+        cache_read_input_tokens: 329856,
+      },
+      modelUsage: {
+        'MiniMax-M3': {
+          contextWindow: 200000,
+        },
+      },
+    },
+    {
+      source: 'provider-stream-json',
+      inputTokens: 14322,
+      outputTokens: 4754,
+      cacheReadInputTokens: 329856,
+    },
+    {
+      toolUseCount: 13,
+      toolResultCount: 13,
+    },
+  );
+
+  assert.equal(summary.tokenUsage.totalTokens, 348932);
+  assert.equal(summary.contextUsage.knownTokens, 19076);
+  assert.equal(summary.contextUsage.contextWindow, 200000);
+  assert.equal(summary.contextUsage.occupancyRatio, 19076 / 200000);
+});
+
 test('daemon normalizes dotted task events from backend payloads', () => {
   const message = normalizeRuntimeIncomingMessage({
     type: 'task.claimed',
@@ -625,6 +891,13 @@ test('websocket helpers classify messages and build ack/activity payloads', () =
   assert.equal(activity.type, 'activity');
   assert.equal(activity.status, 'active');
   assert.match(activity.at, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('websocket helper appends daemon id and event cursor to connection URL', () => {
+  assert.equal(
+    appendDaemonConnectionParams('ws://127.0.0.1:8000/internal/agent-api/ws', 42, 'daemon-123'),
+    'ws://127.0.0.1:8000/internal/agent-api/ws?eventLogCursor=42&daemonId=daemon-123',
+  );
 });
 
 test('websocket helpers accept dotted message and task event names', () => {

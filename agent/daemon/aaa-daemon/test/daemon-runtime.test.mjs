@@ -515,7 +515,9 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
     assert.equal(runtime.slockHome, join(root, '.slock'));
     assert.match(runtime.launchId, /^pid-/);
     assert.equal(runtime.systemPromptFile, join(root, '.slock', 'claude-system-prompt.md'));
-    assert.match(readFileSync(runtime.systemPromptFile, 'utf-8'), /slock CLI ONLY/);
+    const systemPrompt = readFileSync(runtime.systemPromptFile, 'utf-8');
+    assert.match(systemPrompt, /slock CLI ONLY/);
+    assert.match(systemPrompt, new RegExp(join(root, '.slock', 'slock').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.equal(runtime.argv.includes('--system-prompt'), false);
 
     await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
@@ -598,7 +600,7 @@ test('daemon runtime starts fake Codex with slock wrapper on PATH', async () => 
     assert.equal(runtime.argv.includes('exec'), true);
     assert.equal(runtime.argv.includes('--json'), true);
     assert.match(runtime.prompt, /Codex Runtime Notes/);
-    assert.match(runtime.prompt, /Run `slock server info` once/);
+    assert.match(runtime.prompt, new RegExp(`Run \`${join(root, '.slock', 'slock').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} server info\` once`));
     assert.match(readFileSync(join(root, '.slock', 'codex-slock-prompt.md'), 'utf-8'), /Codex Runtime Notes/);
 
     await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
@@ -741,7 +743,7 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     assert.equal(runtime.currentWorkspacePath, root);
     assert.equal(runtime.sessionId, 'fake-acp-daemon-session');
     assert.match(runtime.prompt, /Codex ACP Runtime Notes/);
-    assert.match(runtime.prompt, /Run `slock server info` once/);
+    assert.match(runtime.prompt, new RegExp(`Run \`${join(root, '.slock', 'slock').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} server info\` once`));
 
     await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-acp' && workspace.runtime === 'codex' && workspace.status === 'running')));
     const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-acp' && workspace.runtime === 'codex' && workspace.status === 'running'));
