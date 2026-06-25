@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 /**
  * 可调宽面板 hook —— 从 channel-client 的可调宽逻辑抽出来，供 ProductShell 三栏列表栏和 chat 复用。
@@ -17,6 +17,10 @@ import { useCallback, useMemo, useState } from "react"
  *   - "left-edge"：拖左边框往左拖变大（thread 栏在右侧时用）
  *
  * 返回 onPointerDown/onKeyDown 可直接挂到拖拽手柄 div 上。
+ *
+ * Hydration 安全：首次渲染（SSR + 客户端 hydrate）统一返回 defaultWidth，
+ * 避免服务端/客户端因 localStorage 值不同导致 hydration mismatch。
+ * 客户端 mount 后（useEffect）才读 localStorage，会触发一次从 default 到 stored 的更新。
  */
 export function useResizablePanel({
   storageKey,
@@ -37,16 +41,20 @@ export function useResizablePanel({
   )
 
   const [override, setOverride] = useState<number | null>(null)
-  // 客户端读取 localStorage：用 lazy initializer 在首次渲染就读到，避免 effect 里 setState。
-  // SSR 时 window 不存在，回退到 defaultWidth；客户端首次渲染用真实值（避免闪烁）。
-  const stored = useMemo<number>(() => {
-    if (typeof window === "undefined") return defaultWidth
+  const [stored, setStored] = useState<number>(defaultWidth)
+  const didRead = useRef(false)
+
+  // 客户端 mount 后读 localStorage（首次渲染用 defaultWidth，保证 SSR/客户端一致）
+  useEffect(() => {
+    if (didRead.current) return
+    didRead.current = true
     try {
       const raw = window.localStorage.getItem(storageKey)
       const parsed = raw ? Number(raw) : defaultWidth
-      return Number.isFinite(parsed) ? clamp(parsed) : defaultWidth
+      const next = Number.isFinite(parsed) ? clamp(parsed) : defaultWidth
+      if (next !== defaultWidth) setStored(next)
     } catch {
-      return defaultWidth
+      // ignore
     }
   }, [storageKey, defaultWidth, clamp])
 
