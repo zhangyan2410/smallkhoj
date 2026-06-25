@@ -105,6 +105,18 @@
   --sidebar-accent-foreground: oklch(0.479 0.164 260.7);
   --sidebar-border: oklch(0.916 0.016 257.2);
   --sidebar-ring: oklch(0.541 0.170 260);
+
+  /*
+   * 暖沙色系（用于三栏布局的列表栏 Col1 + 主区 Col2）。
+   * 色相来自 zy-think 色彩提取（hue 60-120 的暖沙区）。
+   * rail 仍用水材质；列表栏/主区用暖沙，呼应「水 + 沙」冷暖分工。
+   */
+  --sand-deep: oklch(0.88 0.06 120);      /* Col1 列表栏底色（深暖沙）*/
+  --sand: oklch(0.93 0.045 80);           /* Col2 主区底色（浅暖沙）*/
+  --sand-card: oklch(0.985 0.004 80);     /* 卡片浮在主区上 */
+  --sand-ink: oklch(0.32 0.04 55);        /* 暖沙上的深棕文字 */
+  --sand-muted: oklch(0.52 0.035 60);     /* 暖沙上的次要文字 */
+  --sand-border: oklch(0.86 0.035 80);    /* 暖沙上的分隔线 */
 }
 
 .dark {
@@ -167,6 +179,108 @@
   }
   .bg-gradient-brand {
     background: var(--gradient-brand);
+  }
+}
+
+/*
+ * 暖沙色系工具类（三栏布局用）。映射到 :root 的 --sand* token。
+ */
+@layer utilities {
+  .bg-sand { background-color: var(--sand); }
+  .bg-sand-deep { background-color: var(--sand-deep); }
+  .bg-sand-card { background-color: var(--sand-card); }
+  .text-sand-ink { color: var(--sand-ink); }
+  .text-sand-muted { color: var(--sand-muted); }
+  .border-sand-border { border-color: var(--sand-border); }
+  .bg-sand-deep\/55 { background-color: color-mix(in oklch, var(--sand-deep) 55%, transparent); }
+  .bg-sand-deep\/60 { background-color: color-mix(in oklch, var(--sand-deep) 60%, transparent); }
+}
+
+/*
+ * 可调宽列表栏的拖拽手柄。hover/focus 时显形，拖动时高亮。
+ */
+@layer components {
+  .sk-resize-handle {
+    background-color: transparent;
+    transition: background-color 0.15s;
+  }
+  .sk-resize-handle:hover,
+  .sk-resize-handle:focus-visible {
+    background-color: oklch(0.7 0.12 190 / 0.4);
+    outline: none;
+  }
+}
+
+/*
+ * 水材质侧栏（rail）：真实生图当材质底图 + 代码层叠图标。
+ * 色相来自 zy-think 色彩提取（深青 226 → 中海蓝 208 → 透亮青 198 → 暖沙 70）。
+ * 真实水质感（焦散/光柱/颗粒）由底图提供，CSS 无法复现那部分。
+ */
+@layer components {
+  .sk-rail {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+  .sk-rail-bg {
+    /* 真实水材质底图：阳光穿透中海蓝 + 暖沙。背景来自 zy-think 色彩提取 + GPT image 生图 */
+    background-image: url("/rail-water-texture.png");
+    background-size: cover;
+    background-position: center;
+    z-index: 0;
+  }
+  /* 顶部一缕水面高光，强化「阳光打在水面」的感觉 */
+  .sk-rail-bg::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 70% 35% at 50% 0%,
+      oklch(0.99 0.05 180 / 0.28) 0%,
+      transparent 70%
+    );
+    z-index: 0;
+  }
+  .sk-rail > *:not(.sk-rail-bg) {
+    position: relative;
+    z-index: 1;
+  }
+  /* logo：浅青实色 + 柔和投影，替代旧的紫蓝渐变 */
+  .sk-rail-logo {
+    background: oklch(0.93 0.05 188);
+    color: oklch(0.22 0.1 208);
+    box-shadow: 0 2px 10px oklch(0.22 0.08 220 / 0.4);
+  }
+  /*
+   * 非激活图标：半透明白胶囊 + 白图标。
+   * 关键：白胶囊在任何水深/沙底上都有对比（底色相都在蓝-沙范围，白都压得住），
+   * 把图标清晰度跟底图完全解耦。hover 时胶囊变实。
+   */
+  .sk-rail-icon {
+    background: oklch(0.2 0.03 220 / 0.28);
+    color: oklch(0.99 0.005 190);
+    backdrop-filter: blur(2px);
+  }
+  .sk-rail-icon:hover {
+    background: oklch(0.2 0.03 220 / 0.5);
+  }
+  /* 激活态：深青圆角块 + 青色外光晕 + 左侧高亮条，替代旧紫蓝 */
+  .sk-rail-active {
+    background: oklch(0.24 0.09 205);
+    color: oklch(0.99 0.01 190);
+    box-shadow: 0 0 0 3px oklch(0.75 0.13 188 / 0.3), 0 4px 16px oklch(0.3 0.1 200 / 0.4);
+  }
+  .sk-rail-active::before {
+    content: "";
+    position: absolute;
+    left: -13px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 22px;
+    border-radius: 0 3px 3px 0;
+    background: oklch(0.78 0.14 188);
+    box-shadow: 0 0 12px oklch(0.78 0.14 188 / 0.8);
   }
 }
 

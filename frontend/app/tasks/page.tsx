@@ -11,7 +11,6 @@ import {
   Filter,
   ListChecks,
   MessageSquare,
-  PanelRight,
   Plus,
   Shield,
 } from "lucide-react"
@@ -21,8 +20,11 @@ import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, StatusPill, Toolbar } from "@/components/product-ui"
 import { TaskRecoveryCockpit, type TaskRecoveryCopy } from "@/components/memory-entry-surface"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { FieldLabel, Select } from "@/components/ui/form"
+import { TaskListPanel } from "@/components/task-list-panel"
+import { TaskFormDialogs } from "@/components/task-form-dialogs"
 import { apiGet, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders, getSessionToken } from "@/lib/server-auth"
 
@@ -348,51 +350,7 @@ function StatusBadge({ status }: { status: string }) {
   return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
 }
 
-function Select({
-  id,
-  name,
-  items,
-  fallback,
-  splitValue = false,
-  defaultValue,
-  emptyLabel = "",
-}: {
-  id: string
-  name: string
-  items: string[]
-  fallback?: string
-  splitValue?: boolean
-  defaultValue?: string
-  emptyLabel?: string
-}) {
-  const options = items.length > 0 ? items : fallback ? [fallback] : []
-  return (
-    <select
-      id={id}
-      name={name}
-      defaultValue={defaultValue ?? (splitValue ? options[0]?.split("|")[0] : fallback || options[0])}
-      className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-    >
-      {!fallback && <option value="">{emptyLabel}</option>}
-      {options.map((item) => {
-        const [value, label] = splitValue ? item.split("|", 2) : [item, item]
-        return (
-          <option key={item} value={value}>
-            {label}
-          </option>
-        )
-      })}
-    </select>
-  )
-}
-
-function FieldLabel({ htmlFor, children }: { htmlFor: string; children: string }) {
-  return (
-    <label htmlFor={htmlFor} className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">
-      {children}
-    </label>
-  )
-}
+// FieldLabel/Select 已抽到 @/components/ui/form，下方表单直接使用。
 
 function filteredTasks(tasks: Task[], filters: { channel: string; creator: string; assignee: string; status: string }) {
   return tasks.filter((task) => {
@@ -764,15 +722,55 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
       title={copy.title}
       description={copy.description}
       session={session}
+      listTitle={copy.boardListSurface}
+      listConfig={{ storageKey: "smallkhoj.tasks.listWidth", defaultWidth: 300, min: 240, max: 440 }}
+      list={
+        <TaskListPanel
+          tasks={visibleTasks}
+          selectedTaskId={selectedTask?.id}
+          filters={filterRecord}
+          createLabel={copy.createTask}
+          emptyLabel="No tasks"
+        />
+      }
       sidebarTitle={copy.detailTitle}
       sidebarDescription={copy.detailDescription}
       sidebar={<TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} copy={copy} />}
       actions={
-        <Link href="/daemon">
-          <Button variant="outline" size="sm">
-            {copy.controlPlane}
-          </Button>
-        </Link>
+        <>
+          <TaskFormDialogs
+            createAction={createTaskAction}
+            updateAction={updateTaskAction}
+            channels={channels}
+            agents={agents}
+            templates={activeTemplates}
+            tasks={tasks}
+            copy={{
+              create: copy.create,
+              createTask: copy.createTask,
+              createTaskDesc: copy.createTaskDesc,
+              createTitlePlaceholder: copy.createTitlePlaceholder,
+              titleLabel: copy.titleLabel,
+              descriptionLabel: copy.descriptionLabel,
+              createDescPlaceholder: copy.createDescPlaceholder,
+              channel: copy.channel,
+              assignee: copy.assignee,
+              unassigned: copy.unassigned,
+              taskRunTemplate: copy.taskRunTemplate,
+              status: copy.status,
+              update: copy.update,
+              updateTask: copy.updateTask,
+              updateTaskDesc: copy.updateTaskDesc,
+              task: copy.task,
+              keepBlankPlaceholder: copy.keepBlankPlaceholder,
+            }}
+          />
+          <Link href="/daemon">
+            <Button variant="outline" size="sm">
+              {copy.controlPlane}
+            </Button>
+          </Link>
+        </>
       }
     >
       <RealtimeRefresh eventTypes={["task.created", "task.updated"]} />
@@ -818,101 +816,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
           </Card>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Plus className="size-4" />
-                {copy.createTask}
-              </CardTitle>
-              <CardDescription>{copy.createTaskDesc}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={createTaskAction} className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <FieldLabel htmlFor="task-title">{copy.titleLabel}</FieldLabel>
-                  <Input id="task-title" name="title" required placeholder={copy.createTitlePlaceholder} />
-                </div>
-                <div className="sm:col-span-2">
-                  <FieldLabel htmlFor="task-description">{copy.descriptionLabel}</FieldLabel>
-                  <Input id="task-description" name="description" placeholder={copy.createDescPlaceholder} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="task-channel">{copy.channel}</FieldLabel>
-                  <Select id="task-channel" name="channel" items={channels.map((channel) => channel.name)} fallback="#all" />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="task-assignee">{copy.assignee}</FieldLabel>
-                  <Select id="task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} emptyLabel={copy.unassigned} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="task-template">{copy.taskRunTemplate}</FieldLabel>
-                  <Select
-                    id="task-template"
-                    name="template"
-                    items={activeTemplates.map((template) => `${template.slug}|${template.name}`)}
-                    splitValue
-                    emptyLabel="Default"
-                  />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="task-status">{copy.status}</FieldLabel>
-                  <Select id="task-status" name="status" items={TASK_STATUS_OPTIONS} fallback="todo" splitValue />
-                </div>
-                <div className="flex items-end">
-                  <Button type="submit" size="sm" className="w-full">
-                    {copy.create}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <PanelRight className="size-4" />
-                {copy.updateTask}
-              </CardTitle>
-              <CardDescription>{copy.updateTaskDesc}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={updateTaskAction} className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <FieldLabel htmlFor="update-task-id">{copy.task}</FieldLabel>
-                  <Select
-                    id="update-task-id"
-                    name="taskId"
-                    items={tasks.map((task) => `${task.id}|#${task.number} ${task.title}`)}
-                    splitValue
-                    emptyLabel={copy.task}
-                  />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="update-task-title">{copy.titleLabel}</FieldLabel>
-                  <Input id="update-task-title" name="title" placeholder={copy.keepBlankPlaceholder} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="update-task-description">{copy.descriptionLabel}</FieldLabel>
-                  <Input id="update-task-description" name="description" placeholder={copy.keepBlankPlaceholder} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="update-task-status">{copy.status}</FieldLabel>
-                  <Select id="update-task-status" name="status" items={TASK_STATUS_OPTIONS} fallback="in_review" splitValue />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="update-task-assignee">{copy.assignee}</FieldLabel>
-                  <Select id="update-task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} emptyLabel={copy.unassigned} />
-                </div>
-                <div className="sm:col-span-2">
-                  <Button type="submit" size="sm" variant="outline" className="w-full">
-                    {copy.update}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
+        {/* 创建/更新表单已收进顶部对话框（TaskFormDialogs），主区只保留看板主体 */}
 
         <form action="/tasks" className="grid gap-3 rounded-md border bg-card p-3 sm:grid-cols-2 xl:grid-cols-5">
           <input type="hidden" name="view" value={view} />

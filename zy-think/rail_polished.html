@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>侧边栏 · 精致预览（真实水底图 + lucide 图标）</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    background: oklch(0.95 0.006 220);
+    padding: 40px 32px 64px;
+    color: oklch(0.28 0.03 240);
+    -webkit-font-smoothing: antialiased;
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13px; color: oklch(0.5 0.02 240); max-width: 600px; text-align: center; line-height: 1.6; }
+
+  .stage { display: flex; gap: 48px; align-items: flex-start; }
+  .rail-wrap { text-align: center; }
+  .rail-wrap .label { font-size: 12px; color: oklch(0.5 0.02 240); margin-top: 10px; }
+
+  /* 真实侧栏：真实水底图 + 图标层 */
+  .rail {
+    width: 96px;
+    height: 960px;        /* 12 倍宽，模拟满屏侧栏比例 */
+    position: relative;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 oklch(0.3 0.02 240 / 0.1), 0 24px 60px oklch(0.3 0.12 240 / 0.22);
+  }
+  /* 底图：真实水材质，cover 不变形 */
+  .rail-bg {
+    position: absolute; inset: 0;
+    background-image: url("rail_texture.png");
+    background-size: cover;
+    background-position: center;
+  }
+  /* 图标层 */
+  .nav {
+    position: relative; z-index: 2;
+    height: 100%;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 22px 0;
+    gap: 8px;
+  }
+  .logo {
+    width: 44px; height: 44px; border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+    background: oklch(0.93 0.05 188 / 0.95);
+    color: oklch(0.22 0.10 208);
+    box-shadow: 0 3px 12px oklch(0.2 0.08 220 / 0.4);
+  }
+  .logo svg { width: 22px; height: 22px; }
+  .ico {
+    width: 44px; height: 44px; border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    transition: background .15s;
+  }
+  .ico svg { width: 22px; height: 22px; stroke-width: 2; }
+  /* 区域配色：顶部深区白，中浅区深青，底部沙区深棕 */
+  .ico.dark { color: oklch(0.98 0.01 195); }
+  .ico.mid  { color: oklch(0.32 0.06 210); }
+  .ico.sand { color: oklch(0.36 0.05 55); }
+  .ico:hover { background: oklch(1 0 0 / 0.16); }
+  /* 激活态：深青块 + 青光晕 + 左侧高亮条 */
+  .ico.active {
+    background: oklch(0.26 0.08 205 / 0.92);
+    color: oklch(0.97 0.02 190);
+    box-shadow: 0 0 0 3px oklch(0.7 0.12 190 / 0.25), 0 4px 16px oklch(0.3 0.10 200 / 0.3);
+  }
+  .ico.active::before {
+    content: ""; position: absolute; left: -14px; top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 24px; border-radius: 0 3px 3px 0;
+    background: oklch(0.75 0.13 188);
+    box-shadow: 0 0 10px oklch(0.75 0.13 188 / 0.7);
+  }
+  .spacer { flex: 1; }
+  .avatar {
+    width: 44px; height: 44px; border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 600;
+    background: oklch(1 0 0 / 0.55);
+    color: oklch(0.34 0.05 55);
+    border: 1px solid oklch(1 0 0 / 0.5);
+    margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+  <h1>侧边栏 · 精致预览</h1>
+  <p class="sub">真实水材质底图（你的生图裁出来的）+ lucide 线性图标 + 按区域精准配色 + 激活态深青光晕。这是接近最终落地质量的预览。</p>
+
+  <div class="stage">
+    <div class="rail-wrap">
+      <div class="rail">
+        <div class="rail-bg"></div>
+        <div class="nav">
+          <div class="logo"><i data-lucide="diamond"></i></div>
+          <div class="ico dark"><i data-lucide="search"></i></div>
+          <div class="ico dark active"><i data-lucide="message-circle"></i></div>
+          <div class="ico mid"><i data-lucide="check-square"></i></div>
+          <div class="ico mid"><i data-lucide="users"></i></div>
+          <div class="ico mid"><i data-lucide="monitor"></i></div>
+          <div class="ico mid"><i data-lucide="bell"></i></div>
+          <div class="spacer"></div>
+          <div class="avatar">L</div>
+          <div class="ico sand"><i data-lucide="settings"></i></div>
+        </div>
+      </div>
+      <div class="label">完整侧栏 · 真实水底图 + lucide 图标</div>
+    </div>
+  </div>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>
