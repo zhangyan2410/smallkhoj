@@ -264,7 +264,7 @@ function StatusBadge({ status }: { status: string }) {
 function Field({ label, value, icon }: { label: string; value?: string | null; icon?: React.ReactNode }) {
   return (
     <div className="min-w-0 rounded-md border bg-background p-2">
-      <div className="flex items-center gap-1 text-[11px] font-medium uppercase text-muted-foreground">
+      <div className="flex items-center gap-1 text-sm font-medium text-foreground">
         {icon}
         {label}
       </div>
@@ -382,7 +382,7 @@ function ComputerDetail({
         </CardHeader>
         <CardContent className="space-y-5 pt-4">
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Power className="size-3" />
               {copy.lifecycleControls}
             </div>
@@ -426,7 +426,7 @@ function ComputerDetail({
           {reconnectCredential?.computerId === computer.id && reconnectComputerId === computer.id && (
             <div className="space-y-2 rounded-md border bg-muted/40 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs font-medium uppercase text-muted-foreground">{copy.reconnectCommand}</div>
+                <div className="text-sm font-medium text-foreground">{copy.reconnectCommand}</div>
                 <div className="text-xs text-muted-foreground">{copy.useOn(computer.name)}</div>
               </div>
               <code
@@ -456,7 +456,7 @@ function ComputerDetail({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Cpu className="size-3" />
               {copy.detectedRuntimes}
             </div>
@@ -471,12 +471,12 @@ function ComputerDetail({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Network className="size-3" />
               {copy.agentWorkspaces}
             </div>
             <div className="overflow-hidden rounded-md border">
-              <div className="hidden grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] gap-2 border-b bg-muted/60 px-3 py-2 text-xs font-medium uppercase text-muted-foreground md:grid">
+              <div className="hidden grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] gap-2 border-b bg-muted/60 px-3 py-2 text-sm font-medium text-foreground md:grid">
                 <span>{copy.agent}</span>
                 <span>{copy.runtime}</span>
                 <span>{copy.status}</span>
@@ -503,7 +503,7 @@ function ComputerDetail({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Trash2 className="size-3" />
               {copy.delete}
             </div>
@@ -700,6 +700,29 @@ export default async function ComputersPage({
       title={copy.title}
       description={copy.description}
       session={session}
+      listTitle="Computers"
+      list={
+        <nav className="flex h-full min-h-0 flex-col">
+          <div className="flex items-center justify-between border-b border-sand-border px-3 py-2.5 text-sm">
+            <span className="font-semibold text-sand-ink">{copy.computerCount(computers.length)}</span>
+            <span className="text-xs text-sand-muted">{onlineComputers} {copy.online}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {computers.map((computer) => (
+              <ComputerListRow key={computer.id} computer={computer} selectedId={selectedComputerId} copy={copy} />
+            ))}
+            {computers.length === 0 && (
+              <p className="px-2 py-4 text-center text-xs text-sand-muted">{copy.noComputers}</p>
+            )}
+          </div>
+        </nav>
+      }
+      listConfig={{
+        storageKey: "smallkhoj.computers.listWidth",
+        defaultWidth: 300,
+        min: 240,
+        max: 420,
+      }}
       sidebarTitle={copy.runtimeSnapshot}
       sidebarDescription={copy.runtimeSnapshotDesc}
       sidebar={
@@ -736,28 +759,19 @@ export default async function ComputersPage({
     >
       <RealtimeRefresh eventTypes={["workspace.updated", "runtime.updated", "computer.status.updated", "member.status.updated"]} />
       <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Card size="sm">
-            <CardHeader>
-              <CardDescription>{copy.registered}</CardDescription>
-              <CardTitle className="text-2xl">
-                {computers.length}
-                <span className="ml-2 text-xs font-normal text-muted-foreground">{onlineComputers} {copy.online}</span>
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card size="sm">
-            <CardHeader>
-              <CardDescription>{copy.agentWorkspaces}</CardDescription>
-              <CardTitle className="text-2xl">{workspaceCount}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card size="sm">
-            <CardHeader>
-              <CardDescription>{copy.runningWorkspaces}</CardDescription>
-              <CardTitle className="text-2xl">{runningWorkspaces}</CardTitle>
-            </CardHeader>
-          </Card>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-primary" />
+            {copy.registered} <span className="font-medium text-foreground">{computers.length}</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            {copy.online} <span className="font-medium text-foreground">{onlineComputers}</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-amber-500" />
+            {copy.runningWorkspaces} <span className="font-medium text-foreground">{runningWorkspaces}</span>
+          </span>
         </div>
 
         <ConnectComputerForm
@@ -775,23 +789,11 @@ export default async function ComputersPage({
             copy={copy}
           />
         ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Monitor className="size-4" />
-              {copy.computerCount(computers.length)}
-              <span className="text-xs">({copy.selectForDetail})</span>
-            </div>
-            {computers.map((computer) => (
-              <ComputerListRow key={computer.id} computer={computer} selectedId={selectedComputerId} copy={copy} />
-            ))}
-            {computers.length === 0 && (
-              <Card>
-                <CardContent>
-                  <EmptyState title={copy.noComputers} description={copy.noComputersDesc} />
-                </CardContent>
-              </Card>
-            )}
-          </div>
+          <Card>
+            <CardContent>
+              <EmptyState title={copy.selectForDetail} description={copy.noComputersDesc} />
+            </CardContent>
+          </Card>
         )}
       </div>
     </ProductShell>

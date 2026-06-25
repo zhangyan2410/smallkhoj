@@ -12,7 +12,10 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "group/card flex flex-col gap-4 overflow-hidden rounded-lg border bg-card py-4 text-sm text-card-foreground shadow-sm shadow-slate-200/40 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg",
+        /* 手作风：墨色硬描边 + 直角 + 硬阴影（贴纸感）。
+           跟 agent 头像 #111827 同色，形成统一视觉签名。
+           无圆角、无柔和阴影 —— 靠墨色硬线 + offset 硬阴影表达结构。 */
+        "group/card flex flex-col gap-4 overflow-hidden border-2 border-[var(--ink)] bg-card py-4 text-sm text-card-foreground shadow-[2px_2px_0_var(--ink)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-none *:[img:last-child]:rounded-b-none",
         className
       )}
       {...props}

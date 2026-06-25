@@ -48,6 +48,7 @@ export async function ProductShell({
   list,
   listTitle,
   listConfig,
+  mainScrollable,
 }: {
   active: NavKey
   title: string
@@ -65,14 +66,17 @@ export async function ProductShell({
   listTitle?: string
   /** 列表栏宽度配置（默认宽 280，可调 220-420）。 */
   listConfig?: ListPanelConfig
+  /** 透传给 ProductShellBody 的 mainScrollable。chat 页面传 false。 */
+  mainScrollable?: boolean
 }) {
   const t = await getTranslations("nav")
   return (
-    <main className="flex h-screen bg-background text-foreground">
-      {/* Col 0 — icon rail：真实水材质底图 + 图标层 */}
+    <main className="bg-background text-foreground">
+      {/* Col 0 — icon rail：fixed 钉死在视口左侧，不随任何滚动离开位置。
+          背景图来自 .sk-rail-bg（globals.css），仍用 absolute inset-0 铺满 rail 本身。 */}
       <nav
         aria-label="Primary"
-        className="sk-rail hidden w-14 shrink-0 flex-col items-center gap-1 py-3 sm:flex"
+        className="sk-rail hidden w-14 flex-col items-center gap-1 py-3 sm:flex"
       >
         {/* 真实水材质底图（阳光穿透中海蓝 + 暖沙），来自 zy-think 色彩提取与生图 */}
         <span
@@ -124,21 +128,25 @@ export async function ProductShell({
         </div>
       </nav>
 
-      {/* Content area（header + body）—— 委托给 ProductShellBody，支持三栏可调宽列表栏 */}
-      <ProductShellBody
-        title={title}
-        description={description}
-        actions={actions}
-        className={className}
-        list={list}
-        listTitle={listTitle}
-        listConfig={listConfig}
-        sidebar={sidebar}
-        sidebarTitle={sidebarTitle}
-        sidebarDescription={sidebarDescription}
-      >
-        {children}
-      </ProductShellBody>
+      {/* 主内容区—— 留出 rail 宽度 (w-14 = 56px)，自身占满 h-screen。
+          子栏的滚动由 ProductShellBody 内部按列独立控制。 */}
+      <div className="ml-14 flex h-screen min-w-0 flex-col">
+        <ProductShellBody
+          title={title}
+          description={description}
+          actions={actions}
+          className={className}
+          list={list}
+          listTitle={listTitle}
+          listConfig={listConfig}
+          sidebar={sidebar}
+          sidebarTitle={sidebarTitle}
+          sidebarDescription={sidebarDescription}
+          mainScrollable={mainScrollable}
+        >
+          {children}
+        </ProductShellBody>
+      </div>
     </main>
   )
 }

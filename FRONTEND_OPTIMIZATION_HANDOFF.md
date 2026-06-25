@@ -211,3 +211,93 @@ members `:91` 和 computers `:264` 各有一份 Field；tasks 有局部 Select�
 
 *文档基于分支 `feat/three-column-sand-layout`（commit 6b7a91f）。所有 file:line 为该分支版本。
 审查来源：impeccable 标准 + 3 个子代理并行探索（视觉审查 / 参考图对照 / 主题 token 审计）。*
+
+---
+
+# 第二部分：边框语言 + 架构层 + 遗留清理清单（更新版）
+
+> 本部分基于「手作墨色描边」风格的确定（Croodles 头像 + raft 边框），以及为解决「改一处管不到全站」问题而建立的架构层。
+> **架构层已建好（状态色单一真源 + 补齐共享组件 + 工具类），现在清理遗留是高效的**：大部分只需把裸元素换成共享组件/工具类，改完自动跟随。
+
+## A. 已确定的边框语言（手作墨色描边）
+
+| 元素 | 规格 | token/类 |
+|---|---|---|
+| 描边色 | `#111827` 蓝灰墨（跟 Croodles 头像 stroke 同色）| `--ink` |
+| 圆角 | **全部直角**（border-radius: 0），小圆点/状态点除外 | `rounded-none` |
+| 卡片/对话框/面板 | 2px 墨边 + 2px 硬阴影（offset 不模糊，贴纸感）| `Card` / `.sk-panel-raised` / `.sk-hard-shadow` |
+| 消息气泡 | 2px 墨边 + **无阴影**（密集不闹）| `.sk-panel` |
+| 按钮 | 实色中海蓝 + 2px 墨边 + 直角，hover 加硬阴影 | `Button`（已改） |
+| 输入框/Select/Textarea | 2px 墨边 + 直角，focus 变中海蓝 | `Input`/`Select`/`Textarea`（已改） |
+| 状态胶囊 | 实色状态底 + 对比字 + 1px 墨边 + 直角 | `.sk-status-*` / `StatusPill` |
+
+**核心原则**：拒绝 SaaS 的「圆角 + 渐变 + 柔和阴影 + 玻璃」。用「直角 + 墨色硬描边 + 实色 + 暖沙底」表达手作温度。头像（Croodles 粗墨线 3.5px #111827）和边框（2px #111827）共享同一墨色，形成统一视觉签名。
+
+## B. 已建好的架构层（治本：让改动自动扩散）
+
+### B1. 状态色单一真源（已建）
+- **token**（globals.css `:root`）：`--success`/`--warning`/`--info`/`--danger` + 对应 `-fg` 字色
+- **工具类**：`.bg-success`/`.sk-status-success` 等
+- **单一真源函数**：`lib/control-plane.ts` 的 `statusKind(status)` → 返回语义分类；`badgeClass(status)`/`dotClass(status)` 都基于它
+- **StatusPill**（`components/product-ui.tsx`）：已改用 `badgeClass`，不再有硬编码 emerald/amber/sky/rose
+- **改状态色**：只改 globals.css 的 4 个 token，全站 StatusPill/dot/badge 自动跟随
+
+### B2. 补齐的共享组件（已建）
+| 组件 | 文件 | 替代的裸元素 |
+|---|---|---|
+| `Textarea` | `components/ui/form.tsx` | 3 处裸 textarea（tasks/control/task-board）|
+| `Select`（已加 className） | `components/ui/form.tsx` | 十几个裸 select |
+| `Panel` + `PanelTitle` | `components/ui/panel.tsx` | 满地的 `rounded-md border bg-background p-3` 裸 div |
+| `FieldLabel`（去 uppercase） | `components/ui/form.tsx` | — |
+
+### B3. 风格工具类（已建，globals.css `@layer utilities`）
+| 类 | 作用 | 替代的写法 |
+|---|---|---|
+| `.sk-ink-border` | 2px 墨边 + 直角 | `border-2 border-[var(--ink)] rounded-none` |
+| `.sk-hard-shadow` | 2px 硬阴影 | `shadow-[2px_2px_0_var(--ink)]` |
+| `.sk-panel` | 墨边 + 暖白底 + 直角（无阴影） | `rounded-md border bg-background p-3` |
+| `.sk-panel-raised` | 墨边 + 暖白底 + 硬阴影 | 同上但需要浮起 |
+| `.sk-status-*` | 状态胶囊（实色底+字+墨边） | emerald/amber/sky/rose 硬编码 |
+
+## C. 遗留清理清单（现在可以高效做了）
+
+> 架构层建好后，清理遗留大部分是「把裸元素换成共享组件/工具类」的机械替换。按优先级：
+
+### C1. 删除重复的局部状态色定义（最高优先级，治本已完成一半）
+- `app/daemon/page.tsx:298-397`：删掉本地 `dotClass`/`badgeClass`/`statusLabel`/`StatusBadge`，改 import `lib/control-plane.ts` 的版本
+- `app/tasks/page.tsx:375-396`：删掉本地 `dotClass`，改 import
+- `app/computers/page.tsx:260`、`app/members/page.tsx:95`、`components/task-board.tsx:104`、`components/task-dnd-board.tsx:24`：删掉本地 `StatusBadge` 包装，直接用 `StatusPill`
+
+### C2. 裸元素 → 共享组件（机械替换）
+- **裸 select**（~12 处）：换 `<Select>` from `@/components/ui/form`。位置见子代理清单 5c
+- **裸 textarea**（3 处）：换 `<Textarea>`。`tasks/page.tsx:621`、`control/taskrun-templates:194`、`task-board.tsx:455`
+- **裸 button**（channel-client 21 处 + 其他）：换 `<Button variant size>`。channel-client 的消息动作栏抽 `<MessageActions>` 组件
+- **裸 div 卡片块**（满地）：换 `<Panel>` 或 `<Card size="sm">`
+
+### C3. 圆角/边框/阴影收口（批量替换模式）
+最大头是 `rounded-md border bg-background p-3` 这个模式，全站几十处。批量替换策略：
+- 信息块 → 加 `sk-panel`
+- 需要浮起 → 加 `sk-panel-raised`
+- 选中态 `border-primary/xx` → 改 `border-[var(--ink)]`（墨边）+ 实色填充表达选中
+
+### C4. chat 页接入（见第一部分 §4，未变）
+channel-client 的自建 rail + 紫蓝 logo + bg-background 聊天区 → 接入 ProductShell 水材质 rail + bg-sand（聊天区已改）+ 墨边气泡。
+
+## D. 给接手 agent 的执行顺序
+
+1. **先做 C1**（删重复状态色）—— 这是治本的关键，删完状态色全站统一
+2. **再做 C2**（裸元素换共享组件）—— 机械替换，每换一个全站受益
+3. **最后做 C3/C4**（圆角/阴影/chat 接入）—— 视觉收尾
+
+每步做完跑 `npx tsc --noEmit` + `npx eslint` + `./twd` 截图验证。
+
+## E. 为什么这样设计（治本方法论）
+
+之前的问题是「改一处管不到全站」——根因是风格规则散落在 token + 共享组件 + 各页面硬编码三层，没有单一真源。
+
+现在的架构：
+- **token 层**（globals.css）：所有颜色的真源
+- **共享组件层**（components/ui/ + product-ui）：所有 UI 元素的真源，引用 token
+- **页面层**：只用共享组件 + 工具类，不硬编码颜色/圆角/阴影
+
+这样改风格 = 改 token/组件 = 全站自动跟随。清理遗留就是「把页面层的硬编码归化到共享组件」，归化完成后，以后任何风格调整都只需改一处。

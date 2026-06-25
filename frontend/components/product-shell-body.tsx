@@ -41,6 +41,9 @@ export function ProductShellBody({
   sidebar,
   sidebarTitle,
   sidebarDescription,
+  /** 主区是否由 ProductShellBody 自己 overflow-y-auto（默认 true）。
+   *  chat 页面有自己的内部滚动结构（消息流独立滚），需要传 false 让 channel-client 自己管滚动。 */
+  mainScrollable = true,
 }: {
   title: string
   description?: string
@@ -53,6 +56,7 @@ export function ProductShellBody({
   sidebar?: ReactNode
   sidebarTitle?: string
   sidebarDescription?: string
+  mainScrollable?: boolean
 }) {
   const isThreeColumn = !!list
 
@@ -65,8 +69,8 @@ export function ProductShellBody({
   })
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
-      <header className="border-b border-sand-border bg-sand px-4 py-3 sm:px-6">
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <header className="shrink-0 border-b border-sand-border bg-sand px-4 py-3 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-medium uppercase text-sand-muted">
@@ -84,18 +88,20 @@ export function ProductShellBody({
       </header>
 
       {isThreeColumn ? (
-        /* 三栏：可调宽列表栏(深暖沙) + 主区(浅暖沙) + 可选右栏 */
-        <div className="flex min-w-0 flex-1">
+        /* 三栏：可调宽列表栏(深暖沙) + 主区(浅暖沙) + 可选右栏。
+           关键：每列 flex flex-col + min-h-0 才能让 overflow-y-auto 真正起作用。
+           父级 h-full 让三列共享主区高度。 */
+        <div className="flex min-h-0 flex-1">
           <aside
             className="relative hidden shrink-0 flex-col border-r border-sand-border bg-sand-deep sm:flex"
             style={{ width: listWidth }}
           >
             {listTitle && (
-              <div className="border-b border-sand-border px-3 py-2.5">
+              <div className="shrink-0 border-b border-sand-border px-3 py-2.5">
                 <h2 className="text-sm font-semibold text-sand-ink">{listTitle}</h2>
               </div>
             )}
-            <div className="min-w-0 flex-1 overflow-y-auto">{list}</div>
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{list}</div>
             {/* 拖拽手柄（右边缘）—— 鼠标拖动调宽，键盘左右箭头微调 */}
             <div
               role="separator"
@@ -108,15 +114,15 @@ export function ProductShellBody({
             />
           </aside>
 
-          <div className="flex min-w-0 flex-1 flex-col bg-sand">
-            <div className={cn("min-w-0 flex-1 overflow-y-auto p-4 sm:p-6", className)}>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-sand">
+            <div className={cn("min-h-0 min-w-0 flex-1 p-4 sm:p-6", mainScrollable ? "overflow-y-auto" : "flex flex-col overflow-hidden", className)}>
               {children}
             </div>
           </div>
 
           {sidebar && (
-            <aside className="hidden min-w-0 border-l border-sand-border bg-sand-deep/60 p-4 lg:block">
-              <div className="sticky top-4">
+            <aside className="hidden min-h-0 min-w-0 flex-col border-l border-sand-border bg-sand-deep/60 lg:flex lg:w-80">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {sidebarTitle && (
                   <div className="mb-3">
                     <h2 className="text-sm font-semibold text-sand-ink">{sidebarTitle}</h2>
@@ -129,15 +135,16 @@ export function ProductShellBody({
           )}
         </div>
       ) : (
-        /* 单栏 dashboard：内容 + 可选右栏（向后兼容旧行为） */
-        <div className="grid min-w-0 flex-1 bg-sand lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className={cn("min-w-0 overflow-y-auto bg-sand p-4 sm:p-6", className)}>
+        /* 单栏 dashboard：内容 + 可选右栏（向后兼容旧行为）。
+           同样用 min-h-0 + overflow-y-auto 让单列独立滚。 */
+        <div className="grid min-h-0 min-w-0 flex-1 bg-sand lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className={cn("min-h-0 min-w-0 overflow-y-auto bg-sand p-4 sm:p-6", className)}>
             {children}
           </div>
 
           {sidebar && (
-            <aside className="hidden min-w-0 border-l border-sand-border bg-sand-deep/60 p-4 lg:block">
-              <div className="sticky top-4">
+            <aside className="hidden min-h-0 min-w-0 flex-col border-l border-sand-border bg-sand-deep/60 lg:flex">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {sidebarTitle && (
                   <div className="mb-3">
                     <h2 className="text-sm font-semibold text-sand-ink">{sidebarTitle}</h2>

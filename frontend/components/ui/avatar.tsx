@@ -28,12 +28,24 @@ function initials(name: string): string {
   return (parts[0][0] ?? "") + (parts[parts.length - 1][0] ?? "")
 }
 
-function hashHue(name: string): number {
-  // Use the cleaned name (without @) for consistent color hashing
-  const clean = name.trim().replace(/^@+/, "")
+// Per DESIGN.md, all UI colors live in the mid-sea blue / warm sand band
+// (hue 200-225 for accents, 70-85 for warm surfaces). Avatar tints sample from
+// that band — no random rainbow hue.
+const AVATAR_TINTS: Array<{ bg: string; fg: string }> = [
+  { bg: "oklch(0.95 0.025 215)", fg: "oklch(0.32 0.06 215)" }, // sea tint
+  { bg: "oklch(0.95 0.030 198)", fg: "oklch(0.32 0.06 198)" }, // turquoise tint
+  { bg: "oklch(0.96 0.020 230)", fg: "oklch(0.30 0.06 230)" }, // deep sea tint
+  { bg: "oklch(0.96 0.025 85)",  fg: "oklch(0.34 0.05 55)"  }, // warm sand tint
+  { bg: "oklch(0.95 0.030 200)", fg: "oklch(0.32 0.06 200)" }, // bright sea
+  { bg: "oklch(0.96 0.025 150)", fg: "oklch(0.30 0.06 150)" }, // sea-green (accent only)
+]
+
+function hashTintIndex(name: string): number {
+  const clean = (name || "").trim().replace(/^@+/, "")
+  if (!clean) return 0
   let h = 0
   for (let i = 0; i < clean.length; i++) h = (h * 31 + clean.charCodeAt(i)) >>> 0
-  return h % 360
+  return h % AVATAR_TINTS.length
 }
 
 function Avatar({
@@ -49,12 +61,12 @@ function Avatar({
     src?: string | null
     status?: "online" | "offline"
   }) {
-  const hue = hashHue(name || "?")
+  const tint = AVATAR_TINTS[hashTintIndex(name || "?")]
   const style = src
     ? undefined
     : {
-        backgroundColor: `hsl(${hue} 64% 92%)`,
-        color: `hsl(${hue} 52% 34%)`,
+        backgroundColor: tint.bg,
+        color: tint.fg,
       }
   return (
     <span data-slot="avatar" className="relative inline-flex shrink-0">

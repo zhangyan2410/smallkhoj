@@ -22,6 +22,7 @@ import {
 
 import ActivityTab from "./activity-tab"
 import { CreateAgentCard } from "./create-agent-card"
+import { MembersList } from "./members-list"
 
 import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
@@ -67,6 +68,13 @@ function searchValue(value: string | string[] | undefined) {
 
 type TabKey = "profile" | "permissions" | "dms" | "reminders" | "workspace" | "apps" | "activity"
 
+const MEMBERS_LIST_WIDTH = {
+  storageKey: "smallkhoj.members.listWidth",
+  defaultWidth: 260,
+  min: 220,
+  max: 380,
+} as const
+
 const memberTabs: Array<{ key: TabKey; label: string; icon: typeof User }> = [
   { key: "profile", label: "Profile", icon: User },
   { key: "permissions", label: "Permissions", icon: Shield },
@@ -91,7 +99,7 @@ function StatusBadge({ status }: { status: string }) {
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="min-w-0 rounded-md border bg-background p-2">
-      <div className="text-[11px] font-medium uppercase text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium text-foreground">{label}</div>
       <div className="mt-1 truncate font-mono text-xs">{value || "none"}</div>
     </div>
   )
@@ -290,7 +298,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
       {member.kind === "human" && (
         <form action={updateHumanAvatarUrlAction} className="rounded-md border bg-muted/20 p-3">
           <input type="hidden" name="memberId" value={member.id} />
-          <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <UserRound className="size-3" />
             Human Avatar
           </div>
@@ -317,7 +325,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
 
       {member.kind === "agent" && computer && (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Cpu className="size-3" />
             Runtime Binding
           </div>
@@ -337,7 +345,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
 
       {member.skills && member.skills.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Wrench className="size-3" />
             Skills
           </div>
@@ -400,7 +408,7 @@ function PermissionsTab({ member }: { member: Member }) {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Shield className="size-3" />
               Permissions
             </div>
@@ -426,7 +434,7 @@ function PermissionsTab({ member }: { member: Member }) {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Activity className="size-3" />
               Actions
             </div>
@@ -454,7 +462,7 @@ function PermissionsTab({ member }: { member: Member }) {
       {isAgent && <AddPermissionForm memberId={member.id} permissions={permissions} actions={actions} />}
 
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Shield className="size-3" />
           Enforcement status
         </div>
@@ -535,7 +543,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Shield className="size-3" />
           Permission entries
         </div>
@@ -576,7 +584,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Activity className="size-3" />
           Action entries
         </div>
@@ -680,7 +688,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <div className="text-xs font-medium uppercase text-muted-foreground">Bound Computer</div>
+        <div className="text-sm font-medium text-foreground">Bound Computer</div>
         <div className="rounded-md border bg-background p-3">
           <div className="flex items-center gap-2">
             <HardDrive className="size-4 text-muted-foreground" />
@@ -697,7 +705,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
 
       {workspace && (
         <div className="space-y-2">
-          <div className="text-xs font-medium uppercase text-muted-foreground">Agent Workspace</div>
+          <div className="text-sm font-medium text-foreground">Agent Workspace</div>
           <div className="rounded-md border bg-background p-3">
             <div className="grid gap-2 sm:grid-cols-2">
               <Field label="status" value={workspace.status} />
@@ -723,7 +731,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
       )}
 
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Cpu className="size-3" />
           Detected Runtimes
         </div>
@@ -828,6 +836,9 @@ export default async function MembersPage({
       title={t("title")}
       description={t("description")}
       session={session}
+      list={<MembersList members={members} selectedMemberId={selectedMemberId} />}
+      listTitle="Members"
+      listConfig={MEMBERS_LIST_WIDTH}
       sidebarTitle={t("memberGroups")}
       sidebarDescription={t("selectMember")}
       sidebar={

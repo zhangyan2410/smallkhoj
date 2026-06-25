@@ -25,17 +25,18 @@ export default async function RootLayout({
   return (
     <html lang={locale} className={inter.variable} suppressHydrationWarning>
       <head>
+        {/* DESIGN.md: light is the default; dark is opt-in via theme=localStorage. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
                 try {
                   var theme = localStorage.getItem('theme');
-                  if (theme !== 'light') {
+                  if (theme === 'dark') {
                     document.documentElement.classList.add('dark');
                   }
                 } catch(e) {
-                  document.documentElement.classList.add('dark');
+                  /* default to light */
                 }
               })();
             `,

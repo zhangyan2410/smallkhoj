@@ -336,7 +336,8 @@ export default async function Home({
           <>
             {/* Brand header + greeting */}
             <div className="space-y-1">
-              <h1 className="bg-gradient-brand bg-clip-text text-3xl font-bold text-transparent sm:text-4xl">
+              {/* Per DESIGN.md: no gradient text. Use weight + size for hierarchy. */}
+              <h1 className="text-foreground text-3xl font-semibold tracking-tight sm:text-4xl">
                 {t("brand")}
               </h1>
               <p className="text-muted-foreground">

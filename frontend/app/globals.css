@@ -44,67 +44,67 @@
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-  /* Gradients */
-  --gradient-primary: linear-gradient(135deg, oklch(0.60 0.18 260), oklch(0.55 0.20 290));
-  --gradient-active: linear-gradient(135deg, oklch(0.60 0.18 260), oklch(0.65 0.18 200));
-  --gradient-brand: linear-gradient(135deg, oklch(0.60 0.18 260), oklch(0.55 0.20 290));
-  /* Agent identity colors (cycling palette) */
-  --agent-color-1: oklch(0.65 0.20 260);
-  --agent-color-2: oklch(0.62 0.22 290);
-  --agent-color-3: oklch(0.72 0.18 200);
-  --agent-color-4: oklch(0.68 0.20 155);
-  --agent-color-5: oklch(0.75 0.18 75);
-  --agent-color-6: oklch(0.65 0.22 15);
+  /* Per DESIGN.md: radius capped at 1.4× base. Larger radii are an AI
+     tell — the brief specifies 12-16px content cards and ≤20px dialogs. */
+  --radius-xl: calc(var(--radius) * 1.2);
+  --radius-2xl: calc(var(--radius) * 1.4);
+  --radius-3xl: calc(var(--radius) * 1.4);
+  --radius-4xl: calc(var(--radius) * 1.4);
+  /* Gradients — REMOVED per DESIGN.md: no purple, no gradient text.
+     Solid mid-sea blue + soft glow halo is the only allowed treatment. */
+  /* Agent identity palette — water + sand + adjacent cool/warm hues only.
+     No purple (260+). Range kept narrow around the design system hue band. */
+  --agent-color-1: oklch(0.62 0.12 215);  /* mid-sea blue (default) */
+  --agent-color-2: oklch(0.58 0.10 200);  /* turquoise */
+  --agent-color-3: oklch(0.55 0.10 230);  /* deep sea */
+  --agent-color-4: oklch(0.55 0.12 155);  /* sea-green */
+  --agent-color-5: oklch(0.65 0.10 75);   /* warm sand-bronze */
+  --agent-color-6: oklch(0.62 0.14 25);   /* coral (status only) */
 }
 
 :root {
-  --background: oklch(0.991 0.003 264.5);
-  --foreground: oklch(0.217 0.037 258.8);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.217 0.037 258.8);
+  /* DESIGN.md — light-first, mid-sea blue band (hue 205-220), warm sand surface. */
+  --background: oklch(0.985 0.008 220);     /* 近白带极淡冷蓝调 */
+  --foreground: oklch(0.28 0.04 225);      /* 深蓝灰文字，非纯黑 */
+  --card: oklch(0.975 0.012 85);          /* 暖沙白，平衡冷蓝 */
+  --card-foreground: oklch(0.28 0.04 225);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.217 0.037 258.8);
-  --primary: oklch(0.541 0.170 260);
-  --primary-foreground: oklch(0.985 0.005 260);
-  --secondary: oklch(0.960 0.008 253.9);
-  --secondary-foreground: oklch(0.30 0.040 258);
-  --muted: oklch(0.960 0.008 253.9);
-  --muted-foreground: oklch(0.562 0.039 257.9);
-  --accent: oklch(0.944 0.014 258.3);
-  --accent-foreground: oklch(0.479 0.164 260.7);
-  --destructive: oklch(0.577 0.245 27.325);
-  --success: oklch(0.62 0.20 145);
-  --success-foreground: oklch(0.985 0.005 145);
-  --border: oklch(0.916 0.016 257.2);
-  --input: oklch(0.916 0.016 257.2);
-  --ring: oklch(0.541 0.170 260);
-  --chart-1: oklch(0.541 0.170 260);
-  --chart-2: oklch(0.68 0.14 178);
-  --chart-3: oklch(0.63 0.17 146);
-  --chart-4: oklch(0.72 0.16 82);
-  --chart-5: oklch(0.63 0.19 25);
-  --gradient-primary: linear-gradient(135deg, oklch(0.60 0.18 260), oklch(0.55 0.20 290));
-  --gradient-active: linear-gradient(135deg, oklch(0.60 0.18 260), oklch(0.65 0.18 200));
-  --gradient-brand: linear-gradient(135deg, oklch(0.60 0.18 260), oklch(0.55 0.20 290));
-  --agent-color-1: oklch(0.65 0.20 260);
-  --agent-color-2: oklch(0.62 0.22 290);
-  --agent-color-3: oklch(0.72 0.18 200);
-  --agent-color-4: oklch(0.68 0.20 155);
-  --agent-color-5: oklch(0.75 0.18 75);
-  --agent-color-6: oklch(0.65 0.22 15);
+  --popover-foreground: oklch(0.28 0.04 225);
+  --primary: oklch(0.62 0.13 215);         /* 中海蓝 */
+  --primary-foreground: oklch(0.99 0.005 220);
+  --secondary: oklch(0.96 0.010 220);
+  --secondary-foreground: oklch(0.28 0.04 225);
+  --muted: oklch(0.96 0.010 220);
+  --muted-foreground: oklch(0.55 0.03 225);
+  --accent: oklch(0.50 0.11 218);          /* 深海蓝 */
+  --accent-foreground: oklch(0.99 0.005 220);
+  --destructive: oklch(0.58 0.18 28);
+  --success: oklch(0.62 0.14 155);
+  --success-foreground: oklch(0.99 0.005 155);
+  --border: oklch(0.91 0.015 220);
+  --input: oklch(0.91 0.015 220);
+  --ring: oklch(0.72 0.10 200);             /* 水面高光 */
+  --chart-1: oklch(0.62 0.13 215);
+  --chart-2: oklch(0.68 0.11 198);
+  --chart-3: oklch(0.62 0.14 155);
+  --chart-4: oklch(0.65 0.10 75);
+  --chart-5: oklch(0.58 0.14 25);
+  /* Agent identity palette — same as @theme */
+  --agent-color-1: oklch(0.62 0.12 215);
+  --agent-color-2: oklch(0.58 0.10 200);
+  --agent-color-3: oklch(0.55 0.10 230);
+  --agent-color-4: oklch(0.55 0.12 155);
+  --agent-color-5: oklch(0.65 0.10 75);
+  --agent-color-6: oklch(0.62 0.14 25);
   --radius: 0.875rem;
-  --sidebar: oklch(0.978 0.005 258.3);
-  --sidebar-foreground: oklch(0.30 0.030 258);
-  --sidebar-primary: oklch(0.541 0.170 260);
-  --sidebar-primary-foreground: oklch(0.985 0.005 260);
-  --sidebar-accent: oklch(0.944 0.014 258.3);
-  --sidebar-accent-foreground: oklch(0.479 0.164 260.7);
-  --sidebar-border: oklch(0.916 0.016 257.2);
-  --sidebar-ring: oklch(0.541 0.170 260);
+  --sidebar: oklch(0.975 0.012 85);         /* 暖沙白，跟主区同底色 */
+  --sidebar-foreground: oklch(0.28 0.04 225);
+  --sidebar-primary: oklch(0.62 0.13 215);
+  --sidebar-primary-foreground: oklch(0.99 0.005 220);
+  --sidebar-accent: oklch(0.93 0.020 85);   /* 暖沙上更深的 hover */
+  --sidebar-accent-foreground: oklch(0.28 0.04 225);
+  --sidebar-border: oklch(0.86 0.035 80);
+  --sidebar-ring: oklch(0.72 0.10 200);
 
   /*
    * 暖沙色系（用于三栏布局的列表栏 Col1 + 主区 Col2）。
@@ -117,42 +117,67 @@
   --sand-ink: oklch(0.32 0.04 55);        /* 暖沙上的深棕文字 */
   --sand-muted: oklch(0.52 0.035 60);     /* 暖沙上的次要文字 */
   --sand-border: oklch(0.86 0.035 80);    /* 暖沙上的分隔线 */
+
+  /*
+   * 手作墨色描边（Croodles/raft 手作风）。
+   * 跟 agent 头像的 stroke="#111827" 同色，形成统一视觉签名。
+   * 用于卡片/按钮/输入框/气泡的硬描边 —— 直角、无圆角、靠墨色硬线表达结构。
+   */
+  --ink: oklch(0.21 0.03 264);            /* #111827 蓝灰墨，跟头像描边一致 */
+
+  /*
+   * 状态色 token（单一真源）—— 收口 badgeClass/dotClass/StatusPill。
+   * 手作风：实色块（高饱和）+ 白字 + 墨边，不用 SaaS 的浅底浅字。
+   * 语义：success(绿) / warning(琥珀) / info(青) / danger(红)。
+   * 改状态色只改这里，全站 StatusPill/dot 自动跟随。
+   */
+  --success: oklch(0.62 0.17 150);        /* 翠绿 */
+  --success-fg: oklch(0.99 0.02 150);     /* 白绿字 */
+  --warning: oklch(0.72 0.16 70);         /* 琥珀 */
+  --warning-fg: oklch(0.25 0.05 55);      /* 深棕字（琥珀底用深字更清晰）*/
+  --info: oklch(0.62 0.13 210);           /* 中海蓝（与 primary 同系，info 复用）*/
+  --info-fg: oklch(0.99 0.01 200);
+  --danger: oklch(0.58 0.20 25);          /* 砖红 */
+  --danger-fg: oklch(0.99 0.02 25);
 }
 
 .dark {
-  --background: oklch(0.199 0.027 258.3);
-  --foreground: oklch(0.946 0.013 251.6);
-  --card: oklch(0.240 0.031 254.8);
-  --card-foreground: oklch(0.946 0.013 251.6);
-  --popover: oklch(0.240 0.031 254.8);
-  --popover-foreground: oklch(0.946 0.013 251.6);
-  --primary: oklch(0.660 0.145 259.9);
-  --primary-foreground: oklch(0.180 0.025 258);
-  --secondary: oklch(0.268 0.031 252.8);
-  --secondary-foreground: oklch(0.946 0.013 251.6);
-  --muted: oklch(0.268 0.031 252.8);
-  --muted-foreground: oklch(0.718 0.036 251.1);
-  --accent: oklch(0.310 0.030 246.9);
-  --accent-foreground: oklch(0.946 0.013 251.6);
-  --destructive: oklch(0.704 0.191 22.216);
-  --success: oklch(0.68 0.22 145);
-  --success-foreground: oklch(0.180 0.025 145);
-  --border: oklch(0.310 0.030 246.9);
-  --input: oklch(0.310 0.030 246.9);
-  --ring: oklch(0.660 0.145 259.9);
-  --chart-1: oklch(0.660 0.145 259.9);
-  --chart-2: oklch(0.71 0.13 178);
-  --chart-3: oklch(0.68 0.15 146);
-  --chart-4: oklch(0.76 0.14 82);
-  --chart-5: oklch(0.68 0.17 25);
-  --sidebar: oklch(0.214 0.028 253.5);
-  --sidebar-foreground: oklch(0.946 0.013 251.6);
-  --sidebar-primary: oklch(0.660 0.145 259.9);
-  --sidebar-primary-foreground: oklch(0.180 0.025 258);
-  --sidebar-accent: oklch(0.268 0.031 252.8);
-  --sidebar-accent-foreground: oklch(0.946 0.013 251.6);
-  --sidebar-border: oklch(0.310 0.030 246.9);
-  --sidebar-ring: oklch(0.660 0.145 259.9);
+  /* Dark mode (second theme per DESIGN.md) — same mid-sea blue band, lifted for dark bg.
+     No purple, no gradient text. Brand color stays at hue 215 (just brighter). */
+  --ink: oklch(0.21 0.03 264);            /* 深色模式墨色描边（与 light 同色，保证视觉签名一致）*/
+  --background: oklch(0.21 0.025 225);
+  --foreground: oklch(0.95 0.012 220);
+  --card: oklch(0.26 0.030 225);
+  --card-foreground: oklch(0.95 0.012 220);
+  --popover: oklch(0.26 0.030 225);
+  --popover-foreground: oklch(0.95 0.012 220);
+  --primary: oklch(0.72 0.12 215);
+  --primary-foreground: oklch(0.18 0.025 225);
+  --secondary: oklch(0.30 0.030 225);
+  --secondary-foreground: oklch(0.95 0.012 220);
+  --muted: oklch(0.30 0.030 225);
+  --muted-foreground: oklch(0.72 0.020 220);
+  --accent: oklch(0.58 0.10 218);
+  --accent-foreground: oklch(0.95 0.012 220);
+  --destructive: oklch(0.68 0.17 25);
+  --success: oklch(0.68 0.16 155);
+  --success-foreground: oklch(0.18 0.025 155);
+  --border: oklch(0.32 0.025 220);
+  --input: oklch(0.32 0.025 220);
+  --ring: oklch(0.72 0.10 200);
+  --chart-1: oklch(0.72 0.12 215);
+  --chart-2: oklch(0.74 0.10 198);
+  --chart-3: oklch(0.70 0.13 155);
+  --chart-4: oklch(0.74 0.10 75);
+  --chart-5: oklch(0.68 0.15 25);
+  --sidebar: oklch(0.24 0.028 225);
+  --sidebar-foreground: oklch(0.95 0.012 220);
+  --sidebar-primary: oklch(0.72 0.12 215);
+  --sidebar-primary-foreground: oklch(0.18 0.025 225);
+  --sidebar-accent: oklch(0.30 0.030 225);
+  --sidebar-accent-foreground: oklch(0.95 0.012 220);
+  --sidebar-border: oklch(0.32 0.025 220);
+  --sidebar-ring: oklch(0.72 0.10 200);
 }
 
 @layer base {
@@ -161,26 +186,23 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* DESIGN.md 光感·中：自上而下的极淡明度渐变，仅 body 层 */
+    background-image: linear-gradient(
+      to bottom,
+      oklch(0.99 0.005 220) 0%,
+      oklch(0.985 0.008 220) 50%,
+      oklch(0.96 0.012 215) 100%
+    );
   }
   html {
     @apply font-sans;
   }
-  .dark body {
-    background-image: radial-gradient(ellipse at top left, oklch(0.26 0.042 265 / 0.6) 0%, transparent 55%);
-  }
 }
 
-@layer utilities {
-  .bg-gradient-primary {
-    background: var(--gradient-primary);
-  }
-  .bg-gradient-active {
-    background: var(--gradient-active);
-  }
-  .bg-gradient-brand {
-    background: var(--gradient-brand);
-  }
-}
+/*
+ * Gradient utility classes — REMOVED per DESIGN.md (no purple, no gradient text).
+ * Use solid bg-primary + box-shadow glow halo instead.
+ */
 
 /*
  * 暖沙色系工具类（三栏布局用）。映射到 :root 的 --sand* token。
@@ -194,6 +216,44 @@
   .border-sand-border { border-color: var(--sand-border); }
   .bg-sand-deep\/55 { background-color: color-mix(in oklch, var(--sand-deep) 55%, transparent); }
   .bg-sand-deep\/60 { background-color: color-mix(in oklch, var(--sand-deep) 60%, transparent); }
+
+  /*
+   * 手作墨色描边（Croodles/raft 手作风）—— 跟 agent 头像 #111827 同色。
+   * 统一规则：直角、2px 硬描边、无圆角、靠墨线表达结构。
+   * 差异化阴影：卡片/面板/对话框用硬阴影（贴纸感），消息气泡无阴影（密集不闹）。
+   */
+  .sk-ink-border { border: 2px solid var(--ink); border-radius: 0; }
+  .sk-ink-border-1 { border: 1.5px solid var(--ink); border-radius: 0; }
+  /* 硬阴影（offset 不模糊，墨色）—— 用于卡片/对话框/面板 */
+  .sk-hard-shadow { box-shadow: 2px 2px 0 var(--ink); }
+  .sk-hard-shadow-sm { box-shadow: 1px 1px 0 var(--ink); }
+
+  /*
+   * 状态色工具类（单一真源）。手作风：实色底 + 对比字 + 墨边直角。
+   * StatusPill/dot/badge 全部用这些，改状态色只改 --success* 等 token。
+   */
+  .bg-success { background-color: var(--success); }
+  .bg-warning { background-color: var(--warning); }
+  .bg-info { background-color: var(--info); }
+  .bg-danger { background-color: var(--danger); }
+  .text-success-fg { color: var(--success-fg); }
+  .text-warning-fg { color: var(--warning-fg); }
+  .text-info-fg { color: var(--info-fg); }
+  .text-danger-fg { color: var(--danger-fg); }
+  /* 状态胶囊：实色底 + 对比字 + 墨边 + 直角，一行搞定 */
+  .sk-status-success { background-color: var(--success); color: var(--success-fg); }
+  .sk-status-warning { background-color: var(--warning); color: var(--warning-fg); }
+  .sk-status-info { background-color: var(--info); color: var(--info-fg); }
+  .sk-status-danger { background-color: var(--danger); color: var(--danger-fg); }
+
+  /*
+   * 组合工具类：让裸 div 一行收口到手作风。
+   * sk-panel = 墨边 + 暖白底 + 直角（无阴影，气泡/信息块）
+   * sk-panel-raised = 同上 + 硬阴影（需要浮起）
+   * 替代满地的 rounded-md border bg-background p-3。
+   */
+  .sk-panel { border: 2px solid var(--ink); background-color: var(--sand-card); border-radius: 0; }
+  .sk-panel-raised { border: 2px solid var(--ink); background-color: var(--sand-card); border-radius: 0; box-shadow: 2px 2px 0 var(--ink); }
 }
 
 /*
@@ -218,7 +278,11 @@
  */
 @layer components {
   .sk-rail {
-    position: relative;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 40;
     isolation: isolate;
     overflow: hidden;
   }
@@ -257,9 +321,8 @@
    * 把图标清晰度跟底图完全解耦。hover 时胶囊变实。
    */
   .sk-rail-icon {
-    background: oklch(0.2 0.03 220 / 0.28);
+    background: oklch(0.2 0.03 220 / 0.32);
     color: oklch(0.99 0.005 190);
-    backdrop-filter: blur(2px);
   }
   .sk-rail-icon:hover {
     background: oklch(0.2 0.03 220 / 0.5);

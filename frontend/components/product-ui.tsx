@@ -1,23 +1,7 @@
 import type { ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
-
-const statusStyles: Record<string, string> = {
-  online: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  active: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  running: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  done: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  idle: "border-amber-200 bg-amber-50 text-amber-700",
-  pending: "border-amber-200 bg-amber-50 text-amber-700",
-  pending_start: "border-amber-200 bg-amber-50 text-amber-700",
-  in_review: "border-amber-200 bg-amber-50 text-amber-700",
-  busy: "border-amber-200 bg-amber-50 text-amber-700",
-  in_progress: "border-sky-200 bg-sky-50 text-sky-700",
-  failed: "border-rose-200 bg-rose-50 text-rose-700",
-  cancelled: "border-rose-200 bg-rose-50 text-rose-700",
-  offline: "border-rose-200 bg-rose-50 text-rose-700",
-  stopped: "border-rose-200 bg-rose-50 text-rose-700",
-}
+import { badgeClass } from "@/lib/control-plane"
 
 export function StatusPill({
   status,
@@ -31,8 +15,10 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex h-6 shrink-0 items-center rounded-md border px-2 text-xs font-medium",
-        statusStyles[status] ?? "border-border bg-muted text-muted-foreground",
+        /* 手作风：墨色硬描边 + 直角 + 实色状态底。
+           badgeClass 是单一真源（lib/control-plane.ts），改状态色只改那里。 */
+        "inline-flex h-6 shrink-0 items-center rounded-none border border-[var(--ink)] px-2 text-xs font-semibold",
+        badgeClass(status),
         className
       )}
     >
