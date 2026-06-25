@@ -1,59 +1,151 @@
 # Component Guidelines
 
-> How components are built in this project.
+> How components are built and layered in SmallKhoj. Read before writing or editing any UI.
+
+The single most important rule: **never hardcode styles in page/feature code.**
+Components own their styling; pages compose components and pass data. This is
+what lets a visual change (border color, radius, status color) propagate from
+one place to the whole app.
 
 ---
 
-## Overview
+## The Three-Layer Component Model
 
-<!--
-Document your project's component conventions here.
+Every piece of UI must live in exactly one of these layers. Choose by asking
+"does this need to know about product data or just about rendering?"
 
-Questions to answer:
-- What component patterns do you use?
-- How are props defined?
-- How do you handle composition?
-- What accessibility standards apply?
--->
+```
+┌─────────────────────────────────────────────────────────┐
+│  Layer 3 — Pages / Features (app/**, feature comps)     │  knows product data
+│    compose Layer 1+2, pass data, never style            │  NO hardcoded styles
+├─────────────────────────────────────────────────────────┤
+│  Layer 2 — Product primitives (components/**)           │  knows product concepts
+│    StatusPill, ProductRow, Toolbar, EmptyState,         │  styling allowed
+│    ProductShell, TaskListPanel, MessageActions...       │  (referencing Layer 1)
+├─────────────────────────────────────────────────────────┤
+│  Layer 1 — Atoms (components/ui/**)                     │  knows nothing about product
+│    Card, Button, Input, Select, Textarea, Panel,        │  owns base styling
+│    Dialog, Avatar, ScrollArea, FieldLabel               │  references tokens only
+├─────────────────────────────────────────────────────────┤
+│  Layer 0 — Tokens & utilities (globals.css :root)       │  the single source of truth
+│    --ink, --sand*, --primary, --success*, sk-* classes  │  change here → app follows
+└─────────────────────────────────────────────────────────┘
+```
 
-(To be filled by the team)
+### Layer 0 — Tokens (globals.css)
+Colors, radii, shadows live ONLY here. Never write `oklch(...)`, `#hex`, or
+Tailwind palette colors (`bg-emerald-500`, `bg-sky-200`, ...) in a component
+or page. Reference tokens: `bg-primary`, `border-[var(--ink)]`, `bg-success`.
+
+### Layer 1 — Atoms (components/ui/*)
+Own their base styling and reference tokens only. They must NOT import product
+code (`lib/control-plane`, feature components). A `<Card>` knows nothing about
+tasks or members — it just renders a bordered box.
+
+### Layer 2 — Product primitives (components/*, not in ui/)
+Compose atoms + reference product concepts (status, runtime). Styling is allowed
+but must reuse Layer 1 atoms and Layer 0 tokens. Example: `StatusPill` wraps a
+`<span>` with `badgeClass()` (which reads status tokens) — it does NOT redefine
+colors.
+
+### Layer 3 — Pages & features (app/**)
+Compose Layer 1 + 2. **Never style here.** No `className="rounded-md border bg-..."`,
+no `bg-emerald-500`, no local `<select>`/`<button>` with hardcoded classes. If you
+need a styled element, use an atom; if the atom doesn't exist, add it to Layer 1.
 
 ---
 
-## Component Structure
+## The Single-Source Rule (critical)
 
-<!-- Standard structure of a component file -->
+For any visual concern, there must be exactly ONE source of truth:
 
-(To be filled by the team)
+| Concern | Single source | How to change app-wide |
+|---|---|---|
+| Brand/primary color | `--primary` token | edit globals.css |
+| Border color (handcraft) | `--ink` token | edit globals.css |
+| Status colors | `--success/--warning/--info/--danger` + `badgeClass()` | edit globals.css OR statusKind() mapping |
+| Card border/radius/shadow | `Card` component | edit components/ui/card.tsx |
+| Button variant | `buttonVariants` cva | edit components/ui/button.tsx |
+| Input border/focus | `Input` component | edit components/ui/input.tsx |
+
+**If you find yourself changing the same style in 3+ files, the architecture is
+wrong** — promote it to a token, a utility class, or an atom. Then revert the
+scattered changes and let the single source drive them.
 
 ---
 
-## Props Conventions
+## Forbidden in Page/Feature Code
 
-<!-- How props should be defined and typed -->
+These are the patterns that cause "change one place, nothing propagates":
 
-(To be filled by the team)
+- ❌ Raw `<select>`, `<textarea>`, `<input type=text>` with hardcoded Tailwind classes.
+  Use `<Select>`, `<Textarea>`, `<Input>` from `@/components/ui/form` / `input`.
+- ❌ Raw `<button className="bg-primary ...">`. Use `<Button variant size>`.
+- ❌ `<div className="rounded-md border bg-background p-3">` (hand-rolled card).
+  Use `<Card>`, `<Card size="sm">`, or `<Panel>`.
+- ❌ Hardcoded palette colors: `bg-emerald-500`, `text-rose-700`, `border-sky-200`,
+  `bg-amber-50`, any `oklch()`/`#hex` literal. Use status tokens / `badgeClass()`.
+- ❌ Local re-definitions of `dotClass`/`badgeClass`/`statusLabel`/`StatusBadge`
+  in a page. Import from `@/lib/control-plane` and `@/components/product-ui`.
+- ❌ Local re-definitions of `Field`, `FieldLabel`, `Select`. Import shared ones.
+- ❌ `rounded-lg`/`rounded-xl`/`rounded-md` on containers (handcraft = `rounded-none`).
+  Only `rounded-full` is allowed, for small dots/status indicators.
+
+### When a raw element is unavoidable
+If an atom genuinely can't express what you need (e.g. a controlled `<select>`
+with `onChange`), keep the raw element but apply handcraft utility classes:
+`rounded-none border-2 border-[var(--ink)] bg-transparent`. Then file a note to
+extend the atom. Never hardcode colors.
 
 ---
 
-## Styling Patterns
+## Composition Patterns
 
-<!-- How styles are applied (CSS modules, styled-components, Tailwind, etc.) -->
+### Variants via cva (class-variance-authority)
+Atoms with multiple looks use `cva` (see `button.tsx`). Pages pick a `variant`,
+never override classes. Adding a variant = editing one cva map.
 
-(To be filled by the team)
+### `className` passthrough
+Every atom accepts `className` and merges it via `cn()` (tailwind-merge). Pages
+can add layout utilities (`mb-4`, `w-full`) but must NOT override the atom's
+signature styling (border, radius, color). `cn()` ensures later wins, so signature
+classes are listed first.
+
+### `<Card>` vs `<Panel>` vs raw section
+- `<Card>` — primary framed container, with handcraft border + hard shadow.
+- `<Panel variant="default">` — same border, NO shadow (message bubbles, dense info blocks).
+- `<Panel variant="raised">` — border + hard shadow but lighter framing than Card.
+- Raw `<section>`/`<div>` with no border — for layout-only containers (grids, flex).
+
+---
+
+## Adding a New Component — Decision Tree
+
+1. Is it pure presentation, no product knowledge? → **Layer 1** (`components/ui/`).
+2. Does it wrap an atom with product semantics (status, runtime)? → **Layer 2** (`components/`).
+3. Does it only compose existing components + data for one route? → **Layer 3** (inline in page, or `components/<feature>/` if reused).
+
+Before creating a new component, grep for an existing one that does 80% of the
+job. Duplicate components are the #1 cause of style drift.
 
 ---
 
 ## Accessibility
 
-<!-- A11y requirements and patterns -->
-
-(To be filled by the team)
+- Interactive elements must have `focus-visible` styling (atoms already provide this).
+- Icon-only buttons need `aria-label`.
+- Never remove the focus ring to "clean up"; style it via the token.
+- Color is never the only signal — pair status color with a label or icon.
 
 ---
 
-## Common Mistakes
+## Common Mistakes (observed in this codebase)
 
-<!-- Component-related mistakes your team has made -->
-
-(To be filled by the team)
+1. **Re-defining StatusBadge/dotClass per page** → caused 4 different "done" colors.
+   Fixed: single source in `lib/control-plane.ts`. Don't reintroduce.
+2. **Hand-rolled `rounded-md border bg-background p-3` everywhere** → couldn't change
+   card style globally. Fixed: `<Card>`/`<Panel>`. Don't reintroduce.
+3. **Hardcoded emerald/amber/sky/rose for status** → bypassed theme. Fixed: status
+   tokens. Any new status UI must use `badgeClass()`/`dotClass()`/`StatusPill`.
+4. **Two copies of the icon rail** (ProductShell + channel-client) → diverged styling.
+   Rule: one rail, in ProductShell. Chat must compose it, not rebuild it.

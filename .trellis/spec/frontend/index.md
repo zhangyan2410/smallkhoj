@@ -14,9 +14,9 @@ This directory contains guidelines for frontend development. Fill in each file w
 
 | Guide | Description | Status |
 |-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Component Guidelines](./component-guidelines.md) | Component patterns, props, composition | To fill |
-| [Product UI Style](./product-ui-style.md) | SmallKhoj cyan/blue product workspace identity and UI surface rules | Active |
+| [Directory Structure](./directory-structure.md) | Three-layer model, import rules, where new code goes | Active |
+| [Component Guidelines](./component-guidelines.md) | Three-layer component model, single-source rule, forbidden patterns | Active |
+| [Product UI Style](./product-ui-style.md) | Handcraft ink-border language, water+sand identity, color tokens | Active |
 | [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
 | [State Management](./state-management.md) | Local state, global state, server state | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns, browser evidence gates | Active |
