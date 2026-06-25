@@ -24,6 +24,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { StatusPill } from "@/components/product-ui"
+import { dotClass, statusLabel } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
@@ -288,52 +290,6 @@ async function getDashboardData(): Promise<DashboardData> {
   }
 }
 
-function dotClass(status: string) {
-  switch (status) {
-    case "online":
-    case "active":
-    case "running":
-    case "done":
-    case "fired":
-      return "bg-emerald-500"
-    case "idle":
-    case "pending":
-    case "in_review":
-      return "bg-amber-500"
-    case "in_progress":
-      return "bg-sky-500"
-    case "failed":
-    case "cancelled":
-    case "offline":
-      return "bg-rose-500"
-    default:
-      return "bg-muted-foreground"
-  }
-}
-
-function badgeClass(status: string) {
-  switch (status) {
-    case "online":
-    case "active":
-    case "running":
-    case "done":
-    case "fired":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700"
-    case "idle":
-    case "pending":
-    case "in_review":
-      return "border-amber-200 bg-amber-50 text-amber-700"
-    case "in_progress":
-      return "border-sky-200 bg-sky-50 text-sky-700"
-    case "failed":
-    case "cancelled":
-    case "offline":
-      return "border-rose-200 bg-rose-50 text-rose-700"
-    default:
-      return "border-border bg-muted text-muted-foreground"
-  }
-}
-
 function formatTime(value?: string | null) {
   if (!value) return "never"
   const date = new Date(value)
@@ -356,32 +312,6 @@ function formatBytes(size: number) {
     unitIndex += 1
   }
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
-}
-
-function statusLabel(status: string) {
-  const labels: Record<string, string> = {
-    todo: "待办",
-    in_progress: "进行中",
-    in_review: "审核中",
-    done: "完成",
-    pending: "待触发",
-    fired: "已触发",
-    cancelled: "已取消",
-    online: "在线",
-    offline: "离线",
-    active: "活跃",
-    running: "运行中",
-    idle: "空闲",
-  }
-  return labels[status] ?? status
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`inline-flex h-6 items-center rounded-md border px-2 text-xs ${badgeClass(status)}`}>
-      {statusLabel(status)}
-    </span>
-  )
 }
 
 function EmptyState({ label }: { label: string }) {
@@ -658,7 +588,7 @@ export default async function DaemonPage({
                             {formatTime(computer.lastHeartbeatAt)}
                           </p>
                         </div>
-                        <StatusBadge status={computer.status} />
+                        <StatusPill status={computer.status} label={statusLabel(computer.status)} />
                       </div>
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         {(computer.detectedRuntimes.length ? computer.detectedRuntimes : ["no runtime detected"]).map(
@@ -681,7 +611,7 @@ export default async function DaemonPage({
                                 {workspace.cwd ?? "no cwd"} {workspace.pid ? `· pid ${workspace.pid}` : ""}
                               </div>
                             </div>
-                            <StatusBadge status={workspace.status} />
+                            <StatusPill status={workspace.status} label={statusLabel(workspace.status)} />
                           </div>
                         ))}
                         {computer.agentWorkspaces.length === 0 && (
@@ -737,7 +667,7 @@ export default async function DaemonPage({
               <div key={task.id ?? task.number} className="flex min-w-0 items-center gap-2 rounded-md border p-2">
                 <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
                 <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
-                <StatusBadge status={task.status} />
+                <StatusPill status={task.status} label={statusLabel(task.status)} />
               </div>
             ))}
           />
@@ -751,7 +681,7 @@ export default async function DaemonPage({
               <div key={reminder.id} className="rounded-md border p-2">
                 <div className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-sm">{reminder.title}</span>
-                  <StatusBadge status={reminder.status} />
+                  <StatusPill status={reminder.status} label={statusLabel(reminder.status)} />
                 </div>
                 <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                   <div className="flex min-w-0 flex-1 items-center gap-2">

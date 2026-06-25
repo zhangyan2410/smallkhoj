@@ -34,7 +34,6 @@ import { Input } from "@/components/ui/input"
 import {
   API_BASE,
   apiGet,
-  badgeClass,
   formatTime,
   type Computer,
   type Member,
@@ -90,10 +89,6 @@ function memberDetailHref(memberId: string, tab?: TabKey) {
   params.set("member", memberId)
   if (tab) params.set("tab", tab)
   return `/members?${params.toString()}`
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
 }
 
 function Field({ label, value }: { label: string; value?: string | null }) {
@@ -241,7 +236,7 @@ function HumanRow({ member, selected }: { member: Member; selected: boolean }) {
         <div className="truncate font-medium">{name}</div>
         <div className="truncate text-[11px] text-muted-foreground">{handle}</div>
       </div>
-      <StatusBadge status={member.status} />
+      <StatusPill status={member.status} label={statusLabel(member.status)} />
     </Link>
   )
 }
@@ -283,7 +278,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
           <div className="text-lg font-semibold">{profileName(member)}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">{member.handle || `@${member.displayName}`}</span>
-            <StatusBadge status={member.status} />
+            <StatusPill status={member.status} label={statusLabel(member.status)} />
             <span className="rounded-md bg-muted px-2 py-0.5 text-xs">{member.kind}</span>
             {(member.config?.provider || member.runtimeProvider || member.backend) && (
               <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
@@ -693,7 +688,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
           <div className="flex items-center gap-2">
             <HardDrive className="size-4 text-muted-foreground" />
             <span className="text-sm font-medium">{computer.name}</span>
-            <StatusBadge status={computer.status} />
+            <StatusPill status={computer.status} label={statusLabel(computer.status)} />
           </div>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             <Field label="os" value={computer.os} />

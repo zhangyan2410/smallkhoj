@@ -2033,3 +2033,762 @@ Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for
   57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
  GET /tasks 200 in 593ms (next.js: 1517µs, application-code: 592ms)
  GET /tasks 200 in 718ms (next.js: 50ms, application-code: 668ms)
+Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> {
+  code: 'MISSING_MESSAGE',
+  originalMessage: 'Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.'
+}
+ GET /chat 200 in 214ms (next.js: 1847µs, application-code: 213ms)
+ GET /chat 307 in 346ms (next.js: 10ms, application-code: 336ms)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> {
+  code: 'MISSING_MESSAGE',
+  originalMessage: 'Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.'
+}
+ GET /chat/gate-lab 200 in 356ms (next.js: 3ms, application-code: 353ms)
+ GET /chat/gate-lab 200 in 328ms (next.js: 2ms, application-code: 326ms)
+ GET /chat/gate-lab 200 in 483ms (next.js: 2ms, application-code: 481ms)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+ GET /tasks 200 in 290ms (next.js: 3ms, application-code: 287ms)
+ GET /tasks 200 in 176ms (next.js: 1649µs, application-code: 174ms)
+ GET /chat 200 in 155ms (next.js: 3ms, application-code: 151ms)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+ GET /chat/gate-lab 200 in 232ms (next.js: 5ms, application-code: 226ms)
+ GET /chat/gate-lab 200 in 208ms (next.js: 1494µs, application-code: 206ms)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+ GET /tasks 200 in 205ms (next.js: 4ms, application-code: 201ms)
+ GET /chat 200 in 199ms (next.js: 3ms, application-code: 196ms)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+ GET /chat/gate-lab 200 in 154ms (next.js: 4ms, application-code: 150ms)
+ GET /chat/gate-lab 200 in 141ms (next.js: 3ms, application-code: 138ms)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[browser] Error: MISSING_MESSAGE: Could not resolve `chat.sidebarSubtitle` in messages for locale `zh-CN`.
+    at ChatSidebar (app/chat/[channel]/chat-sidebar.tsx:54:14)
+    at ChatLayout (app/chat/layout.tsx:43:15)
+  52 |           {tChat("workbench")}
+  53 |           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
+> 54 |             {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+     |              ^
+  55 |           </span>
+  56 |         </Link>
+  57 |       </div> (app/chat/[channel]/chat-sidebar.tsx:54:14)
+[?25h

@@ -37,8 +37,9 @@ import {
 import { EmptyState, StatusPill } from "@/components/product-ui"
 import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
 import { Card, CardContent } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/form"
 import { Button } from "@/components/ui/button"
-import { apiGet, apiHeaders, apiPatch, apiPost, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
+import { apiGet, apiHeaders, apiPatch, apiPost,  formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
 import { AGENT_DRAG_MIME, parseAgentDragPayload, type AgentDragPayload } from "@/lib/drag-data"
 import { applyHighWater, connectRealtimeEvents, type HighWater } from "@/lib/realtime-events"
 
@@ -99,10 +100,6 @@ type ActivityItem = {
   type: string
   description: string
   timestamp?: string | null
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
 }
 
 function formatChannelName(channel: string | null | undefined, agentName?: string | null): string {
@@ -220,7 +217,7 @@ function SortableTaskCard({
                 <div className="mt-1 line-clamp-2 text-sm font-medium">{task.title}</div>
               </div>
               <div className="flex items-center gap-1 transition-transform group-hover:translate-x-0.5">
-                <StatusBadge status={task.status} />
+                <StatusPill status={task.status} label={statusLabel(task.status)} />
               </div>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
@@ -342,7 +339,7 @@ function ListRow({ task, selected, onSelect }: { task: Task; selected: boolean; 
           <span className="text-muted-foreground">更新 {formatTime(task.updatedAt || task.createdAt)}</span>
         </div>
       </div>
-      <StatusBadge status={task.status} />
+      <StatusPill status={task.status} label={statusLabel(task.status)} />
     </button>
   )
 }
@@ -452,10 +449,11 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
           </p>
         </div>
       </div>
-      <textarea
+      <Textarea
         name="memoryInstruction"
         placeholder="补充要求，例如测试证据、剩余风险"
-        className="mt-2 min-h-14 w-full resize-none rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+        rows={3}
+        className="mt-2 resize-none text-xs"
         disabled={!hasAgentAssignee || status === "sending"}
       />
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -572,7 +570,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
       <div className="grid gap-1.5 text-xs">
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">状态</span>
-          <StatusBadge status={task.status} />
+          <StatusPill status={task.status} label={statusLabel(task.status)} />
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">负责人</span>
@@ -925,7 +923,7 @@ export function TaskBoard({
                         </div>
                         <div className="mt-1 line-clamp-2 text-sm font-medium">{activeTask.title}</div>
                       </div>
-                      <StatusBadge status={activeTask.status} />
+                      <StatusPill status={activeTask.status} label={statusLabel(activeTask.status)} />
                     </div>
                     <div className="text-xs text-muted-foreground">移动到目标状态列</div>
                   </CardContent>

@@ -22,10 +22,10 @@ import { TaskRecoveryCockpit, type TaskRecoveryCopy } from "@/components/memory-
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { FieldLabel, Select } from "@/components/ui/form"
+import { FieldLabel, Select, Textarea } from "@/components/ui/form"
 import { TaskListPanel } from "@/components/task-list-panel"
 import { TaskFormDialogs } from "@/components/task-form-dialogs"
-import { apiGet, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
+import { apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders, getSessionToken } from "@/lib/server-auth"
 
 import { TaskDndBoard } from "@/components/task-dnd-board"
@@ -346,9 +346,7 @@ function firstParam(value: string | string[] | undefined, fallback = "") {
   return value ?? fallback
 }
 
-function StatusBadge({ status }: { status: string }) {
-  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
-}
+// StatusBadge 包装已删 —— 直接用 StatusPill（内部已调 badgeClass 单一真源）
 
 // FieldLabel/Select 已抽到 @/components/ui/form，下方表单直接使用。
 
@@ -372,29 +370,7 @@ function sourceHref(source: TaskSource) {
   return query ? `${path}?${query}` : path
 }
 
-function dotClass(status: string) {
-  switch (status) {
-    case "online":
-    case "active":
-    case "running":
-    case "done":
-    case "fired":
-      return "bg-emerald-500"
-    case "idle":
-    case "pending":
-    case "in_review":
-      return "bg-amber-500"
-    case "in_progress":
-      return "bg-sky-500"
-    case "failed":
-    case "cancelled":
-    case "offline":
-    case "stopped":
-      return "bg-rose-500"
-    default:
-      return "bg-muted-foreground"
-  }
-}
+// dotClass 已收口到 lib/control-plane 单一真源（上方 import）
 
 function EvidenceIcon({ type }: { type: EvidenceEntry["type"] }) {
   switch (type) {
@@ -497,7 +473,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
       <div className="grid gap-2 text-sm">
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">{copy.status}</span>
-          <StatusBadge status={task.status} />
+          <StatusPill status={task.status} label={statusLabel(task.status)} />
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">{copy.assignee}</span>
@@ -618,10 +594,11 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
         </div>
         <form action={requestTaskMemoryAction} className="mt-2 space-y-2">
           <input type="hidden" name="taskId" value={task.id} />
-          <textarea
+          <Textarea
             name="memoryInstruction"
             placeholder={copy.memoryInstructionPlaceholder}
-            className="min-h-14 w-full resize-none rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+            rows={3}
+            className="resize-none text-xs"
           />
           <div className="flex flex-wrap gap-1.5" aria-label={copy.outputDirections}>
             {MEMORY_OUTPUT_DIRECTIONS.map((direction) => (

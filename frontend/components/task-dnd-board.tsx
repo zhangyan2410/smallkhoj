@@ -5,6 +5,8 @@ import Link from "next/link"
 import { ListChecks } from "lucide-react"
 
 import { TaskBoard, type Task } from "@/components/task-board"
+import { StatusPill } from "@/components/product-ui"
+import { statusLabel } from "@/lib/control-plane"
 
 export type TaskDndBoardProps = {
   tasks: Task[]
@@ -19,22 +21,6 @@ function taskHref(task: Task, filters: Record<string, string>) {
     if (!value) params.delete(key)
   }
   return `/tasks?${params.toString()}`
-}
-
-function StatusBadge({ status }: { status: string }) {
-  // Inline simple status display for list view
-  const colorMap: Record<string, string> = {
-    todo: "bg-slate-100 text-slate-700",
-    in_progress: "bg-sky-50 text-sky-700",
-    in_review: "bg-amber-50 text-amber-700",
-    done: "bg-emerald-50 text-emerald-700",
-    closed: "bg-muted text-muted-foreground",
-  }
-  return (
-    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${colorMap[status] || colorMap.closed}`}>
-      {status}
-    </span>
-  )
 }
 
 export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoardProps) {
@@ -95,7 +81,7 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
                   <span>updated {new Date(task.updatedAt || task.createdAt || 0).toLocaleString()}</span>
                 </div>
               </div>
-              <StatusBadge status={task.status} />
+              <StatusPill status={task.status} label={statusLabel(task.status)} />
               <ListChecks className="size-4 text-muted-foreground" />
             </Link>
           ))}

@@ -34,7 +34,6 @@ import { ConnectComputerForm } from "./connect-computer-form"
 import { buildComputerReconnectUrl } from "@/lib/computer-navigation"
 import {
   apiGet,
-  badgeClass,
   dotClass,
   formatTime,
   runtimeLabel,
@@ -257,10 +256,6 @@ async function deleteComputerAction(formData: FormData) {
   redirect("/computers?deleted=1")
 }
 
-function StatusBadge({ status }: { status: string }) {
-  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
-}
-
 function Field({ label, value, icon }: { label: string; value?: string | null; icon?: React.ReactNode }) {
   return (
     <div className="min-w-0 rounded-md border bg-background p-2">
@@ -365,7 +360,7 @@ function ComputerDetail({
           <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
             <Monitor className="size-5 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate">{computer.name}</span>
-            <StatusBadge status={computer.status} />
+            <StatusPill status={computer.status} label={statusLabel(computer.status)} />
           </CardTitle>
           <CardDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
             <span>{computer.os || copy.unknownOs}</span>
@@ -582,7 +577,7 @@ function WorkspaceRow({
           {workspace.runtimeProvider || workspace.runtimeModel || workspace.runtimeCommand || copy.providerDefault}
         </div>
       </div>
-      <StatusBadge status={workspace.status} />
+      <StatusPill status={workspace.status} label={statusLabel(workspace.status)} />
       <div className="font-mono text-xs text-muted-foreground">{workspace.pid ?? copy.none}</div>
       <div className="truncate font-mono text-xs text-muted-foreground" title={workspace.sessionId ?? ""}>
         {workspace.sessionId ? shortId(workspace.sessionId) : copy.none}
@@ -641,7 +636,7 @@ function ComputerListRow({ computer, selectedId, copy }: { computer: Computer; s
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-medium">{computer.name}</span>
-              <StatusBadge status={computer.status} />
+              <StatusPill status={computer.status} label={statusLabel(computer.status)} />
             </div>
             <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
               <span>{computer.os || copy.unknownOs}</span>

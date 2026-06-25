@@ -7,6 +7,7 @@ import { EmptyState, RuntimeChip, StatusPill, Toolbar } from "@/components/produ
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/form"
 import { API_BASE, apiGet, type TaskRunTemplate } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
@@ -191,12 +192,12 @@ function TemplateFields({ template }: { template?: TaskRunTemplate }) {
       </div>
       <div className="md:col-span-2">
         <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground" htmlFor={`${template?.slug ?? "new"}-system`}>系统指令</label>
-        <textarea
+        <Textarea
           id={`${template?.slug ?? "new"}-system`}
           name="systemInstruction"
           required
           defaultValue={template?.systemInstruction ?? ""}
-          className="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          rows={6}
         />
       </div>
       <div>
