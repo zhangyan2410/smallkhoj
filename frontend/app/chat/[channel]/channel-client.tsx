@@ -127,15 +127,15 @@ const conversationTabs = [
 ]
 const THREAD_PANEL_WIDTH_KEY = "smallkhoj.chat.threadWidth"
 const THREAD_PANEL_MIN_WIDTH = 320
-const THREAD_PANEL_MAX_WIDTH = 560
-const THREAD_PANEL_DEFAULT_WIDTH = 384
+const THREAD_PANEL_MAX_WIDTH = 760
+const THREAD_PANEL_DEFAULT_WIDTH = 420
 
 /* message 内容区可调宽度（与 thread 共用同一条拖拽线：
    拖这条线 = thread 变宽、message 内容变窄，反之亦然）。 */
 const MESSAGE_WIDTH_KEY = "smallkhoj.chat.messageWidth"
-const MESSAGE_MIN_WIDTH = 560
-const MESSAGE_MAX_WIDTH = 1100
-const MESSAGE_DEFAULT_WIDTH = 896
+const MESSAGE_MIN_WIDTH = 480
+const MESSAGE_MAX_WIDTH = 1500
+const MESSAGE_DEFAULT_WIDTH = 1100
 
 function channelPathSegment(value: string) {
   return encodeURIComponent(value)
