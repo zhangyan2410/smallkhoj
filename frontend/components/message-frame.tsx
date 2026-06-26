@@ -88,7 +88,7 @@ export function MessageFrame({
           </div>
           {actions ? <div className="shrink-0">{actions}</div> : null}
         </div>
-        <div data-slot="message-body" className="mt-1">
+        <div data-slot="message-body" className="sk-bubble mt-1 rounded-none px-3 py-2 text-paper-ink">
           {children}
         </div>
       </div>

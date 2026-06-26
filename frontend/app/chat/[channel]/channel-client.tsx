@@ -130,6 +130,13 @@ const THREAD_PANEL_MIN_WIDTH = 320
 const THREAD_PANEL_MAX_WIDTH = 560
 const THREAD_PANEL_DEFAULT_WIDTH = 384
 
+/* message 内容区可调宽度（与 thread 共用同一条拖拽线：
+   拖这条线 = thread 变宽、message 内容变窄，反之亦然）。 */
+const MESSAGE_WIDTH_KEY = "smallkhoj.chat.messageWidth"
+const MESSAGE_MIN_WIDTH = 560
+const MESSAGE_MAX_WIDTH = 1100
+const MESSAGE_DEFAULT_WIDTH = 896
+
 function channelPathSegment(value: string) {
   return encodeURIComponent(value)
 }
@@ -252,6 +259,7 @@ export function ChannelClient({
   const [uploading, setUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [threadWidthOverride, setThreadWidthOverride] = useState<number | null>(null)
+  const [messageWidthOverride, setMessageWidthOverride] = useState<number | null>(null)
   const dragDepthRef = useRef(0)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -265,6 +273,13 @@ export function ChannelClient({
     () => THREAD_PANEL_DEFAULT_WIDTH,
   )
   const threadWidth = threadWidthOverride ?? storedThreadWidth
+
+  const storedMessageWidth = useSyncExternalStore(
+    subscribePanelWidthStore,
+    () => readStoredPanelWidth(MESSAGE_WIDTH_KEY, MESSAGE_DEFAULT_WIDTH, MESSAGE_MIN_WIDTH, MESSAGE_MAX_WIDTH),
+    () => MESSAGE_DEFAULT_WIDTH,
+  )
+  const messageWidth = messageWidthOverride ?? storedMessageWidth
 
   const currentChannel = channels.find((c) => c.name.replace("#", "") === channelName)
   const currentDm = dms.find((dm) => dm.name === channelName)
@@ -315,11 +330,19 @@ export function ChannelClient({
     window.addEventListener("pointerup", handlePointerUp, { once: true })
   }
 
+  // Thread resize moves ONE drag line: thread grows ⇄ message content shrinks.
+  // direction is "left-edge" (drag left → thread wider). The message content
+  // width moves oppositely so the two panels share the same boundary.
   function handleThreadResizePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     startPanelResize(
       event,
       threadWidth,
-      (width) => setPersistentPanelWidth(width, setThreadWidthOverride, THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),
+      (width) => {
+        const delta = width - threadWidth
+        setPersistentPanelWidth(width, setThreadWidthOverride, THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH)
+        // message content moves opposite: thread +delta → message −delta
+        setPersistentPanelWidth(messageWidth - delta, setMessageWidthOverride, MESSAGE_WIDTH_KEY, MESSAGE_MIN_WIDTH, MESSAGE_MAX_WIDTH)
+      },
       "left-edge",
     )
   }
@@ -327,12 +350,20 @@ export function ChannelClient({
   function handleThreadResizeKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
     event.preventDefault()
+    const delta = event.key === "ArrowLeft" ? 16 : -16
     setPersistentPanelWidth(
-      threadWidth + (event.key === "ArrowLeft" ? 16 : -16),
+      threadWidth + delta,
       setThreadWidthOverride,
       THREAD_PANEL_WIDTH_KEY,
       THREAD_PANEL_MIN_WIDTH,
       THREAD_PANEL_MAX_WIDTH,
+    )
+    setPersistentPanelWidth(
+      messageWidth - delta,
+      setMessageWidthOverride,
+      MESSAGE_WIDTH_KEY,
+      MESSAGE_MIN_WIDTH,
+      MESSAGE_MAX_WIDTH,
     )
   }
 
@@ -980,30 +1011,28 @@ export function ChannelClient({
                 </div>
               </div>
             </div>
-            {/* Compact tab strip — underline-style, no big bordered pills */}
-            <div className="ml-4 flex gap-0.5 border-l pl-4">
+            {/* Tab strip — uses the shared Button atom so it matches the rest of
+                the app (no chat-specific styling). Active = default, inactive = outline. */}
+            <div className="ml-4 flex gap-1 border-l pl-4">
               {conversationTabs.map(({ key, labelKey, icon: Icon }) => {
                 const tabKey = key as "chat" | "tasks" | "memory" | "files" | "activity"
                 const label = tChat(labelKey)
                 const isActive = activeTab === tabKey
                 return (
-                  <button
+                  <Button
                     key={key}
                     type="button"
+                    size="sm"
+                    variant={isActive ? "default" : "outline"}
                     onClick={() => {
                       setActiveTab(tabKey)
                       if (tabKey === "files") void refreshFiles()
                       if (tabKey === "memory") void refreshMemory()
                     }}
-                    className={`inline-flex h-7 items-center gap-1.5 rounded-none px-2 text-xs font-medium transition-colors ${
-                      isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
                   >
                     <Icon className="size-3.5" />
                     {label}
-                  </button>
+                  </Button>
                 )
               })}
             </div>
@@ -1042,7 +1071,7 @@ export function ChannelClient({
             )}
             {activeTab === "activity" ? (
               <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mx-auto max-w-3xl">
+                <div className="mr-auto" style={{ width: messageWidth }}>
                   {dmAgent ? (
                     <AgentActivityList agentId={dmAgent.id} runtimeOnly limit={40} />
                   ) : (
@@ -1063,7 +1092,7 @@ export function ChannelClient({
               </div>
             ) : activeTab === "memory" ? (
               <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mx-auto max-w-3xl">
+                <div className="mr-auto" style={{ width: messageWidth }}>
                   <MemoryProposalQueue
                     proposals={memoryProposals}
                     loading={memoryProposalLoading}
@@ -1076,7 +1105,7 @@ export function ChannelClient({
               </div>
             ) : activeTab === "files" ? (
               <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mx-auto max-w-3xl">
+                <div className="mr-auto" style={{ width: messageWidth }}>
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-sm font-semibold">{tChat("filesTitle")}</h2>
                     <span className="text-xs text-muted-foreground">{tChat("fileCount", { count: files.length })}</span>
@@ -1158,7 +1187,7 @@ export function ChannelClient({
             ) : (
               <>
                 <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mx-auto max-w-3xl space-y-3">
+                <div className="mr-auto space-y-3" style={{ width: messageWidth }}>
                 {messages.map((msg) => {
                   const isSaved = savedMessageIds.has(msg.id)
                   const senderMember = memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)
@@ -1166,7 +1195,7 @@ export function ChannelClient({
                     <div
                       key={msg.id}
                       data-testid={`message-${msg.id}`}
-                      className={`group/message relative -mx-2 min-w-0 px-2 py-1.5 transition-colors focus-within:bg-muted/60 hover:bg-muted/60 ${
+                      className={`group/message relative -mx-2 min-w-0 px-2 py-1.5 transition-colors ${
                         isSaved ? "bg-primary/5" : ""
                       }`}
                       tabIndex={0}
@@ -1249,7 +1278,7 @@ export function ChannelClient({
             </div>
 
             <div data-region="composer" className="shrink-0 border-t-2 border-[var(--ink)] bg-sand-deep p-3">
-              <div className="mx-auto flex min-w-0 max-w-3xl items-center gap-2">
+              <div className="mr-auto flex min-w-0 items-center gap-2" style={{ width: messageWidth }}>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1315,7 +1344,7 @@ export function ChannelClient({
             <aside
               aria-label={tChat("thread")}
               data-region="thread-panel"
-              className="relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-deep p-4"
+              className="relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-card p-4"
               style={{ width: threadWidth }}
             >
               <div
@@ -1361,7 +1390,7 @@ export function ChannelClient({
 
                 <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
                   {activeRoot && (
-                    <div className="group/message relative -mx-1 px-1 py-1.5 focus-within:bg-muted/60 hover:bg-muted/60 rounded-none" tabIndex={0}>
+                    <div className="group/message relative -mx-1 px-1 py-1.5 rounded-none" tabIndex={0}>
                       <MessageFrame
                         member={memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers)}
                         senderType={activeRoot.senderType}
@@ -1413,7 +1442,7 @@ export function ChannelClient({
 
                   {threadLoading && <p className="py-8 text-center text-sm text-muted-foreground">{tChat("threadLoading")}</p>}
                   {activeReplies.map((msg) => (
-                    <div key={msg.id} className="group/message relative -mx-1 px-1 py-1.5 focus-within:bg-muted/60 hover:bg-muted/60 rounded-none" tabIndex={0}>
+                    <div key={msg.id} className="group/message relative -mx-1 px-1 py-1.5 rounded-none" tabIndex={0}>
                       <MessageFrame
                         member={memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)}
                         senderType={msg.senderType}

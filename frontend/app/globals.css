@@ -114,6 +114,8 @@
   --sand-deep: oklch(0.86 0.055 75);      /* Col1 列表栏底色（深暖沙，比 sand 更沉做层次）*/
   --sand: oklch(0.93 0.045 80);           /* Col2 主区底色（浅暖沙）*/
   --sand-card: oklch(0.955 0.022 80);     /* 浮在主区上的卡片/侧栏面板（暖沙白，非纯白）*/
+  --paper: oklch(0.992 0.008 85);         /* 书卷纸色：接近纯白带极淡暖沙，消息气泡底色 */
+  --paper-ink: oklch(0.30 0.025 60);      /* 书卷上的墨字 */
   --sand-ink: oklch(0.32 0.04 55);        /* 暖沙上的深棕文字 */
   --sand-muted: oklch(0.52 0.035 60);     /* 暖沙上的次要文字 */
   --sand-border: oklch(0.86 0.035 80);    /* 暖沙上的分隔线 */
@@ -250,11 +252,27 @@
   .bg-sand { background-color: var(--sand); }
   .bg-sand-deep { background-color: var(--sand-deep); }
   .bg-sand-card { background-color: var(--sand-card); }
+  .bg-paper { background-color: var(--paper); }
+  .text-paper-ink { color: var(--paper-ink); }
   .text-sand-ink { color: var(--sand-ink); }
   .text-sand-muted { color: var(--sand-muted); }
   .border-sand-border { border-color: var(--sand-border); }
   .bg-sand-deep\/55 { background-color: color-mix(in oklch, var(--sand-deep) 55%, transparent); }
   .bg-sand-deep\/60 { background-color: color-mix(in oklch, var(--sand-deep) 60%, transparent); }
+
+  /*
+   * 消息气泡（书卷风）：默认就是偏白书卷纸底（无边，轻量），
+   * hover/focus 时浮现手作风墨边。仅裹正文，头像留外。改气泡样式只改这里。
+   */
+  .sk-bubble {
+    border: 2px solid transparent;
+    background-color: var(--paper);
+    transition: border-color 120ms ease, background-color 120ms ease;
+  }
+  .group\/message:hover .sk-bubble,
+  .group\/message:focus-within .sk-bubble {
+    border-color: var(--ink);
+  }
 
   /*
    * 手作墨色描边（Croodles/raft 手作风）—— 跟 agent 头像 #111827 同色。

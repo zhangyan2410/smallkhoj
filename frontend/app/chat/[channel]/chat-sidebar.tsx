@@ -81,9 +81,9 @@ export function ChatSidebar() {
                   key={ch.id}
                   href={`/chat/${channelPathSegment(ch.name)}`}
                   className={cn(
-                    "flex items-center gap-2 truncate rounded-none px-2 py-1.5 text-sm transition-colors",
+                    "flex items-center gap-2 truncate rounded-none border-2 border-transparent px-2 py-1.5 text-sm transition-colors",
                     isActive
-                      ? "bg-primary/10 font-medium text-primary"
+                      ? "border-[var(--ink)] bg-primary/10 font-medium text-primary"
                       : "text-sand-ink hover:bg-sand"
                   )}
                 >
@@ -107,9 +107,9 @@ export function ChatSidebar() {
                 key={dm.id}
                 href={`/chat/${channelPathSegment(dm.name)}`}
                 className={cn(
-                  "flex items-center gap-2 truncate rounded-none px-2 py-1.5 text-sm transition-colors",
+                  "flex items-center gap-2 truncate rounded-none border-2 border-transparent px-2 py-1.5 text-sm transition-colors",
                   isActive
-                    ? "bg-primary/10 font-medium text-primary"
+                    ? "border-[var(--ink)] bg-primary/10 font-medium text-primary"
                     : "text-sand-ink hover:bg-sand"
                 )}
               >
@@ -168,7 +168,7 @@ function Section({
         <h3 className="text-sm font-medium text-sand-ink">{title}</h3>
         <div className="flex items-center gap-2">
           {typeof count === "number" && (
-            <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+            <span className="rounded-none border border-[var(--ink)] bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
               {count}
             </span>
           )}
