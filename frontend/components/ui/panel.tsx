@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
  * - 内嵌信息块（任务详情的 activity/evidence 区块）
  * - 表单内的分组容器
  *
- * 替代满地的 `rounded-md border bg-background p-3` 裸 div。
+ * 替代满地的 `rounded-none border bg-background p-3` 裸 div。
  *
  * variant:
  * - default：墨边 + 暖白底 + 无阴影（气泡/信息块）

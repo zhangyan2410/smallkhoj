@@ -129,7 +129,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
   const hasDetails = Object.keys(item.details).length > 0
 
   return (
-    <div className="rounded-md border bg-background">
+    <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card">
       <button
         onClick={() => hasDetails && setExpanded(!expanded)}
         className={`flex w-full items-center gap-2 px-3 py-2 text-left ${hasDetails ? "cursor-pointer hover:bg-accent/50" : "cursor-default"}`}
@@ -170,7 +170,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             {item.details.thought != null && (
               <div className="mt-1">
                 <span className="text-[11px] text-muted-foreground">Thought</span>
-                <pre className="mt-0.5 max-h-32 overflow-auto rounded bg-muted p-1.5 text-[11px]">
+                <pre className="mt-0.5 max-h-32 overflow-auto rounded-none bg-muted p-1.5 text-[11px]">
                   {String(item.details.thought)}
                 </pre>
               </div>
@@ -178,7 +178,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             {item.details.commandPreview != null && (
               <div className="mt-1">
                 <span className="text-[11px] text-muted-foreground">Command</span>
-                <pre className="mt-0.5 max-h-24 overflow-auto rounded bg-muted p-1.5 text-[11px]">
+                <pre className="mt-0.5 max-h-24 overflow-auto rounded-none bg-muted p-1.5 text-[11px]">
                   {String(item.details.commandPreview)}
                 </pre>
               </div>
@@ -199,7 +199,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             )}
             <details className="mt-1">
               <summary className="cursor-pointer text-[11px] text-muted-foreground">raw details</summary>
-              <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted p-2 text-[11px]">
+              <pre className="mt-1 max-h-40 overflow-auto rounded-none bg-muted p-2 text-[11px]">
                 {JSON.stringify(item.details, null, 2)}
               </pre>
             </details>
@@ -277,7 +277,7 @@ export function AgentActivityList({
           </h2>
           <button
             onClick={() => void refreshActivity()}
-            className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+            className="rounded-none border-2 border-[var(--ink)] px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
           >
             Refresh
           </button>
@@ -285,7 +285,7 @@ export function AgentActivityList({
       )}
       {loading && <p className="py-8 text-center text-sm text-muted-foreground">Loading activity...</p>}
       {!loading && activity.length === 0 && !compact && (
-        <div className="rounded-lg border border-dashed py-10 text-center">
+        <div className="rounded-none border border-dashed py-10 text-center">
           <Cpu className="mx-auto size-7 text-muted-foreground/50" />
           <p className="mt-2 text-sm text-muted-foreground">No activity yet.</p>
         </div>

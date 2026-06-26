@@ -36,7 +36,7 @@ export function MemberAvatar({ member, size = "default", showStatus = true, clas
           aria-label={status}
           data-status={status}
           className={cn(
-            "absolute -right-0.5 -top-0.5 rounded-full border-2 border-background shadow-sm",
+            "absolute -right-0.5 -top-0.5 rounded-full border-2 border-background",
             statusSizeClass[size],
             statusDotClass(status),
             isAgentMember(member) ? "ring-1 ring-background" : ""

@@ -458,7 +458,7 @@ function EvidenceBadge({ label, value, tone = "neutral" }: { label: string; valu
     bad: "sk-cat-danger",
   }[tone]
   return (
-    <span className={cn("inline-flex min-h-6 items-center rounded-none border border-[var(--ink)] px-2 py-0.5 text-xs", toneClass)}>
+    <span className={cn("inline-flex min-h-6 items-center rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs", toneClass)}>
       <span className="opacity-70">{label}</span>
       <span className="ml-1 font-medium">{value}</span>
     </span>
@@ -566,7 +566,7 @@ function RunRow({
       </div>
 
       {hasRawDetails && (
-        <details className="mt-3 rounded-md border bg-background/80 px-3 py-2 text-xs">
+        <details className="mt-3 rounded-none border-2 border-[var(--ink)] bg-sand-card/80 px-3 py-2 text-xs">
           <summary className="cursor-pointer font-medium text-muted-foreground">技术细节（默认隐藏）</summary>
           <div className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-2">
             <DetailLine label="执行记录" value={shortId(run.id)} />
@@ -586,7 +586,7 @@ function DetailLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-3">
       <span>{label}</span>
-      <code className="truncate rounded bg-muted px-1.5 py-0.5 text-[11px] text-foreground">{value}</code>
+      <code className="truncate rounded-none bg-muted px-1.5 py-0.5 text-[11px] text-foreground">{value}</code>
     </div>
   )
 }
@@ -655,7 +655,7 @@ export default async function IntegrationControlPage() {
           <SideFact icon={Server} label="Daemon" value={`${computers.length} 台注册，${activeWorkspaces.length} 个 runtime 可用`} />
           <SideFact icon={Workflow} label="TaskRun" value={`${runs.length} 次执行，${inFlightRuns.length} 次进行中`} />
           <SideFact icon={ShieldAlert} label="失败" value={failedRuns.length ? `${failedRuns.length} 次需要处理` : "当前无失败 run"} />
-          <div className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3 text-xs text-muted-foreground">
             这里不会默认展示完整 id、token、session 字符串。短码只用于沟通定位，完整追踪仍以 backend/trace 为准。
           </div>
         </div>
@@ -709,7 +709,7 @@ export default async function IntegrationControlPage() {
             </CardHeader>
             <CardContent className="space-y-3 pt-4">
               {computers.map((computer) => (
-                <div key={computer.id} className="rounded-md border p-3">
+                <div key={computer.id} className="rounded-none border-2 border-[var(--ink)] p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -724,7 +724,7 @@ export default async function IntegrationControlPage() {
                   </div>
                   <div className="mt-3 space-y-2">
                     {computer.agentWorkspaces.map((workspace) => (
-                      <div key={workspace.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/45 px-2 py-1.5">
+                      <div key={workspace.id} className="flex items-center justify-between gap-2 rounded-none bg-muted/45 px-2 py-1.5">
                         <div className="min-w-0">
                           <div className="truncate text-sm">@{workspace.agentName || workspace.agentHandle || "未命名 agent"}</div>
                           <div className="truncate text-xs text-muted-foreground">
@@ -771,7 +771,7 @@ export default async function IntegrationControlPage() {
         <MetricPanel icon={Gauge} label="上下文风险" value={`${runs.filter((run) => asNumber(run.usageSummary?.contextOccupancyRatio)! >= 0.5).length}`} detail="超过 50% 的 run 会在这里计数" />
       </section>
 
-      <section className="rounded-md border bg-muted/30 p-4">
+      <section className="rounded-none border-2 border-[var(--ink)] bg-muted/30 p-4">
         <div className="flex items-start gap-3">
           <MessageSquare className="mt-0.5 size-5 text-primary" />
           <div>
@@ -789,7 +789,7 @@ export default async function IntegrationControlPage() {
 
 function SideFact({ icon: Icon, label, value }: { icon: typeof Server; label: string; value: string }) {
   return (
-    <div className="rounded-md border bg-background p-3">
+    <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <Icon className="size-3.5" />
         {label}
@@ -801,13 +801,13 @@ function SideFact({ icon: Icon, label, value }: { icon: typeof Server; label: st
 
 function MetricPanel({ icon: Icon, label, value, detail }: { icon: typeof Bot; label: string; value: string; detail: string }) {
   return (
-    <div className="rounded-md border bg-card p-4">
+    <div className="rounded-none border-2 border-[var(--ink)] bg-card p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-sm text-muted-foreground">{label}</div>
           <div className="mt-1 text-2xl font-semibold">{value}</div>
         </div>
-        <div className="flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <div className="flex size-10 items-center justify-center rounded-none bg-primary/10 text-primary">
           <Icon className="size-5" />
         </div>
       </div>

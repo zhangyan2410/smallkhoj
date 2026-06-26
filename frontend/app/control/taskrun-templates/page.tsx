@@ -259,11 +259,11 @@ function TemplateRow({ template }: { template: TaskRunTemplate }) {
         </div>
         <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
           <details className="w-full lg:w-auto">
-            <summary className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md border px-2.5 text-xs font-medium hover:bg-muted">
+            <summary className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2.5 text-xs font-medium hover:bg-muted">
               <FilePenLine className="size-3.5" />
               编辑
             </summary>
-            <form action={updateTemplateAction} className="mt-3 grid gap-3 rounded-md border bg-muted/25 p-3 lg:w-[42rem]">
+            <form action={updateTemplateAction} className="mt-3 grid gap-3 rounded-none border-2 border-[var(--ink)] bg-muted/25 p-3 lg:w-[42rem]">
               <input type="hidden" name="templateSlug" value={template.slug} />
               <TemplateFields template={template} />
               <div className="flex justify-end">

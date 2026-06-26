@@ -29,13 +29,13 @@ export default async function SettingsPage() {
       sidebarDescription="Secondary surfaces stay reachable without taking over the main app."
       sidebar={
         <div className="grid gap-2">
-          <a href="http://localhost:8000/docs" target="_blank" className="rounded-md border bg-background px-3 py-2 text-sm hover:bg-accent">
+          <a href="http://localhost:8000/docs" target="_blank" className="rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm hover:bg-accent">
             API Docs
           </a>
-          <Link href="/daemon" className="rounded-md border bg-background px-3 py-2 text-sm hover:bg-accent">
+          <Link href="/daemon" className="rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm hover:bg-accent">
             Control Plane
           </Link>
-          <Link href="/computers" className="rounded-md border bg-background px-3 py-2 text-sm hover:bg-accent">
+          <Link href="/computers" className="rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm hover:bg-accent">
             Daemon Onboarding
           </Link>
         </div>
@@ -51,11 +51,11 @@ export default async function SettingsPage() {
             <CardDescription>Current authenticated local workspace context.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-md border bg-background p-3">
+            <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
               <div className="text-xs text-muted-foreground">Account</div>
               <div className="mt-1 truncate text-sm font-medium">{session.account.displayName || session.account.name}</div>
             </div>
-            <div className="rounded-md border bg-background p-3">
+            <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
               <div className="text-xs text-muted-foreground">Server</div>
               <div className="mt-1 truncate text-sm font-medium">{session.server.name}</div>
             </div>
@@ -102,14 +102,14 @@ export default async function SettingsPage() {
                 <label htmlFor="api-key-type" className="mb-1.5 block text-xs font-medium text-muted-foreground">
                   Type
                 </label>
-                <select id="api-key-type" name="resourceType" className="h-9 rounded-md border bg-background px-3 text-sm">
+                <select id="api-key-type" name="resourceType" className="h-9 rounded-none border-2 border-[var(--ink)] bg-transparent px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
                   <option value="human">Human</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
               <Button type="submit" size="sm" variant="outline">Create Key</Button>
             </form>
-            <div className="overflow-hidden rounded-md border">
+            <div className="overflow-hidden rounded-none border">
               <div className="hidden grid-cols-[0.9fr_0.7fr_1fr_0.8fr_0.7fr] gap-2 border-b bg-muted/60 px-3 py-2 text-xs font-medium uppercase text-muted-foreground md:grid">
                 <span>Prefix</span>
                 <span>Type</span>

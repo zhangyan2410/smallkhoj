@@ -64,7 +64,7 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
           onTaskMoved={handleTaskMoved}
         />
       ) : (
-        <div className="overflow-hidden rounded-md border bg-card">
+        <div className="overflow-hidden rounded-none border-2 border-[var(--ink)] bg-card">
           {localTasks.map((task) => (
             <Link
               key={task.id}

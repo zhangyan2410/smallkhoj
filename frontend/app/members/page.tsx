@@ -93,7 +93,7 @@ function memberDetailHref(memberId: string, tab?: TabKey) {
 
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div className="min-w-0 rounded-md border bg-background p-2">
+    <div className="min-w-0 rounded-none border-2 border-[var(--ink)] bg-sand-card p-2">
       <div className="text-sm font-medium text-foreground">{label}</div>
       <div className="mt-1 truncate font-mono text-xs">{value || "none"}</div>
     </div>
@@ -182,7 +182,7 @@ async function AgentControls({ member }: { member: Member }) {
         <input type="hidden" name="action" value={action} />
         <button
           type="submit"
-          className={`inline-flex w-full items-center justify-center gap-1 rounded-none border border-[var(--ink)] px-2 py-1 text-[11px] font-medium transition-colors ${toneClass[tone]}`}
+          className={`inline-flex w-full items-center justify-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-[11px] font-medium transition-colors ${toneClass[tone]}`}
         >
           <Icon className="size-3" />
           {label}
@@ -210,7 +210,7 @@ function AgentCard({ member }: { member: Member }) {
   const href = memberDetailHref(member.id)
 
   return (
-    <div className="group relative flex flex-col items-center gap-3 rounded-xl border bg-card p-4 text-center ring-1 ring-primary/10 transition-all hover:scale-[1.02] hover:ring-primary/30">
+    <div className="group relative flex flex-col items-center gap-3 rounded-none border-2 border-[var(--ink)] bg-card p-4 text-center ring-1 ring-primary/10 transition-all hover:scale-[1.02] hover:ring-primary/30">
       <Link href={href} className="flex flex-1 flex-col items-center gap-2 self-stretch">
         <MemberAvatar member={member} size="xl" showStatus />
         <div className="min-w-0 w-full">
@@ -235,7 +235,7 @@ function HumanRow({ member, selected }: { member: Member; selected: boolean }) {
   return (
     <Link
       href={memberDetailHref(member.id)}
-      className={`flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent ${
+      className={`flex items-center gap-2.5 rounded-none border-2 border-[var(--ink)] px-3 py-2 text-sm transition-colors hover:bg-accent ${
         selected ? "border-primary/20 bg-primary/8" : "border-transparent"
       }`}
     >
@@ -289,7 +289,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
             <StatusPill status={member.status} label={statusLabel(member.status)} />
             <RuntimeChip tone="neutral">{member.kind}</RuntimeChip>
             {(member.config?.provider || member.runtimeProvider || member.backend) && (
-              <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
+              <span className="rounded-none bg-muted px-2 py-0.5 text-xs">
                 {member.config?.provider || member.runtimeProvider || member.backend}
               </span>
             )}
@@ -299,7 +299,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
       </div>
 
       {member.kind === "human" && (
-        <form action={updateHumanAvatarUrlAction} className="rounded-md border bg-muted/20 p-3">
+        <form action={updateHumanAvatarUrlAction} className="rounded-none border-2 border-[var(--ink)] bg-muted/20 p-3">
           <input type="hidden" name="memberId" value={member.id} />
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <UserRound className="size-3" />
@@ -422,7 +422,7 @@ function PermissionsTab({ member }: { member: Member }) {
           {Object.keys(permissions).length > 0 ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {Object.entries(permissions).map(([key, enabled]) => (
-                <div key={key} className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+                <div key={key} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
                   <span className="text-sm">{key}</span>
                   <span className={`text-xs font-medium ${enabled ? "text-emerald-600" : "text-muted-foreground"}`}>
                     {enabled ? "enabled" : "disabled"}
@@ -448,7 +448,7 @@ function PermissionsTab({ member }: { member: Member }) {
           {Object.keys(actions).length > 0 ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {Object.entries(actions).map(([key, enabled]) => (
-                <div key={key} className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+                <div key={key} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
                   <span className="text-sm">{key}</span>
                   <span className={`text-xs font-medium ${enabled ? "text-emerald-600" : "text-muted-foreground"}`}>
                     {enabled ? "on" : "off"}
@@ -469,7 +469,7 @@ function PermissionsTab({ member }: { member: Member }) {
           <Shield className="size-3" />
           Enforcement status
         </div>
-        <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-muted/30 p-3 space-y-2">
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-warning" />
             <span className="text-sm">Config persisted but not enforced at runtime</span>
@@ -553,7 +553,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
         {Object.keys(permissions).length > 0 && (
           <div className="space-y-1">
             {Object.entries(permissions).map(([key, enabled]) => (
-              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
                 <input type="hidden" name="memberId" value={memberId} />
                 <input type="hidden" name="type" value="permissions" />
                 <input type="hidden" name="key" value={key} />
@@ -578,7 +578,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
           <input type="hidden" name="type" value="permissions" />
           <input type="hidden" name="existing" value={JSON.stringify(permissions)} />
           <Input name="key" placeholder="permission key" className="max-w-[200px]" />
-          <select name="value" className="h-9 rounded-md border bg-background px-2 text-sm">
+          <select name="value" className="h-9 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
             <option value="true">enabled</option>
             <option value="false">disabled</option>
           </select>
@@ -594,7 +594,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
         {Object.keys(actions).length > 0 && (
           <div className="space-y-1">
             {Object.entries(actions).map(([key, enabled]) => (
-              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
                 <input type="hidden" name="memberId" value={memberId} />
                 <input type="hidden" name="type" value="actions" />
                 <input type="hidden" name="key" value={key} />
@@ -619,7 +619,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
           <input type="hidden" name="type" value="actions" />
           <input type="hidden" name="existing" value={JSON.stringify(actions)} />
           <Input name="key" placeholder="action key" className="max-w-[200px]" />
-          <select name="value" className="h-9 rounded-md border bg-background px-2 text-sm">
+          <select name="value" className="h-9 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
             <option value="true">on</option>
             <option value="false">off</option>
           </select>
@@ -637,9 +637,9 @@ function DmTab({ member }: { member: Member }) {
         title={`Direct messages with ${profileName(member)}`}
         description="Agent DM history and conversation threads will appear here."
       />
-      <div className="rounded-md border border-dashed bg-muted/30 p-3">
+      <div className="rounded-none border border-dashed bg-muted/30 p-3">
         <p className="text-xs text-muted-foreground">
-          DM channel for this member is <code className="rounded bg-muted px-1 font-mono">dm:&lt;your-id&gt;-&lt;member-id&gt;</code>.
+          DM channel for this member is <code className="rounded-none bg-muted px-1 font-mono">dm:&lt;your-id&gt;-&lt;member-id&gt;</code>.
           Use the Chat page to view conversation history.
         </p>
         <div className="mt-2">
@@ -662,7 +662,7 @@ function RemindersTab({ member }: { member: Member }) {
         title={`Reminders for ${profileName(member)}`}
         description="Active and pending reminders assigned to this member."
       />
-      <div className="rounded-md border border-dashed bg-muted/30 p-3">
+      <div className="rounded-none border border-dashed bg-muted/30 p-3">
         <p className="text-xs text-muted-foreground">
           Scheduled reminders for this {member.kind} are managed through the Control Plane dispatch.
           Reminders fire based on the configured delay and channel.
@@ -692,7 +692,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="text-sm font-medium text-foreground">Bound Computer</div>
-        <div className="rounded-md border bg-background p-3">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
           <div className="flex items-center gap-2">
             <HardDrive className="size-4 text-muted-foreground" />
             <span className="text-sm font-medium">{computer.name}</span>
@@ -709,7 +709,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
       {workspace && (
         <div className="space-y-2">
           <div className="text-sm font-medium text-foreground">Agent Workspace</div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="grid gap-2 sm:grid-cols-2">
               <Field label="status" value={workspace.status} />
               <Field label="pid" value={workspace.pid?.toString() ?? "none"} />
@@ -725,9 +725,9 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
       )}
 
       {!workspace && member.kind === "agent" && (
-        <div className="rounded-md border border-dashed bg-muted/30 p-3">
+        <div className="rounded-none border border-dashed bg-muted/30 p-3">
           <p className="text-xs text-muted-foreground">
-            This agent is bound to <code className="rounded bg-muted px-1 font-mono">{computer.name}</code> but has no
+            This agent is bound to <code className="rounded-none bg-muted px-1 font-mono">{computer.name}</code> but has no
             active workspace. The workspace is created when the daemon launches a runtime session for this agent.
           </p>
         </div>
@@ -757,7 +757,7 @@ function AppsTab({ member }: { member: Member }) {
         title={`Apps for ${profileName(member)}`}
         description="Integrations and connected apps will appear here."
       />
-      <div className="rounded-md border border-dashed bg-muted/30 p-3">
+      <div className="rounded-none border border-dashed bg-muted/30 p-3">
         <p className="text-xs text-muted-foreground">
           App integrations are configured per agent through the runtime provider settings.
           Available integrations depend on the agent&apos;s runtime capabilities.
@@ -846,15 +846,15 @@ export default async function MembersPage({
       sidebarDescription={t("selectMember")}
       sidebar={
         <div className="space-y-2">
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">Humans</div>
             <div className="mt-1 text-2xl font-semibold">{humansList.length}</div>
           </div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">Agents</div>
             <div className="mt-1 text-2xl font-semibold">{agentsList.length}</div>
           </div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">Bound agents</div>
             <div className="mt-1 text-2xl font-semibold">{boundAgents}</div>
           </div>
@@ -884,7 +884,7 @@ export default async function MembersPage({
         )}
 
         {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <div className="rounded-none border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
             {error}
           </div>
         )}

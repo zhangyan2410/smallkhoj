@@ -17,7 +17,7 @@ export function StatusPill({
       className={cn(
         /* 手作风：墨色硬描边 + 直角 + 实色状态底。
            badgeClass 是单一真源（lib/control-plane.ts），改状态色只改那里。 */
-        "inline-flex h-6 shrink-0 items-center rounded-none border border-[var(--ink)] px-2 text-xs font-semibold",
+        "inline-flex h-6 shrink-0 items-center rounded-none border-2 border-[var(--ink)] px-2 text-xs font-semibold",
         badgeClass(status),
         className
       )}
@@ -55,7 +55,7 @@ export function RuntimeChip({
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 max-w-full items-center rounded-none border px-2 py-0.5 text-xs font-medium",
+        "inline-flex min-h-6 max-w-full items-center rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs font-medium",
         chipToneClass[tone],
         className
       )}
@@ -111,7 +111,7 @@ export function Toolbar({
   return (
     <div
       className={cn(
-        "flex min-h-10 flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2",
+        "flex min-h-10 flex-wrap items-center gap-2 rounded-none border-2 border-[var(--ink)] bg-card px-3 py-2",
         className
       )}
     >

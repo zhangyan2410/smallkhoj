@@ -73,7 +73,7 @@ export function MessageFrame({
             <span className="truncate font-semibold text-foreground">{memberAvatarName(member).replace(/^@/, "")}</span>
             <span
               className={cn(
-                "rounded px-1.5 py-0.5 text-[0.65rem] font-medium",
+                "rounded-none px-1.5 py-0.5 text-[0.65rem] font-medium",
                 role === "assistant" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
               )}
             >

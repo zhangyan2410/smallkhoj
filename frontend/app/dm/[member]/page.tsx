@@ -36,9 +36,9 @@ export default async function DmPage({ params }: { params: Promise<{ member: str
           </Link>
         </header>
 
-        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-md border bg-card p-3">
+        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-none border-2 border-[var(--ink)] bg-card p-3">
           {messages.map((message) => (
-            <article key={message.id} className="rounded-md border bg-background p-3">
+            <article key={message.id} className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className={`font-semibold ${message.senderType === "agent" ? "text-blue-600" : "text-green-600"}`}>
                   {message.sender}
@@ -52,7 +52,7 @@ export default async function DmPage({ params }: { params: Promise<{ member: str
           {messages.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No DM messages yet.</p>}
         </section>
 
-        <footer className="mt-3 rounded-md border bg-card p-3">
+        <footer className="mt-3 rounded-none border-2 border-[var(--ink)] bg-card p-3">
           <MessageComposer path={`/api/v1/dms/${encodeURIComponent(member)}/messages`} placeholder={`Message ${peer?.handle || member}`} />
         </footer>
       </div>

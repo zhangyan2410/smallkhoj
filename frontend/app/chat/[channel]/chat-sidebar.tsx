@@ -47,7 +47,7 @@ export function ChatSidebar() {
       <div className="border-b border-sand-border px-3 py-2.5">
         <Link
           href="/chat"
-          className="block rounded-md px-2 py-1.5 text-sm font-semibold text-sand-ink hover:bg-sand"
+          className="block rounded-none px-2 py-1.5 text-sm font-semibold text-sand-ink hover:bg-sand"
         >
           {tChat("workbench")}
           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
@@ -81,7 +81,7 @@ export function ChatSidebar() {
                   key={ch.id}
                   href={`/chat/${channelPathSegment(ch.name)}`}
                   className={cn(
-                    "flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm transition-colors",
+                    "flex items-center gap-2 truncate rounded-none px-2 py-1.5 text-sm transition-colors",
                     isActive
                       ? "bg-primary/10 font-medium text-primary"
                       : "text-sand-ink hover:bg-sand"
@@ -107,7 +107,7 @@ export function ChatSidebar() {
                 key={dm.id}
                 href={`/chat/${channelPathSegment(dm.name)}`}
                 className={cn(
-                  "flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm transition-colors",
+                  "flex items-center gap-2 truncate rounded-none px-2 py-1.5 text-sm transition-colors",
                   isActive
                     ? "bg-primary/10 font-medium text-primary"
                     : "text-sand-ink hover:bg-sand"
@@ -192,7 +192,7 @@ function Item({
   return (
     <Link
       href={href}
-      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sand-ink hover:bg-sand"
+      className="flex items-center gap-2 rounded-none px-2 py-1.5 text-sm text-sand-ink hover:bg-sand"
     >
       {icon}
       <span className="truncate">{children}</span>

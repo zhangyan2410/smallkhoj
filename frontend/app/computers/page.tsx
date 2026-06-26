@@ -259,7 +259,7 @@ async function deleteComputerAction(formData: FormData) {
 
 function Field({ label, value, icon }: { label: string; value?: string | null; icon?: React.ReactNode }) {
   return (
-    <div className="min-w-0 rounded-md border bg-background p-2">
+    <div className="min-w-0 rounded-none border-2 border-[var(--ink)] bg-sand-card p-2">
       <div className="flex items-center gap-1 text-sm font-medium text-foreground">
         {icon}
         {label}
@@ -380,7 +380,7 @@ function ComputerDetail({
               <Power className="size-3" />
               {copy.lifecycleControls}
             </div>
-            <div className="rounded-md border p-3">
+            <div className="rounded-none border-2 border-[var(--ink)] p-3">
               <div className="flex flex-wrap gap-2">
                 <form action={createComputerReconnectCommandAction}>
                   <input type="hidden" name="computerId" value={computer.id} />
@@ -418,14 +418,14 @@ function ComputerDetail({
           </div>
 
           {reconnectCredential?.computerId === computer.id && reconnectComputerId === computer.id && (
-            <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+            <div className="space-y-2 rounded-none border-2 border-[var(--ink)] bg-muted/40 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-medium text-foreground">{copy.reconnectCommand}</div>
                 <div className="text-xs text-muted-foreground">{copy.useOn(computer.name)}</div>
               </div>
               <code
                 data-testid="reconnect-command"
-                className="block whitespace-pre-wrap break-all rounded-md border bg-background p-2 text-xs"
+                className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
               >
                 {reconnectCredential.command}
               </code>
@@ -469,7 +469,7 @@ function ComputerDetail({
               <Network className="size-3" />
               {copy.agentWorkspaces}
             </div>
-            <div className="overflow-hidden rounded-md border">
+            <div className="overflow-hidden rounded-none border">
               <div className="hidden grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] gap-2 border-b bg-muted/60 px-3 py-2 text-sm font-medium text-foreground md:grid">
                 <span>{copy.agent}</span>
                 <span>{copy.runtime}</span>
@@ -720,15 +720,15 @@ export default async function ComputersPage({
       sidebarDescription={copy.runtimeSnapshotDesc}
       sidebar={
         <div className="space-y-2">
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">{copy.registered}</div>
             <div className="mt-1 text-2xl font-semibold">{computers.length}</div>
           </div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">{copy.online}</div>
             <div className="mt-1 text-2xl font-semibold">{onlineComputers}</div>
           </div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">{copy.runningWorkspaces}</div>
             <div className="mt-1 text-2xl font-semibold">{runningWorkspaces}</div>
           </div>

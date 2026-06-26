@@ -31,7 +31,7 @@ function RuntimeStateSummary({ member, workspace }: { member: Member; workspace?
         {lifecycleStates.map(({ key, label, active }) => (
           <span
             key={key}
-            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${
+            className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs font-medium ${
               active
                 ? badgeClass(key)
                 : "border-border bg-muted text-muted-foreground opacity-60"
@@ -113,7 +113,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
       {member.kind === "agent" && workspace && (
         <div className="space-y-2">
           <div className="text-xs font-medium uppercase text-muted-foreground">Session Timeline</div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Launched</span>

@@ -230,7 +230,7 @@ function SortableTaskCard({
               <span className="text-muted-foreground">{formatTime(task.updatedAt || task.createdAt)}</span>
             </div>
             {source && (
-              <div className="inline-flex items-center gap-1 rounded-none border border-[var(--ink)] bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+              <div className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
                 <ExternalLink className="size-3" />
                 {source.channel ? formatChannelName(source.channel, agentName) : (source.type || "来源")}
               </div>
@@ -279,13 +279,13 @@ function TaskStatusColumn({
     <section
       ref={setNodeRef}
       data-status={status}
-      className={`min-w-0 rounded-none border border-[var(--ink)] p-1.5 transition-all ${
+      className={`min-w-0 rounded-none border-2 border-[var(--ink)] p-1.5 transition-all ${
         isDropTarget
           ? "border-primary/60 bg-primary/10 sk-hard-shadow-sm ring-2 ring-primary/15"
           : "bg-muted/20"
       }`}
     >
-      <div className={`mb-1.5 flex items-center justify-between gap-2 rounded px-1 py-0.5 ${
+      <div className={`mb-1.5 flex items-center justify-between gap-2 rounded-none px-1 py-0.5 ${
         isDropTarget ? "bg-primary/10 text-primary" : ""
       }`}>
         <span className="text-xs font-medium">{statusLabel(status)}</span>
@@ -309,7 +309,7 @@ function TaskStatusColumn({
           ))}
         </SortableContext>
         {tasks.length === 0 && (
-          <div className="rounded-md border border-dashed py-4 text-center text-[0.65rem] text-muted-foreground">
+          <div className="rounded-none border border-dashed py-4 text-center text-[0.65rem] text-muted-foreground">
             {isDropTarget ? "松开以放置" : "空"}
           </div>
         )}
@@ -365,7 +365,7 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
     }
   })()
   return (
-    <div className="flex items-start gap-2 rounded-md border bg-background px-2.5 py-2">
+    <div className="flex items-start gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
       {icon}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -442,7 +442,7 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-md border border-dashed bg-muted/30 p-2.5">
+    <form onSubmit={handleSubmit} className="rounded-none border border-dashed bg-muted/30 p-2.5">
       <div className="flex items-start gap-2">
         <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
@@ -470,7 +470,7 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
               className="peer sr-only"
               disabled={!hasAgentAssignee || status === "sending"}
             />
-            <span className="inline-flex rounded-md border bg-background px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
+            <span className="inline-flex rounded-none border-2 border-[var(--ink)] bg-sand-card px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
               {memoryOutputDirectionLabel(direction)}
             </span>
           </label>
@@ -546,7 +546,7 @@ function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionTok
 
   if (loading) {
     return (
-      <div className="rounded-md border bg-background p-2.5">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
         <h4 className="text-xs font-medium">任务记忆</h4>
         <p className="mt-1.5 text-xs text-muted-foreground">Loading memory...</p>
       </div>
@@ -585,7 +585,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
         </div>
       </div>
       {source && (
-        <div className="rounded-md border bg-background p-2.5">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
           <h4 className="text-xs font-medium">来源</h4>
           <div className="mt-1.5 space-y-1 text-xs text-muted-foreground">
             <div>类型: {source.type || "message"}</div>
@@ -594,11 +594,11 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
         </div>
       )}
       {(entries.length > 0 || (evidence?.notes?.length ?? 0) > 0) && (
-        <div className="rounded-md border bg-background p-2.5">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
           <h4 className="text-xs font-medium">证据</h4>
           <div className="mt-1.5 space-y-1.5">
             {(evidence?.notes || []).map((note) => (
-              <div key={note} className="rounded-md border border-dashed bg-muted/30 px-2 py-1 text-xs">{note}</div>
+              <div key={note} className="rounded-none border border-dashed bg-muted/30 px-2 py-1 text-xs">{note}</div>
             ))}
             {entries.map((entry, i) => (
               <EvidenceEntryRow key={`${entry.type}-${entry.timestamp}-${i}`} entry={entry} />
@@ -607,7 +607,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
         </div>
       )}
       {activity.length > 0 && (
-        <div className="rounded-md border bg-background p-2.5">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
           <h4 className="text-xs font-medium">活动</h4>
           <div className="mt-1.5 space-y-1.5">
             {activity.map((item) => (
@@ -938,7 +938,7 @@ export function TaskBoard({
       ) : view === "board" ? (
         boardContent
       ) : (
-        <div className="overflow-hidden rounded-md border bg-card">
+        <div className="overflow-hidden rounded-none border-2 border-[var(--ink)] bg-card">
           {tasks.map((task) => (
             <ListRow
               key={task.id}
@@ -951,7 +951,7 @@ export function TaskBoard({
       )}
 
       {showDetail && selectedTask && (
-        <div className="rounded-md border bg-card p-3">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-card p-3">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold">任务详情</h3>
             <button

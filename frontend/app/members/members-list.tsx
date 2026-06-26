@@ -34,7 +34,7 @@ export function MembersList({
         key={member.id}
         href={memberHref(member)}
         aria-current={selected ? "page" : undefined}
-        className={`group/member relative flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted/60 ${
+        className={`group/member relative flex items-center gap-2.5 rounded-none px-2 py-1.5 text-sm transition-colors hover:bg-muted/60 ${
           selected ? "bg-primary/10 text-primary-foreground" : ""
         }`}
       >

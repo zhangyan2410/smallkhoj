@@ -103,7 +103,7 @@ export default async function ChatPage() {
               <Link
                 key={channel.id}
                 href={`/chat/${channelPathSegment(channel.name)}`}
-                className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-accent"
+                className="flex min-h-11 items-center gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 text-sm hover:bg-accent"
               >
                 <Hash className="size-4 text-primary" />
                 <span className="min-w-0 flex-1 truncate font-medium">{channel.name}</span>
@@ -127,7 +127,7 @@ export default async function ChatPage() {
               <Link
                 key={dm.id}
                 href={`/chat/${channelPathSegment(dm.name)}`}
-                className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-accent"
+                className="flex min-h-11 items-center gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 text-sm hover:bg-accent"
               >
                 <MemberAvatar member={dmAvatarMember(dm)} size="sm" />
                 <span className="min-w-0 flex-1 truncate font-medium">

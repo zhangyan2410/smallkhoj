@@ -86,7 +86,7 @@ export async function ProductShell({
         <Link
           href="/"
           aria-label="Home"
-          className="sk-rail-logo relative mb-1 flex size-9 items-center justify-center rounded-xl text-primary-foreground"
+          className="sk-rail-logo relative mb-1 flex size-9 items-center justify-center rounded-none text-primary-foreground"
         >
           <Sparkles className="size-4" />
         </Link>
@@ -100,7 +100,7 @@ export async function ProductShell({
             title={label}
             aria-current={active === key ? "page" : undefined}
             className={cn(
-              "relative flex size-9 items-center justify-center rounded-xl transition-colors",
+              "relative flex size-9 items-center justify-center rounded-none transition-colors",
               active === key ? "sk-rail-active" : "sk-rail-icon"
             )}
           >
@@ -112,7 +112,7 @@ export async function ProductShell({
           {session?.account && (
             <span
               title={session.account.displayName || session.account.name || "Account"}
-              className="sk-rail-icon relative flex size-9 items-center justify-center rounded-xl text-xs font-semibold"
+              className="sk-rail-icon relative flex size-9 items-center justify-center rounded-none text-xs font-semibold"
             >
               {(session.account.displayName || session.account.name || "?")[0].toUpperCase()}
             </span>
@@ -121,7 +121,7 @@ export async function ProductShell({
             href="/settings"
             aria-label="Settings"
             title="Settings"
-            className="sk-rail-icon relative flex size-9 items-center justify-center rounded-xl transition-colors"
+            className="sk-rail-icon relative flex size-9 items-center justify-center rounded-none transition-colors"
           >
             <Settings className="size-[18px]" />
           </Link>

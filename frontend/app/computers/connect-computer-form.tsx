@@ -64,7 +64,7 @@ export function ConnectComputerForm({
         </form>
 
         {credential && (
-          <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+          <div className="space-y-2 rounded-none border-2 border-[var(--ink)] bg-muted/40 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs font-medium uppercase text-muted-foreground">{t("pendingConnection")}</div>
               <div className="text-xs text-muted-foreground">{t("waitingFor", { name: credential.name })}</div>
@@ -72,7 +72,7 @@ export function ConnectComputerForm({
             <div className="text-xs font-medium uppercase text-muted-foreground">{t("connectionCommand")}</div>
             <code
               data-testid="connection-command"
-              className="block whitespace-pre-wrap break-all rounded-md border bg-background p-2 text-xs"
+              className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
             >
               {credential.command}
             </code>

@@ -196,7 +196,7 @@ function SearchResults({ query, results }: {
             <Link
               key={`${result.type}-${result.id}`}
               href={href}
-              className="flex items-start gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+              className="flex items-start gap-2 rounded-none px-3 py-2 text-sm hover:bg-accent"
             >
               <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
               <span className="min-w-0 flex-1">
@@ -283,7 +283,7 @@ export default async function Home({
               <label htmlFor="dm-peer" className="mb-1 block text-xs font-medium text-muted-foreground">
                 Start DM with
               </label>
-              <select id="dm-peer" name="peer" required className="h-8 w-full rounded-lg border bg-background px-2.5 text-sm">
+              <select id="dm-peer" name="peer" required className="h-8 w-full rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
                 <option value="">Select member...</option>
                 {agents.map((m) => (
                   <option key={m.id} value={m.displayName}>{m.displayName}</option>
@@ -374,7 +374,7 @@ export default async function Home({
                         <Link
                           key={item.id}
                           href={channelHref}
-                          className="flex items-start gap-2.5 rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent"
+                          className="flex items-start gap-2.5 rounded-none px-2 py-2 text-sm transition-colors hover:bg-accent"
                         >
                           <Hash className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                           <div className="min-w-0 flex-1">
@@ -411,7 +411,7 @@ export default async function Home({
                       <Link
                         key={agent.id}
                         href={`/chat/${encodeURIComponent(agent.displayName || agent.name)}`}
-                        className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent"
+                        className="flex items-center gap-2.5 rounded-none px-2 py-1.5 text-sm transition-colors hover:bg-accent"
                       >
                         <MemberAvatar member={agent} size="sm" showStatus />
                         <span className="min-w-0 flex-1 truncate font-medium">{agent.displayName || agent.name}</span>
@@ -457,11 +457,11 @@ export default async function Home({
                         <Link
                           key={task.id}
                           href="/tasks"
-                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent"
+                          className="flex items-center gap-2 rounded-none px-2 py-1.5 text-sm transition-colors hover:bg-accent"
                         >
                           <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
                           <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">{task.status}</span>
+                          <span className="shrink-0 rounded-none bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">{task.status}</span>
                         </Link>
                       ))}
                     </div>

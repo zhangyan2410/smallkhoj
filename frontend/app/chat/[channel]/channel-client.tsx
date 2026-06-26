@@ -874,7 +874,7 @@ export function ChannelClient({
           onClick={() => openThread(message)}
           aria-label={tChat("replyInThread")}
           title={tChat("reply")}
-          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <MessageCircle className="size-3.5" />
         </button>
@@ -883,7 +883,7 @@ export function ChannelClient({
           onClick={() => toggleReaction(message, "👍")}
           aria-label={tChat("react")}
           title={tChat("react")}
-          className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
             hasReacted ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
@@ -894,7 +894,7 @@ export function ChannelClient({
           onClick={() => void toggleSaved(message.id)}
           aria-label={tChat("saveMessage")}
           title={tChat("saveMessage")}
-          className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
             isSaved ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
@@ -905,7 +905,7 @@ export function ChannelClient({
           onClick={() => handleCreateTaskFromMessage(message)}
           aria-label={tChat("createTaskFromMessage")}
           title={tChat("asTask")}
-          className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
             isTasked ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
@@ -916,7 +916,7 @@ export function ChannelClient({
           onClick={() => handleCopyMessage(message)}
           aria-label={tChat("copyMessage")}
           title={tChat("copyMessage")}
-          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Clipboard className="size-3.5" />
         </button>
@@ -995,7 +995,7 @@ export function ChannelClient({
                       if (tabKey === "files") void refreshFiles()
                       if (tabKey === "memory") void refreshMemory()
                     }}
-                    className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${
+                    className={`inline-flex h-7 items-center gap-1.5 rounded-none px-2 text-xs font-medium transition-colors ${
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -1014,7 +1014,7 @@ export function ChannelClient({
                   aria-label={tChat("deleteChannel")}
                   title={tChat("deleteChannel")}
                   onClick={handleDeleteChannel}
-                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
+                  className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-destructive"
                 >
                   <Trash2 className="size-3.5" />
                 </button>
@@ -1032,7 +1032,7 @@ export function ChannelClient({
             onDrop={handleDrop}
           >
             {isDragOver && (
-              <div className="pointer-events-none absolute inset-2 z-50 flex flex-col items-center justify-center rounded-md border-2 border-dashed border-primary/40 bg-primary/8">
+              <div className="pointer-events-none absolute inset-2 z-50 flex flex-col items-center justify-center rounded-none border-2 border-dashed border-primary/40 bg-primary/8">
                 <Files className="size-7 text-primary" />
                 <p className="mt-2 text-sm font-medium">{tChat("dropFileTitle")}</p>
                 <p className="text-xs text-muted-foreground">
@@ -1091,7 +1091,7 @@ export function ChannelClient({
                       const isImage = file.mimeType.startsWith("image/")
                       return (
                         <li key={file.id} className="group/file flex items-center gap-3 py-2.5">
-                          <div className={`flex size-8 shrink-0 items-center justify-center rounded-md ${isImage ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                          <div className={`flex size-8 shrink-0 items-center justify-center rounded-none ${isImage ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
                             {isImage ? <ImageIcon className="size-4" /> : <Files className="size-4" />}
                           </div>
                           <div className="min-w-0 flex-1">
@@ -1123,7 +1123,7 @@ export function ChannelClient({
                                   window.setTimeout(() => window.clearTimeout(timer), 5000)
                                 }}
                                 title={tChat("openMessage")}
-                                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
                               >
                                 <MessageCircle className="size-3.5" />
                               </button>
@@ -1134,7 +1134,7 @@ export function ChannelClient({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={tChat("preview")}
-                                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
                               >
                                 <ImageIcon className="size-3.5" />
                               </a>
@@ -1144,7 +1144,7 @@ export function ChannelClient({
                               target="_blank"
                               rel="noopener noreferrer"
                               title={tChat("download")}
-                              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                              className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
                             >
                               <Files className="size-3.5" />
                             </a>
@@ -1187,7 +1187,7 @@ export function ChannelClient({
                             {taskLinks[msg.id] && (
                               <Link
                                 href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                                className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                                className="inline-flex items-center gap-1 rounded-none border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
                               >
                                 <CheckSquare className="size-3" />
                                 {tChat("taskBadge")}
@@ -1347,7 +1347,7 @@ export function ChannelClient({
                       setActiveThreadId(null)
                       setThreadData(null)
                     }}
-                    className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="inline-flex size-7 shrink-0 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
                     <X className="size-3.5" />
                   </button>
@@ -1360,7 +1360,7 @@ export function ChannelClient({
 
                 <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
                   {activeRoot && (
-                    <div className="group/message relative -mx-1 px-1 py-1.5 focus-within:bg-muted/60 hover:bg-muted/60 rounded" tabIndex={0}>
+                    <div className="group/message relative -mx-1 px-1 py-1.5 focus-within:bg-muted/60 hover:bg-muted/60 rounded-none" tabIndex={0}>
                       <MessageFrame
                         member={memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers)}
                         senderType={activeRoot.senderType}
@@ -1379,7 +1379,7 @@ export function ChannelClient({
                       {taskLinks[activeRoot.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[activeRoot.id])}`}
-                          className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                          className="mt-1.5 inline-flex items-center gap-1 rounded-none bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
                         >
                           <CheckSquare className="size-3" />
                           {tChat("openTask")}
@@ -1412,7 +1412,7 @@ export function ChannelClient({
 
                   {threadLoading && <p className="py-8 text-center text-sm text-muted-foreground">{tChat("threadLoading")}</p>}
                   {activeReplies.map((msg) => (
-                    <div key={msg.id} className="group/message relative -mx-1 px-1 py-1.5 focus-within:bg-muted/60 hover:bg-muted/60 rounded" tabIndex={0}>
+                    <div key={msg.id} className="group/message relative -mx-1 px-1 py-1.5 focus-within:bg-muted/60 hover:bg-muted/60 rounded-none" tabIndex={0}>
                       <MessageFrame
                         member={memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)}
                         senderType={msg.senderType}
@@ -1431,7 +1431,7 @@ export function ChannelClient({
                       {taskLinks[msg.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                          className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                          className="mt-1.5 inline-flex items-center gap-1 rounded-none bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
                         >
                           <CheckSquare className="size-3" />
                           {tChat("openTask")}

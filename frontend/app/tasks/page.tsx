@@ -403,7 +403,7 @@ function entryLabel(type: EvidenceEntry["type"], copy: TasksCopy) {
 
 function EvidenceEntryRow({ entry, copy }: { entry: EvidenceEntry; copy: TasksCopy }) {
   return (
-    <div className="flex items-start gap-2 rounded-md border bg-background px-2.5 py-2">
+    <div className="flex items-start gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
       <EvidenceIcon type={entry.type} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -486,7 +486,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           <span>{task.creator ? `@${task.creator}` : copy.unknown}</span>
         </div>
       </div>
-      <div className="rounded-md border bg-background p-3">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
         <h3 className="text-sm font-medium">{copy.activity}</h3>
         {activity.length > 0 ? (
           <div className="mt-2 space-y-2">
@@ -508,7 +508,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           <p className="mt-2 text-xs text-muted-foreground">{copy.noActivity}</p>
         )}
       </div>
-      <div className="rounded-md border bg-background p-3">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
         <h3 className="text-sm font-medium">{copy.source}</h3>
         {source ? (
           <div className="mt-2 space-y-2 text-xs text-muted-foreground">
@@ -528,7 +528,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
             {source.channel && sourceLink && (
               <Link
                 href={sourceLink}
-                className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/15"
+                className="inline-flex items-center gap-1 rounded-none border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/15"
               >
                 <MessageSquare className="size-3" />
                 {copy.openSourceChannel(source.channel)}
@@ -539,14 +539,14 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           <p className="mt-2 text-xs text-muted-foreground">{copy.noSource}</p>
         )}
       </div>
-      <div className="rounded-md border bg-background p-3">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
         <h3 className="text-sm font-medium">{copy.evidence}</h3>
         <div className="mt-2 space-y-2 text-xs text-muted-foreground">
           {(evidence?.notes || []).map((note) => (
-            <div key={note} className="rounded-md border border-dashed bg-muted/30 px-2 py-1.5">{note}</div>
+            <div key={note} className="rounded-none border border-dashed bg-muted/30 px-2 py-1.5">{note}</div>
           ))}
           {(evidence?.links || []).map((link) => (
-            <div key={`${link.label}-${link.href}`} className="flex items-center gap-1.5 rounded-md border border-dashed bg-muted/30 px-2 py-1.5">
+            <div key={`${link.label}-${link.href}`} className="flex items-center gap-1.5 rounded-none border border-dashed bg-muted/30 px-2 py-1.5">
               <ExternalLink className="size-3" />
               {link.label || link.href || copy.evidenceLink}
             </div>
@@ -568,7 +568,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           <div className="flex gap-2">
             <select
               name="entryType"
-              className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs"
+              className="h-7 shrink-0 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
               defaultValue="note"
             >
               <option value="note">{copy.evidenceTypeNote}</option>
@@ -586,7 +586,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
         </form>
       </div>
       <TaskRecoveryCockpit entries={memoryEntries} copy={copy.taskRecovery} />
-      <div className="rounded-md border border-dashed bg-muted/30 p-2.5">
+      <div className="rounded-none border border-dashed bg-muted/30 p-2.5">
         <div className="flex items-start gap-2">
           <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
@@ -612,7 +612,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
                   defaultChecked={direction === "final_summary" || direction === "evidence"}
                   className="peer sr-only"
                 />
-                <span className="inline-flex rounded-md border bg-background px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
+                <span className="inline-flex rounded-none border-2 border-[var(--ink)] bg-sand-card px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
                   {outputDirectionLabel(direction, copy)}
                 </span>
               </label>
@@ -623,14 +623,14 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           </Button>
         </form>
       </div>
-      <div className="rounded-md border bg-background p-3">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
         <h3 className="text-sm font-medium">{copy.review}</h3>
         <form action={addReviewNoteAction} className="mt-2 space-y-2">
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="currentData" value={JSON.stringify(task.data ?? {})} />
           <select
             name="reviewDecision"
-            className="h-7 w-full rounded-md border bg-background px-2 text-xs"
+            className="h-7 w-full rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
           >
             <option value="">{copy.selectDecision}</option>
             <option value="approved">{copy.approved}</option>
@@ -798,7 +798,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
 
         {/* 创建/更新表单已收进顶部对话框（TaskFormDialogs），主区只保留看板主体 */}
 
-        <form action="/tasks" className="grid gap-3 rounded-md border bg-card p-3 sm:grid-cols-2 xl:grid-cols-5">
+        <form action="/tasks" className="grid gap-3 rounded-none border-2 border-[var(--ink)] bg-card p-3 sm:grid-cols-2 xl:grid-cols-5">
           <input type="hidden" name="view" value={view} />
           <div className="xl:col-span-5 flex items-center gap-2 text-sm font-medium">
             <Filter className="size-4 text-primary" />

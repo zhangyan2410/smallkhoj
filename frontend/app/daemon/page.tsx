@@ -416,7 +416,7 @@ export default async function DaemonPage({
                   Search
                 </Button>
               </form>
-              <div className="rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
+              <div className="rounded-none border-2 border-[var(--ink)] bg-muted/35 p-3 text-xs text-muted-foreground">
                 <div className="font-medium text-foreground">Next checks</div>
                 <div className="mt-2 grid gap-1">
                   <span>1. Open the source message/task/file from results.</span>
@@ -424,7 +424,7 @@ export default async function DaemonPage({
                   <span>3. Save concise notes under the task evidence directory.</span>
                 </div>
               </div>
-              <code className="block whitespace-pre-wrap break-all rounded-md border bg-background p-3 text-xs">
+              <code className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-3 text-xs">
                 {marker ? `./smallkhoj-trace summary --json | rg '${marker}'` : "./smallkhoj-trace summary --json"}
               </code>
             </div>
@@ -433,7 +433,7 @@ export default async function DaemonPage({
                 <div className="text-xs font-medium uppercase text-muted-foreground">Linked Evidence</div>
                 <div className="text-xs text-muted-foreground">{markerResults ? `${markerResults.count} matches` : "enter marker"}</div>
               </div>
-              <div className="overflow-hidden rounded-md border">
+              <div className="overflow-hidden rounded-none border">
                 {markerResults?.results.map((result) => (
                   <Link
                     key={`${result.type}-${result.id}`}
@@ -441,7 +441,7 @@ export default async function DaemonPage({
                     className="block border-b px-3 py-2 last:border-b-0 hover:bg-accent"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="rounded-md border px-1.5 py-0.5 text-[11px] uppercase text-muted-foreground">{result.type}</span>
+                      <span className="rounded-none border-2 border-[var(--ink)] px-1.5 py-0.5 text-[11px] uppercase text-muted-foreground">{result.type}</span>
                       <span className="min-w-0 truncate text-sm font-medium">{result.title}</span>
                     </div>
                     {result.excerpt && <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{result.excerpt}</div>}
@@ -537,7 +537,7 @@ export default async function DaemonPage({
                     ["updateTask", "Update"],
                     ["fileWrite", "Files"],
                   ].map(([name, label]) => (
-                    <label key={name} className="flex items-center gap-2 rounded-md border px-2 py-1">
+                    <label key={name} className="flex items-center gap-2 rounded-none border-2 border-[var(--ink)] px-2 py-1">
                       <input name={name} type="checkbox" defaultChecked={name !== "paused"} />
                       {label}
                     </label>
@@ -576,7 +576,7 @@ export default async function DaemonPage({
               <ScrollArea className="h-[382px]">
                 <div className="space-y-3 pr-3">
                   {data.computers.map((computer) => (
-                    <div key={computer.id} className="rounded-md border p-3">
+                    <div key={computer.id} className="rounded-none border-2 border-[var(--ink)] p-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
@@ -593,7 +593,7 @@ export default async function DaemonPage({
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         {(computer.detectedRuntimes.length ? computer.detectedRuntimes : ["no runtime detected"]).map(
                           (runtime) => (
-                            <span key={runtimeLabel(runtime)} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                            <span key={runtimeLabel(runtime)} className="rounded-none bg-muted px-2 py-1 text-xs text-muted-foreground">
                               {runtimeLabel(runtime)}
                             </span>
                           )
@@ -601,7 +601,7 @@ export default async function DaemonPage({
                       </div>
                       <div className="mt-3 space-y-2">
                         {computer.agentWorkspaces.map((workspace) => (
-                          <div key={workspace.id} className="grid gap-2 rounded-md bg-muted/45 p-2 sm:grid-cols-[1fr_auto]">
+                          <div key={workspace.id} className="grid gap-2 rounded-none bg-muted/45 p-2 sm:grid-cols-[1fr_auto]">
                             <div className="min-w-0">
                               <div className="truncate text-sm">
                                 @{workspace.agentName ?? workspace.agentId} · {workspace.runtime ?? "runtime"}
@@ -664,7 +664,7 @@ export default async function DaemonPage({
             description="当前任务队列"
             empty="暂无任务。"
             items={data.tasks.slice(0, 12).map((task) => (
-              <div key={task.id ?? task.number} className="flex min-w-0 items-center gap-2 rounded-md border p-2">
+              <div key={task.id ?? task.number} className="flex min-w-0 items-center gap-2 rounded-none border-2 border-[var(--ink)] p-2">
                 <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
                 <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
                 <StatusPill status={task.status} label={statusLabel(task.status)} />
@@ -678,7 +678,7 @@ export default async function DaemonPage({
             description="提醒调度状态"
             empty="暂无提醒。"
             items={data.reminders.map((reminder) => (
-              <div key={reminder.id} className="rounded-md border p-2">
+              <div key={reminder.id} className="rounded-none border-2 border-[var(--ink)] p-2">
                 <div className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-sm">{reminder.title}</span>
                   <StatusPill status={reminder.status} label={statusLabel(reminder.status)} />
@@ -708,7 +708,7 @@ export default async function DaemonPage({
             description="最近上传附件"
             empty="暂无文件。"
             items={data.files.map((file) => (
-              <div key={file.id} className="rounded-md border p-2">
+              <div key={file.id} className="rounded-none border-2 border-[var(--ink)] p-2">
                 <div className="flex items-center gap-2">
                   <FileText className="size-4 text-muted-foreground" />
                   <span className="min-w-0 flex-1 truncate text-sm">{file.originalName || file.fileName}</span>
@@ -749,7 +749,7 @@ export default async function DaemonPage({
                 ["POST /api/v1/dm", "Home DM form"],
                 ["GET/POST/DELETE /api/v1/channels/:id/members", "Chat member panel"],
               ].map(([endpoint, surface]) => (
-                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-none border border-[var(--ink)] p-2">
+                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-none border-2 border-[var(--ink)] p-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="size-2 rounded-full bg-success" />
                     <span className="truncate font-mono text-xs">{endpoint}</span>
@@ -762,7 +762,7 @@ export default async function DaemonPage({
                 ["POST /internal/agent-api/daemon/register", "legacy daemon lifecycle; visible on Computers"],
                 ["POST /internal/agent-api/upload", "agent attachment upload; public UI lists resulting files"],
               ].map(([endpoint, surface]) => (
-                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-none border border-[var(--ink)] p-2">
+                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-none border-2 border-[var(--ink)] p-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="size-2 rounded-full bg-warning" />
                     <span className="truncate font-mono text-xs">{endpoint}</span>
@@ -886,7 +886,7 @@ function ControlSelect({
     <select
       name={name}
       defaultValue={splitValue ? options[0]?.split("|")[0] : fallback || options[0]}
-      className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="h-8 w-full rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
     >
       {!fallback && <option value="">Unassigned</option>}
       {options.map((item) => {
