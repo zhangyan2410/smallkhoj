@@ -247,3 +247,37 @@ Fixed daemon WebSocket runtime replay by treating missing/zero/invalid cursors a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: Optimize Trellis workflow
+
+**Date**: 2026-06-26
+**Task**: Optimize Trellis workflow
+**Branch**: `main`
+
+### Summary
+
+Upgraded Trellis project flow to 0.6.5, enabled Codex workflow breadcrumbs, codified SmallKhoj rtk/twd/reference-project guardrails, and archived completed active tasks.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4759afb` | (see git log) |
+| `98e55b3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
