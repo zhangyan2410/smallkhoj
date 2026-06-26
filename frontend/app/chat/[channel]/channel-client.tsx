@@ -963,7 +963,7 @@ export function ChannelClient({
   const activeReplies = threadData?.replies ?? (threadData?.messages || []).filter((msg) => msg.parentId)
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-sand" data-chat-root>
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-sand" data-chat-root data-region="chat-main">
         <header className="shrink-0 border-b px-4 py-2">
           <div className="flex items-center gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -1157,7 +1157,7 @@ export function ChannelClient({
               </div>
             ) : (
               <>
-                <div ref={messageListRef} data-testid="chat-message-list" className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
+                <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
                 <div className="mx-auto max-w-3xl space-y-3">
                 {messages.map((msg) => {
                   const isSaved = savedMessageIds.has(msg.id)
@@ -1248,7 +1248,7 @@ export function ChannelClient({
               </div>
             </div>
 
-            <div className="shrink-0 border-t-2 border-[var(--ink)] bg-sand-card p-3">
+            <div data-region="composer" className="shrink-0 border-t-2 border-[var(--ink)] bg-sand-deep p-3">
               <div className="mx-auto flex min-w-0 max-w-3xl items-center gap-2">
                 <input
                   ref={fileInputRef}
@@ -1314,7 +1314,8 @@ export function ChannelClient({
           {activeThreadId && (
             <aside
               aria-label={tChat("thread")}
-              className="relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-card p-4"
+              data-region="thread-panel"
+              className="relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-deep p-4"
               style={{ width: threadWidth }}
             >
               <div
@@ -1491,7 +1492,8 @@ export function ChannelClient({
           {!activeThreadId && showMembers && (
             <aside
               aria-label={tChat("channelMembers")}
-              className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-card"
+              data-region="members-panel"
+              className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-deep"
             >
               <h3 className="shrink-0 px-3 pb-1 pt-3 text-xs font-semibold text-sand-muted">
                 {tChat("membersCount", { count: members.length })}
