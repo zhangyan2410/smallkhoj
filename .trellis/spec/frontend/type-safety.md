@@ -1,51 +1,80 @@
 # Type Safety
 
-> Type safety patterns in this project.
+> Type ownership and validation patterns for the frontend.
 
----
-
-## Overview
-
-<!--
-Document your project's type safety conventions here.
-
-Questions to answer:
-- What type system do you use?
-- How are types organized?
-- What validation library do you use?
-- How do you handle type inference?
--->
-
-(To be filled by the team)
+The frontend is TypeScript-first. Shared API-facing types live in
+`frontend/lib/control-plane.ts` until a generated/shared API contract exists.
+Route files may define local view models, but they should not invent duplicate
+API shapes that drift from `control-plane.ts`.
 
 ---
 
 ## Type Organization
 
-<!-- Where types are defined, shared types vs local types -->
+| Type kind | Location | Example |
+| --- | --- | --- |
+| API/resource shape reused across pages | `frontend/lib/control-plane.ts` | `Member`, `Computer`, `TaskRunTemplate` |
+| Route-only view model | route file or route-local component | `TaskEvidence` in tasks page |
+| Component props | same file as component, near export | `ProductShellBody` props |
+| i18n copy object | route helper function with inferred return type | `type ComputersCopy = ReturnType<typeof makeComputersCopy>` |
 
-(To be filled by the team)
-
----
-
-## Validation
-
-<!-- Runtime validation patterns (Zod, Yup, io-ts, etc.) -->
-
-(To be filled by the team)
+Do not create second copies of `Member`, `Computer`, runtime status, or task-run
+template shapes inside pages.
 
 ---
 
-## Common Patterns
+## API Response Rules
 
-<!-- Type utilities, generics, type guards -->
+Current helpers return typed JSON with fallback defaults:
 
-(To be filled by the team)
+```ts
+apiGet<{ members: Member[] }>("/api/v1/members", { members: [] })
+```
+
+Until runtime schemas exist, callers must:
+
+- provide a safe fallback for list/detail endpoints
+- optional-chain backend fields that are not guaranteed
+- handle unknown enum/status strings with a default visual bucket
+- avoid treating truthy/falsy optional backend fields as authoritative
+
+If a UI decision is security-sensitive or destructive, add a backend/API schema
+or a narrow runtime guard before rendering the action.
+
+---
+
+## FormData and Search Params
+
+Server actions receive `FormData`; normalize every field at the boundary:
+
+```ts
+const memberId = String(formData.get("memberId") || "").trim()
+if (!memberId) redirect("/members?error=Missing%20member")
+```
+
+Search params may be `string | string[] | undefined`; normalize once with a
+helper before use. Do not pass raw `searchParams.foo` deeply into components.
 
 ---
 
 ## Forbidden Patterns
 
-<!-- any, type assertions, etc. -->
+- `any` for API responses, component props, or event payloads.
+- Blind casts such as `response.json() as Task[]`.
+- Duplicating API types inside multiple pages.
+- Template-string class/variant lookup from backend data, for example
+  `` `sk-status-${status}` ``. Use explicit mapping functions such as
+  `badgeClass()`, `dotClass()`, and `statusLabel()`.
+- Passing an entire translation object or function-heavy object across a
+  server-to-client boundary. Pass plain string fields.
 
-(To be filled by the team)
+---
+
+## Correctness Checklist
+
+- [ ] API/resource types are imported from the shared source when reused.
+- [ ] Unknown backend enum/status values render a safe default.
+- [ ] FormData and URL params are normalized at the boundary.
+- [ ] Client component props are serializable when crossing server-to-client.
+- [ ] No `any`, unchecked casts, or duplicate status/color mappings.
+

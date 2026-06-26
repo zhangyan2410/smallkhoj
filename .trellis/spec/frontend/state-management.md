@@ -1,51 +1,86 @@
 # State Management
 
-> How state is managed in this project.
+> How frontend state is owned, persisted, and refreshed.
 
----
-
-## Overview
-
-<!--
-Document your project's state management conventions here.
-
-Questions to answer:
-- What state management solution do you use?
-- How is local vs global state decided?
-- How do you handle server state?
-- What are the patterns for derived state?
--->
-
-(To be filled by the team)
+SmallKhoj's web frontend is intentionally simple today: server data is fetched
+through Next server components/actions and `lib/control-plane.ts`; client state
+is local React state or route-local context. Do not add a global state layer
+unless the state crosses routes and cannot be represented by URL/search params,
+server data, or a small provider.
 
 ---
 
 ## State Categories
 
-<!-- Local state, global state, server state, URL state -->
-
-(To be filled by the team)
-
----
-
-## When to Use Global State
-
-<!-- Criteria for promoting state to global -->
-
-(To be filled by the team)
+| Category | Owner | Examples | Persistence |
+| --- | --- | --- | --- |
+| Server state | backend API + server components | tasks, members, computers, channels, activity | backend database |
+| URL state | route/search params | selected member, selected computer, current tab/filter | browser URL |
+| Local UI state | client component | dialog open, composer text, hover/expanded local controls | memory only |
+| Durable preference | browser preference layer | theme, resizable panel width | namespaced `localStorage` |
+| Route-local shared state | colocated provider | chat channel/dm/member data | memory only |
 
 ---
 
-## Server State
+## Required Patterns
 
-<!-- How server data is cached and synchronized -->
+### Server state stays server-owned
 
-(To be filled by the team)
+Server-fetched data must be refreshed by `revalidatePath()` after server actions,
+or by the existing realtime refresh path when runtime events arrive. Do not copy
+server data into local component state just to filter, sort, or render it.
+
+### URL state is the source of truth for shareable selection
+
+If a user can bookmark or refresh a view and should keep the same selection, use
+the URL. Examples: selected task/member/computer, tab key, filters. Normalize
+query-string values with small helpers such as `searchValue()` instead of
+handling `string | string[] | undefined` repeatedly in JSX.
+
+### Local state is for ephemeral interaction only
+
+Use local `useState` for UI mechanics that should reset on navigation, such as
+dialog open state, draft text, temporary error text, drag state, or optimistic
+button disabled state.
+
+### Durable preferences must be hydration-safe
+
+For preferences stored in `localStorage`, render a deterministic default first
+and read the stored value after mount. This prevents the "server rendered width X
+but client rendered width Y" class of hydration bugs.
+
+### Route-local providers are allowed but must stay local
+
+Use a route-local context when several siblings under one route need the same
+stable derived data. Keep the provider colocated under `app/<route>/` and do not
+promote it to a global provider unless another route genuinely needs it.
 
 ---
 
-## Common Mistakes
+## When To Add Global State
 
-<!-- State management mistakes your team has made -->
+Only add a global store if all are true:
 
-(To be filled by the team)
+1. The state is client-only.
+2. Multiple unrelated routes need to read or update it.
+3. It cannot be represented by URL state or a persisted preference.
+4. Server ownership would be wrong or too slow for the interaction.
+
+If a global store is introduced later, document its ownership, persistence, and
+reset rules here before using it broadly.
+
+---
+
+## Wrong vs Correct
+
+### Wrong
+
+Copy `tasks` from a server component into a client global store, mutate it
+locally, then hope `revalidatePath("/tasks")` eventually fixes drift.
+
+### Correct
+
+Keep tasks server-owned, send mutations through server actions or API helpers,
+call `revalidatePath("/tasks")`, and use local state only for the dialog or
+pending affordance.
+

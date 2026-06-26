@@ -17,10 +17,10 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [Directory Structure](./directory-structure.md) | Three-layer model, import rules, where new code goes | Active |
 | [Component Guidelines](./component-guidelines.md) | Three-layer component model, single-source rule, forbidden patterns | Active |
 | [Product UI Style](./product-ui-style.md) | Handcraft ink-border language, water+sand identity, color tokens | Active |
-| [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
-| [State Management](./state-management.md) | Local state, global state, server state | To fill |
+| [Hook Guidelines](./hook-guidelines.md) | SSR-safe hooks, reusable client behavior, route-local contexts | Active |
+| [State Management](./state-management.md) | Server state, URL state, local UI state, durable preferences | Active |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns, browser evidence gates | Active |
-| [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
+| [Type Safety](./type-safety.md) | API types, boundary normalization, forbidden type patterns | Active |
 
 ---
 

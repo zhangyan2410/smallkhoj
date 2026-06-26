@@ -6,31 +6,133 @@
 
 ## Overview
 
-<!--
-Document your project's quality standards here.
+SmallKhoj frontend quality is judged by three things:
 
-Questions to answer:
-- What patterns are forbidden?
-- What linting rules do you enforce?
-- What are your testing requirements?
-- What code review standards apply?
--->
+1. The UI follows the component/style layers in `component-guidelines.md`.
+2. Runtime/server behavior remains correct after browser hydration, refresh, and
+   realtime updates.
+3. Browser-facing changes have real visible evidence, not only API or type-check
+   evidence.
 
-(To be filled by the team)
+Reference-project lessons:
+
+- `agent-platform` keeps frontend styling consistent by making design-system
+  rules a skill with token/component references.
+- `multica` keeps web/desktop maintainable by enforcing package boundaries and
+  semantic tokens.
+- `clowder-ai` reduces visual drift with token audits, design gates, and
+  explicit shell ownership.
+
+SmallKhoj should borrow the same discipline locally: small reusable primitives,
+semantic tokens, explicit shell ownership, and evidence gates.
 
 ---
 
 ## Forbidden Patterns
 
-<!-- Patterns that should never be used and why -->
-
-(To be filled by the team)
+- Page or route code redefining visual primitives that already exist in
+  `components/ui/` or `components/`.
+- Duplicating app shell pieces such as icon rail, list column, resize handle,
+  or status badge mapping inside a route.
+- Hardcoded palette colors, inline `oklch(...)`, `#hex`, or Tailwind palette
+  literals in components/pages.
+- Raw `<button>`, `<select>`, `<input>`, `<textarea>` with one-off visual
+  classes when a shared atom exists.
+- Hand-rolled cards/panels such as `rounded-md border bg-background p-3`.
+- Persisting server data in browser storage.
+- Making browser E2E claims without a visible `./twd` assertion or screenshot.
+- Fixing overflow by broad page-level clipping without confirming the inner
+  scroll region still works.
 
 ---
 
 ## Required Patterns
 
-<!-- Patterns that must always be used -->
+### Convention: Page Code Composes, Components Style
+
+**What**: `app/**` route code should fetch/prepare data, define server actions,
+choose the page composition, and pass props. Styling belongs in Layer 0/1/2:
+tokens/utilities, atoms, and product primitives.
+
+**Why**: The three-column branch showed that style drift happens when pages
+rebuild shell, status, card, form, and rail pieces locally.
+
+**Example**:
+```tsx
+// Correct: page composes ProductShell + product/ui atoms.
+<ProductShell
+  title={copy.title}
+  description={copy.description}
+  list={<TaskListPanel tasks={tasks} />}
+  sidebar={<TaskRecoveryCockpit entries={entries} />}
+>
+  <TaskDndBoard tasks={tasks} />
+</ProductShell>
+```
+
+**Wrong vs Correct**:
+```tsx
+// Wrong: route-local shell and raw visual controls.
+<div className="rounded-md border bg-background p-3">
+  <button className="bg-emerald-500 text-white">Start</button>
+</div>
+
+// Correct: shared shell + atom/product primitive.
+<Panel>
+  <Button variant="default">Start</Button>
+</Panel>
+```
+
+### Convention: ProductShell Owns Workspace Chrome
+
+**What**: The water icon rail, list column, main content column, right sidebar,
+and resize handle belong to `ProductShell` / `ProductShellBody`. Chat, tasks,
+members, and computers should compose that shell instead of rebuilding it.
+
+**Why**: Duplicated rails and list/sidebar structures create divergent colors,
+spacing, scroll behavior, and resize behavior.
+
+**Good/Base/Bad Cases**:
+- Good: list-detail routes pass `list`, `listConfig`, `children`, and optional
+  `sidebar` to `ProductShell`.
+- Base: a route has its own inner scroll surface but still uses `ProductShell`
+  with `mainScrollable={false}`.
+- Bad: a route copies icon rail markup, width constants, or resize logic.
+
+### Convention: Flex Overflow Requires `min-w-0` and Explicit Scroll Owners
+
+**What**: Any flex/grid column that contains long text, markdown, code, message
+rows, or nested scroll regions must set the correct `min-h-0`, `min-w-0`,
+`overflow-hidden`, and inner `overflow-y-auto` / `overflow-x-hidden` classes.
+
+**Why**: Chat and markdown can otherwise push the whole shell wider than the
+viewport. This creates expensive late-stage layout fixes.
+
+**Example**:
+```tsx
+<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+  <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+    <MessageList />
+  </div>
+</div>
+```
+
+**Tests Required**:
+- Browser check with a long unbroken word or code block.
+- Confirm the shell width stays stable and the inner region scrolls.
+
+### Convention: Reference Projects Before New Platform Surfaces
+
+**What**: Before implementing MCP visibility, skill visibility, channel/runtime
+UI, self-hosting surfaces, or agent workspace chrome, inspect the reference
+projects listed in `../guides/reference-projects.md`.
+
+**Why**: `agent-platform`, `clowder-ai`, and `multica-ai/multica` already encode
+solutions for adjacent product/platform problems. Reusing their lessons avoids
+inventing a weaker local convention.
+
+**Required Output**: The task notes or PR description must say which reference
+was checked and whether SmallKhoj reused, adapted, or rejected the pattern.
 
 ### Convention: Critical Backend Mutations Use Native Form Submission
 
@@ -82,8 +184,6 @@ export function CreateThingForm() {
 ---
 
 ## Testing Requirements
-
-<!-- What level of testing is expected -->
 
 ### Scenario: Next Dev Browser E2E Origins
 
@@ -160,6 +260,16 @@ When frontend work touches Activity, Events, agent timelines, daemon status, run
 
 ## Code Review Checklist
 
-<!-- What reviewers should check -->
-
-(To be filled by the team)
+- [ ] Pages compose existing atoms/product primitives instead of hand-rolling
+      cards, controls, badges, rails, or shells.
+- [ ] New or changed colors use tokens; no raw Tailwind palette colors, inline
+      `oklch(...)`, or hex literals outside token files.
+- [ ] List/detail routes use `ProductShell` ownership unless the task explicitly
+      documents why not.
+- [ ] Scroll regions have stable `min-h-0` / `min-w-0` ownership and long-text
+      behavior was checked.
+- [ ] Server mutations use server actions/native forms when hydration failure
+      would otherwise drop the action.
+- [ ] API/resource types come from the shared source when reused.
+- [ ] Browser-facing changes include `./twd` visible evidence.
+- [ ] MCP/skill/channel/platform surfaces checked the reference projects guide.

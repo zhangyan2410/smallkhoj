@@ -1,51 +1,93 @@
 # Hook Guidelines
 
-> How hooks are used in this project.
+> Rules for reusable client-side behavior in `frontend/hooks/` and route-local
+> client helpers.
+
+SmallKhoj currently uses React/Next primitives directly. There is no React Query,
+SWR, or Zustand in the web frontend. Hooks should therefore stay small and
+purpose-built: reusable browser behavior belongs in hooks; server data loading
+belongs in server components/actions or API helpers.
 
 ---
 
-## Overview
+## Where Hook Logic Goes
 
-<!--
-Document your project's hook conventions here.
+| Logic | Location | Example |
+| --- | --- | --- |
+| Reusable browser behavior | `frontend/hooks/use-*.ts` | `use-resizable-panel.ts` |
+| Route-local context/helper used by one route | colocated under `frontend/app/<route>/` | `app/chat/chat-data-context.tsx` |
+| Server data loading | server component/page helper or `lib/control-plane.ts` | `apiGet`, `apiPost` |
+| One-off UI state | local `useState` in the client component | dialog open state |
 
-Questions to answer:
-- What custom hooks do you have?
-- How do you handle data fetching?
-- What are the naming conventions?
-- How do you share stateful logic?
--->
-
-(To be filled by the team)
+Promote logic to `hooks/` only when at least two surfaces need it, or when the
+behavior is complex enough that keeping it inline obscures the component.
 
 ---
 
-## Custom Hook Patterns
+## Required Patterns
 
-<!-- How to create and structure custom hooks -->
+### Browser globals are mount-only
 
-(To be filled by the team)
+Hooks must be SSR/hydration-safe. Do not read `window`, `document`,
+`localStorage`, layout sizes, or media queries during render. Use a stable default
+for the first render, then read browser state in `useEffect`.
+
+```tsx
+// Correct: first render is deterministic; localStorage is read after mount.
+const [stored, setStored] = useState(defaultWidth)
+
+useEffect(() => {
+  const raw = window.localStorage.getItem(storageKey)
+  setStored(clamp(Number(raw) || defaultWidth))
+}, [storageKey, defaultWidth, clamp])
+```
+
+### Persistent UI preferences must be explicit
+
+Only durable user preferences belong in `localStorage`, for example panel width
+or theme preference. Store them under namespaced keys such as
+`smallkhoj.tasks.listWidth`. Do not store API data, task data, member data, or
+runtime events in `localStorage`.
+
+### Pointer/keyboard behavior is part of the hook contract
+
+Reusable interaction hooks must expose both pointer and keyboard handlers when
+the UI has a keyboard-accessible affordance. `useResizablePanel` returns
+`onPointerDown` and `onKeyDown`; the consuming separator must set
+`role="separator"`, `aria-orientation`, `aria-label`, and `tabIndex={0}`.
+
+### Hooks should not hide route context
+
+If a hook needs a route-specific id or current selection, pass it in as an
+argument. Do not have reusable hooks parse `window.location` or assume a route
+shape. Route-local providers such as chat data may use `usePathname()` because
+they are colocated with that route.
 
 ---
 
 ## Data Fetching
 
-<!-- How data fetching is handled (React Query, SWR, etc.) -->
+SmallKhoj frontend server data currently flows through:
 
-(To be filled by the team)
+- server components and server actions in `frontend/app/**`
+- `apiGet` / `apiPost` / `apiPut` / `apiPatch` / `apiDelete` in
+  `frontend/lib/control-plane.ts`
+- `revalidatePath()` after server-side mutations
+- `RealtimeRefresh` for SSE-driven route refreshes
 
----
-
-## Naming Conventions
-
-<!-- Hook naming rules (use*, etc.) -->
-
-(To be filled by the team)
+Do not introduce a client fetch/cache library for a one-off page. If the app
+adopts React Query or another cache later, update `state-management.md` and this
+file first so server/client ownership remains clear.
 
 ---
 
 ## Common Mistakes
 
-<!-- Hook-related mistakes your team has made -->
+- Reading `localStorage` in `useState(() => ...)` for a server-rendered client
+  component, causing hydration mismatch.
+- Keeping pointer resize logic inside a page instead of using
+  `useResizablePanel`, causing each surface to drift.
+- Creating a global store for one route's tab/filter/dialog state.
+- Returning freshly allocated objects from a context/hook value without
+  `useMemo`, causing unnecessary child re-renders.
 
-(To be filled by the team)

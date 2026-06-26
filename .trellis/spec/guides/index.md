@@ -23,6 +23,7 @@ These guides help you **ask the right questions before coding**.
 |-------|---------|-------------|
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
+| [Reference Projects Guide](./reference-projects.md) | Check local/reference repos before inventing MCP, skill, channel, or platform surfaces | MCP/skill visibility, agent platform, channel/runtime, self-hosting work |
 | [Runtime Debugging SOP](./runtime-debugging-sop.md) | Diagnose runtime/daemon/provider stuck states | Agent/runtime delivery issues |
 
 ---
@@ -57,6 +58,15 @@ These guides help you **ask the right questions before coding**.
 - [ ] **You're creating a new utility/helper function** ← Search first!
 
 → Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
+
+### When to Check Reference Projects
+
+- [ ] You're designing MCP server/tool/resource visibility
+- [ ] You're designing skill visibility, skill source models, or skill registry behavior
+- [ ] You're changing agent platform, channel/runtime, daemon, self-hosting, or supervisor-facing surfaces
+- [ ] You're tempted to invent a new convention that may already exist in a nearby repo
+
+→ Read [Reference Projects Guide](./reference-projects.md)
 
 ---
 
