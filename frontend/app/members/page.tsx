@@ -27,7 +27,7 @@ import { MembersList } from "./members-list"
 import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, StatusPill, type CategoryTone } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -165,8 +165,16 @@ async function AgentControls({ member }: { member: Member }) {
     )
   }
 
-  const control = (action: "start" | "stop" | "restart", label: string, Icon: typeof Play, show: boolean, tone: string) => {
+  const control = (action: "start" | "stop" | "restart", label: string, Icon: typeof Play, show: boolean, tone: CategoryTone) => {
     if (!show) return null
+    const toneClass: Record<CategoryTone, string> = {
+      primary: "",
+      info: "sk-cat-info",
+      success: "sk-cat-success",
+      warning: "sk-cat-warning",
+      danger: "sk-cat-danger",
+      neutral: "",
+    }
     return (
       <form action={controlAgentLifecycleAction} className="flex-1">
         <input type="hidden" name="memberId" value={member.id} />
@@ -174,7 +182,7 @@ async function AgentControls({ member }: { member: Member }) {
         <input type="hidden" name="action" value={action} />
         <button
           type="submit"
-          className={`inline-flex w-full items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${tone}`}
+          className={`inline-flex w-full items-center justify-center gap-1 rounded-none border border-[var(--ink)] px-2 py-1 text-[11px] font-medium transition-colors ${toneClass[tone]}`}
         >
           <Icon className="size-3" />
           {label}
@@ -185,9 +193,9 @@ async function AgentControls({ member }: { member: Member }) {
 
   return (
     <div className="mt-1 flex w-full items-stretch gap-1.5">
-      {control("start", tCommon("start"), Play, canStart, "border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950")}
-      {control("stop", tCommon("stop"), Square, canStop, "border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950")}
-      {control("restart", tCommon("restart"), RotateCcw, showRestart, "border-border text-muted-foreground hover:bg-accent")}
+      {control("start", tCommon("start"), Play, canStart, "success")}
+      {control("stop", tCommon("stop"), Square, canStop, "danger")}
+      {control("restart", tCommon("restart"), RotateCcw, showRestart, "neutral")}
     </div>
   )
 }
@@ -279,7 +287,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">{member.handle || `@${member.displayName}`}</span>
             <StatusPill status={member.status} label={statusLabel(member.status)} />
-            <span className="rounded-md bg-muted px-2 py-0.5 text-xs">{member.kind}</span>
+            <RuntimeChip tone="neutral">{member.kind}</RuntimeChip>
             {(member.config?.provider || member.runtimeProvider || member.backend) && (
               <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
                 {member.config?.provider || member.runtimeProvider || member.backend}
@@ -463,7 +471,7 @@ function PermissionsTab({ member }: { member: Member }) {
         </div>
         <div className="rounded-md border bg-muted/30 p-3 space-y-2">
           <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-amber-500" />
+            <span className="size-2 rounded-full bg-warning" />
             <span className="text-sm">Config persisted but not enforced at runtime</span>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -556,7 +564,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
                   <Button type="submit" size="sm" variant={enabled ? "default" : "outline"}>
                     {enabled ? "enabled" : "disabled"}
                   </Button>
-                  <button formAction={removePermissionEntryAction} className="text-xs text-rose-500 hover:text-rose-700" title="Remove">
+                  <button formAction={removePermissionEntryAction} className="text-xs text-destructive hover:opacity-80" title="Remove">
                     remove
                   </button>
                   <input type="hidden" formAction={undefined} name="existing" value={JSON.stringify(permissions)} />
@@ -597,7 +605,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
                   <Button type="submit" size="sm" variant={enabled ? "default" : "outline"}>
                     {enabled ? "on" : "off"}
                   </Button>
-                  <button formAction={removePermissionEntryAction} className="text-xs text-rose-500 hover:text-rose-700" title="Remove">
+                  <button formAction={removePermissionEntryAction} className="text-xs text-destructive hover:opacity-80" title="Remove">
                     remove
                   </button>
                   <input type="hidden" formAction={undefined} name="existing" value={JSON.stringify(actions)} />
@@ -777,7 +785,7 @@ function MemberDetail({
           {member.kind === "agent" && (
             <form action={deleteMemberAction} className="ml-auto">
               <input type="hidden" name="memberId" value={member.id} />
-              <Button type="submit" size="sm" variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50">
+              <Button type="submit" size="sm" variant="outline">
                 <Trash2 className="size-3.5" />
                 Delete
               </Button>

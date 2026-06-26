@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Panel } from "@/components/ui/panel"
 
 type CredentialResponse = {
   name: string
@@ -93,9 +94,9 @@ export function ConnectComputerForm({
         )}
 
         {connectedComputerName && (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+          <Panel variant="flat" className="sk-cat-success p-3 text-sm">
             {t("connected", { name: connectedComputerName })}
-          </div>
+          </Panel>
         )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}

@@ -345,7 +345,7 @@ export function MemoryProposalQueue({
                   <button
                     type="button"
                     onClick={() => onAccept(proposal)}
-                    className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-[0.7rem] text-emerald-700 hover:bg-emerald-50"
+                    className="inline-flex h-7 items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-cat-success px-2 text-[0.7rem] hover:opacity-85"
                     aria-label={copy.acceptAria(proposal.path)}
                   >
                     <CheckCircle2 className="size-3.5" />

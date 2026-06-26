@@ -27,9 +27,10 @@ import {
 
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, StatusPill } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, type CategoryTone, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Panel } from "@/components/ui/panel"
 import { ConnectComputerForm } from "./connect-computer-form"
 import { buildComputerReconnectUrl } from "@/lib/computer-navigation"
 import {
@@ -268,22 +269,23 @@ function Field({ label, value, icon }: { label: string; value?: string | null; i
   )
 }
 
-function runtimeStatusColor(status?: string) {
-  if (!status) return "text-muted-foreground border-border"
+/** runtime 安装状态 → CategoryTone 单一真源。色走 sk-cat-* token。 */
+function runtimeStatusKind(status?: string): CategoryTone {
+  if (!status) return "neutral"
   switch (status) {
     case "installed":
     case "available":
     case "active":
-      return "text-emerald-600 border-emerald-200 bg-emerald-50"
+      return "success"
     case "not_installed":
     case "unavailable":
     case "missing":
-      return "text-rose-600 border-rose-200 bg-rose-50"
+      return "danger"
     case "unknown":
     case "detecting":
-      return "text-amber-600 border-amber-200 bg-amber-50"
+      return "warning"
     default:
-      return "text-muted-foreground border-border"
+      return "neutral"
   }
 }
 
@@ -309,21 +311,18 @@ function runtimeStatusIcon(status?: string) {
 function RuntimeStatusChip({ runtime }: { runtime: RuntimeInfo }) {
   if (typeof runtime === "string") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-        {runtime}
-      </span>
+      <RuntimeChip tone="neutral" className="gap-1">{runtime}</RuntimeChip>
     )
   }
   const status = runtime.status
   const label = runtimeLabel(runtime)
-  const colorClass = runtimeStatusColor(status)
   const icon = runtimeStatusIcon(status)
 
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs ${colorClass}`}>
+    <RuntimeChip tone={runtimeStatusKind(status)} className="gap-1">
       {icon}
       {label}
-    </span>
+    </RuntimeChip>
   )
 }
 
@@ -502,16 +501,16 @@ function ComputerDetail({
               <Trash2 className="size-3" />
               {copy.delete}
             </div>
-            <div className="rounded-md border border-rose-200 bg-rose-50/50 p-3">
+            <Panel variant="flat" className="sk-cat-danger space-y-3 p-3">
               <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 size-4 text-rose-500" />
+                <AlertTriangle className="mt-0.5 size-4" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-rose-700">{copy.deleteComputer}</p>
-                  <p className="mt-1 text-xs text-rose-600">
+                  <p className="text-sm font-semibold">{copy.deleteComputer}</p>
+                  <p className="mt-1 text-xs">
                     {copy.deleteComputerDesc}
                   </p>
                   {deleteBlockingWorkspaces > 0 && (
-                    <p className="mt-1 text-xs text-rose-600">
+                    <p className="mt-1 text-xs">
                       {copy.deleteBlocking(deleteBlockingWorkspaces)}
                     </p>
                   )}
@@ -522,7 +521,6 @@ function ComputerDetail({
                       size="sm"
                       variant="outline"
                       disabled={deleteBlockingWorkspaces > 0}
-                      className="border-rose-200 text-rose-700 hover:bg-rose-100"
                     >
                       <Trash2 className="size-3.5" />
                       {copy.delete}
@@ -530,7 +528,7 @@ function ComputerDetail({
                   </form>
                 </div>
               </div>
-            </div>
+            </Panel>
           </div>
         </CardContent>
       </Card>
@@ -760,11 +758,11 @@ export default async function ComputersPage({
             {copy.registered} <span className="font-medium text-foreground">{computers.length}</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
+            <span className="size-1.5 rounded-full bg-success" />
             {copy.online} <span className="font-medium text-foreground">{onlineComputers}</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-amber-500" />
+            <span className="size-1.5 rounded-full bg-warning" />
             {copy.runningWorkspaces} <span className="font-medium text-foreground">{runningWorkspaces}</span>
           </span>
         </div>

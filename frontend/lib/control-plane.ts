@@ -274,6 +274,38 @@ export function formatTime(value?: string | null) {
   }).format(date)
 }
 
+/**
+ * Activity 分类 → CategoryTone 单一真源。
+ * 给 ActivityTypeBadge / RuntimeChip 用，替代散落的 labelColorMap 硬编码色。
+ * 改分类配色只改这里 + globals.css 的 --cat-* token。
+ */
+export function activityCategoryKind(label: string): "info" | "success" | "warning" | "danger" | "neutral" {
+  switch (label) {
+    case "Message":
+    case "Output":
+    case "Thread":
+      return "info"
+    case "Task":
+    case "Reminder":
+    case "Working":
+    case "Thinking":
+      return "warning"
+    case "Runtime":
+    case "Heartbeat":
+    case "Idle":
+    case "Integration":
+      return "success"
+    case "Reaction":
+    case "Channel":
+    case "Profile":
+      return "neutral"
+    case "Error":
+      return "danger"
+    default:
+      return "neutral"
+  }
+}
+
 export function statusLabel(status: string) {
   const labels: Record<string, string> = {
     todo: "待办",

@@ -30,14 +30,15 @@ function initials(name: string): string {
 
 // Per DESIGN.md, all UI colors live in the mid-sea blue / warm sand band
 // (hue 200-225 for accents, 70-85 for warm surfaces). Avatar tints sample from
-// that band — no random rainbow hue.
+// that band — no random rainbow hue. 色值在 globals.css 的 --avatar-tint-* token
+// 里（单一真源），这里只引用变量名，避免内联 oklch。
 const AVATAR_TINTS: Array<{ bg: string; fg: string }> = [
-  { bg: "oklch(0.95 0.025 215)", fg: "oklch(0.32 0.06 215)" }, // sea tint
-  { bg: "oklch(0.95 0.030 198)", fg: "oklch(0.32 0.06 198)" }, // turquoise tint
-  { bg: "oklch(0.96 0.020 230)", fg: "oklch(0.30 0.06 230)" }, // deep sea tint
-  { bg: "oklch(0.96 0.025 85)",  fg: "oklch(0.34 0.05 55)"  }, // warm sand tint
-  { bg: "oklch(0.95 0.030 200)", fg: "oklch(0.32 0.06 200)" }, // bright sea
-  { bg: "oklch(0.96 0.025 150)", fg: "oklch(0.30 0.06 150)" }, // sea-green (accent only)
+  { bg: "var(--avatar-tint-1-bg)", fg: "var(--avatar-tint-1-fg)" }, // sea tint
+  { bg: "var(--avatar-tint-2-bg)", fg: "var(--avatar-tint-2-fg)" }, // turquoise tint
+  { bg: "var(--avatar-tint-3-bg)", fg: "var(--avatar-tint-3-fg)" }, // deep sea tint
+  { bg: "var(--avatar-tint-4-bg)", fg: "var(--avatar-tint-4-fg)" }, // warm sand tint
+  { bg: "var(--avatar-tint-5-bg)", fg: "var(--avatar-tint-5-fg)" }, // bright sea
+  { bg: "var(--avatar-tint-6-bg)", fg: "var(--avatar-tint-6-fg)" }, // sea-green (accent only)
 ]
 
 function hashTintIndex(name: string): number {

@@ -21,7 +21,8 @@ import {
   User,
 } from "lucide-react"
 
-import { apiGet, formatTime, shortId } from "@/lib/control-plane"
+import { apiGet, activityCategoryKind, formatTime, shortId } from "@/lib/control-plane"
+import { RuntimeChip } from "@/components/product-ui"
 
 export type ActivityItem = {
   id: string
@@ -96,23 +97,7 @@ const activityTypeLabel: Record<string, string> = {
   failed: "Error",
 }
 
-const labelColorMap: Record<string, string> = {
-  Message: "border-sky-200 bg-sky-50 text-sky-700",
-  Task: "border-amber-200 bg-amber-50 text-amber-700",
-  Runtime: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  Heartbeat: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  Working: "border-orange-200 bg-orange-50 text-orange-700",
-  Thinking: "border-yellow-200 bg-yellow-50 text-yellow-700",
-  Output: "border-blue-200 bg-blue-50 text-blue-700",
-  Idle: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  Reaction: "border-pink-200 bg-pink-50 text-pink-700",
-  Channel: "border-violet-200 bg-violet-50 text-violet-700",
-  Reminder: "border-orange-200 bg-orange-50 text-orange-700",
-  Profile: "border-primary/30 bg-primary/10 text-primary",
-  Integration: "border-teal-200 bg-teal-50 text-teal-700",
-  Thread: "border-indigo-200 bg-indigo-50 text-indigo-700",
-  Error: "border-rose-200 bg-rose-50 text-rose-700",
-}
+// NOTE: labelColorMap removed — 分类色走单一真源 activityCategoryKind() + sk-cat-* token。
 
 function ActivityIcon({ type }: { type: string }) {
   const Icon = activityIcons[type] ?? Terminal
@@ -122,10 +107,10 @@ function ActivityIcon({ type }: { type: string }) {
 function ActivityTypeBadge({ type }: { type: string }) {
   const label = activityTypeLabel[type] ?? type
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${labelColorMap[label] ?? "border-border bg-muted text-muted-foreground"}`}>
+    <RuntimeChip tone={activityCategoryKind(label)} className="min-h-5 gap-1 px-1.5 py-0.5 text-[11px]">
       <ActivityIcon type={type} />
       {label}
-    </span>
+    </RuntimeChip>
   )
 }
 

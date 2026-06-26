@@ -27,17 +27,36 @@ export function StatusPill({
   )
 }
 
+export type CategoryTone = "primary" | "info" | "success" | "warning" | "danger" | "neutral"
+
+/**
+ * 分类标签（≠ 状态）。颜色走单一真源 sk-cat-* token，改分类色只改 globals.css。
+ * tone 选语义：primary 默认中海蓝；info/success/warning/danger 对应 sk-cat-*；
+ * 不要再用 className 覆盖颜色（border-emerald-200 bg-emerald-50 这类）。
+ */
+const chipToneClass: Record<CategoryTone, string> = {
+  primary: "border-primary/30 bg-primary/10 text-primary",
+  info: "border-[var(--ink)] sk-cat-info",
+  success: "border-[var(--ink)] sk-cat-success",
+  warning: "border-[var(--ink)] sk-cat-warning",
+  danger: "border-[var(--ink)] sk-cat-danger",
+  neutral: "border-[var(--ink)] sk-cat-neutral",
+}
+
 export function RuntimeChip({
   children,
   className,
+  tone = "primary",
 }: {
   children: ReactNode
   className?: string
+  tone?: CategoryTone
 }) {
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 max-w-full items-center rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary",
+        "inline-flex min-h-6 max-w-full items-center rounded-none border px-2 py-0.5 text-xs font-medium",
+        chipToneClass[tone],
         className
       )}
     >

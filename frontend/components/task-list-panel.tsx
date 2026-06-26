@@ -41,7 +41,7 @@ export function TaskListPanel({
           <button
             type="button"
             onClick={onOpenCreate}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sand-card px-3 py-2 text-sm font-medium text-sand-ink shadow-sm transition-colors hover:bg-white"
+            className="flex w-full items-center justify-center gap-1.5 rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm font-medium text-sand-ink sk-hard-shadow-sm transition-colors hover:bg-white"
           >
             <Plus className="size-4" />
             {createLabel ?? "New task"}
@@ -66,9 +66,9 @@ export function TaskListPanel({
                   <Link
                     href={`/tasks?${q.toString()}`}
                     className={cn(
-                      "block rounded-lg px-2.5 py-2 transition-colors",
+                      "block rounded-none px-2.5 py-2 transition-colors",
                       isActive
-                        ? "bg-white shadow-sm ring-1 ring-sand-border"
+                        ? "bg-white sk-hard-shadow-sm ring-1 ring-sand-border"
                         : "hover:bg-white/60",
                     )}
                   >

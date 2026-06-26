@@ -357,18 +357,18 @@ function activityDescriptionLabel(description: string) {
 }
 
 function runAccent(status: string) {
-  if (status === "completed") return "border-emerald-200 bg-emerald-50/70"
-  if (status === "running" || status === "dispatched") return "border-sky-200 bg-sky-50/70"
-  if (status === "queued" || status === "awaiting_input") return "border-amber-200 bg-amber-50/70"
-  if (status === "failed" || status === "cancelled") return "border-rose-200 bg-rose-50/70"
-  return "border-border bg-card"
+  if (status === "completed") return "border-[var(--ink)] sk-cat-success"
+  if (status === "running" || status === "dispatched") return "border-[var(--ink)] sk-cat-info"
+  if (status === "queued" || status === "awaiting_input") return "border-[var(--ink)] sk-cat-warning"
+  if (status === "failed" || status === "cancelled") return "border-[var(--ink)] sk-cat-danger"
+  return "border-[var(--ink)] sk-cat-neutral"
 }
 
 function gateClass(state: GateState) {
-  if (state === "pass") return "border-emerald-200 bg-emerald-50 text-emerald-800"
-  if (state === "warn") return "border-amber-200 bg-amber-50 text-amber-800"
-  if (state === "fail") return "border-rose-200 bg-rose-50 text-rose-800"
-  return "border-border bg-muted text-muted-foreground"
+  if (state === "pass") return "border-[var(--ink)] sk-cat-success"
+  if (state === "warn") return "border-[var(--ink)] sk-cat-warning"
+  if (state === "fail") return "border-[var(--ink)] sk-cat-danger"
+  return "border-[var(--ink)] sk-cat-neutral"
 }
 
 function runtimeInfo(run: TaskRun): RuntimeInfo {
@@ -437,7 +437,7 @@ function GateStateIcon({ state }: { state: GateState }) {
 
 function GateCard({ gate }: { gate: Gate }) {
   return (
-    <div className={cn("rounded-md border p-3", gateClass(gate.state))}>
+    <div className={cn("rounded-none border-2 border-[var(--ink)] p-3", gateClass(gate.state))}>
       <div className="flex items-start gap-2">
         <GateStateIcon state={gate.state} />
         <div className="min-w-0">
@@ -452,14 +452,14 @@ function GateCard({ gate }: { gate: Gate }) {
 
 function EvidenceBadge({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "good" | "warn" | "bad" }) {
   const toneClass = {
-    neutral: "border-border bg-muted text-muted-foreground",
-    good: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    warn: "border-amber-200 bg-amber-50 text-amber-700",
-    bad: "border-rose-200 bg-rose-50 text-rose-700",
+    neutral: "sk-cat-neutral",
+    good: "sk-cat-success",
+    warn: "sk-cat-warning",
+    bad: "sk-cat-danger",
   }[tone]
   return (
-    <span className={cn("inline-flex min-h-6 items-center rounded-md border px-2 py-0.5 text-xs", toneClass)}>
-      <span className="text-muted-foreground/80">{label}</span>
+    <span className={cn("inline-flex min-h-6 items-center rounded-none border border-[var(--ink)] px-2 py-0.5 text-xs", toneClass)}>
+      <span className="opacity-70">{label}</span>
       <span className="ml-1 font-medium">{value}</span>
     </span>
   )
@@ -515,7 +515,7 @@ function RunRow({
   const hasRawDetails = run.runtimeSessionId || run.workspaceSessionId || run.contextSessionId || run.cwd || run.daemonId
 
   return (
-    <div className={cn("rounded-md border p-3", run.stale ? "border-amber-200 bg-amber-50/70" : runAccent(run.status))}>
+    <div className={cn("rounded-none border-2 border-[var(--ink)] p-3", run.stale ? "sk-cat-warning" : runAccent(run.status))}>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -525,7 +525,7 @@ function RunRow({
           </div>
           <p className="mt-2 text-sm text-muted-foreground">{runPhaseText(run)}</p>
           {failure && (
-            <div className="mt-2 flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-sm text-rose-800">
+            <div className="mt-2 flex items-start gap-2 rounded-none border-2 border-[var(--ink)] sk-cat-danger px-2 py-1.5 text-sm">
               <ShieldAlert className="mt-0.5 size-4 shrink-0" />
               <span>{failure}</span>
             </div>
@@ -600,7 +600,7 @@ function CompactActivity({ items }: { items: ActivityItem[] }) {
     <div className="space-y-3">
       {visible.map((item) => (
         <div key={item.id} className="grid grid-cols-[auto_1fr] gap-2 border-b pb-3 last:border-b-0">
-          <span className="mt-1 size-2 rounded-full bg-sky-500" />
+          <span className="mt-1 size-2 rounded-full bg-info" />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-medium">{activityDescriptionLabel(item.description)}</span>

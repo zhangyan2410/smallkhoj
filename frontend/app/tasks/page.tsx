@@ -17,7 +17,7 @@ import {
 
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, StatusPill, Toolbar } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, StatusPill, Toolbar } from "@/components/product-ui"
 import { TaskRecoveryCockpit, type TaskRecoveryCopy } from "@/components/memory-entry-surface"
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -420,15 +420,17 @@ function EvidenceEntryRow({ entry, copy }: { entry: EvidenceEntry; copy: TasksCo
         )}
         {entry.decision && (
           <div className="mt-1">
-            <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium ${
-              entry.decision === "approved" || entry.decision === "pass"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : entry.decision === "rejected" || entry.decision === "fail"
-                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                  : "border-border bg-muted text-muted-foreground"
-            }`}>
+            <RuntimeChip
+              tone={
+                entry.decision === "approved" || entry.decision === "pass"
+                  ? "success"
+                  : entry.decision === "rejected" || entry.decision === "fail"
+                    ? "danger"
+                    : "neutral"
+              }
+            >
               {entry.decision}
-            </span>
+            </RuntimeChip>
           </div>
         )}
         {entry.note && (

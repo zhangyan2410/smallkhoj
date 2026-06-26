@@ -139,6 +139,34 @@
   --info-fg: oklch(0.99 0.01 200);
   --danger: oklch(0.58 0.20 25);          /* 砖红 */
   --danger-fg: oklch(0.99 0.02 25);
+
+  /*
+   * 头像底色对（agent 身份调色板，单一真源）。
+   * 色相全部落在水 + 暖沙带，无紫色。供 avatar.tsx 引用，避免内联 oklch。
+   */
+  --avatar-tint-1-bg: oklch(0.95 0.025 215); --avatar-tint-1-fg: oklch(0.32 0.06 215);
+  --avatar-tint-2-bg: oklch(0.95 0.030 198); --avatar-tint-2-fg: oklch(0.32 0.06 198);
+  --avatar-tint-3-bg: oklch(0.96 0.020 230); --avatar-tint-3-fg: oklch(0.30 0.06 230);
+  --avatar-tint-4-bg: oklch(0.96 0.025 85);  --avatar-tint-4-fg: oklch(0.34 0.05 55);
+  --avatar-tint-5-bg: oklch(0.95 0.030 200); --avatar-tint-5-fg: oklch(0.32 0.06 200);
+  --avatar-tint-6-bg: oklch(0.96 0.025 150); --avatar-tint-6-fg: oklch(0.30 0.06 150);
+
+  /*
+   * 分类色 token（单一真源）—— 给 RuntimeChip/ActivityBadge 等「分类标签」用。
+   * 与 status 色同源色相，但语义独立：分类标签 ≠ 状态。
+   * 手作风：浅底 + 深字 + 墨边（比 status 实色块安静，适合密集列表里的标签）。
+   * 改分类色只改这里，RuntimeChip tone 自动跟随。
+   */
+  --cat-info: oklch(0.93 0.05 210);       /* 中海蓝浅底 */
+  --cat-info-fg: oklch(0.40 0.10 215);    /* 深海蓝字 */
+  --cat-success: oklch(0.93 0.05 155);    /* 海绿浅底 */
+  --cat-success-fg: oklch(0.38 0.11 155); /* 深海绿字 */
+  --cat-warning: oklch(0.93 0.06 75);     /* 暖沙琥珀浅底 */
+  --cat-warning-fg: oklch(0.40 0.09 55);  /* 深棕字 */
+  --cat-danger: oklch(0.93 0.05 25);      /* 珊瑚浅底 */
+  --cat-danger-fg: oklch(0.42 0.13 25);   /* 深珊瑚字 */
+  --cat-neutral: oklch(0.94 0.01 220);    /* 暖沙灰浅底 */
+  --cat-neutral-fg: oklch(0.42 0.02 225); /* 深灰字 */
 }
 
 .dark {
@@ -163,6 +191,17 @@
   --success: oklch(0.68 0.16 155);
   --success-foreground: oklch(0.18 0.025 155);
   --border: oklch(0.32 0.025 220);
+  /* 分类色（dark）—— 浅底改为半透明深底，字色提亮 */
+  --cat-info: oklch(0.32 0.06 215);
+  --cat-info-fg: oklch(0.82 0.08 215);
+  --cat-success: oklch(0.32 0.07 155);
+  --cat-success-fg: oklch(0.82 0.10 155);
+  --cat-warning: oklch(0.34 0.08 75);
+  --cat-warning-fg: oklch(0.84 0.09 70);
+  --cat-danger: oklch(0.34 0.08 25);
+  --cat-danger-fg: oklch(0.82 0.12 25);
+  --cat-neutral: oklch(0.32 0.015 220);
+  --cat-neutral-fg: oklch(0.80 0.015 220);
   --input: oklch(0.32 0.025 220);
   --ring: oklch(0.72 0.10 200);
   --chart-1: oklch(0.72 0.12 215);
@@ -245,6 +284,16 @@
   .sk-status-warning { background-color: var(--warning); color: var(--warning-fg); }
   .sk-status-info { background-color: var(--info); color: var(--info-fg); }
   .sk-status-danger { background-color: var(--danger); color: var(--danger-fg); }
+
+  /*
+   * 分类色工具类（单一真源）。比 status 安静：浅底 + 深字。
+   * RuntimeChip/ActivityBadge 用这些，改分类色只改 --cat-* token。
+   */
+  .sk-cat-info { background-color: var(--cat-info); color: var(--cat-info-fg); }
+  .sk-cat-success { background-color: var(--cat-success); color: var(--cat-success-fg); }
+  .sk-cat-warning { background-color: var(--cat-warning); color: var(--cat-warning-fg); }
+  .sk-cat-danger { background-color: var(--cat-danger); color: var(--cat-danger-fg); }
+  .sk-cat-neutral { background-color: var(--cat-neutral); color: var(--cat-neutral-fg); }
 
   /*
    * 组合工具类：让裸 div 一行收口到手作风。

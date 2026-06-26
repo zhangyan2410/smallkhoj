@@ -84,8 +84,8 @@ export default async function ChatPage() {
       sidebar={
         <div className="space-y-2">
           <RuntimeChip>{t("tabChat")}</RuntimeChip>
-          <RuntimeChip className="border-sky-200 bg-sky-50 text-sky-700">{t("tabTasks")}</RuntimeChip>
-          <RuntimeChip className="border-slate-200 bg-slate-50 text-slate-700">{t("tabFiles")}</RuntimeChip>
+          <RuntimeChip tone="info">{t("tabTasks")}</RuntimeChip>
+          <RuntimeChip tone="neutral">{t("tabFiles")}</RuntimeChip>
         </div>
       }
     >

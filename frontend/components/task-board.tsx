@@ -34,7 +34,7 @@ import {
   Shield,
 } from "lucide-react"
 
-import { EmptyState, StatusPill } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
 import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
 import { Card, CardContent } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/form"
@@ -199,14 +199,14 @@ function SortableTaskCard({
           className={`transition-all ${
             selected ? "border-primary/60 bg-primary/5 ring-1 ring-primary/20" : ""
           } ${
-            recentlyUpdated ? "border-emerald-300 bg-emerald-50 ring-1 ring-emerald-200" : ""
+            recentlyUpdated ? "border-[var(--success)] bg-[color-mix(in_oklch,var(--success)_12%,transparent)] ring-1 ring-[var(--success)]/40" : ""
           } ${
-            isAgentOver ? "border-purple-400 bg-purple-50 ring-2 ring-purple-200" : ""
+            isAgentOver ? "border-primary/50 bg-primary/10 ring-2 ring-primary/30" : ""
           } ${
             dragDisabled
               ? "hover:border-primary/40 hover:bg-primary/5"
-              : "hover:border-primary/60 hover:bg-primary/5 hover:shadow-sm hover:ring-1 hover:ring-primary/15"
-          } ${isDragging ? "border-primary/70 bg-primary/10 shadow-lg ring-2 ring-primary/30" : ""}`}
+              : "hover:border-primary/60 hover:bg-primary/5 sk-hard-shadow-sm hover:ring-1 hover:ring-primary/15"
+          } ${isDragging ? "border-primary/70 bg-primary/10 sk-hard-shadow ring-2 ring-primary/30" : ""}`}
         >
           <CardContent className="space-y-2">
             <div className="flex items-start justify-between gap-3">
@@ -222,21 +222,21 @@ function SortableTaskCard({
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               {task.creator && (
-                <span className="rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">创建 @{task.creator}</span>
+                <RuntimeChip tone="info" className="min-h-0 px-1.5 py-0.5">创建 @{task.creator}</RuntimeChip>
               )}
               {task.assignee && (
-                <span className="rounded bg-purple-50 px-1.5 py-0.5 font-medium text-purple-700">负责 @{task.assignee}</span>
+                <RuntimeChip tone="primary" className="min-h-0 px-1.5 py-0.5">负责 @{task.assignee}</RuntimeChip>
               )}
               <span className="text-muted-foreground">{formatTime(task.updatedAt || task.createdAt)}</span>
             </div>
             {source && (
-              <div className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+              <div className="inline-flex items-center gap-1 rounded-none border border-[var(--ink)] bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
                 <ExternalLink className="size-3" />
                 {source.channel ? formatChannelName(source.channel, agentName) : (source.type || "来源")}
               </div>
             )}
             {isAgentOver && (
-              <div className="rounded-md border border-purple-200 bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
+              <div className="rounded-none border-2 border-[var(--ink)] bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                 松开以分配 agent
               </div>
             )}
@@ -279,9 +279,9 @@ function TaskStatusColumn({
     <section
       ref={setNodeRef}
       data-status={status}
-      className={`min-w-0 rounded-md border p-1.5 transition-all ${
+      className={`min-w-0 rounded-none border border-[var(--ink)] p-1.5 transition-all ${
         isDropTarget
-          ? "border-primary/60 bg-primary/10 shadow-sm ring-2 ring-primary/15"
+          ? "border-primary/60 bg-primary/10 sk-hard-shadow-sm ring-2 ring-primary/15"
           : "bg-muted/20"
       }`}
     >
@@ -331,10 +331,10 @@ function ListRow({ task, selected, onSelect }: { task: Task; selected: boolean; 
         <div className="truncate font-medium">{task.title}</div>
         <div className="mt-1 flex flex-wrap gap-2 text-xs">
           {task.creator && (
-            <span className="rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">创建 @{task.creator}</span>
+            <RuntimeChip tone="info" className="min-h-0 px-1.5 py-0.5">创建 @{task.creator}</RuntimeChip>
           )}
           {task.assignee && (
-            <span className="rounded bg-purple-50 px-1.5 py-0.5 font-medium text-purple-700">负责 @{task.assignee}</span>
+            <RuntimeChip tone="primary" className="min-h-0 px-1.5 py-0.5">负责 @{task.assignee}</RuntimeChip>
           )}
           <span className="text-muted-foreground">更新 {formatTime(task.updatedAt || task.createdAt)}</span>
         </div>
@@ -376,15 +376,18 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
         {entry.content && <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{entry.content}</p>}
         {entry.decision && (
           <div className="mt-1">
-            <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium ${
-              entry.decision === "approved" || entry.decision === "pass"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : entry.decision === "rejected" || entry.decision === "fail"
-                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                  : "border-border bg-muted text-muted-foreground"
-            }`}>
+            <RuntimeChip
+              className="min-h-0 px-1.5 py-0.5"
+              tone={
+                entry.decision === "approved" || entry.decision === "pass"
+                  ? "success"
+                  : entry.decision === "rejected" || entry.decision === "fail"
+                    ? "danger"
+                    : "neutral"
+              }
+            >
               {entry.decision}
-            </span>
+            </RuntimeChip>
           </div>
         )}
         {entry.note && <p className="mt-1 text-xs text-muted-foreground">{entry.note}</p>}
@@ -881,7 +884,7 @@ export function TaskBoard({
   return (
     <div className="space-y-3">
       {dragError && (
-        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+        <div className="rounded-none border-2 border-[var(--ink)] sk-cat-danger px-3 py-2 text-xs">
           {dragError}
         </div>
       )}
@@ -914,7 +917,7 @@ export function TaskBoard({
           <DragOverlay>
             {activeTask ? (
               <div className="rotate-1 opacity-95">
-                <Card size="sm" className="border-primary/60 bg-card shadow-xl ring-2 ring-primary/20">
+                <Card size="sm" className="border-primary/60 bg-card sk-hard-shadow ring-2 ring-primary/20">
                   <CardContent className="space-y-2">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">

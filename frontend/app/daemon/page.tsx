@@ -385,7 +385,7 @@ export default async function DaemonPage({
                 Computers
               </Button>
             </Link>
-            <span className={`size-2 rounded-full ${data.backendOnline ? "bg-emerald-500" : "bg-amber-500"}`} />
+            <span className={`size-2 rounded-full ${data.backendOnline ? "bg-success" : "bg-warning"}`} />
             <span>{data.backendOnline ? "Backend connected" : "Waiting for backend"}</span>
             <Wifi className="size-4" />
           </div>
@@ -749,9 +749,9 @@ export default async function DaemonPage({
                 ["POST /api/v1/dm", "Home DM form"],
                 ["GET/POST/DELETE /api/v1/channels/:id/members", "Chat member panel"],
               ].map(([endpoint, surface]) => (
-                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-md border p-2">
+                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-none border border-[var(--ink)] p-2">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="size-2 rounded-full bg-emerald-500" />
+                    <span className="size-2 rounded-full bg-success" />
                     <span className="truncate font-mono text-xs">{endpoint}</span>
                   </div>
                   <span className="truncate text-xs text-muted-foreground">{surface}</span>
@@ -762,9 +762,9 @@ export default async function DaemonPage({
                 ["POST /internal/agent-api/daemon/register", "legacy daemon lifecycle; visible on Computers"],
                 ["POST /internal/agent-api/upload", "agent attachment upload; public UI lists resulting files"],
               ].map(([endpoint, surface]) => (
-                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-md border p-2">
+                <div key={endpoint} className="flex min-w-0 flex-col gap-1 rounded-none border border-[var(--ink)] p-2">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="size-2 rounded-full bg-amber-500" />
+                    <span className="size-2 rounded-full bg-warning" />
                     <span className="truncate font-mono text-xs">{endpoint}</span>
                   </div>
                   <span className="truncate text-xs text-muted-foreground">{surface}</span>
@@ -786,7 +786,7 @@ export default async function DaemonPage({
                 <div className="space-y-3 pr-3">
                   {data.messages.map((message) => (
                     <div key={`${message.channelName}-${message.id}`} className="grid grid-cols-[auto_1fr] gap-3">
-                      <span className={`mt-2 size-2 rounded-full ${message.senderType === "agent" ? "bg-sky-500" : "bg-muted-foreground"}`} />
+                      <span className={`mt-2 size-2 rounded-full ${message.senderType === "agent" ? "bg-info" : "bg-muted-foreground"}`} />
                       <div className="min-w-0 border-b pb-3">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium">{message.sender}</span>

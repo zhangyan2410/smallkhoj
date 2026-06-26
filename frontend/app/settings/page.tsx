@@ -9,6 +9,7 @@ import { RuntimeChip } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Panel } from "@/components/ui/panel"
 import { apiGet, formatTime } from "@/lib/control-plane"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
@@ -88,13 +89,13 @@ export default async function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {lastSecret && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-                <div className="text-xs font-medium uppercase text-amber-800">New Secret</div>
-                <code className="mt-2 block break-all rounded-md border bg-background p-2 text-xs">
+              <Panel variant="flat" className="sk-cat-warning space-y-2 p-3">
+                <div className="text-xs font-semibold">New Secret</div>
+                <code className="block break-all rounded-none border-2 border-[var(--ink)] bg-background p-2 text-xs">
                   {lastSecret.secret}
                 </code>
-                <div className="mt-2 text-xs text-amber-800">This is the only time the full secret is shown.</div>
-              </div>
+                <div className="text-xs">This is the only time the full secret is shown.</div>
+              </Panel>
             )}
             <form action={createApiKeyAction} className="flex flex-wrap items-end gap-2">
               <div>
@@ -123,7 +124,7 @@ export default async function SettingsPage() {
                   <div className="truncate">{apiKey.owner?.name ?? apiKey.resourceId.slice(0, 8)}</div>
                   <div className="text-xs text-muted-foreground">{formatTime(apiKey.createdAt)}</div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <RuntimeChip className={apiKey.revoked ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>
+                    <RuntimeChip tone={apiKey.revoked ? "danger" : "success"}>
                       {apiKey.revoked ? "revoked" : "active"}
                     </RuntimeChip>
                     {!apiKey.revoked && (
@@ -155,8 +156,8 @@ export default async function SettingsPage() {
             <CardDescription>Experimental toggles require explicit persisted backend support.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <RuntimeChip className="border-amber-200 bg-amber-50 text-amber-700">Feature flags planned</RuntimeChip>
-            <RuntimeChip className="border-rose-200 bg-rose-50 text-rose-700">Destructive actions require confirm</RuntimeChip>
+            <RuntimeChip tone="warning">Feature flags planned</RuntimeChip>
+            <RuntimeChip tone="danger">Destructive actions require confirm</RuntimeChip>
           </CardContent>
         </Card>
       </div>

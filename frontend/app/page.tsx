@@ -19,7 +19,7 @@ import {
 import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, Toolbar } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, Toolbar } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -440,14 +440,14 @@ export default async function Home({
                 </CardHeader>
                 <CardContent>
                   <div className="mb-3 flex gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-                      <span className="size-1.5 rounded-full bg-amber-500" />
+                    <RuntimeChip tone="warning" className="gap-1 py-1">
+                      <span className="size-1.5 rounded-full bg-[var(--cat-warning-fg)]" />
                       {t("openCount", { count: openTasks.length })}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/15 px-2 py-1 text-xs font-medium text-sky-700 dark:text-sky-400">
-                      <span className="size-1.5 rounded-full bg-sky-500" />
+                    </RuntimeChip>
+                    <RuntimeChip tone="info" className="gap-1 py-1">
+                      <span className="size-1.5 rounded-full bg-[var(--cat-info-fg)]" />
                       {t("inProgressCount", { count: inProgressTasks.length })}
-                    </span>
+                    </RuntimeChip>
                   </div>
                   {pendingTasks.length === 0 ? (
                     <EmptyState title={t("noPendingTasks")} description={t("noPendingTasksDesc")} />
