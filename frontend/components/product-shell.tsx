@@ -71,7 +71,7 @@ export async function ProductShell({
 }) {
   const t = await getTranslations("nav")
   return (
-    <main className="bg-background text-foreground">
+    <main className="h-screen overflow-hidden bg-background text-foreground">
       {/* Col 0 — icon rail：fixed 钉死在视口左侧，不随任何滚动离开位置。
           背景图来自 .sk-rail-bg（globals.css），仍用 absolute inset-0 铺满 rail 本身。 */}
       <nav

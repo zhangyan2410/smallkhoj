@@ -349,7 +349,16 @@
 
 @layer components {
   .markdown-body {
-    @apply mt-1 leading-relaxed;
+    @apply mt-1 min-w-0 leading-relaxed break-words [overflow-wrap:anywhere];
+  }
+  /* Inline code / pre in chat: keep code blocks horizontally scrollable
+     but stop them from pushing the whole row wider than the viewport. */
+  .markdown-body :not(pre) > code {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .markdown-body pre {
+    max-width: 100%;
   }
   .markdown-body p {
     @apply mb-2 last:mb-0;

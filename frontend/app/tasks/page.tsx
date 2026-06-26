@@ -713,6 +713,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
       sidebarTitle={copy.detailTitle}
       sidebarDescription={copy.detailDescription}
       sidebar={<TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} copy={copy} />}
+      mainScrollable={false}
       actions={
         <>
           <TaskFormDialogs
@@ -751,7 +752,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
       }
     >
       <RealtimeRefresh eventTypes={["task.created", "task.updated"]} />
-      <div className="space-y-5">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto pr-1">
         <Toolbar>
           <ListChecks className="size-4 text-primary" />
           <span className="text-sm font-medium">{copy.boardListSurface}</span>
