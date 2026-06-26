@@ -130,13 +130,6 @@ const THREAD_PANEL_MIN_WIDTH = 320
 const THREAD_PANEL_MAX_WIDTH = 760
 const THREAD_PANEL_DEFAULT_WIDTH = 420
 
-/* message 内容区可调宽度（与 thread 共用同一条拖拽线：
-   拖这条线 = thread 变宽、message 内容变窄，反之亦然）。 */
-const MESSAGE_WIDTH_KEY = "smallkhoj.chat.messageWidth"
-const MESSAGE_MIN_WIDTH = 480
-const MESSAGE_MAX_WIDTH = 1500
-const MESSAGE_DEFAULT_WIDTH = 1100
-
 function channelPathSegment(value: string) {
   return encodeURIComponent(value)
 }
@@ -259,7 +252,6 @@ export function ChannelClient({
   const [uploading, setUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [threadWidthOverride, setThreadWidthOverride] = useState<number | null>(null)
-  const [messageWidthOverride, setMessageWidthOverride] = useState<number | null>(null)
   const dragDepthRef = useRef(0)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -273,13 +265,6 @@ export function ChannelClient({
     () => THREAD_PANEL_DEFAULT_WIDTH,
   )
   const threadWidth = threadWidthOverride ?? storedThreadWidth
-
-  const storedMessageWidth = useSyncExternalStore(
-    subscribePanelWidthStore,
-    () => readStoredPanelWidth(MESSAGE_WIDTH_KEY, MESSAGE_DEFAULT_WIDTH, MESSAGE_MIN_WIDTH, MESSAGE_MAX_WIDTH),
-    () => MESSAGE_DEFAULT_WIDTH,
-  )
-  const messageWidth = messageWidthOverride ?? storedMessageWidth
 
   const currentChannel = channels.find((c) => c.name.replace("#", "") === channelName)
   const currentDm = dms.find((dm) => dm.name === channelName)
@@ -330,19 +315,14 @@ export function ChannelClient({
     window.addEventListener("pointerup", handlePointerUp, { once: true })
   }
 
-  // Thread resize moves ONE drag line: thread grows ⇄ message content shrinks.
-  // direction is "left-edge" (drag left → thread wider). The message content
-  // width moves oppositely so the two panels share the same boundary.
+  // Thread resize = ONE drag line between message area and thread. The message
+  // area is flex-1 so it automatically shrinks as thread grows; only threadWidth
+  // needs to change. The line is the shared boundary the user described.
   function handleThreadResizePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     startPanelResize(
       event,
       threadWidth,
-      (width) => {
-        const delta = width - threadWidth
-        setPersistentPanelWidth(width, setThreadWidthOverride, THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH)
-        // message content moves opposite: thread +delta → message −delta
-        setPersistentPanelWidth(messageWidth - delta, setMessageWidthOverride, MESSAGE_WIDTH_KEY, MESSAGE_MIN_WIDTH, MESSAGE_MAX_WIDTH)
-      },
+      (width) => setPersistentPanelWidth(width, setThreadWidthOverride, THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),
       "left-edge",
     )
   }
@@ -350,20 +330,12 @@ export function ChannelClient({
   function handleThreadResizeKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
     event.preventDefault()
-    const delta = event.key === "ArrowLeft" ? 16 : -16
     setPersistentPanelWidth(
-      threadWidth + delta,
+      threadWidth + (event.key === "ArrowLeft" ? 16 : -16),
       setThreadWidthOverride,
       THREAD_PANEL_WIDTH_KEY,
       THREAD_PANEL_MIN_WIDTH,
       THREAD_PANEL_MAX_WIDTH,
-    )
-    setPersistentPanelWidth(
-      messageWidth - delta,
-      setMessageWidthOverride,
-      MESSAGE_WIDTH_KEY,
-      MESSAGE_MIN_WIDTH,
-      MESSAGE_MAX_WIDTH,
     )
   }
 
@@ -1071,7 +1043,7 @@ export function ChannelClient({
             )}
             {activeTab === "activity" ? (
               <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mr-auto" style={{ width: messageWidth }}>
+                <div className="mr-auto w-full max-w-4xl">
                   {dmAgent ? (
                     <AgentActivityList agentId={dmAgent.id} runtimeOnly limit={40} />
                   ) : (
@@ -1092,7 +1064,7 @@ export function ChannelClient({
               </div>
             ) : activeTab === "memory" ? (
               <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mr-auto" style={{ width: messageWidth }}>
+                <div className="mr-auto w-full max-w-4xl">
                   <MemoryProposalQueue
                     proposals={memoryProposals}
                     loading={memoryProposalLoading}
@@ -1105,7 +1077,7 @@ export function ChannelClient({
               </div>
             ) : activeTab === "files" ? (
               <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mr-auto" style={{ width: messageWidth }}>
+                <div className="mr-auto w-full max-w-4xl">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-sm font-semibold">{tChat("filesTitle")}</h2>
                     <span className="text-xs text-muted-foreground">{tChat("fileCount", { count: files.length })}</span>
@@ -1187,7 +1159,7 @@ export function ChannelClient({
             ) : (
               <>
                 <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mr-auto space-y-3" style={{ width: messageWidth }}>
+                <div className="mr-auto w-full max-w-4xl space-y-3">
                 {messages.map((msg) => {
                   const isSaved = savedMessageIds.has(msg.id)
                   const senderMember = memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)
@@ -1278,7 +1250,7 @@ export function ChannelClient({
             </div>
 
             <div data-region="composer" className="shrink-0 border-t-2 border-[var(--ink)] bg-sand-deep p-3">
-              <div className="mr-auto flex min-w-0 items-center gap-2" style={{ width: messageWidth }}>
+              <div className="mr-auto flex w-full max-w-4xl min-w-0 items-center gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
