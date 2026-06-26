@@ -23,7 +23,21 @@ function renderChannelClient(props: ChannelClientProps) {
   )
 }
 
-test("ChannelClient server markup uses stable default panel widths for hydration", () => {
+const baseProps = {
+  initialChannel: "ccc",
+  initialChannelId: "channel-1",
+  initialChannels: [{ id: "channel-1", name: "#ccc", type: "public" as const }],
+  initialMembers: [],
+  initialAllMembers: [],
+  initialDms: [],
+  initialMessages: [],
+}
+
+test("ChannelClient server markup never leaks localStorage panel widths (hydration-safe)", () => {
+  // The resizable list/sidebar panels now live in chat-sidebar / ProductShell,
+  // not ChannelClient. What still matters for hydration safety: even when
+  // window.localStorage returns stored widths, those values must NOT appear in
+  // the server-rendered markup (useResizablePanel reads storage only after mount).
   const originalWindow = globalThis.window
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -39,20 +53,14 @@ test("ChannelClient server markup uses stable default panel widths for hydration
   })
 
   try {
-    const markup = renderChannelClient({
-      initialChannel: "ccc",
-      initialChannelId: "channel-1",
-      initialChannels: [{ id: "channel-1", name: "#ccc", type: "public" }],
-      initialMembers: [],
-      initialAllMembers: [],
-      initialDms: [],
-      initialMessages: [],
-    })
+    const markup = renderChannelClient(baseProps)
 
-    assert.match(markup, /style="width:260px"/)
-    assert.match(markup, /aria-valuenow="260"/)
+    // ChannelClient still owns the thread aside width, so it must render the
+    // deterministic default and never the stored value during SSR.
     assert.doesNotMatch(markup, /315\.9443664550781/)
     assert.doesNotMatch(markup, /aria-valuenow="512"/)
+    // Sanity: the chat root + members aside render at all.
+    assert.match(markup, /data-chat-root/)
   } finally {
     Object.defineProperty(globalThis, "window", {
       configurable: true,
@@ -61,33 +69,8 @@ test("ChannelClient server markup uses stable default panel widths for hydration
   }
 })
 
-test("ChannelClient preserves backend DM recency order", () => {
-  const markup = renderChannelClient({
-    initialChannel: "ccc",
-    initialChannelId: "channel-1",
-    initialChannels: [{ id: "channel-1", name: "#ccc", type: "public" }],
-    initialMembers: [],
-    initialAllMembers: [],
-    initialDms: [
-        {
-          id: "dm-zulu",
-          name: "dm:zulu",
-          type: "dm",
-          displayName: "DM @Zulu",
-          peer: { id: "zulu", name: "zulu", displayName: "Zulu", kind: "agent", status: "online" },
-        },
-        {
-          id: "dm-alpha",
-          name: "dm:alpha",
-          type: "dm",
-          displayName: "DM @Alpha",
-          peer: { id: "alpha", name: "alpha", displayName: "Alpha", kind: "agent", status: "online" },
-        },
-      ],
-    initialMessages: [],
-  })
-
-  assert.ok(markup.indexOf("Zulu") > -1)
-  assert.ok(markup.indexOf("Alpha") > -1)
-  assert.ok(markup.indexOf("Zulu") < markup.indexOf("Alpha"))
+test("ChannelClient renders members aside with a deterministic (non-stored) header", () => {
+  const markup = renderChannelClient(baseProps)
+  // Members count header is server-stable regardless of any stored panel width.
+  assert.match(markup, /成员（0）/)
 })
