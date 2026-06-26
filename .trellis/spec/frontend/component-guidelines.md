@@ -139,6 +139,39 @@ job. Duplicate components are the #1 cause of style drift.
 
 ---
 
+## Layout Region Hooks (`data-region`)
+
+**Why:** When a reviewer says "the box left of the input" or circles a spot in a
+screenshot, there must be a deterministic path from screen pixels → DOM → source.
+Without it, the agent guesses by class-name string and frequently points at the
+wrong element.
+
+**Rule:** Every named region of a multi-panel page must carry a stable
+`data-region="<kebab-case-name>"` on its outermost container. A "named region" is
+any panel/column/zone a person would point at: sidebar, message list, composer,
+thread panel, members panel, header bar, detail pane, etc. Layout-only wrappers
+(grids, flex parents) do not need one — only regions a user identifies as a unit.
+
+Conventions:
+- The value is **semantic and stable**: `data-region="composer"`, not
+  `data-region="bottom-input-thing"`. It must not change when styling changes.
+- It lives on the **same element** that owns the region's background/border, so
+  inspecting the region also reveals its container styling.
+- `data-testid` is for test selectors (can be verbose/specific);
+  `data-region` is for **human↔code locality** and stays coarse.
+- Atoms inside a region do not repeat the region name — they keep their own
+  `data-slot` (e.g. `data-slot="member-avatar"`).
+
+Current regions (chat): `chat-main`, `message-list`, `composer`,
+`thread-panel`, `members-panel`. Add equivalents on other multi-panel routes
+(tasks board, control, daemon) when you touch them.
+
+**Verification:** `[data-region]` must be queryable from the browser. The test
+SOP should assert that each named region exists and is visible rather than
+relying on brittle class-name matches.
+
+---
+
 ## Common Mistakes (observed in this codebase)
 
 1. **Re-defining StatusBadge/dotClass per page** → caused 4 different "done" colors.
@@ -149,3 +182,7 @@ job. Duplicate components are the #1 cause of style drift.
    tokens. Any new status UI must use `badgeClass()`/`dotClass()`/`StatusPill`.
 4. **Two copies of the icon rail** (ProductShell + channel-client) → diverged styling.
    Rule: one rail, in ProductShell. Chat must compose it, not rebuild it.
+5. **No `data-region` on layout panels** → a screenshot or "the box left of the
+   input" couldn't be mapped back to source; the agent pointed at the wrong
+   element repeatedly. Fixed: chat regions now carry `data-region`. Don't add a
+   multi-panel page without tagging its regions (see Layout Region Hooks above).
