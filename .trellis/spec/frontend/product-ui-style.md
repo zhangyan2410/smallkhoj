@@ -80,6 +80,43 @@ All colors are tokens in `globals.css`. Never hardcode a color in a component or
 Status colors flow through `badgeClass()` / `dotClass()` / `StatusPill` only.
 See `component-guidelines.md` for the single-source rule.
 
+### Accent system (B/C dual-tone)
+
+Functional/section colors use a **dual-tone** accent system. Each hue has two
+variants so any usage is contrast-safe:
+
+- **solid** (C, storybook) — high-saturation, paired with white text.
+  Active tabs, active nav, selected items, primary chips.
+- **soft** (B, watercolor) — low-saturation tint, paired with dark text.
+  Inactive tabs, section backgrounds, count badges, role labels.
+
+Tokens in `globals.css`: `--accent-<hue>`, `--accent-<hue>-fg`,
+`--accent-<hue>-soft`, `--accent-<hue>-soft-fg`. Utility classes
+`.sk-accent-<hue>{,-soft}`, `.text-accent-<hue>`, `.border-accent-<hue>`
+(defined OUTSIDE `@layer utilities` with `!important` — Tailwind v4
+tree-shakes unknown utility names inside the layer).
+
+| Hue | solid | soft | Semantic use |
+|---|---|---|---|
+| blue | C `#1e6fb8` | B mist `#5b9bc9` | chat, links, primary action |
+| rose | C red `#d63838` | B rose `#d98a9e` | tasks, safety, saved, danger-emphasis |
+| mint | — | B `#6fb89a` | members, runtime, memory |
+| green | C `#2fa84f` | — | computers, files |
+| purple | C `#6b4ba0` | B lav `#8a9bc9` | control, activity |
+| yellow | C `#f2c12e` | — | accents only (no gold/amber) |
+
+Functional assignments (so nav color = function color):
+- **icon rail**: chat=blue, tasks=rose, members=mint, computers=green,
+  control=purple, activity=mint (`.sk-rail-active-<accent>`).
+- **chat tabs**: chat=blue, tasks=rose, memory=mint, files=green, activity=purple.
+- **chat sidebar sections**: 关注=rose, 频道=blue, 私信=mint, 运行中=purple.
+
+Rules:
+- Don't mix `sk-cat-*` (category) with `sk-accent-*` (function) on the same role.
+- Yellow is accent-only (highlight/warning tint); never a section/nav color.
+- No amber/gold. The `cat-warning`/`--warning` status tokens cover warm states.
+- To recolor the whole app, change only the `--accent-*` tokens.
+
 ### Forbidden colors
 - Purple/blue-violet hues 250-265 (the old theme; user rejected).
 - Tailwind palette literals: `bg-emerald-500`, `bg-amber-50`, `text-sky-700`,
