@@ -171,31 +171,35 @@
   --cat-neutral-fg: oklch(0.42 0.02 225); /* 深灰字 */
 
   /*
-   * 功能色 token（B/C 方案延伸）—— 给功能区/角色/导航分色用。
-   * 色相来自 color-options.html 的 B(水彩) + C(童书) 方案，无金色。
-   * 每色三档保证对比度：solid(实色块) + 白字 / soft(浅底) + 深字。
+   * 功能色 token（B/C 双档）—— B(水彩马卡龙)做底色 + C(童书手绘)做强调。
+   * 同色相两档：solid = C 鲜亮(配白字，active/强调)；soft = B 柔和(配深字，底/未激活)。
+   * 色值精确取自 color-options.html。允许手绘黄点缀；无琥珀金。
    * 改功能色只改这里，全站 sk-accent-* 自动跟随。
    */
-  --accent-blue: oklch(0.533 0.137 251);       /* 强蓝 C — 聊天/主操作 */
+  --accent-blue: oklch(0.533 0.137 251);        /* C 强蓝 solid */
   --accent-blue-fg: oklch(0.99 0.01 250);
-  --accent-blue-soft: oklch(0.93 0.05 251);
-  --accent-blue-soft-fg: oklch(0.38 0.11 251);
-  --accent-mint: oklch(0.55 0.10 166);         /* 薄荷 B — 记忆 */
+  --accent-blue-soft: oklch(0.665 0.095 241);   /* B 雾蓝 soft */
+  --accent-blue-soft-fg: oklch(0.28 0.06 245);
+  --accent-rose: oklch(0.582 0.195 26);         /* C 手绘红 solid */
+  --accent-rose-fg: oklch(0.99 0.01 25);
+  --accent-rose-soft: oklch(0.720 0.099 3);     /* B 玫瑰粉 soft */
+  --accent-rose-soft-fg: oklch(0.32 0.10 10);
+  --accent-mint: oklch(0.55 0.13 166);          /* 薄荷 solid(提饱和) */
   --accent-mint-fg: oklch(0.99 0.01 166);
-  --accent-mint-soft: oklch(0.93 0.05 166);
-  --accent-mint-soft-fg: oklch(0.36 0.09 166);
-  --accent-green: oklch(0.546 0.136 148);      /* 绿 C — 文件 */
+  --accent-mint-soft: oklch(0.726 0.086 166);   /* B 薄荷 soft */
+  --accent-mint-soft-fg: oklch(0.30 0.08 170);
+  --accent-green: oklch(0.646 0.166 148);       /* C 手绘绿 solid */
   --accent-green-fg: oklch(0.99 0.01 148);
-  --accent-green-soft: oklch(0.93 0.05 148);
-  --accent-green-soft-fg: oklch(0.36 0.10 148);
-  --accent-rose: oklch(0.582 0.135 3);         /* 玫瑰 C — 任务 */
-  --accent-rose-fg: oklch(0.99 0.01 3);
-  --accent-rose-soft: oklch(0.93 0.05 3);
-  --accent-rose-soft-fg: oklch(0.40 0.11 3);
-  --accent-purple: oklch(0.488 0.133 299);     /* 紫 C — 动态(强调点缀) */
+  --accent-green-soft: oklch(0.90 0.07 148);    /* 浅绿 soft */
+  --accent-green-soft-fg: oklch(0.32 0.11 150);
+  --accent-purple: oklch(0.488 0.133 299);      /* C 手绘紫 solid */
   --accent-purple-fg: oklch(0.99 0.01 299);
-  --accent-purple-soft: oklch(0.92 0.05 299);
-  --accent-purple-soft-fg: oklch(0.42 0.11 299);
+  --accent-purple-soft: oklch(0.693 0.071 269); /* B 雾紫蓝 soft */
+  --accent-purple-soft-fg: oklch(0.28 0.06 275);
+  --accent-yellow: oklch(0.832 0.159 89);       /* C 手绘黄 solid(点缀用，L 高用深字) */
+  --accent-yellow-fg: oklch(0.26 0.05 80);
+  --accent-yellow-soft: oklch(0.93 0.08 90);    /* 浅黄 soft */
+  --accent-yellow-soft-fg: oklch(0.34 0.08 85);
 }
 
 .dark {
@@ -231,27 +235,31 @@
   --cat-danger-fg: oklch(0.82 0.12 25);
   --cat-neutral: oklch(0.32 0.015 220);
   --cat-neutral-fg: oklch(0.80 0.015 220);
-  /* 功能色（dark）—— 实色提亮，浅底改半透明深底，字色提亮 */
-  --accent-blue: oklch(0.70 0.11 251);
-  --accent-blue-fg: oklch(0.16 0.03 251);
-  --accent-blue-soft: oklch(0.34 0.07 251);
-  --accent-blue-soft-fg: oklch(0.82 0.09 251);
-  --accent-mint: oklch(0.72 0.09 166);
-  --accent-mint-fg: oklch(0.16 0.03 166);
-  --accent-mint-soft: oklch(0.34 0.07 166);
-  --accent-mint-soft-fg: oklch(0.82 0.09 166);
-  --accent-green: oklch(0.70 0.12 148);
-  --accent-green-fg: oklch(0.16 0.03 148);
-  --accent-green-soft: oklch(0.34 0.07 148);
-  --accent-green-soft-fg: oklch(0.82 0.10 148);
-  --accent-rose: oklch(0.70 0.11 3);
-  --accent-rose-fg: oklch(0.16 0.03 3);
-  --accent-rose-soft: oklch(0.34 0.07 3);
-  --accent-rose-soft-fg: oklch(0.82 0.10 3);
-  --accent-purple: oklch(0.66 0.11 299);
-  --accent-purple-fg: oklch(0.16 0.03 299);
-  --accent-purple-soft: oklch(0.34 0.06 299);
-  --accent-purple-soft-fg: oklch(0.82 0.10 299);
+  /* 功能色（dark）—— solid 提亮配深字，soft 改深底配亮字 */
+  --accent-blue: oklch(0.70 0.13 251);
+  --accent-blue-fg: oklch(0.14 0.03 251);
+  --accent-blue-soft: oklch(0.34 0.08 248);
+  --accent-blue-soft-fg: oklch(0.82 0.10 248);
+  --accent-rose: oklch(0.70 0.15 25);
+  --accent-rose-fg: oklch(0.14 0.03 25);
+  --accent-rose-soft: oklch(0.34 0.08 10);
+  --accent-rose-soft-fg: oklch(0.82 0.11 10);
+  --accent-mint: oklch(0.72 0.11 166);
+  --accent-mint-fg: oklch(0.14 0.03 166);
+  --accent-mint-soft: oklch(0.34 0.07 168);
+  --accent-mint-soft-fg: oklch(0.82 0.09 168);
+  --accent-green: oklch(0.72 0.14 148);
+  --accent-green-fg: oklch(0.14 0.03 148);
+  --accent-green-soft: oklch(0.34 0.08 150);
+  --accent-green-soft-fg: oklch(0.82 0.11 150);
+  --accent-purple: oklch(0.66 0.12 299);
+  --accent-purple-fg: oklch(0.14 0.03 299);
+  --accent-purple-soft: oklch(0.34 0.07 275);
+  --accent-purple-soft-fg: oklch(0.82 0.10 275);
+  --accent-yellow: oklch(0.84 0.14 89);
+  --accent-yellow-fg: oklch(0.16 0.03 85);
+  --accent-yellow-soft: oklch(0.34 0.07 90);
+  --accent-yellow-soft-fg: oklch(0.82 0.11 90);
   --input: oklch(0.32 0.025 220);
   --ring: oklch(0.72 0.10 200);
   --chart-1: oklch(0.72 0.12 215);
@@ -377,21 +385,25 @@
 .sk-accent-green { background-color: var(--accent-green) !important; color: var(--accent-green-fg); }
 .sk-accent-rose { background-color: var(--accent-rose) !important; color: var(--accent-rose-fg); }
 .sk-accent-purple { background-color: var(--accent-purple) !important; color: var(--accent-purple-fg); }
+.sk-accent-yellow { background-color: var(--accent-yellow) !important; color: var(--accent-yellow-fg); }
 .sk-accent-blue-soft { background-color: var(--accent-blue-soft) !important; color: var(--accent-blue-soft-fg); }
 .sk-accent-mint-soft { background-color: var(--accent-mint-soft) !important; color: var(--accent-mint-soft-fg); }
 .sk-accent-green-soft { background-color: var(--accent-green-soft) !important; color: var(--accent-green-soft-fg); }
 .sk-accent-rose-soft { background-color: var(--accent-rose-soft) !important; color: var(--accent-rose-soft-fg); }
 .sk-accent-purple-soft { background-color: var(--accent-purple-soft) !important; color: var(--accent-purple-soft-fg); }
+.sk-accent-yellow-soft { background-color: var(--accent-yellow-soft) !important; color: var(--accent-yellow-soft-fg); }
 .border-accent-blue { border-color: var(--accent-blue); }
 .border-accent-mint { border-color: var(--accent-mint); }
 .border-accent-green { border-color: var(--accent-green); }
 .border-accent-rose { border-color: var(--accent-rose); }
 .border-accent-purple { border-color: var(--accent-purple); }
+.border-accent-yellow { border-color: var(--accent-yellow); }
 .text-accent-blue { color: var(--accent-blue); }
 .text-accent-mint { color: var(--accent-mint); }
 .text-accent-green { color: var(--accent-green); }
 .text-accent-rose { color: var(--accent-rose); }
 .text-accent-purple { color: var(--accent-purple); }
+.text-accent-yellow { color: var(--accent-yellow); }
 
 @layer utilities {
   /*
@@ -475,13 +487,20 @@
   .sk-rail-icon:hover {
     background: oklch(0.2 0.03 220 / 0.5);
   }
-  /* 激活态：深青圆角块 + 青色外光晕 + 左侧高亮条，替代旧紫蓝 */
-  .sk-rail-active {
-    background: oklch(0.24 0.09 205);
-    color: oklch(0.99 0.01 190);
-    box-shadow: 0 0 0 3px oklch(0.75 0.13 188 / 0.3), 0 4px 16px oklch(0.3 0.1 200 / 0.4);
-  }
-  .sk-rail-active::before {
+  /* 激活态：每个功能区用自己的 accent solid 色做胶囊 + 左侧高亮条。
+     导航色 = 功能色，一致性。 */
+  .sk-rail-active { background: var(--accent-blue); color: var(--accent-blue-fg); }
+  .sk-rail-active-blue { background: var(--accent-blue); color: var(--accent-blue-fg); }
+  .sk-rail-active-rose { background: var(--accent-rose); color: var(--accent-rose-fg); }
+  .sk-rail-active-mint { background: var(--accent-mint); color: var(--accent-mint-fg); }
+  .sk-rail-active-green { background: var(--accent-green); color: var(--accent-green-fg); }
+  .sk-rail-active-purple { background: var(--accent-purple); color: var(--accent-purple-fg); }
+  .sk-rail-active::before,
+  .sk-rail-active-blue::before,
+  .sk-rail-active-rose::before,
+  .sk-rail-active-mint::before,
+  .sk-rail-active-green::before,
+  .sk-rail-active-purple::before {
     content: "";
     position: absolute;
     left: -13px;
@@ -489,10 +508,13 @@
     transform: translateY(-50%);
     width: 3px;
     height: 22px;
-    border-radius: 0 3px 3px 0;
-    background: oklch(0.78 0.14 188);
-    box-shadow: 0 0 12px oklch(0.78 0.14 188 / 0.8);
+    border-radius: 0;
   }
+  .sk-rail-active-blue::before { background: var(--accent-blue); }
+  .sk-rail-active-rose::before { background: var(--accent-rose); }
+  .sk-rail-active-mint::before { background: var(--accent-mint); }
+  .sk-rail-active-green::before { background: var(--accent-green); }
+  .sk-rail-active-purple::before { background: var(--accent-purple); }
 }
 
 @layer components {

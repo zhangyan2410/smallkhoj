@@ -163,7 +163,7 @@ function Section({
   title: string
   count?: number
   action?: React.ReactNode
-  tone?: "ink" | "blue" | "mint" | "rose" | "purple"
+  tone?: "ink" | "blue" | "mint" | "rose" | "purple" | "green" | "yellow"
   children: React.ReactNode
 }) {
   const toneClass: Record<string, string> = {
@@ -172,13 +172,17 @@ function Section({
     mint: "text-accent-mint",
     rose: "text-accent-rose",
     purple: "text-accent-purple",
+    green: "text-accent-green",
+    yellow: "text-accent-yellow",
   }
   const countTone: Record<string, string> = {
-    ink: "border-[var(--ink)] bg-primary/15 text-primary",
+    ink: "border-[var(--ink)] bg-sand-deep text-sand-ink",
     blue: "border-[var(--ink)] sk-accent-blue-soft",
     mint: "border-[var(--ink)] sk-accent-mint-soft",
     rose: "border-[var(--ink)] sk-accent-rose-soft",
     purple: "border-[var(--ink)] sk-accent-purple-soft",
+    green: "border-[var(--ink)] sk-accent-green-soft",
+    yellow: "border-[var(--ink)] sk-accent-yellow-soft",
   }
   return (
     <div className="mt-2 first:mt-0">

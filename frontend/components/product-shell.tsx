@@ -24,14 +24,15 @@ const railItems: Array<{
   href: string
   labelKey: string
   icon: typeof Search
+  accent: "blue" | "rose" | "mint" | "green" | "purple"
 }> = [
-  { key: "search", href: "/?focus=search", labelKey: "search", icon: Search },
-  { key: "chat", href: "/chat", labelKey: "chat", icon: MessageSquare },
-  { key: "tasks", href: "/tasks", labelKey: "tasks", icon: CheckSquare },
-  { key: "members", href: "/members", labelKey: "members", icon: Bot },
-  { key: "computers", href: "/computers", labelKey: "computers", icon: HardDrive },
-  { key: "control", href: "/control/integration", labelKey: "control", icon: Radio },
-  { key: "activity", href: "/daemon", labelKey: "activity", icon: Bell },
+  { key: "search", href: "/?focus=search", labelKey: "search", icon: Search, accent: "blue" },
+  { key: "chat", href: "/chat", labelKey: "chat", icon: MessageSquare, accent: "blue" },
+  { key: "tasks", href: "/tasks", labelKey: "tasks", icon: CheckSquare, accent: "rose" },
+  { key: "members", href: "/members", labelKey: "members", icon: Bot, accent: "mint" },
+  { key: "computers", href: "/computers", labelKey: "computers", icon: HardDrive, accent: "green" },
+  { key: "control", href: "/control/integration", labelKey: "control", icon: Radio, accent: "purple" },
+  { key: "activity", href: "/daemon", labelKey: "activity", icon: Bell, accent: "mint" },
 ]
 
 export async function ProductShell({
@@ -90,7 +91,7 @@ export async function ProductShell({
         >
           <Sparkles className="size-4" />
         </Link>
-        {railItems.map(({ key, href, labelKey, icon: Icon }) => {
+        {railItems.map(({ key, href, labelKey, icon: Icon, accent }) => {
           const label = t(labelKey as never)
           return (
           <Link
@@ -101,7 +102,7 @@ export async function ProductShell({
             aria-current={active === key ? "page" : undefined}
             className={cn(
               "relative flex size-9 items-center justify-center rounded-none transition-colors",
-              active === key ? "sk-rail-active" : "sk-rail-icon"
+              active === key ? `sk-rail-active-${accent}` : "sk-rail-icon"
             )}
           >
             <Icon className="size-[18px]" />
