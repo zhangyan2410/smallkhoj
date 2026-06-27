@@ -35,7 +35,7 @@ export type CategoryTone = "primary" | "info" | "success" | "warning" | "danger"
  * 不要再用 className 覆盖颜色（border-emerald-200 bg-emerald-50 这类）。
  */
 const chipToneClass: Record<CategoryTone, string> = {
-  primary: "border-primary/30 bg-primary/10 text-primary",
+  primary: "border-[var(--ink)] sk-accent-blue-soft",
   info: "border-[var(--ink)] sk-cat-info",
   success: "border-[var(--ink)] sk-cat-success",
   warning: "border-[var(--ink)] sk-cat-warning",

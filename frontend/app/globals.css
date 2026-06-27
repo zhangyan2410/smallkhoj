@@ -591,21 +591,9 @@
   .markdown-body li {
     @apply mb-0.5;
   }
-  .markdown-body a {
-    @apply text-primary underline;
-  }
-  .markdown-body code {
-    @apply rounded bg-muted px-1 py-0.5 font-mono text-sm;
-  }
-  .markdown-body pre {
-    @apply mb-2 overflow-x-auto rounded-md bg-muted/70 p-3;
-  }
-  .markdown-body pre code {
-    @apply bg-transparent p-0;
-  }
-  .markdown-body blockquote {
-    @apply mb-2 border-l-2 border-muted-foreground/30 pl-3 text-muted-foreground;
-  }
+  /* NOTE: a / code / pre / blockquote 的手作风样式在上方第一套规则里
+     （薄荷 code 墨边、accent-blue 链接、玫瑰 blockquote）。
+     这里删除了覆盖它们的旧 SaaS 规则（text-primary underline / rounded bg-muted / 等）。 */
   .markdown-body hr {
     @apply my-3 border-border;
   }

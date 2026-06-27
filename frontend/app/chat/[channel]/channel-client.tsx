@@ -1212,7 +1212,7 @@ export function ChannelClient({
                             {taskLinks[msg.id] && (
                               <Link
                                 href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                                className="inline-flex items-center gap-1 rounded-none border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                                className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-accent-rose-soft px-1.5 py-0.5 text-[0.7rem] font-medium hover:opacity-85"
                               >
                                 <CheckSquare className="size-3" />
                                 {tChat("taskBadge")}
@@ -1235,7 +1235,7 @@ export function ChannelClient({
                           <button
                             type="button"
                             onClick={() => openThread(msg)}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                            className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] bg-paper px-1.5 py-0.5 text-xs font-medium text-accent-blue hover:sk-accent-blue-soft"
                           >
                             <MessageCircle className="size-3" />
                             {msg.replyCount ? tChat("replyCount", { count: msg.replyCount }) : tChat("reply")}
@@ -1249,10 +1249,10 @@ export function ChannelClient({
                               key={emoji}
                               type="button"
                               onClick={() => toggleReaction(msg, emoji)}
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors ${
+                              className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs transition-colors ${
                                 didReact(msg, emoji)
-                                  ? "bg-primary/10 text-primary"
-                                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  ? "sk-accent-rose-soft"
+                                  : "bg-paper text-sand-ink hover:bg-muted/60"
                               }`}
                               aria-label={tChat("reactionCount", { count, reaction: emoji })}
                             >
@@ -1405,7 +1405,7 @@ export function ChannelClient({
                       {taskLinks[activeRoot.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[activeRoot.id])}`}
-                          className="mt-1.5 inline-flex items-center gap-1 rounded-none bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                          className="mt-1.5 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-accent-rose-soft px-1.5 py-0.5 text-[0.7rem] font-medium hover:opacity-85"
                         >
                           <CheckSquare className="size-3" />
                           {tChat("openTask")}
@@ -1419,10 +1419,10 @@ export function ChannelClient({
                               key={emoji}
                               type="button"
                               onClick={() => toggleReaction(activeRoot, emoji)}
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors ${
+                              className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs transition-colors ${
                                 didReact(activeRoot, emoji)
-                                  ? "bg-primary/10 text-primary"
-                                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  ? "sk-accent-rose-soft"
+                                  : "bg-paper text-sand-ink hover:bg-muted/60"
                               }`}
                               aria-label={tChat("reactionCount", { count, reaction: emoji })}
                             >
@@ -1457,7 +1457,7 @@ export function ChannelClient({
                       {taskLinks[msg.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                          className="mt-1.5 inline-flex items-center gap-1 rounded-none bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                          className="mt-1.5 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-accent-rose-soft px-1.5 py-0.5 text-[0.7rem] font-medium hover:opacity-85"
                         >
                           <CheckSquare className="size-3" />
                           {tChat("openTask")}
@@ -1471,10 +1471,10 @@ export function ChannelClient({
                               key={emoji}
                               type="button"
                               onClick={() => toggleReaction(msg, emoji)}
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors ${
+                              className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs transition-colors ${
                                 didReact(msg, emoji)
-                                  ? "bg-primary/10 text-primary"
-                                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  ? "sk-accent-rose-soft"
+                                  : "bg-paper text-sand-ink hover:bg-muted/60"
                               }`}
                               aria-label={tChat("reactionCount", { count, reaction: emoji })}
                             >
