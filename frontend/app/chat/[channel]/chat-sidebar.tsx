@@ -58,7 +58,7 @@ export function ChatSidebar() {
 
       <div className="flex-1 overflow-y-auto p-3">
         {/* Attention */}
-        <Section title={tChat("attention")}>
+        <Section title={tChat("attention")} tone="rose">
           <Item href="/daemon" icon={<Activity className="size-3.5" />}>
             {tChat("activity")}
           </Item>
@@ -70,6 +70,7 @@ export function ChatSidebar() {
         {/* Channels */}
         <Section
           title={tChat("channels")}
+          tone="blue"
           action={<CreateChannelDialog />}
         >
           {[...channels]
@@ -98,7 +99,7 @@ export function ChatSidebar() {
         </Section>
 
         {/* DMs */}
-        <Section title={tChat("dms")} action={<CreateAgentDialog />}>
+        <Section title={tChat("dms")} tone="mint" action={<CreateAgentDialog />}>
           {dms.map((dm) => {
             const peer = dmAvatarMember(dm)
             const isActive = dm.name === currentChannelName
@@ -130,6 +131,7 @@ export function ChatSidebar() {
         {activeAgents.length > 0 && (
           <Section
             title={tChat("running")}
+            tone="purple"
             count={activeAgents.length}
           >
             {activeAgents.map((agent) => (
@@ -155,20 +157,36 @@ function Section({
   title,
   count,
   action,
+  tone = "ink",
   children,
 }: {
   title: string
   count?: number
   action?: React.ReactNode
+  tone?: "ink" | "blue" | "mint" | "rose" | "purple"
   children: React.ReactNode
 }) {
+  const toneClass: Record<string, string> = {
+    ink: "text-sand-ink",
+    blue: "text-accent-blue",
+    mint: "text-accent-mint",
+    rose: "text-accent-rose",
+    purple: "text-accent-purple",
+  }
+  const countTone: Record<string, string> = {
+    ink: "border-[var(--ink)] bg-primary/15 text-primary",
+    blue: "border-[var(--ink)] sk-accent-blue-soft",
+    mint: "border-[var(--ink)] sk-accent-mint-soft",
+    rose: "border-[var(--ink)] sk-accent-rose-soft",
+    purple: "border-[var(--ink)] sk-accent-purple-soft",
+  }
   return (
     <div className="mt-2 first:mt-0">
       <div className="mb-1 flex items-center justify-between px-2">
-        <h3 className="text-sm font-medium text-sand-ink">{title}</h3>
+        <h3 className={cn("text-sm font-medium", toneClass[tone])}>{title}</h3>
         <div className="flex items-center gap-2">
           {typeof count === "number" && (
-            <span className="rounded-none border border-[var(--ink)] bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+            <span className={cn("rounded-none border px-1.5 py-0.5 text-[10px] font-semibold", countTone[tone])}>
               {count}
             </span>
           )}

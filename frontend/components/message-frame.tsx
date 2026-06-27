@@ -70,11 +70,16 @@ export function MessageFrame({
       <div className={cn("min-w-0 flex-1", bodyClassName)}>
         <div className="flex items-start justify-between gap-2">
           <div data-slot="message-author" className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-            <span className="truncate font-semibold text-foreground">{memberAvatarName(member).replace(/^@/, "")}</span>
+            <span
+              className="truncate font-semibold"
+              style={stripeColor ? { color: stripeColor } : undefined}
+            >
+              {memberAvatarName(member).replace(/^@/, "")}
+            </span>
             <span
               className={cn(
-                "rounded-none px-1.5 py-0.5 text-[0.65rem] font-medium",
-                role === "assistant" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                "rounded-none border border-[var(--ink)] px-1.5 py-0.5 text-[0.65rem] font-medium",
+                role === "assistant" ? "sk-accent-blue-soft" : "sk-cat-neutral"
               )}
             >
               {visibleRole}

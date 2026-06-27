@@ -500,13 +500,48 @@
     @apply mt-1 min-w-0 leading-relaxed break-words [overflow-wrap:anywhere];
   }
   /* Inline code / pre in chat: keep code blocks horizontally scrollable
-     but stop them from pushing the whole row wider than the viewport. */
+     but stop them from pushing the whole row wider than the viewport.
+     代码用薄荷青调（区别正文），手作风墨边直角。 */
   .markdown-body :not(pre) > code {
     word-break: break-word;
     overflow-wrap: anywhere;
+    background-color: var(--accent-mint-soft);
+    color: var(--accent-mint-soft-fg);
+    border: 1.5px solid var(--ink);
+    padding: 0.05em 0.35em;
+    font-size: 0.85em;
   }
   .markdown-body pre {
     max-width: 100%;
+    background-color: var(--accent-mint-soft);
+    border: 2px solid var(--ink);
+    padding: 0.6rem 0.75rem;
+    overflow-x: auto;
+  }
+  .markdown-body pre code {
+    background-color: transparent;
+    border: 0;
+    padding: 0;
+    font-size: inherit;
+    color: var(--paper-ink);
+  }
+  /* 链接用功能蓝（链接语义），下划线偏移 */
+  .markdown-body a {
+    color: var(--accent-blue);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-weight: 500;
+  }
+  .markdown-body a:hover {
+    opacity: 0.8;
+  }
+  /* 引用块用玫瑰调（强调/备注语义）*/
+  .markdown-body blockquote {
+    border-left: 3px solid var(--accent-rose);
+    background-color: var(--accent-rose-soft);
+    padding: 0.25rem 0.75rem;
+    margin: 0.5rem 0;
+    color: var(--accent-rose-soft-fg);
   }
   .markdown-body p {
     @apply mb-2 last:mb-0;
