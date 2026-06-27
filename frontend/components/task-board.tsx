@@ -647,6 +647,9 @@ export type TaskBoardProps = {
   initialSelectedTaskId?: string | null
   /** Callback when a task is moved (for optimistic updates in parent) */
   onTaskMoved?: (taskId: string, newStatus: string) => void
+  /** Optional override: clicking a card navigates (e.g. to ?task=) instead of
+      toggling local selection. When provided, handleSelect calls this. */
+  onSelectTask?: (task: Task) => void
 }
 
 export function TaskBoard({
@@ -660,6 +663,7 @@ export function TaskBoard({
   sessionToken,
   initialSelectedTaskId,
   onTaskMoved,
+  onSelectTask,
 }: TaskBoardProps) {
   const [view, setView] = useState<"board" | "list">(initialView)
   const [tasks, setTasks] = useState<Task[]>(preloadedTasks ?? [])
@@ -739,8 +743,12 @@ export function TaskBoard({
   }, [selectedTask, showDetail])
 
   const handleSelect = useCallback((task: Task) => {
+    if (onSelectTask) {
+      onSelectTask(task)
+      return
+    }
     setSelectedTask((prev) => (prev?.id === task.id ? null : task))
-  }, [])
+  }, [onSelectTask])
 
   const updateLocalTask = useCallback((taskId: string, updater: (task: Task) => Task) => {
     setTasks((prev) => prev.map((task) => (task.id === taskId ? updater(task) : task)))

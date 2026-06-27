@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ListChecks } from "lucide-react"
 
 import { TaskBoard, type Task } from "@/components/task-board"
@@ -24,6 +25,7 @@ function taskHref(task: Task, filters: Record<string, string>) {
 }
 
 export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoardProps) {
+  const router = useRouter()
   const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({})
 
   const localTasks = useMemo(
@@ -50,6 +52,11 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
     status: filters.status,
   }
 
+  // 点击看板卡片 -> 导航到 ?task=（打开详情 Dialog），单一真源是 URL
+  const handleSelectTask = useCallback((task: Task) => {
+    router.push(taskHref(task, filterRecord))
+  }, [router, filterRecord])
+
   return (
     <div>
       {view === "board" ? (
@@ -62,6 +69,7 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
           dragDisabled={false}
           sessionToken={sessionToken}
           onTaskMoved={handleTaskMoved}
+          onSelectTask={handleSelectTask}
         />
       ) : (
         <div className="overflow-hidden rounded-none border-2 border-[var(--ink)] bg-card">

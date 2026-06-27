@@ -29,6 +29,7 @@ import { apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntr
 import { requireCurrentAccount, serverApiHeaders, getSessionToken } from "@/lib/server-auth"
 
 import { TaskDndBoard } from "@/components/task-dnd-board"
+import { TaskDetailDialog } from "@/components/task-detail-dialog"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
@@ -694,6 +695,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
     assignee: filters.assignee,
     status: filters.status,
   }
+  const tasksBaseHref = `/tasks?${new URLSearchParams(filterRecord).toString()}`
 
   return (
     <ProductShell
@@ -839,6 +841,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
           sessionToken={sessionToken}
         />
       </div>
+      <TaskDetailDialog open={!!selectedTaskId} closeHref={tasksBaseHref}>
+        <TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} copy={copy} />
+      </TaskDetailDialog>
     </ProductShell>
   )
 }
