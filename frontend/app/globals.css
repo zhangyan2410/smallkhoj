@@ -111,10 +111,10 @@
    * 色相来自 zy-think 色彩提取（hue 60-120 的暖沙区）。
    * rail 仍用水材质；列表栏/主区用暖沙，呼应「水 + 沙」冷暖分工。
    */
-  --sand-deep: oklch(0.86 0.055 75);      /* Col1 列表栏底色（深暖沙，比 sand 更沉做层次）*/
-  --sand: oklch(0.93 0.045 80);           /* Col2 主区底色（浅暖沙）*/
-  --sand-card: oklch(0.955 0.022 80);     /* 浮在主区上的卡片/侧栏面板（暖沙白，非纯白）*/
-  --paper: oklch(0.992 0.008 85);         /* 书卷纸色：接近纯白带极淡暖沙，消息气泡底色 */
+  --sand-deep: oklch(0.852 0.035 85);     /* Col1 列表栏底色（深暖沙，做层次；= color-options body 底）*/
+  --sand: oklch(0.898 0.035 85);          /* Col2 主区底色（暖沙，比之前更深更实）*/
+  --sand-card: oklch(0.939 0.025 87);     /* 浮在主区上的卡片/侧栏面板（暖沙白，非纯白）*/
+  --paper: oklch(0.985 0.010 87);         /* 书卷纸色：接近纯白带极淡暖沙，消息气泡底色 */
   --paper-ink: oklch(0.30 0.025 60);      /* 书卷上的墨字 */
   --sand-ink: oklch(0.32 0.04 55);        /* 暖沙上的深棕文字 */
   --sand-muted: oklch(0.52 0.035 60);     /* 暖沙上的次要文字 */
@@ -226,13 +226,15 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
-    /* DESIGN.md 光感·中：自上而下的极淡明度渐变，仅 body 层 */
+    @apply text-foreground;
+    /* 暖沙底（对齐 color-options.html 的顺眼背景 #d9cdb5）。
+       自上而下极淡明度渐变，仅 body 层，光感·中。 */
+    background-color: var(--sand-deep);
     background-image: linear-gradient(
       to bottom,
-      oklch(0.99 0.005 220) 0%,
-      oklch(0.985 0.008 220) 50%,
-      oklch(0.96 0.012 215) 100%
+      oklch(0.872 0.035 85) 0%,
+      oklch(0.852 0.035 85) 50%,
+      oklch(0.832 0.035 85) 100%
     );
   }
   html {
