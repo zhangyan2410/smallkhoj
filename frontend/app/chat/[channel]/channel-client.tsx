@@ -120,12 +120,12 @@ type SavedItem = {
 }
 
 const conversationTabs = [
-  { key: "chat", labelKey: "tabChat", icon: MessageCircle },
-  { key: "tasks", labelKey: "tabTasks", icon: ListChecks },
-  { key: "memory", labelKey: "tabMemory", icon: Database },
-  { key: "files", labelKey: "tabFiles", icon: Files },
-  { key: "activity", labelKey: "tabActivity", icon: Activity },
-]
+  { key: "chat", labelKey: "tabChat", icon: MessageCircle, tone: "blue" },
+  { key: "tasks", labelKey: "tabTasks", icon: ListChecks, tone: "rose" },
+  { key: "memory", labelKey: "tabMemory", icon: Database, tone: "mint" },
+  { key: "files", labelKey: "tabFiles", icon: Files, tone: "green" },
+  { key: "activity", labelKey: "tabActivity", icon: Activity, tone: "purple" },
+] as const
 const THREAD_PANEL_WIDTH_KEY = "smallkhoj.chat.threadWidth"
 const THREAD_PANEL_MIN_WIDTH = 320
 const THREAD_PANEL_MAX_WIDTH = 760
@@ -984,19 +984,30 @@ export function ChannelClient({
                 </div>
               </div>
             </div>
-            {/* Tab strip — uses the shared Button atom so it matches the rest of
-                the app (no chat-specific styling). Active = default, inactive = outline. */}
+            {/* Tab strip — each tab carries its functional accent color
+                (blue/rose/mint/green/purple). Active = solid accent + white text,
+                inactive = soft accent + dark text. All combos are contrast-safe. */}
             <div className="ml-4 flex gap-1 border-l pl-4">
-              {conversationTabs.map(({ key, labelKey, icon: Icon }) => {
+              {conversationTabs.map(({ key, labelKey, icon: Icon, tone }) => {
                 const tabKey = key as "chat" | "tasks" | "memory" | "files" | "activity"
                 const label = tChat(labelKey)
                 const isActive = activeTab === tabKey
+                // full static class strings (so they survive CSS purging/merge);
+                // active = solid accent + white text, inactive = soft accent + dark text
+                const tabClass: Record<string, { on: string; off: string }> = {
+                  blue: { on: "sk-accent-blue", off: "sk-accent-blue-soft" },
+                  rose: { on: "sk-accent-rose", off: "sk-accent-rose-soft" },
+                  mint: { on: "sk-accent-mint", off: "sk-accent-mint-soft" },
+                  green: { on: "sk-accent-green", off: "sk-accent-green-soft" },
+                  purple: { on: "sk-accent-purple", off: "sk-accent-purple-soft" },
+                }
                 return (
                   <Button
                     key={key}
                     type="button"
                     size="sm"
-                    variant={isActive ? "default" : "outline"}
+                    variant="outline"
+                    className={`${isActive ? tabClass[tone].on : tabClass[tone].off} border-[var(--ink)]`}
                     onClick={() => {
                       setActiveTab(tabKey)
                       if (tabKey === "files") void refreshFiles()

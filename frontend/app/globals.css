@@ -169,6 +169,33 @@
   --cat-danger-fg: oklch(0.42 0.13 25);   /* 深珊瑚字 */
   --cat-neutral: oklch(0.94 0.01 220);    /* 暖沙灰浅底 */
   --cat-neutral-fg: oklch(0.42 0.02 225); /* 深灰字 */
+
+  /*
+   * 功能色 token（B/C 方案延伸）—— 给功能区/角色/导航分色用。
+   * 色相来自 color-options.html 的 B(水彩) + C(童书) 方案，无金色。
+   * 每色三档保证对比度：solid(实色块) + 白字 / soft(浅底) + 深字。
+   * 改功能色只改这里，全站 sk-accent-* 自动跟随。
+   */
+  --accent-blue: oklch(0.533 0.137 251);       /* 强蓝 C — 聊天/主操作 */
+  --accent-blue-fg: oklch(0.99 0.01 250);
+  --accent-blue-soft: oklch(0.93 0.05 251);
+  --accent-blue-soft-fg: oklch(0.38 0.11 251);
+  --accent-mint: oklch(0.55 0.10 166);         /* 薄荷 B — 记忆 */
+  --accent-mint-fg: oklch(0.99 0.01 166);
+  --accent-mint-soft: oklch(0.93 0.05 166);
+  --accent-mint-soft-fg: oklch(0.36 0.09 166);
+  --accent-green: oklch(0.546 0.136 148);      /* 绿 C — 文件 */
+  --accent-green-fg: oklch(0.99 0.01 148);
+  --accent-green-soft: oklch(0.93 0.05 148);
+  --accent-green-soft-fg: oklch(0.36 0.10 148);
+  --accent-rose: oklch(0.582 0.135 3);         /* 玫瑰 C — 任务 */
+  --accent-rose-fg: oklch(0.99 0.01 3);
+  --accent-rose-soft: oklch(0.93 0.05 3);
+  --accent-rose-soft-fg: oklch(0.40 0.11 3);
+  --accent-purple: oklch(0.488 0.133 299);     /* 紫 C — 动态(强调点缀) */
+  --accent-purple-fg: oklch(0.99 0.01 299);
+  --accent-purple-soft: oklch(0.92 0.05 299);
+  --accent-purple-soft-fg: oklch(0.42 0.11 299);
 }
 
 .dark {
@@ -204,6 +231,27 @@
   --cat-danger-fg: oklch(0.82 0.12 25);
   --cat-neutral: oklch(0.32 0.015 220);
   --cat-neutral-fg: oklch(0.80 0.015 220);
+  /* 功能色（dark）—— 实色提亮，浅底改半透明深底，字色提亮 */
+  --accent-blue: oklch(0.70 0.11 251);
+  --accent-blue-fg: oklch(0.16 0.03 251);
+  --accent-blue-soft: oklch(0.34 0.07 251);
+  --accent-blue-soft-fg: oklch(0.82 0.09 251);
+  --accent-mint: oklch(0.72 0.09 166);
+  --accent-mint-fg: oklch(0.16 0.03 166);
+  --accent-mint-soft: oklch(0.34 0.07 166);
+  --accent-mint-soft-fg: oklch(0.82 0.09 166);
+  --accent-green: oklch(0.70 0.12 148);
+  --accent-green-fg: oklch(0.16 0.03 148);
+  --accent-green-soft: oklch(0.34 0.07 148);
+  --accent-green-soft-fg: oklch(0.82 0.10 148);
+  --accent-rose: oklch(0.70 0.11 3);
+  --accent-rose-fg: oklch(0.16 0.03 3);
+  --accent-rose-soft: oklch(0.34 0.07 3);
+  --accent-rose-soft-fg: oklch(0.82 0.10 3);
+  --accent-purple: oklch(0.66 0.11 299);
+  --accent-purple-fg: oklch(0.16 0.03 299);
+  --accent-purple-soft: oklch(0.34 0.06 299);
+  --accent-purple-soft-fg: oklch(0.82 0.10 299);
   --input: oklch(0.32 0.025 220);
   --ring: oklch(0.72 0.10 200);
   --chart-1: oklch(0.72 0.12 215);
@@ -314,7 +362,38 @@
   .sk-cat-warning { background-color: var(--cat-warning); color: var(--cat-warning-fg); }
   .sk-cat-danger { background-color: var(--cat-danger); color: var(--cat-danger-fg); }
   .sk-cat-neutral { background-color: var(--cat-neutral); color: var(--cat-neutral-fg); }
+}
 
+/*
+ * 功能色工具类（B/C 多色延伸）。两档保证对比度：
+ * sk-accent-<hue>        = 实色底 + 白字（按钮/active tab/选中态）
+ * sk-accent-<hue>-soft   = 浅底 + 深字（标签/角色徽章/次级强调）
+ * 无金色。改功能色只改 --accent-* token。
+ * NOTE: 放在 @layer utilities 之外（普通 CSS），避免 Tailwind v4 对未识别
+ * 工具类名做 tree-shaking 时误删。importance 靠源顺序 + 出现在 Button 之后。
+ */
+.sk-accent-blue { background-color: var(--accent-blue) !important; color: var(--accent-blue-fg); }
+.sk-accent-mint { background-color: var(--accent-mint) !important; color: var(--accent-mint-fg); }
+.sk-accent-green { background-color: var(--accent-green) !important; color: var(--accent-green-fg); }
+.sk-accent-rose { background-color: var(--accent-rose) !important; color: var(--accent-rose-fg); }
+.sk-accent-purple { background-color: var(--accent-purple) !important; color: var(--accent-purple-fg); }
+.sk-accent-blue-soft { background-color: var(--accent-blue-soft) !important; color: var(--accent-blue-soft-fg); }
+.sk-accent-mint-soft { background-color: var(--accent-mint-soft) !important; color: var(--accent-mint-soft-fg); }
+.sk-accent-green-soft { background-color: var(--accent-green-soft) !important; color: var(--accent-green-soft-fg); }
+.sk-accent-rose-soft { background-color: var(--accent-rose-soft) !important; color: var(--accent-rose-soft-fg); }
+.sk-accent-purple-soft { background-color: var(--accent-purple-soft) !important; color: var(--accent-purple-soft-fg); }
+.border-accent-blue { border-color: var(--accent-blue); }
+.border-accent-mint { border-color: var(--accent-mint); }
+.border-accent-green { border-color: var(--accent-green); }
+.border-accent-rose { border-color: var(--accent-rose); }
+.border-accent-purple { border-color: var(--accent-purple); }
+.text-accent-blue { color: var(--accent-blue); }
+.text-accent-mint { color: var(--accent-mint); }
+.text-accent-green { color: var(--accent-green); }
+.text-accent-rose { color: var(--accent-rose); }
+.text-accent-purple { color: var(--accent-purple); }
+
+@layer utilities {
   /*
    * 组合工具类：让裸 div 一行收口到手作风。
    * sk-panel = 墨边 + 暖白底 + 直角（无阴影，气泡/信息块）
