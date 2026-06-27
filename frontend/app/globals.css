@@ -565,6 +565,21 @@
     margin: 0.5rem 0;
     color: var(--accent-rose-soft-fg);
   }
+  /* @提及 / #频道标签：手作风彩色小 chip，区别于普通正文 */
+  .markdown-body .mention {
+    color: var(--accent-rose);
+    font-weight: 600;
+    background-color: var(--accent-rose-soft);
+    padding: 0 0.2em;
+    border-radius: 0;
+  }
+  .markdown-body .channel-tag {
+    color: var(--accent-blue-soft-fg);
+    font-weight: 600;
+    background-color: var(--accent-blue-soft);
+    padding: 0 0.2em;
+    border-radius: 0;
+  }
   .markdown-body p {
     @apply mb-2 last:mb-0;
   }
