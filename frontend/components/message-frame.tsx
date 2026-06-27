@@ -85,7 +85,7 @@ export function MessageFrame({
               {visibleRole}
             </span>
             {visibleTime ? (
-              <span className="whitespace-nowrap text-xs text-muted-foreground" title={time ?? undefined}>
+              <span className="whitespace-nowrap text-xs text-sand-muted" title={time ?? undefined}>
                 {visibleTime}
               </span>
             ) : null}

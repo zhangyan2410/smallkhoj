@@ -978,7 +978,7 @@ export function ChannelClient({
               )}
               <div className="min-w-0">
                 <h1 className="truncate text-sm font-semibold leading-tight">{currentTitle}</h1>
-                <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="mt-0.5 flex items-center gap-2 text-xs text-sand-muted">
                   <RuntimeChip>{currentIsDm ? tChat("directMessageChip") : tChat("channel")}</RuntimeChip>
                   <span>{tChat("rootMessages", { count: messages.length })}</span>
                 </div>
@@ -1060,7 +1060,7 @@ export function ChannelClient({
               <div className="pointer-events-none absolute inset-2 z-50 flex flex-col items-center justify-center rounded-none border-2 border-dashed border-[var(--ink)] bg-[var(--accent-blue-soft)]">
                 <Files className="size-7 text-accent-blue" />
                 <p className="mt-2 text-sm font-medium">{tChat("dropFileTitle")}</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-sand-muted">
                   {channelId ? tChat("dropFileReady") : tChat("dropFileNoChannel")}
                 </p>
               </div>
@@ -1104,7 +1104,7 @@ export function ChannelClient({
                 <div className="mr-auto w-full max-w-[1248px]">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-sm font-semibold">{tChat("filesTitle")}</h2>
-                    <span className="text-xs text-muted-foreground">{tChat("fileCount", { count: files.length })}</span>
+                    <span className="text-xs text-sand-muted">{tChat("fileCount", { count: files.length })}</span>
                   </div>
                   {filesLoading && <p className="py-12 text-center text-sm text-muted-foreground">{tChat("filesLoading")}</p>}
                   {!filesLoading && files.length === 0 && (
@@ -1122,9 +1122,9 @@ export function ChannelClient({
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="truncate text-sm font-medium">{file.originalName}</span>
-                              <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                              <span className="shrink-0 text-xs text-sand-muted">{formatFileSize(file.size)}</span>
                             </div>
-                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="mt-0.5 flex items-center gap-2 text-xs text-sand-muted">
                               <span>{uploader?.displayName || tChat("unknown")}</span>
                               {file.createdAt && (
                                 <>
@@ -1230,7 +1230,7 @@ export function ChannelClient({
                       {(msg.replyCount || msg.threadSummary) && (
                         <div className="mt-1.5 pl-10">
                           {msg.threadSummary?.summary && (
-                            <p className="mb-1 text-xs text-muted-foreground">{msg.threadSummary.summary}</p>
+                            <p className="mb-1 text-xs text-sand-muted">{msg.threadSummary.summary}</p>
                           )}
                           <button
                             type="button"
@@ -1305,6 +1305,7 @@ export function ChannelClient({
                   onKeyDown={handleKeyDown}
                   placeholder={currentDm ? tChat("dmComposePlaceholder", { peer: currentTitle.replace(/^DM @/, "") }) : tChat("composePlaceholder", { channel: currentTitle.replace(/^#/, "") })}
                   className="flex-1"
+                  style={{ backgroundColor: "var(--paper)" }}
                 />
                 <button
                   type="button"
@@ -1361,7 +1362,7 @@ export function ChannelClient({
                     <div className="min-w-0">
                       <h2 className="truncate text-sm font-semibold">{tChat("thread")}</h2>
                       {activeRoot && (
-                        <p className="truncate text-xs text-muted-foreground">
+                        <p className="truncate text-xs text-sand-muted">
                           {activeRoot.sender.replace(/^@/, "")} · {tChat("replyCount", { count: threadData?.replyCount ?? 0 })}
                         </p>
                       )}
@@ -1379,7 +1380,7 @@ export function ChannelClient({
                   </button>
                 </div>
                 {threadData?.threadSummary?.summary && (
-                  <p className="mb-2 text-xs text-muted-foreground">
+                  <p className="mb-2 text-xs text-sand-muted">
                     <span className="font-medium text-foreground">{tChat("summary")}</span> {threadData.threadSummary.summary}
                   </p>
                 )}
@@ -1499,6 +1500,7 @@ export function ChannelClient({
                     onKeyDown={handleThreadKeyDown}
                     placeholder={tChat("replyPlaceholder")}
                     className="flex-1"
+                  style={{ backgroundColor: "var(--paper)" }}
                   />
                   <Button
                     type="button"
@@ -1579,7 +1581,7 @@ export function ChannelClient({
                     >
                       <MemberAvatar member={m} size="xs" />
                       <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{statusLabel(m.status)}</span>
+                      <span className="shrink-0 text-xs text-sand-muted">{statusLabel(m.status)}</span>
                       {m.kind === "agent" && !currentIsDm && (
                         <button
                           aria-label={tChat("removeMember", { member: m.displayName || m.name })}
