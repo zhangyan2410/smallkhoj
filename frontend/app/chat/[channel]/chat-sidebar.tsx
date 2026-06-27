@@ -84,7 +84,7 @@ export function ChatSidebar() {
                   className={cn(
                     "flex items-center gap-2 truncate rounded-none border-2 border-transparent px-2 py-1.5 text-sm transition-colors",
                     isActive
-                      ? "border-[var(--ink)] bg-primary/10 font-medium text-primary"
+                      ? "border-[var(--ink)] sk-accent-blue-soft font-medium"
                       : "text-sand-ink hover:bg-sand"
                   )}
                 >
@@ -110,7 +110,7 @@ export function ChatSidebar() {
                 className={cn(
                   "flex items-center gap-2 truncate rounded-none border-2 border-transparent px-2 py-1.5 text-sm transition-colors",
                   isActive
-                    ? "border-[var(--ink)] bg-primary/10 font-medium text-primary"
+                    ? "border-[var(--ink)] sk-accent-mint-soft font-medium"
                     : "text-sand-ink hover:bg-sand"
                 )}
               >

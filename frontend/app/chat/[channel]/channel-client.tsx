@@ -1057,8 +1057,8 @@ export function ChannelClient({
             onDrop={handleDrop}
           >
             {isDragOver && (
-              <div className="pointer-events-none absolute inset-2 z-50 flex flex-col items-center justify-center rounded-none border-2 border-dashed border-primary/40 bg-primary/8">
-                <Files className="size-7 text-primary" />
+              <div className="pointer-events-none absolute inset-2 z-50 flex flex-col items-center justify-center rounded-none border-2 border-dashed border-[var(--ink)] bg-[var(--accent-blue-soft)]">
+                <Files className="size-7 text-accent-blue" />
                 <p className="mt-2 text-sm font-medium">{tChat("dropFileTitle")}</p>
                 <p className="text-xs text-muted-foreground">
                   {channelId ? tChat("dropFileReady") : tChat("dropFileNoChannel")}
@@ -1192,7 +1192,7 @@ export function ChannelClient({
                       key={msg.id}
                       data-testid={`message-${msg.id}`}
                       className={`group/message relative -mx-2 min-w-0 px-2 py-1.5 transition-colors ${
-                        isSaved ? "bg-primary/5" : ""
+                        isSaved ? "sk-accent-rose-soft/40" : ""
                       }`}
                       tabIndex={0}
                     >
@@ -1207,7 +1207,7 @@ export function ChannelClient({
                         badges={
                           <>
                             {isSaved && (
-                              <Bookmark className="size-3 text-primary" aria-label={tChat("savedBadge")} />
+                              <Bookmark className="size-3 text-accent-rose" aria-label={tChat("savedBadge")} />
                             )}
                             {taskLinks[msg.id] && (
                               <Link
@@ -1354,7 +1354,7 @@ export function ChannelClient({
                 data-testid="thread-panel-resize-handle"
                 onPointerDown={handleThreadResizePointerDown}
                 onKeyDown={handleThreadResizeKeyDown}
-                className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border hover:after:w-0.5 hover:after:bg-primary/60 focus-visible:after:w-0.5 focus-visible:after:bg-primary"
+                className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border hover:after:w-0.5 hover:after:bg-[var(--ink)] focus-visible:after:w-0.5 focus-visible:after:bg-[var(--ink)]"
               />
               <div className="flex h-full flex-col">
                 <div className="mb-2 flex items-center justify-between gap-3 border-b pb-2">
