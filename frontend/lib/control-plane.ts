@@ -275,6 +275,18 @@ export function formatTime(value?: string | null) {
 }
 
 /**
+ * 找 member 在哪台 computer 上的 agent workspace（运行时实例）。
+ * 收口 members/computers/activity 三处重复的 member→workspace join：
+ *   computers.find(c => c.id === member.computerId)?.agentWorkspaces.find(w => w.agentId === member.id)
+ * 单一真源，改 join 逻辑只改这里。
+ */
+export function findMemberWorkspace(member: { computerId?: string | null; id: string }, computers: Computer[]): AgentWorkspace | undefined {
+  if (!member.computerId) return undefined
+  const computer = computers.find((c) => c.id === member.computerId)
+  return computer?.agentWorkspaces.find((w) => w.agentId === member.id)
+}
+
+/**
  * Activity 分类 → CategoryTone 单一真源。
  * 给 ActivityTypeBadge / RuntimeChip 用，替代散落的 labelColorMap 硬编码色。
  * 改分类配色只改这里 + globals.css 的 --cat-* token。

@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input"
 import {
   API_BASE,
   apiGet,
+  findMemberWorkspace,
   formatTime,
   type Computer,
   type Member,
@@ -276,7 +277,7 @@ function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }
 function ProfileTab({ member, computers }: { member: Member; computers: Computer[] }) {
   const description = profileDescription(member)
   const computer = computers.find((c) => c.id === member.computerId)
-  const workspace = computer?.agentWorkspaces.find((w) => w.agentId === member.id)
+  const workspace = findMemberWorkspace(member, computers)
 
   return (
     <div className="space-y-4">
@@ -686,7 +687,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
     )
   }
 
-  const workspace = computer.agentWorkspaces.find((w) => w.agentId === member.id)
+  const workspace = findMemberWorkspace(member, computers)
 
   return (
     <div className="space-y-4">
@@ -694,7 +695,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
         <div className="text-sm font-medium text-foreground">Bound Computer</div>
         <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
           <div className="flex items-center gap-2">
-            <HardDrive className="size-4 text-muted-foreground" />
+            <HardDrive className="size-4 text-accent-green" />
             <span className="text-sm font-medium">{computer.name}</span>
             <StatusPill status={computer.status} label={statusLabel(computer.status)} />
           </div>
@@ -839,7 +840,7 @@ export default async function MembersPage({
       title={t("title")}
       description={t("description")}
       session={session}
-      list={<MembersList members={members} selectedMemberId={selectedMemberId} />}
+      list={<MembersList members={members} computers={computers} selectedMemberId={selectedMemberId} />}
       listTitle="Members"
       listConfig={MEMBERS_LIST_WIDTH}
       sidebarTitle={t("memberGroups")}
