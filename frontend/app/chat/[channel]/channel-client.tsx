@@ -18,6 +18,7 @@ import {
   Send,
   Smile,
   Trash2,
+  Users,
   X,
 } from "lucide-react"
 
@@ -236,7 +237,7 @@ export function ChannelClient({
   const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null)
   const [threadData, setThreadData] = useState<ThreadData | null>(null)
   const [threadLoading, setThreadLoading] = useState(false)
-  const [showMembers, setShowMembers] = useState(true)
+  const [showMembers, setShowMembers] = useState(false)
   const [channelId, setChannelId] = useState(initialChannelId)
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(() => new Set())
   const [taskMessageIds, setTaskMessageIds] = useState<Set<string>>(() => new Set())
@@ -1009,6 +1010,18 @@ export function ChannelClient({
               })}
             </div>
             <div className="ml-auto flex items-center gap-1">
+              {!currentIsDm && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={showMembers ? "default" : "outline"}
+                  onClick={() => setShowMembers((v) => !v)}
+                  aria-pressed={showMembers}
+                >
+                  <Users className="size-3.5" />
+                  {tChat("membersCount", { count: members.length })}
+                </Button>
+              )}
               {!currentIsDm && currentChannel?.id && (
                 <button
                   type="button"
@@ -1494,38 +1507,26 @@ export function ChannelClient({
             <aside
               aria-label={tChat("channelMembers")}
               data-region="members-panel"
-              className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-deep"
+              className="flex h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-card"
             >
-              <h3 className="shrink-0 px-3 pb-1 pt-3 text-xs font-semibold text-sand-muted">
-                {tChat("membersCount", { count: members.length })}
-              </h3>
-              <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3">
-                <ul className="space-y-0.5">
-                  {members.map((m) => (
-                    <li
-                      key={m.id}
-                      data-testid={`channel-member-${m.displayName}`}
-                      className="group/member flex min-w-0 items-center gap-2 px-1.5 py-1 text-sm hover:bg-muted/60"
-                    >
-                      <MemberAvatar member={m} size="xs" />
-                      <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{statusLabel(m.status)}</span>
-                      {m.kind === "agent" && !currentIsDm && (
-                        <button
-                          aria-label={tChat("removeMember", { member: m.displayName || m.name })}
-                          onClick={() => handleRemoveMember(m.id)}
-                          className="size-5 shrink-0 items-center justify-center text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover/member:flex"
-                        >
-                          <Trash2 className="size-3" />
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+              {/* drawer header: title + close */}
+              <div className="flex shrink-0 items-center justify-between border-b-2 border-[var(--ink)] px-3 py-2">
+                <h3 className="text-xs font-semibold text-sand-ink">
+                  {tChat("membersCount", { count: members.length })}
+                </h3>
+                <button
+                  type="button"
+                  aria-label={tChat("channelMembers")}
+                  onClick={() => setShowMembers(false)}
+                  className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <X className="size-3.5" />
+                </button>
               </div>
 
+              {/* add member on TOP (was buried at the bottom) */}
               {!currentIsDm && (
-                <div className="shrink-0 space-y-1.5 border-t-2 border-[var(--ink)] p-3">
+                <div className="shrink-0 space-y-1.5 border-b-2 border-[var(--ink)] p-3">
                   <h4 className="text-xs font-semibold text-sand-muted">{tChat("addMember")}</h4>
                   <div className="flex gap-1">
                     <select
@@ -1555,6 +1556,32 @@ export function ChannelClient({
                   </div>
                 </div>
               )}
+
+              {/* member list */}
+              <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-2">
+                <ul className="space-y-0.5">
+                  {members.map((m) => (
+                    <li
+                      key={m.id}
+                      data-testid={`channel-member-${m.displayName}`}
+                      className="group/member flex min-w-0 items-center gap-2 px-1.5 py-1 text-sm hover:bg-muted/60"
+                    >
+                      <MemberAvatar member={m} size="xs" />
+                      <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{statusLabel(m.status)}</span>
+                      {m.kind === "agent" && !currentIsDm && (
+                        <button
+                          aria-label={tChat("removeMember", { member: m.displayName || m.name })}
+                          onClick={() => handleRemoveMember(m.id)}
+                          className="size-5 shrink-0 items-center justify-center text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover/member:flex"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </aside>
           )}
         </div>
