@@ -1043,7 +1043,7 @@ export function ChannelClient({
             )}
             {activeTab === "activity" ? (
               <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mr-auto w-full max-w-4xl">
+                <div className="mr-auto w-full max-w-[1248px]">
                   {dmAgent ? (
                     <AgentActivityList agentId={dmAgent.id} runtimeOnly limit={40} />
                   ) : (
@@ -1064,7 +1064,7 @@ export function ChannelClient({
               </div>
             ) : activeTab === "memory" ? (
               <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mr-auto w-full max-w-4xl">
+                <div className="mr-auto w-full max-w-[1248px]">
                   <MemoryProposalQueue
                     proposals={memoryProposals}
                     loading={memoryProposalLoading}
@@ -1077,7 +1077,7 @@ export function ChannelClient({
               </div>
             ) : activeTab === "files" ? (
               <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mr-auto w-full max-w-4xl">
+                <div className="mr-auto w-full max-w-[1248px]">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-sm font-semibold">{tChat("filesTitle")}</h2>
                     <span className="text-xs text-muted-foreground">{tChat("fileCount", { count: files.length })}</span>
@@ -1159,7 +1159,7 @@ export function ChannelClient({
             ) : (
               <>
                 <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mr-auto w-full max-w-4xl space-y-3">
+                <div className="mr-auto w-full max-w-[1248px] space-y-3">
                 {messages.map((msg) => {
                   const isSaved = savedMessageIds.has(msg.id)
                   const senderMember = memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)
@@ -1250,7 +1250,7 @@ export function ChannelClient({
             </div>
 
             <div data-region="composer" className="shrink-0 border-t-2 border-[var(--ink)] bg-sand-deep p-3">
-              <div className="mr-auto flex w-full max-w-4xl min-w-0 items-center gap-2">
+              <div className="mr-auto flex w-full max-w-[1248px] min-w-0 items-center gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
