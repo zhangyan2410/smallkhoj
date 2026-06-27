@@ -352,7 +352,7 @@ export default async function Home({
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                   <div>
                     <CardTitle className="flex items-center gap-2 text-base">
-                      <MessageSquare className="size-4 text-primary" />
+                      <MessageSquare className="size-4 text-accent-blue" />
                       {t("recentMessages")}
                     </CardTitle>
                     <CardDescription>{t("recentMessagesDesc")}</CardDescription>
@@ -396,10 +396,10 @@ export default async function Home({
               <Card>
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <Bot className="size-4 text-primary" />
+                    <Bot className="size-4 text-accent-mint" />
                     {t("activeAgents")}
                   </CardTitle>
-                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                  <span className="rounded-none border border-[var(--ink)] sk-accent-mint-soft px-2 py-0.5 text-[11px] font-semibold">
                     {activeAgents.length}
                   </span>
                 </CardHeader>
@@ -427,7 +427,7 @@ export default async function Home({
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                   <div>
                     <CardTitle className="flex items-center gap-2 text-base">
-                      <CheckSquare className="size-4 text-primary" />
+                      <CheckSquare className="size-4 text-accent-rose" />
                       {t("pendingTasks")}
                     </CardTitle>
                     <CardDescription>{t("pendingTasksDesc")}</CardDescription>
@@ -473,7 +473,7 @@ export default async function Home({
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <Activity className="size-4 text-primary" />
+                    <Activity className="size-4 text-accent-purple" />
                     {t("workspace")}
                   </CardTitle>
                 </CardHeader>

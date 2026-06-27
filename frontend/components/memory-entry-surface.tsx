@@ -148,7 +148,7 @@ function MemoryArtifactPreview({ view, compact = false }: { view: MemoryArtifact
   }
   if (src) {
     return (
-      <a href={src} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-[0.7rem] text-primary hover:bg-muted">
+      <a href={src} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-[0.7rem] text-accent-mint hover:bg-muted">
         <ExternalLink className="size-3" />
         Open output
       </a>
@@ -168,7 +168,7 @@ export function MemoryEntryRow({ entry, compact = false, showPreview = true }: {
           <span className={compact ? "truncate text-xs font-medium" : "truncate text-sm font-medium"}>{entry.title || entry.path}</span>
           <span className="shrink-0 rounded-none bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">{entry.entryKind || view.viewer}</span>
         </div>
-        <div className="mt-1 truncate font-mono text-[0.7rem] text-primary">{entry.path}</div>
+        <div className="mt-1 truncate font-mono text-[0.7rem] text-accent-mint">{entry.path}</div>
         {text && <p className={compact ? "mt-1 whitespace-pre-wrap text-xs text-muted-foreground line-clamp-3" : "mt-1 whitespace-pre-wrap text-xs text-muted-foreground line-clamp-5"}>{text}</p>}
         {showPreview && <MemoryArtifactPreview view={view} compact={compact} />}
         <div className="mt-1 flex flex-wrap gap-2 text-[0.65rem] text-muted-foreground">
@@ -207,7 +207,7 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
             [copy.progress, completeness.hasProgress],
             [copy.output, completeness.hasOutput],
           ].map(([label, active]) => (
-            <span key={String(label)} className={active ? "rounded-none bg-primary/10 px-1.5 py-0.5 text-primary" : "rounded-none bg-muted px-1.5 py-0.5"}>
+            <span key={String(label)} className={active ? "rounded-none bg-primary/10 px-1.5 py-0.5 text-accent-mint" : "rounded-none bg-muted px-1.5 py-0.5"}>
               {label}
             </span>
           ))}
@@ -223,7 +223,7 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
               <div className="space-y-1">
                 {model.subtasks.slice(0, compact ? 4 : 8).map((item) => (
                   <div key={`${item.sourcePath}:${item.text}`} className="flex items-start gap-2 text-xs">
-                    {item.done ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />}
+                    {item.done ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" /> : <Circle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />}
                     <span className={item.done ? "text-muted-foreground line-through" : ""}>{item.text}</span>
                   </div>
                 ))}
@@ -326,7 +326,7 @@ export function MemoryProposalQueue({
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.reviewQueue}</h3>
           <p className="text-xs text-muted-foreground">{copy.openProposals}</p>
         </div>
-        <span className="rounded-none bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-primary">{proposals.length}</span>
+        <span className="rounded-none bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-accent-mint">{proposals.length}</span>
       </div>
       <div className="space-y-2">
         {proposals.map((proposal) => (
@@ -334,7 +334,7 @@ export function MemoryProposalQueue({
             <div className="flex min-w-0 items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
-                  <Sparkles className="size-3.5 shrink-0 text-primary" />
+                  <Sparkles className="size-3.5 shrink-0 text-accent-mint" />
                   <span className="truncate text-sm font-medium">{proposal.path}</span>
                   <span className="shrink-0 rounded-none bg-background px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">{proposal.status}</span>
                 </div>

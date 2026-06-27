@@ -310,7 +310,7 @@ export default async function TaskRunTemplatesPage() {
     >
       <div className="space-y-5">
         <Toolbar>
-          <Layers3 className="size-4 text-primary" />
+          <Layers3 className="size-4 text-accent-rose" />
           <span className="text-sm font-medium">模板控制面</span>
           <span className="text-xs text-muted-foreground">{activeCount} active / {templates.length} total</span>
         </Toolbar>

@@ -45,7 +45,7 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Server className="size-4 text-primary" />
+              <Server className="size-4 text-accent-blue" />
               Account / Server
             </CardTitle>
             <CardDescription>Current authenticated local workspace context.</CardDescription>
@@ -65,7 +65,7 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <SlidersHorizontal className="size-4 text-primary" />
+              <SlidersHorizontal className="size-4 text-accent-mint" />
               Runtime Defaults
             </CardTitle>
             <CardDescription>Provider defaults are scoped for the runtime expansion task.</CardDescription>
@@ -82,7 +82,7 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <KeyRound className="size-4 text-primary" />
+              <KeyRound className="size-4 text-accent-rose" />
               API Keys
             </CardTitle>
             <CardDescription>Prefixes, owners, one-time secret display, and revocation state.</CardDescription>
@@ -150,7 +150,7 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Shield className="size-4 text-primary" />
+              <Shield className="size-4 text-accent-rose" />
               Safety Controls
             </CardTitle>
             <CardDescription>Experimental toggles require explicit persisted backend support.</CardDescription>

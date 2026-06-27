@@ -410,7 +410,7 @@ function ComputerDetail({
                 {copy.lifecycleHelp}
               </p>
               {computer.status === "offline" || leaseExpired ? (
-                <p className="mt-1 text-xs text-amber-700">
+                <p className="mt-1 text-xs text-warning">
                   {copy.offlineHelp}
                 </p>
               ) : null}
@@ -583,7 +583,7 @@ function WorkspaceRow({
       <div className="min-w-0 text-xs text-muted-foreground">
         <div className="truncate">{workspace.cwd || copy.noCwd}</div>
         {runtimeError ? (
-          <div className="mt-1 flex items-start gap-1 text-rose-600" title={runtimeError}>
+          <div className="mt-1 flex items-start gap-1 text-destructive" title={runtimeError}>
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
             <span className="break-words">{runtimeError}</span>
           </div>

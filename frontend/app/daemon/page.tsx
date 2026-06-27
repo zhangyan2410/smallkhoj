@@ -364,7 +364,7 @@ export default async function DaemonPage({
             </Link>
             <div>
               <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-                <Radio className="size-6 text-primary" />
+                <Radio className="size-6 text-accent-purple" />
                 Slock Control Plane
               </h1>
               <p className="text-sm text-muted-foreground">
