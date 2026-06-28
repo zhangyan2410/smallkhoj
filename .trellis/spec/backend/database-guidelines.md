@@ -837,6 +837,70 @@ python3 scripts/make_deployment_bundle.py --output /tmp/smallkhoj-deploy-bundle.
 scp /tmp/smallkhoj-deploy-bundle.tar.gz lighthouse:/opt/
 ```
 
+## Scenario: Initial Release SSH Deployment Probe Runner
+
+### 1. Scope / Trigger
+- Trigger: validating a first Tencent Cloud Lighthouse or replacement SSH host from the local machine without hand-copying each deployment command.
+- Use this after local production compose smoke passes and before mutating a real deployment host beyond upload/unpack/probe.
+
+### 2. Signatures
+- CLI module: `scripts/lighthouse_ssh_deploy_probe.py`.
+- Required flag:
+  - `--host <ssh-host-or-ip>`
+- Optional flags:
+  - `--user <ssh-user>`
+  - `--port <ssh-port>`
+  - `--identity-file <path>`
+  - `--remote-dir <path>`
+  - `--local-bundle <path>`
+  - `--bundle-prefix <name>`
+  - `--remote-env-file <path>`
+  - `--runtime-preflight`
+  - `--compose-up`
+  - `--public-base-url <url>`
+  - `--allow-http`
+  - `--dry-run`
+  - `--json`
+
+### 3. Contracts
+- Default mode must create a no-secret bundle locally, upload it with `scp`, unpack it remotely, run `lighthouse_host_probe.py --json`, and run repo/config deploy preflight.
+- The runner must not create, upload, or print `.env.prod` or any secret value.
+- `--runtime-preflight` requires `--remote-env-file`.
+- `--compose-up` requires `--remote-env-file` and must be explicit; default probe must not start containers.
+- `--public-base-url` runs local `post_deploy_smoke.py` after remote steps.
+- `--dry-run` and `--json` must expose the command plan without executing SSH/SCP/local commands.
+
+### 4. Validation & Error Matrix
+- Missing `--host` -> CLI parser failure.
+- `--runtime-preflight` without `--remote-env-file` -> exit code `2`.
+- `--compose-up` without `--remote-env-file` -> exit code `2`.
+- Any local, `scp`, or `ssh` step returns non-zero -> stop and return that code.
+- Public smoke failure -> return the post-deploy smoke exit code.
+
+### 5. Good/Base/Bad Cases
+- Good: `--dry-run` first prints create-bundle, SSH mkdir, SCP upload, remote unpack, host probe, and repo preflight in order.
+- Good: runtime preflight is only added after `.env.prod` exists on the server and `--remote-env-file` is provided.
+- Base: no public URL is ready; the runner still performs bundle upload, host probe, and repo preflight.
+- Bad: uploading `.env.prod` from the local repo or printing secret values in the command plan.
+- Bad: starting compose on a fresh host before `lighthouse_host_probe.py` has recorded CPU/memory/swap/disk/Docker/port evidence.
+
+### 6. Tests Required
+- Unit tests cover default command planning, SSH identity/port flags, runtime preflight, explicit compose startup, missing env validation, and optional public smoke.
+- CLI dry-run should be manually inspected before first real host use.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+scp -r . ubuntu@host:/opt/smallkhoj
+ssh ubuntu@host 'docker compose up -d'
+```
+
+#### Correct
+```text
+python3 scripts/lighthouse_ssh_deploy_probe.py --host <ip> --user ubuntu --dry-run
+python3 scripts/lighthouse_ssh_deploy_probe.py --host <ip> --user ubuntu
+```
+
 ## Scenario: Initial Release Production Deploy Preflight CLI
 
 ### 1. Scope / Trigger

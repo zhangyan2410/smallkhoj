@@ -131,6 +131,46 @@ The bundle includes `docker-compose.prod.yml`, `deploy/caddy/Dockerfile`, `deplo
 
 On a 2 vCPU / 2 GB Lighthouse host, missing or small swap should be treated as a deployment warning to fix before repeated live-run testing. Heavy image builds should still happen off-host.
 
+You can also run the no-secret SSH probe runner from the local machine. Start with `--dry-run` so the exact upload and remote commands are visible before execution:
+
+```bash
+python3 scripts/lighthouse_ssh_deploy_probe.py \
+  --host <server-ip> \
+  --user ubuntu \
+  --identity-file ~/.ssh/<key> \
+  --remote-dir /opt/smallkhoj \
+  --dry-run
+```
+
+Without `--compose-up`, the SSH runner only creates a local bundle, uploads it, unpacks it, runs `lighthouse_host_probe.py --json`, and runs repo/config preflight. It does not upload `.env.prod`, create secrets, start production containers, or contact Feishu/Jira/LLM providers.
+
+When `.env.prod` already exists on the server under the unpacked bundle directory, add runtime preflight:
+
+```bash
+python3 scripts/lighthouse_ssh_deploy_probe.py \
+  --host <server-ip> \
+  --user ubuntu \
+  --identity-file ~/.ssh/<key> \
+  --remote-dir /opt/smallkhoj \
+  --remote-env-file .env.prod \
+  --runtime-preflight
+```
+
+Only after env preflight is clean, make startup explicit:
+
+```bash
+python3 scripts/lighthouse_ssh_deploy_probe.py \
+  --host <server-ip> \
+  --user ubuntu \
+  --identity-file ~/.ssh/<key> \
+  --remote-dir /opt/smallkhoj \
+  --remote-env-file .env.prod \
+  --runtime-preflight \
+  --compose-up \
+  --public-base-url http://<server-ip> \
+  --allow-http
+```
+
 ## Preflight
 
 Run the repository/config preflight before building or pulling images:
