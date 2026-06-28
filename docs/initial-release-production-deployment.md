@@ -236,6 +236,20 @@ Provisioning notes captured on 2026-06-29:
 - `post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json` passed with zero failures and zero warnings. Browser evidence via `./twd` shows the deployed login page at `http://124.222.40.40/login`.
 - The instance is in a Chinese mainland region. Domain-based public release still needs ICP filing readiness; IP-only HTTP and outbound Feishu/Jira validation can proceed before a formal domain is ready.
 
+Core-stack resource baseline captured on 2026-06-29:
+
+- Evidence file: `.trellis/tasks/archive/2026-06/06-29-06-29-initial-release-lighthouse-resource-baseline/evidence/lighthouse-resource-baseline-2026-06-29.json` after the task is archived.
+- Host uptime/load during sampling: about 1 hour 40 minutes uptime, load average `0.00, 0.00, 0.00`.
+- Host memory: `3.3 GiB` total, about `662 MiB` used, `2.4 GiB` available.
+- Swap: `3.0 GiB` configured, about `3.0 MiB` used.
+- Disk: `40 GiB` root volume, `13 GiB` used, `26 GiB` available, `33%` used.
+- Container memory at idle/light smoke: backend `107.5 MiB`, frontend `124.7 MiB`, Postgres `41.16 MiB`, Caddy `13.98 MiB`.
+- Container CPU at idle/light smoke: backend about `0.25%`, frontend about `0.04%`, Postgres about `0.02%`, Caddy `0.00%`.
+- Docker disk usage: images `2.025 GB` with `972.3 MB` reclaimable, build cache `874.1 MB` reclaimable, volumes `50.22 MB`.
+- Top memory processes are frontend `bun run server.js` around `166 MiB` RSS, `dockerd` around `138 MiB` RSS, and backend `uvicorn` around `114 MiB` RSS.
+- `remote_deploy_evidence.py` returns non-zero on the already-running host because host/runtime preflight report ports 80 and 443 as in-use. For a deployed stack this means Caddy is bound to public ports, not that resource collection failed.
+- Decision: the 4 vCPU / 4 GB Lighthouse instance is suitable for the current control-plane core stack and no-secret integration preparation. This baseline does not prove Feishu long-connection worker, Jira live write-back, daemon TaskRun execution, or concurrent scenario capacity; repeat the resource snapshot after enabling the worker and after the first live Feishu -> TaskRun -> Jira scenario.
+
 Daemon remote validation captured on 2026-06-29:
 
 - The first remote connect command registered one local Computer for `Mac-mini.local` with ID `2f539a6a-8b90-43f2-a16d-caafae9daff4`, `machineIdPresent=true`, and an active daemon lease.
@@ -255,7 +269,7 @@ Live-run foundation data captured on 2026-06-29:
 - Local process inspection after creation found no `aaa-daemon`, `smallkhoj-daemon`, managed `claude`, or managed `codex` runtime process. `post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json` still passed with zero failures and zero warnings after backend restart and assignee creation.
 - A later backend image was rebuilt as `linux/amd64`, uploaded from `/Volumes/ORICO/smallkhoj-deploy/smallkhoj-backend-amd64-preflight-missing.tar`, loaded on the Lighthouse host, and the backend service was force-recreated. This deployed the live-run preflight improvement that reports all missing worker runtime settings together.
 - Container-side bootstrap and live-run preflight CLIs must be executed through `uv run python -m ...` inside the backend container. Direct `python -m ...` does not load the image's Python dependencies.
-- Current no-network live-run preflight fails at `workerConfig` with `LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE`, listing `FEISHU_WORKER_CONNECTOR_ID`, `FEISHU_WORKER_JIRA_CONNECTOR_ID`, `FEISHU_WORKER_CREATOR_ID`, `FEISHU_WORKER_APP_ID`, and `FEISHU_WORKER_APP_SECRET`. This is expected before integration bootstrap and runtime env are configured.
+- Current no-network live-run preflight fails at `workerConfig` with `LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE`, listing `FEISHU_WORKER_CONNECTOR_ID`, `FEISHU_WORKER_JIRA_CONNECTOR_ID`, `FEISHU_WORKER_CREATOR_ID`, `FEISHU_WORKER_APP_ID`, `FEISHU_WORKER_APP_SECRET`, `FEISHU_REPLY_ACCESS_TOKEN`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`. This is expected before integration bootstrap and runtime env are configured.
 - `scripts/update_prod_env_from_stdin.py` was copied to the current Lighthouse deploy directory and smoke-tested with non-secret `FEISHU_WORKER_ENABLED=false`. The command created `.env.prod.bak`, printed only `<unchanged>`, and left core `post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json` green.
 
 Before installing or starting anything on Tencent Cloud Lighthouse, create the no-secret deployment bundle on your local machine:

@@ -22,15 +22,19 @@ class RemoteDeployEvidenceTests(unittest.TestCase):
             "compose-services",
             "compose-ps",
             "compose-logs-core",
+            "docker-stats",
             "docker-ps",
             "docker-system-df",
             "memory-snapshot",
             "disk-snapshot",
+            "top-memory-processes",
         ])
         commands = "\n".join(" ".join(step.argv) for step in plan.steps)
         self.assertIn("cd /opt/smallkhoj/smallkhoj-deploy", commands)
         self.assertIn("python3 scripts/lighthouse_host_probe.py --json", commands)
         self.assertIn("docker compose -f docker-compose.prod.yml ps", commands)
+        self.assertIn("docker stats --no-stream", commands)
+        self.assertIn("ps -eo pid,ppid,pcpu,pmem,rss,comm,args --sort=-rss | head -20", commands)
         self.assertNotIn("cat .env.prod", commands)
         self.assertNotIn("printenv", commands)
 
@@ -62,6 +66,22 @@ class RemoteDeployEvidenceTests(unittest.TestCase):
 
         self.assertIn("python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runtime --json", commands)
         self.assertNotIn("cat .env.prod", commands)
+
+    def test_plan_with_env_file_uses_env_file_for_compose_commands(self) -> None:
+        options = evidence.CollectOptions(
+            host="203.0.113.10",
+            user="ubuntu",
+            remote_dir="/opt/smallkhoj",
+            output=Path("/tmp/evidence.json"),
+            remote_env_file=".env.prod",
+        )
+
+        plan = evidence.build_plan(options)
+        commands_by_label = {step.label: " ".join(step.argv) for step in plan.steps}
+
+        for label in ("compose-services", "compose-ps", "compose-logs-core"):
+            self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml", commands_by_label[label])
+        self.assertNotIn("cat .env.prod", "\n".join(commands_by_label.values()))
 
     def test_plan_with_public_smoke_adds_local_step(self) -> None:
         options = evidence.CollectOptions(

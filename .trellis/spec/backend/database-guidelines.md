@@ -898,6 +898,68 @@ python3 scripts/make_deployment_bundle.py --output /tmp/smallkhoj-deploy-bundle.
 scp /tmp/smallkhoj-deploy-bundle.tar.gz lighthouse:/opt/
 ```
 
+## Scenario: Initial Release Remote Deployment Evidence CLI
+
+### 1. Scope / Trigger
+- Trigger: collecting no-secret SSH evidence from a running initial-release deployment host.
+- Use this after a remote compose deployment or when recording Lighthouse suitability/capacity evidence.
+
+### 2. Signatures
+- CLI module: `scripts/remote_deploy_evidence.py`.
+- Required flags:
+  - `--host <server-ip-or-hostname>`
+- Common flags:
+  - `--user ubuntu`
+  - `--identity-file <ssh-key>`
+  - `--remote-dir <deploy-parent-dir>`
+  - `--bundle-prefix <unpacked-bundle-dir>`
+  - `--remote-env-file .env.prod`
+  - `--public-base-url http://<server-ip>`
+  - `--allow-http`
+  - `--output <evidence.json>`
+
+### 3. Contracts
+- The collector must not read or print `.env.prod`; it may pass `--env-file .env.prod` to deploy preflight and Docker Compose commands.
+- When `--remote-env-file` is provided, Docker Compose evidence commands must include `--env-file <file>` so production interpolation succeeds without exposing values.
+- Evidence should include host probe, deploy preflight, compose services/ps/log tails, `docker stats --no-stream`, `docker ps`, `docker system df`, memory snapshot, disk snapshot, top memory processes, and optional public smoke.
+- Existing running deployments may cause host/runtime preflight to return non-zero because ports 80/443 are already bound by Caddy. Treat that as expected for post-deploy evidence when public smoke is green.
+
+### 4. Validation & Error Matrix
+- Missing SSH access -> command result captures SSH failure.
+- Missing remote bundle -> remote command returns a `cd` or missing-file failure.
+- Missing `--env-file` on compose commands -> compose interpolation fails for required secrets such as `POSTGRES_PASSWORD`; this is a collector bug, not a deployment resource finding.
+- Public smoke failure -> inspect Caddy/backend/frontend logs in the same evidence payload before restarting services.
+
+### 5. Good/Base/Bad Cases
+- Good: evidence JSON records all command outputs and public smoke is green while preflight port checks flag 80/443 as occupied by the running proxy.
+- Base: no public URL is ready; collect SSH-only host/compose/docker evidence.
+- Bad: using `cat .env.prod`, `printenv`, or inline secret arguments to collect evidence.
+
+### 6. Tests Required
+- Unit tests verify the command plan never includes `cat .env.prod` or `printenv`.
+- Unit tests verify compose commands include `--env-file <file>` whenever `remote_env_file` is configured.
+- Unit tests verify `docker stats --no-stream` and top memory process commands are included in the no-secret plan.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+ssh lighthouse 'cd smallkhoj-deploy && cat .env.prod && docker compose ps'
+```
+
+#### Correct
+```text
+python3 scripts/remote_deploy_evidence.py \
+  --host <server-ip> \
+  --user ubuntu \
+  --identity-file ~/.ssh/<key> \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
+  --bundle-prefix smallkhoj-deploy \
+  --remote-env-file .env.prod \
+  --public-base-url http://<server-ip> \
+  --allow-http \
+  --output /tmp/smallkhoj-remote-deploy-evidence.json
+```
+
 ## Scenario: Initial Release Production Env Template CLI
 
 ### 1. Scope / Trigger

@@ -94,15 +94,26 @@ def build_plan(options: CollectOptions) -> CommandPlan:
             f"python3 scripts/initial_release_deploy_preflight.py --env-file {env_file} --runtime --json",
         ))
 
-    compose = "docker compose -f docker-compose.prod.yml"
+    compose_env = f"--env-file {shlex.quote(options.remote_env_file)} " if options.remote_env_file else ""
+    compose = f"docker compose {compose_env}-f docker-compose.prod.yml"
     steps.extend([
         remote_shell(options, "compose-services", f"{compose} config --services"),
         remote_shell(options, "compose-ps", f"{compose} ps"),
         remote_shell(options, "compose-logs-core", f"{compose} logs --tail=160 db backend frontend caddy"),
+        remote_shell(
+            options,
+            "docker-stats",
+            "docker stats --no-stream --format 'table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.MemPerc}}\\t{{.NetIO}}\\t{{.BlockIO}}'",
+        ),
         remote_shell(options, "docker-ps", "docker ps -a --format '{{json .}}'"),
         remote_shell(options, "docker-system-df", "docker system df"),
         remote_shell(options, "memory-snapshot", "free -h || vm_stat || true"),
         remote_shell(options, "disk-snapshot", "df -h . / || df -h"),
+        remote_shell(
+            options,
+            "top-memory-processes",
+            "ps -eo pid,ppid,pcpu,pmem,rss,comm,args --sort=-rss | head -20",
+        ),
     ])
 
     if options.public_base_url:
