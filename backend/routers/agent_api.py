@@ -52,10 +52,16 @@ from services.memory_api import (
     write_memory_entry,
 )
 from services.integration_runtime import (
+    build_feishu_reply_dependencies,
     build_task_run_writeback_dependencies,
+    close_feishu_reply_dependencies,
     close_task_run_writeback_dependencies,
 )
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
+from services.feishu_reply_orchestration import (
+    send_task_run_feishu_terminal_reply,
+    serialize_feishu_reply_orchestration_outcome,
+)
 from services.task_run_writeback import handle_terminal_task_run_writeback, serialize_task_run_writeback_outcome
 from services.task_runs import (
     TERMINAL_TASK_RUN_STATUSES,
@@ -4008,6 +4014,7 @@ async def update_task_run_lifecycle_endpoint(
         raise HTTPException(404, "TaskRun not found")
 
     writeback_outcome = None
+    feishu_reply_outcome = None
     if run.status in TERMINAL_TASK_RUN_STATUSES:
         writeback_dependencies = build_task_run_writeback_dependencies()
         try:
@@ -4018,12 +4025,24 @@ async def update_task_run_lifecycle_endpoint(
             )
         finally:
             await close_task_run_writeback_dependencies(writeback_dependencies)
+        feishu_reply_dependencies = build_feishu_reply_dependencies()
+        try:
+            feishu_reply_outcome = await send_task_run_feishu_terminal_reply(
+                db,
+                task_run=run,
+                http_client=feishu_reply_dependencies.http_client,
+                config=feishu_reply_dependencies.config,
+            )
+        finally:
+            await close_feishu_reply_dependencies(feishu_reply_dependencies)
 
     await db.commit()
     await db.refresh(run)
     response = {"ok": True, "run": serialize_task_run(run)}
     if writeback_outcome is not None:
         response["writeBack"] = serialize_task_run_writeback_outcome(writeback_outcome)
+    if feishu_reply_outcome is not None:
+        response["feishuReply"] = serialize_feishu_reply_orchestration_outcome(feishu_reply_outcome)
     return response
 
 

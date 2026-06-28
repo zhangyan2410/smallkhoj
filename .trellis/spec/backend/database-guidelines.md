@@ -306,6 +306,66 @@ Feishu inbound adapter -> direct HTTP reply -> no mapping / no event status
 Feishu inbound adapter -> durable gateway/orchestration decision -> services.feishu_replies.send_feishu_text_reply -> external_mapping(feishu message)
 ```
 
+## Scenario: Feishu Reply Orchestration
+
+### 1. Scope / Trigger
+- Trigger: turning durable Feishu accepted outcomes or Feishu-originated TaskRun terminal states into user-visible Feishu replies.
+- Use this after gateway dedup/route/linking has succeeded. This is not the long-connection receive loop.
+
+### 2. Signatures
+- Service module: `services.feishu_reply_orchestration`.
+- Accepted operation: `send_feishu_accepted_reply(db, feishu_outcome, release_result, http_client, config)`.
+- Terminal operation: `send_task_run_feishu_terminal_reply(db, task_run, http_client, config, output_text=None)`.
+- Runtime dependencies: `services.integration_runtime.build_feishu_reply_dependencies()`.
+- Router response field: `feishuReply`.
+
+### 3. Contracts
+- Accepted replies only run after a `FeishuDispatchOutcome(status="accepted")` and release-loop local state creation.
+- Terminal replies only run for `completed`, `failed`, or `cancelled` TaskRuns.
+- Feishu source context comes from the linked `ExternalEvent.normalized` fields `chatId` and `messageId` or equivalent source message id.
+- Terminal replies are idempotent through `ExternalMapping(local_type="task_run", provider="feishu", external_type="message")`.
+- Completed replies use `TaskRun.output_message_id` content when available.
+- Failed/cancelled replies use `TaskRun.failure_reason` when available.
+- Feishu reply failures are returned as structured outcomes and must not roll back local TaskRun or Jira state.
+- Endpoint-created Feishu HTTP clients must be closed after terminal reply handling.
+
+### 4. Validation & Error Matrix
+- Accepted non-accepted outcome -> `FEISHU_REPLY_UNSUPPORTED_OUTCOME`.
+- Terminal non-terminal status -> `FEISHU_REPLY_UNSUPPORTED_TASK_RUN_STATUS`.
+- Missing linked event or `chatId` -> `FEISHU_REPLY_NO_SOURCE_CONTEXT`.
+- Existing task-run Feishu message mapping -> `FEISHU_REPLY_ALREADY_SENT`.
+- Feishu send failure -> `FEISHU_REPLY_SEND_FAILED`.
+- Successful send -> `FEISHU_REPLY_SENT` and Feishu message mapping.
+
+### 5. Good/Base/Bad Cases
+- Good: accepted `jira_analysis` command replies in the source Feishu message with a concise TaskRun-created confirmation.
+- Good: completed Feishu-originated TaskRun replies with the agent output and maps `task_run -> feishu message`.
+- Good: Jira write-back can fail while Feishu reply still reports its own outcome; neither should erase local TaskRun state.
+- Base: Feishu token is not configured; endpoint returns a structured failed/skipped Feishu reply outcome while committing TaskRun status.
+- Bad: terminal lifecycle endpoint creates a Feishu reply without checking existing mappings.
+- Bad: making Feishu reply success/failure control whether TaskRun lifecycle commits.
+
+### 6. Tests Required
+- Accepted reply sends confirmation and maps `external_event -> feishu message`.
+- Completed TaskRun reply uses output message content.
+- Failed/cancelled TaskRun reply uses failure reason or fallback text.
+- Existing Feishu terminal mapping skips duplicate sends.
+- Missing source context skips.
+- Feishu send failure returns structured failure.
+- Agent lifecycle endpoint passes Feishu runtime dependencies, returns `feishuReply`, and closes the owned client.
+- Boundary test proving no daemon/runtime execution helpers are imported.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+TaskRun completed -> Feishu reply -> exception aborts lifecycle commit
+```
+
+#### Correct
+```text
+TaskRun completed -> local lifecycle update -> Jira writeBack outcome + Feishu feishuReply outcome -> commit local state
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger

@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     jira_email: str = ""
     jira_api_token: str = ""
 
+    feishu_reply_base_url: str = "https://open.feishu.cn"
+    feishu_reply_access_token: str = ""
+
     thread_summary_scheduler_enabled: bool = False
 
 

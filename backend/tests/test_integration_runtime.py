@@ -4,8 +4,11 @@ import pytest
 
 from config import Settings
 from services.integration_runtime import (
+    build_feishu_reply_dependencies,
     build_task_run_writeback_dependencies,
+    close_feishu_reply_dependencies,
     close_task_run_writeback_dependencies,
+    resolve_feishu_reply_config,
     resolve_jira_writeback_credentials,
 )
 
@@ -18,6 +21,8 @@ def test_settings_exposes_safe_default_jira_credentials(monkeypatch):
 
     assert settings.jira_email == ""
     assert settings.jira_api_token == ""
+    assert settings.feishu_reply_base_url == "https://open.feishu.cn"
+    assert settings.feishu_reply_access_token == ""
 
 
 def test_resolve_jira_writeback_credentials_requires_email_and_token():
@@ -60,3 +65,29 @@ async def test_close_task_run_writeback_dependencies_closes_owned_http_client():
     await close_task_run_writeback_dependencies(dependencies)
 
     assert closed is True
+
+
+def test_resolve_feishu_reply_config_uses_settings_without_persisted_secrets():
+    missing = SimpleNamespace(feishu_reply_base_url="https://open.feishu.cn", feishu_reply_access_token="")
+    complete = SimpleNamespace(feishu_reply_base_url=" https://open.feishu.cn/ ", feishu_reply_access_token=" tenant-token ")
+
+    missing_config = resolve_feishu_reply_config(configured_settings=missing)
+    complete_config = resolve_feishu_reply_config(configured_settings=complete)
+
+    assert missing_config.base_url == "https://open.feishu.cn"
+    assert missing_config.access_token == ""
+    assert complete_config.base_url == "https://open.feishu.cn"
+    assert complete_config.access_token == "tenant-token"
+
+
+@pytest.mark.asyncio
+async def test_build_feishu_reply_dependencies_uses_settings_config_and_closes_client():
+    settings = SimpleNamespace(feishu_reply_base_url="https://open.feishu.cn", feishu_reply_access_token="tenant-token")
+
+    dependencies = build_feishu_reply_dependencies(configured_settings=settings)
+
+    assert dependencies.config.base_url == "https://open.feishu.cn"
+    assert dependencies.config.access_token == "tenant-token"
+    assert dependencies.http_client is not None
+    assert getattr(dependencies.http_client, "trust_env", False) is False
+    await close_feishu_reply_dependencies(dependencies)

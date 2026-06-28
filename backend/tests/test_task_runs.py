@@ -900,8 +900,14 @@ async def test_agent_task_run_lifecycle_endpoint_triggers_terminal_writeback_hoo
         async def aclose(self):
             self.closed = True
 
-    client = _Client()
-    dependencies = SimpleNamespace(name="jira-runtime-deps", jira_http_client=client)
+    jira_client = _Client()
+    feishu_client = _Client()
+    dependencies = SimpleNamespace(name="jira-runtime-deps", jira_http_client=jira_client)
+    feishu_dependencies = SimpleNamespace(
+        name="feishu-runtime-deps",
+        http_client=feishu_client,
+        config=SimpleNamespace(base_url="https://open.feishu.cn", access_token="tenant-token"),
+    )
 
     async def fake_update_task_run_lifecycle(db_arg, **kwargs):
         return run
@@ -915,9 +921,22 @@ async def test_agent_task_run_lifecycle_endpoint_triggers_terminal_writeback_hoo
             mapping=None,
         )
 
+    feishu_calls = []
+
+    async def fake_feishu_reply(db_arg, **kwargs):
+        feishu_calls.append(kwargs)
+        return SimpleNamespace(
+            status="sent",
+            reason_code="FEISHU_REPLY_SENT",
+            reason="Feishu terminal TaskRun reply was sent.",
+            mapping=None,
+        )
+
     monkeypatch.setattr(agent_api, "update_task_run_lifecycle", fake_update_task_run_lifecycle, raising=False)
     monkeypatch.setattr(agent_api, "handle_terminal_task_run_writeback", fake_writeback_hook, raising=False)
     monkeypatch.setattr(agent_api, "build_task_run_writeback_dependencies", lambda: dependencies, raising=False)
+    monkeypatch.setattr(agent_api, "send_task_run_feishu_terminal_reply", fake_feishu_reply, raising=False)
+    monkeypatch.setattr(agent_api, "build_feishu_reply_dependencies", lambda: feishu_dependencies, raising=False)
     db = _FakeSession()
 
     response = await agent_api.update_task_run_lifecycle_endpoint(
@@ -942,9 +961,15 @@ async def test_agent_task_run_lifecycle_endpoint_triggers_terminal_writeback_hoo
     assert response["ok"] is True
     assert response["writeBack"]["status"] == "failed"
     assert response["writeBack"]["reasonCode"] == "TASK_RUN_WRITEBACK_NO_JIRA_CREDENTIALS"
+    assert response["feishuReply"]["status"] == "sent"
+    assert response["feishuReply"]["reasonCode"] == "FEISHU_REPLY_SENT"
     assert hook_calls[0]["task_run"] is run
     assert hook_calls[0]["dependencies"] is dependencies
-    assert client.closed is True
+    assert feishu_calls[0]["task_run"] is run
+    assert feishu_calls[0]["http_client"] is feishu_client
+    assert feishu_calls[0]["config"] is feishu_dependencies.config
+    assert jira_client.closed is True
+    assert feishu_client.closed is True
 
 
 def test_serialize_task_run_uses_public_camel_case_contract():
