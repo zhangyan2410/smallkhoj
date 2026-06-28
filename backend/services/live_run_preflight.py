@@ -14,6 +14,15 @@ LIVE_RUN_PREFLIGHT_READY = "LIVE_RUN_PREFLIGHT_READY"
 LIVE_RUN_PREFLIGHT_CONNECTOR_CONFIG_INVALID = "LIVE_RUN_PREFLIGHT_CONNECTOR_CONFIG_INVALID"
 LIVE_RUN_PREFLIGHT_JIRA_CREDENTIALS_MISSING = "LIVE_RUN_PREFLIGHT_JIRA_CREDENTIALS_MISSING"
 LIVE_RUN_PREFLIGHT_ROUTE_TARGET_MISSING = "LIVE_RUN_PREFLIGHT_ROUTE_TARGET_MISSING"
+LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE = "LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE"
+
+WORKER_REQUIRED_SETTING_KEYS = (
+    ("FEISHU_WORKER_CONNECTOR_ID", "feishu_worker_connector_id"),
+    ("FEISHU_WORKER_JIRA_CONNECTOR_ID", "feishu_worker_jira_connector_id"),
+    ("FEISHU_WORKER_CREATOR_ID", "feishu_worker_creator_id"),
+    ("FEISHU_WORKER_APP_ID", "feishu_worker_app_id"),
+    ("FEISHU_WORKER_APP_SECRET", "feishu_worker_app_secret"),
+)
 
 
 @dataclass(frozen=True)
@@ -62,6 +71,21 @@ def _report(checks: list[LiveRunPreflightCheck]) -> LiveRunPreflightReport:
     return LiveRunPreflightReport(
         ready=all(check.status == "passed" for check in checks),
         checks=checks,
+    )
+
+
+def _worker_required_settings_check(configured_settings: Any) -> LiveRunPreflightCheck | None:
+    missing = []
+    for env_key, attr_name in WORKER_REQUIRED_SETTING_KEYS:
+        if not str(getattr(configured_settings, attr_name, "") or "").strip():
+            missing.append(env_key)
+    if not missing:
+        return None
+    return _failed(
+        "workerConfig",
+        LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE,
+        "Feishu worker runtime settings are missing required values.",
+        {"missing": missing},
     )
 
 
@@ -126,6 +150,11 @@ async def run_initial_release_preflight(
     configured_settings: Any = settings,
 ) -> LiveRunPreflightReport:
     checks: list[LiveRunPreflightCheck] = []
+    worker_settings_check = _worker_required_settings_check(configured_settings)
+    if worker_settings_check is not None:
+        checks.append(worker_settings_check)
+        return _report(checks)
+
     config_outcome = resolve_feishu_worker_config(configured_settings=configured_settings)
     if config_outcome.status != "ready" or config_outcome.config is None:
         checks.append(_failed("workerConfig", config_outcome.reason_code, config_outcome.reason))

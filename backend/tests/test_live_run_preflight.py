@@ -4,12 +4,12 @@ import uuid
 import pytest
 
 from models import ExternalConnector, ExternalRoute
-from services.feishu_worker_runtime import FEISHU_WORKER_CONFIG_MISSING_CONNECTOR_ID
 from services.integration_gateway import EXTERNAL_ROUTE_NOT_FOUND
 from services.live_run_preflight import (
     LIVE_RUN_PREFLIGHT_JIRA_CREDENTIALS_MISSING,
     LIVE_RUN_PREFLIGHT_READY,
     LIVE_RUN_PREFLIGHT_ROUTE_TARGET_MISSING,
+    LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE,
     LiveRunPreflightRequest,
     run_initial_release_preflight,
     serialize_preflight_report,
@@ -132,15 +132,31 @@ async def test_preflight_ready_validates_worker_config_connectors_route_and_cred
 
 @pytest.mark.asyncio
 async def test_preflight_stops_before_db_when_worker_config_is_missing():
-    settings_obj, _feishu_id, _jira_id = _settings(feishu_worker_connector_id="")
+    settings_obj, _feishu_id, _jira_id = _settings(
+        feishu_worker_connector_id="",
+        feishu_worker_jira_connector_id="",
+        feishu_worker_creator_id="",
+        feishu_worker_app_id="",
+        feishu_worker_app_secret="",
+    )
     db = _FakeSession()
 
     report = await run_initial_release_preflight(db, _request(), configured_settings=settings_obj)
+    payload = serialize_preflight_report(report)
 
     assert report.ready is False
     assert report.checks[0].name == "workerConfig"
     assert report.checks[0].status == "failed"
-    assert report.checks[0].reason_code == FEISHU_WORKER_CONFIG_MISSING_CONNECTOR_ID
+    assert report.checks[0].reason_code == LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE
+    assert payload["checks"][0]["details"] == {
+        "missing": [
+            "FEISHU_WORKER_CONNECTOR_ID",
+            "FEISHU_WORKER_JIRA_CONNECTOR_ID",
+            "FEISHU_WORKER_CREATOR_ID",
+            "FEISHU_WORKER_APP_ID",
+            "FEISHU_WORKER_APP_SECRET",
+        ]
+    }
     assert db.queries == 0
 
 
