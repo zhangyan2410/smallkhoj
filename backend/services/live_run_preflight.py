@@ -22,6 +22,9 @@ WORKER_REQUIRED_SETTING_KEYS = (
     ("FEISHU_WORKER_CREATOR_ID", "feishu_worker_creator_id"),
     ("FEISHU_WORKER_APP_ID", "feishu_worker_app_id"),
     ("FEISHU_WORKER_APP_SECRET", "feishu_worker_app_secret"),
+    ("FEISHU_REPLY_ACCESS_TOKEN", "feishu_reply_access_token"),
+    ("JIRA_EMAIL", "jira_email"),
+    ("JIRA_API_TOKEN", "jira_api_token"),
 )
 
 

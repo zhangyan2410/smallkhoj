@@ -6,7 +6,6 @@ import pytest
 from models import ExternalConnector, ExternalRoute
 from services.integration_gateway import EXTERNAL_ROUTE_NOT_FOUND
 from services.live_run_preflight import (
-    LIVE_RUN_PREFLIGHT_JIRA_CREDENTIALS_MISSING,
     LIVE_RUN_PREFLIGHT_READY,
     LIVE_RUN_PREFLIGHT_ROUTE_TARGET_MISSING,
     LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE,
@@ -57,6 +56,7 @@ def _settings(**overrides):
         "feishu_worker_bot_name": "SmallKhoj",
         "feishu_worker_app_id": "cli_app",
         "feishu_worker_app_secret": "app-secret",
+        "feishu_reply_access_token": "tenant-token",
         "jira_email": "bot@example.com",
         "jira_api_token": "jira-token",
     }
@@ -138,6 +138,9 @@ async def test_preflight_stops_before_db_when_worker_config_is_missing():
         feishu_worker_creator_id="",
         feishu_worker_app_id="",
         feishu_worker_app_secret="",
+        feishu_reply_access_token="",
+        jira_email="",
+        jira_api_token="",
     )
     db = _FakeSession()
 
@@ -155,6 +158,9 @@ async def test_preflight_stops_before_db_when_worker_config_is_missing():
             "FEISHU_WORKER_CREATOR_ID",
             "FEISHU_WORKER_APP_ID",
             "FEISHU_WORKER_APP_SECRET",
+            "FEISHU_REPLY_ACCESS_TOKEN",
+            "JIRA_EMAIL",
+            "JIRA_API_TOKEN",
         ]
     }
     assert db.queries == 0
@@ -219,9 +225,10 @@ async def test_preflight_reports_missing_jira_credentials_as_not_ready():
     report = await run_initial_release_preflight(db, _request(), configured_settings=settings_obj)
 
     assert report.ready is False
-    assert [check.reason_code for check in report.checks if check.name == "jiraCredentials"] == [
-        LIVE_RUN_PREFLIGHT_JIRA_CREDENTIALS_MISSING
-    ]
+    assert report.checks[0].name == "workerConfig"
+    assert report.checks[0].reason_code == LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE
+    assert report.checks[0].details == {"missing": ["JIRA_API_TOKEN"]}
+    assert db.queries == 0
 
 
 def test_preflight_cli_help_loads_and_rejects_secret_arguments():
