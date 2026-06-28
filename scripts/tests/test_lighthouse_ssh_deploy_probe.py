@@ -64,6 +64,25 @@ class LighthouseSshDeployProbeTests(unittest.TestCase):
         self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml build caddy", commands)
         self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy", commands)
 
+    def test_compose_start_can_use_preloaded_local_images(self) -> None:
+        options = runner.RunOptions(
+            host="203.0.113.10",
+            user="ubuntu",
+            remote_dir="/opt/smallkhoj",
+            local_bundle=Path("/tmp/bundle.tar.gz"),
+            remote_env_file=".env.prod",
+            compose_up=True,
+            use_loaded_images=True,
+        )
+
+        plan = runner.build_plan(options)
+        commands = "\n".join(" ".join(step.argv) for step in plan.steps)
+
+        self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml pull db", commands)
+        self.assertNotIn("pull db backend frontend", commands)
+        self.assertNotIn("build caddy", commands)
+        self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy", commands)
+
     def test_compose_up_requires_remote_env_file(self) -> None:
         options = runner.RunOptions(
             host="203.0.113.10",

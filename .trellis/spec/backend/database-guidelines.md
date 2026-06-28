@@ -884,6 +884,74 @@ POSTGRES_PASSWORD=secret123
 POSTGRES_PASSWORD=<set-outside-repo>
 ```
 
+## Scenario: Initial Release Production Image Transfer CLI
+
+### 1. Scope / Trigger
+- Trigger: preparing the first Tencent Cloud Lighthouse deployment when backend/frontend/Caddy images should be built off-host and loaded directly on the server without a container registry.
+- Use this before `lighthouse_ssh_deploy_probe.py --compose-up --use-loaded-images` when the target host is too small to build the app images or a registry is not ready.
+
+### 2. Signatures
+- CLI module: `scripts/production_image_transfer.py`.
+- Required flag:
+  - `--host <ssh-host-or-ip>`
+- Optional flags:
+  - `--user <ssh-user>`
+  - `--port <ssh-port>`
+  - `--identity-file <path>`
+  - `--remote-dir <path>`
+  - `--output-archive <path>`
+  - `--backend-image <tag>`
+  - `--frontend-image <tag>`
+  - `--caddy-image <tag>`
+  - `--skip-build`
+  - `--use-vpn-proxy`
+  - `--proxy-url <url>`
+  - `--next-public-api-base-url <url>`
+  - `--next-public-ws-base-url <url>`
+  - `--next-public-api-key <public-key>`
+  - `--dry-run`
+  - `--json`
+
+### 3. Contracts
+- Default image tags are `smallkhoj-backend:local-release`, `smallkhoj-frontend:local-release`, and `smallkhoj-caddy:local-release`.
+- Default mode must build backend, frontend, and Caddy images locally; `--skip-build` must omit build steps while preserving `docker save`, `scp`, and remote `docker load`.
+- The CLI must save all three app images into one Docker archive, upload the archive to the remote directory, and run `docker load -i <remote-archive>`.
+- `--use-vpn-proxy` must add Docker build args for `HTTP_PROXY`, `HTTPS_PROXY`, `http_proxy`, and `https_proxy`, using `http://host.docker.internal:7897` by default because the proxy is reached from inside build containers.
+- Frontend builds must pass `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_WS_BASE_URL`, and `NEXT_PUBLIC_API_KEY` as build args; same-origin release mode keeps the first two empty by default.
+- The CLI must not read, upload, or print `.env.prod` or credential-shaped environment values.
+- After using this CLI, `.env.prod` must point `SMALLKHOJ_BACKEND_IMAGE`, `SMALLKHOJ_FRONTEND_IMAGE`, and `SMALLKHOJ_CADDY_IMAGE` at the loaded tags, and compose startup must avoid pulling those local tags.
+
+### 4. Validation & Error Matrix
+- Missing `--host` -> CLI parser failure.
+- Local Docker build/save failure -> stop and return that command's exit code.
+- SCP failure -> stop before remote `docker load` and return the SCP exit code.
+- Remote `docker load` failure -> return the SSH command exit code.
+- Using loaded local tags with `lighthouse_ssh_deploy_probe.py --compose-up` but without `--use-loaded-images` -> risk pulling nonexistent registry tags; treat this as operator error.
+
+### 5. Good/Base/Bad Cases
+- Good: local machine runs `production_image_transfer.py --use-vpn-proxy --dry-run`, then runs it for real, edits `.env.prod` image tags to the loaded local-release tags, and starts compose with `--use-loaded-images`.
+- Good: images were already built locally, so the operator runs with `--skip-build` to avoid rebuilding and only transfers the current archive.
+- Base: a registry is already ready; skip this CLI and use registry image tags plus the normal pull/build startup path.
+- Bad: building Next.js on the 2 vCPU / 2 GB Lighthouse host.
+- Bad: running `docker compose pull backend frontend` against `smallkhoj-*:local-release` tags after loading them locally.
+
+### 6. Tests Required
+- Unit tests cover default command planning, SSH identity/port flags, `--skip-build`, VPN proxy build args, no-secret command payloads, and loaded-image compose compatibility.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+ssh host
+docker build -t smallkhoj-frontend:latest ./frontend
+# server swaps or runs out of disk/memory during Next build
+```
+
+#### Correct
+```text
+python3 scripts/production_image_transfer.py --host <ip> --user ubuntu --use-vpn-proxy
+python3 scripts/lighthouse_ssh_deploy_probe.py --host <ip> --user ubuntu --remote-env-file .env.prod --compose-up --use-loaded-images
+```
+
 ## Scenario: Initial Release SSH Deployment Probe Runner
 
 ### 1. Scope / Trigger
@@ -904,6 +972,7 @@ POSTGRES_PASSWORD=<set-outside-repo>
   - `--remote-env-file <path>`
   - `--runtime-preflight`
   - `--compose-up`
+  - `--use-loaded-images`
   - `--public-base-url <url>`
   - `--allow-http`
   - `--dry-run`
@@ -914,6 +983,7 @@ POSTGRES_PASSWORD=<set-outside-repo>
 - The runner must not create, upload, or print `.env.prod` or any secret value.
 - `--runtime-preflight` requires `--remote-env-file`.
 - `--compose-up` requires `--remote-env-file` and must be explicit; default probe must not start containers.
+- `--use-loaded-images` may only affect explicit compose startup: it pulls `db` but must not pull backend/frontend or build Caddy, because those images should already exist from `production_image_transfer.py`.
 - `--public-base-url` runs local `post_deploy_smoke.py` after remote steps.
 - `--dry-run` and `--json` must expose the command plan without executing SSH/SCP/local commands.
 
@@ -927,12 +997,14 @@ POSTGRES_PASSWORD=<set-outside-repo>
 ### 5. Good/Base/Bad Cases
 - Good: `--dry-run` first prints create-bundle, SSH mkdir, SCP upload, remote unpack, host probe, and repo preflight in order.
 - Good: runtime preflight is only added after `.env.prod` exists on the server and `--remote-env-file` is provided.
+- Good: local image transfer is followed by `--compose-up --use-loaded-images`, so the server pulls only `db` and uses already-loaded app images.
 - Base: no public URL is ready; the runner still performs bundle upload, host probe, and repo preflight.
 - Bad: uploading `.env.prod` from the local repo or printing secret values in the command plan.
 - Bad: starting compose on a fresh host before `lighthouse_host_probe.py` has recorded CPU/memory/swap/disk/Docker/port evidence.
+- Bad: pulling backend/frontend local-release tags after they were loaded with `docker load`.
 
 ### 6. Tests Required
-- Unit tests cover default command planning, SSH identity/port flags, runtime preflight, explicit compose startup, missing env validation, and optional public smoke.
+- Unit tests cover default command planning, SSH identity/port flags, runtime preflight, explicit compose startup, loaded-image startup, missing env validation, and optional public smoke.
 - CLI dry-run should be manually inspected before first real host use.
 
 ### 7. Wrong vs Correct

@@ -45,7 +45,8 @@
     "06-28-initial-release-daemon-websocket-deploy-smoke",
     "06-28-initial-release-ssh-deployment-probe-runner",
     "06-28-initial-release-production-env-template-guardrail",
-    "06-28-initial-release-remote-deploy-evidence-collector"
+    "06-28-initial-release-remote-deploy-evidence-collector",
+    "06-28-initial-release-production-image-transfer-runner"
   ],
   "parent": null,
   "relatedFiles": [],

@@ -30,6 +30,7 @@ class RunOptions:
     remote_env_file: str | None = None
     runtime_preflight: bool = False
     compose_up: bool = False
+    use_loaded_images: bool = False
     public_base_url: str | None = None
     allow_http: bool = False
 
@@ -129,11 +130,17 @@ def build_plan(options: RunOptions) -> CommandPlan:
     if options.compose_up:
         env_file = shlex.quote(options.remote_env_file or "")
         compose = f"docker compose --env-file {env_file} -f docker-compose.prod.yml"
-        commands = [
-            f"{compose} pull db backend frontend",
-            f"{compose} build caddy",
-            f"{compose} up -d db backend frontend caddy",
-        ]
+        if options.use_loaded_images:
+            commands = [
+                f"{compose} pull db",
+                f"{compose} up -d db backend frontend caddy",
+            ]
+        else:
+            commands = [
+                f"{compose} pull db backend frontend",
+                f"{compose} build caddy",
+                f"{compose} up -d db backend frontend caddy",
+            ]
         steps.append(PlanStep("compose-up", remote_shell(
             options,
             remote_command_for_bundle(options, " && ".join(commands)),
@@ -189,6 +196,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--remote-env-file", help="Remote env file path relative to the unpacked bundle directory, for env/runtime preflight or compose startup.")
     parser.add_argument("--runtime-preflight", action="store_true", help="Run remote deploy preflight with --runtime. Requires --remote-env-file.")
     parser.add_argument("--compose-up", action="store_true", help="Pull/build/start db/backend/frontend/caddy remotely. Requires --remote-env-file.")
+    parser.add_argument("--use-loaded-images", action="store_true", help="When using --compose-up, assume backend/frontend/caddy images were loaded on the host and only pull db.")
     parser.add_argument("--public-base-url", help="Run local post-deploy smoke against this public base URL after remote steps.")
     parser.add_argument("--allow-http", action="store_true", help="Pass --allow-http to local post-deploy smoke.")
     parser.add_argument("--dry-run", action="store_true", help="Print the command plan without executing it.")
@@ -208,6 +216,7 @@ def options_from_args(args: argparse.Namespace) -> RunOptions:
         remote_env_file=args.remote_env_file,
         runtime_preflight=args.runtime_preflight,
         compose_up=args.compose_up,
+        use_loaded_images=args.use_loaded_images,
         public_base_url=args.public_base_url,
         allow_http=args.allow_http,
     )

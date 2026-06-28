@@ -116,6 +116,13 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml pull
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
 ```
 
+If backend/frontend/Caddy images were preloaded with `docker load`, pull only the database image before startup:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml pull db
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
+```
+
 Smoke the public URL:
 
 ```bash

@@ -37,7 +37,7 @@ The production compose file uses prebuilt backend/frontend images so a 2-core/2G
 
 The frontend Dockerfile copies Next.js standalone output from `.next/standalone`; keep `frontend/next.config.mjs` configured with `output: "standalone"`. A frontend image build must fail the release gate if `.next/standalone/server.js` is missing after `bun run build`.
 
-Build and push images from a stronger machine or CI:
+For a registry-based deployment, build and push images from a stronger machine or CI:
 
 ```bash
 docker build -t <registry>/smallkhoj-backend:<tag> ./backend
@@ -50,7 +50,36 @@ docker push <registry>/smallkhoj-backend:<tag>
 docker push <registry>/smallkhoj-frontend:<tag>
 ```
 
-If Docker Hub or package downloads time out on the local network, run Docker builds through the local VPN proxy. From the host, the proxy is `127.0.0.1:7897`; from inside Docker build containers, use `host.docker.internal:7897`:
+For the first Lighthouse test, a registry-free flow is usually simpler: build images locally, save them into one Docker archive, upload the archive over SSH, and run `docker load` on the server:
+
+```bash
+python3 scripts/production_image_transfer.py \
+  --host <server-ip> \
+  --user ubuntu \
+  --identity-file ~/.ssh/<key> \
+  --remote-dir /opt/smallkhoj \
+  --use-vpn-proxy \
+  --dry-run
+
+python3 scripts/production_image_transfer.py \
+  --host <server-ip> \
+  --user ubuntu \
+  --identity-file ~/.ssh/<key> \
+  --remote-dir /opt/smallkhoj \
+  --use-vpn-proxy
+```
+
+This loads these default tags on the server:
+
+```bash
+SMALLKHOJ_BACKEND_IMAGE=smallkhoj-backend:local-release
+SMALLKHOJ_FRONTEND_IMAGE=smallkhoj-frontend:local-release
+SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:local-release
+```
+
+If you already built those images locally, add `--skip-build` to only save, upload, and load the archive.
+
+If Docker Hub or package downloads time out on the local network, run Docker builds through the local VPN proxy. From the host, the proxy is `127.0.0.1:7897`; from inside Docker build containers, use `host.docker.internal:7897`. The image transfer script's `--use-vpn-proxy` flag adds these build args automatically:
 
 ```bash
 docker build \
@@ -75,8 +104,17 @@ Required operational values:
 SMALLKHOJ_SITE_ADDRESS=smallkhoj.example.com
 SMALLKHOJ_BACKEND_IMAGE=<registry>/smallkhoj-backend:<tag>
 SMALLKHOJ_FRONTEND_IMAGE=<registry>/smallkhoj-frontend:<tag>
+SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:latest
 POSTGRES_PASSWORD=<set-outside-repo>
 BACKEND_CORS_ORIGINS=https://smallkhoj.example.com
+```
+
+When using `production_image_transfer.py`, replace the image values with the local-release tags loaded on the server:
+
+```bash
+SMALLKHOJ_BACKEND_IMAGE=smallkhoj-backend:local-release
+SMALLKHOJ_FRONTEND_IMAGE=smallkhoj-frontend:local-release
+SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:local-release
 ```
 
 Frontend URL values:
@@ -167,6 +205,22 @@ python3 scripts/lighthouse_ssh_deploy_probe.py \
   --remote-env-file .env.prod \
   --runtime-preflight \
   --compose-up \
+  --public-base-url http://<server-ip> \
+  --allow-http
+```
+
+If backend/frontend/Caddy images were loaded with `production_image_transfer.py`, add `--use-loaded-images` so the SSH runner pulls only the database image and does not try to pull local app tags or rebuild Caddy on the small server:
+
+```bash
+python3 scripts/lighthouse_ssh_deploy_probe.py \
+  --host <server-ip> \
+  --user ubuntu \
+  --identity-file ~/.ssh/<key> \
+  --remote-dir /opt/smallkhoj \
+  --remote-env-file .env.prod \
+  --runtime-preflight \
+  --compose-up \
+  --use-loaded-images \
   --public-base-url http://<server-ip> \
   --allow-http
 ```
@@ -271,11 +325,18 @@ docker compose --env-file /tmp/smallkhoj-prod-smoke.env -f docker-compose.prod.y
 
 ## Start
 
-Pull and start the core web stack:
+Pull and start the core web stack when using registry-hosted backend/frontend images:
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml pull db backend frontend
 docker compose --env-file .env.prod -f docker-compose.prod.yml build caddy
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
+```
+
+When using locally loaded app images from `production_image_transfer.py`, pull only Postgres and then start the stack:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml pull db
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
 ```
 
@@ -355,4 +416,4 @@ Only start `feishu-worker` after preflight reports `ready: true`.
 - Daemon command contains `http://backend:8000`: frontend is leaking internal URL into public command generation; set `NEXT_PUBLIC_API_BASE_URL=https://domain` or check forwarded headers through Caddy.
 - Browser WebSocket uses `ws://` on HTTPS page: check `NEXT_PUBLIC_WS_BASE_URL`; empty same-origin should derive `wss://`.
 - Caddy cannot issue a certificate: check DNS A record, firewall ports 80/443, and ICP/provider restrictions.
-- Server runs out of memory during deploy: do not build images on the server; pull prebuilt backend/frontend images.
+- Server runs out of memory during deploy: do not build images on the server; pull prebuilt backend/frontend images or use `scripts/production_image_transfer.py` to load locally built images.
