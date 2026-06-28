@@ -20,7 +20,8 @@
   "subtasks": [],
   "children": [
     "06-28-initial-release-integration-gateway-foundation",
-    "06-28-initial-release-jira-rest-mvp"
+    "06-28-initial-release-jira-rest-mvp",
+    "06-28-initial-release-feishu-long-connection-mvp"
   ],
   "parent": null,
   "relatedFiles": [],

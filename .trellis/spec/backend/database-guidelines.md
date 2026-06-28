@@ -187,6 +187,70 @@ TaskRun completion -> Jira adapter writes comment -> stores jira_comment_id in t
 TaskRun completion -> services.jira_rest.append_jira_comment -> services.integration_gateway.create_external_mapping(local task_run -> jira comment)
 ```
 
+## Scenario: Feishu Long-Connection Message Boundary
+
+### 1. Scope / Trigger
+- Trigger: adding Feishu/Lark message events, long-connection workers, or bot command handlers.
+- Use this before connecting a production `lark-oapi` worker or adding more Feishu command shapes.
+
+### 2. Signatures
+- Service module: `services.feishu_adapter`.
+- Normalized event type: `FeishuInboundMessage`.
+- First supported command: optional bot mention plus `分析 <JIRA-KEY>`.
+- Gateway event claim:
+  - `provider="feishu"`.
+  - `dedup_key="feishu:{event_id or message_id}"`.
+- Route source shape:
+  - `chatId`
+  - `chatType`
+  - `command`
+- Session scope:
+  - `thread` when Feishu `thread_id` exists.
+  - `chat` otherwise.
+
+### 3. Contracts
+- Raw SDK events must be normalized before business logic reads them.
+- Group messages are non-work by default. They enter SmallKhoj only when explicitly addressed to the bot by mention/name or when the chat is direct/p2p.
+- Feishu adapter must claim an `external_events` row before accepted work is created.
+- Duplicate, unknown command, unaddressed group, no route, and disabled route outcomes must not create channel/task content.
+- Accepted outcomes may expose parsed command data for later orchestration, but must not execute runtime/model work directly.
+- The production long-connection worker should be a transport wrapper that calls this adapter; it should not own route, dedup, or TaskRun semantics.
+
+### 4. Validation & Error Matrix
+- Unaddressed group message -> `FEISHU_UNADDRESSED_GROUP`.
+- Unsupported text -> `FEISHU_COMMAND_UNKNOWN`.
+- Duplicate event/message id -> duplicate outcome from integration gateway claim.
+- No matching route -> `FEISHU_ROUTE_NOT_FOUND`.
+- Disabled route -> `FEISHU_ROUTE_DISABLED`.
+- Matching route -> external session is created/reused and event is linked to route/session/channel context.
+
+### 5. Good/Base/Bad Cases
+- Good: `@SmallKhoj 分析 JIRA-123` in a group where the bot is mentioned claims the event, resolves route, creates/reuses session, and returns a `jira_analysis` command for the next orchestration slice.
+- Good: `分析 JIRA-123` in p2p chat does not require a bot mention.
+- Base: unknown command is audited as dropped and can be inspected through external event status.
+- Bad: ingesting every group message into SmallKhoj channels.
+- Bad: making the Feishu SDK callback create TaskRun records and send daemon commands directly.
+- Bad: storing unaddressed group message bodies as local channel/task content.
+
+### 6. Tests Required
+- Raw event normalization from Feishu-like payload to `FeishuInboundMessage`.
+- Group addressing filter for p2p, mentioned group, and unaddressed group.
+- Command parser for `分析 JIRA-123`.
+- Duplicate/unknown/no-route/drop outcomes.
+- Matched route creates session and links event context.
+- Boundary test proving Feishu adapter does not import runtime/daemon execution helpers.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+lark-oapi callback -> parse text -> create TaskRun -> send daemon command
+```
+
+#### Correct
+```text
+lark-oapi callback -> normalize -> services.feishu_adapter.dispatch_feishu_message -> integration gateway event/session/route -> later orchestration creates TaskRun
+```
+
 ## Scenario: Computer Binding Columns On Members
 
 ### 1. Scope / Trigger
