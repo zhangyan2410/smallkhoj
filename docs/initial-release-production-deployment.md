@@ -225,6 +225,7 @@ Remote probe dir: /home/ubuntu/smallkhoj-deploy
 Provisioning notes captured on 2026-06-29:
 
 - Tencent Lighthouse firewall allows TCP 22, 80, and 443, plus ICMP ping.
+- SSH access is verified with the local key at `/Users/lee/.ssh/tengxun-ssh-key.pem` using the `ubuntu` user. Keep the key out of the repository and at `0600` permissions.
 - Docker 26.1.3 and Docker Compose v2.27.1 are present from the selected Docker base image.
 - The `ubuntu` user is in the `docker` group for non-root compose operations.
 - A persistent 3 GiB `/swapfile` is configured in `/etc/fstab`.
@@ -234,6 +235,14 @@ Provisioning notes captured on 2026-06-29:
 - `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy` started the core stack successfully.
 - `post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json` passed with zero failures and zero warnings. Browser evidence via `./twd` shows the deployed login page at `http://124.222.40.40/login`.
 - The instance is in a Chinese mainland region. Domain-based public release still needs ICP filing readiness; IP-only HTTP and outbound Feishu/Jira validation can proceed before a formal domain is ready.
+
+Daemon remote validation captured on 2026-06-29:
+
+- The first remote connect command registered one local Computer for `Mac-mini.local` with ID `2f539a6a-8b90-43f2-a16d-caafae9daff4`, `machineIdPresent=true`, and an active daemon lease.
+- After the daemon was stopped, the Computer list stayed at `count=1` and transitioned to `status=offline`; no duplicate Computer was created.
+- The reconnect command for the existing Computer ID started the local `./smallkhoj-daemon` against `http://124.222.40.40` and restored the same Computer to `status=online`. The list still returned `count=1`, the same Computer ID, `machineIdPresent=true`, and `workspaceCount=0`.
+- Local daemon logs during reconnect included `Daemon register synced to http://124.222.40.40`, `WS event: connected`, and repeated `Daemon heartbeat synced to http://124.222.40.40`.
+- After clean shutdown and lease expiry, the Computer returned to `status=offline` with `count=1`. The API still exposed an `activeDaemonId` value on the offline record; this is not a duplicate-registration bug, but it should be cleaned up or normalized in the Computer status API before relying on that field for UI decisions.
 
 Before installing or starting anything on Tencent Cloud Lighthouse, create the no-secret deployment bundle on your local machine:
 
