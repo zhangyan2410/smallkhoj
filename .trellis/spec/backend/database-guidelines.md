@@ -251,6 +251,61 @@ lark-oapi callback -> parse text -> create TaskRun -> send daemon command
 lark-oapi callback -> normalize -> services.feishu_adapter.dispatch_feishu_message -> integration gateway event/session/route -> later orchestration creates TaskRun
 ```
 
+## Scenario: Feishu Outbound Reply Boundary
+
+### 1. Scope / Trigger
+- Trigger: sending accepted/result/failure replies back to Feishu/Lark for external work that originated from a Feishu message.
+- Use this before wiring production long-connection callbacks or TaskRun completion replies to Feishu.
+
+### 2. Signatures
+- Service module: `services.feishu_replies`.
+- Config type: `FeishuReplyConfig(base_url, access_token)`.
+- Send operation: `send_feishu_text_reply(db, http_client, config, server_id, connector_id, chat_id, text, local_type, local_id, source_message_id=None)`.
+- Mapping: successful sends create `ExternalMapping(provider="feishu", external_type="message")`.
+
+### 3. Contracts
+- Feishu reply access tokens are runtime inputs or future secret-manager outputs. Do not store them in connector config, event normalized payloads, mappings, task data, or task artifacts.
+- Text replies use Feishu Open Platform IM v1 with `msg_type="text"` and JSON-string `content={"text": ...}`.
+- Chat-level sends use `/open-apis/im/v1/messages?receive_id_type=chat_id` with `receive_id=<chat_id>`.
+- Source-message replies use `/open-apis/im/v1/messages/{message_id}/reply`.
+- The service records the Feishu reply message id through `external_mappings`; do not add a provider-specific reply table for the first release.
+- The service must not execute daemon/runtime work and must not own the long-connection receive loop.
+
+### 4. Validation & Error Matrix
+- Missing base URL -> `FEISHU_REPLY_CONFIG_MISSING_BASE_URL`.
+- Missing access token -> `FEISHU_REPLY_CREDENTIALS_MISSING`.
+- Missing chat id -> `FEISHU_REPLY_CHAT_MISSING`.
+- Missing/blank text -> `FEISHU_REPLY_TEXT_MISSING`.
+- Non-2xx HTTP or non-zero Feishu `code` -> `FEISHU_REPLY_API_FAILED`.
+- Success response without `data.message_id` -> `FEISHU_REPLY_RESPONSE_MISSING_MESSAGE_ID`.
+
+### 5. Good/Base/Bad Cases
+- Good: accepted Feishu task request sends a concise text confirmation and maps the Feishu reply message id to the local event/task/run.
+- Good: TaskRun result can later use the same service to reply in the source message/thread and map `task_run -> feishu message`.
+- Base: outbound credentials are not wired; caller should record a structured write-back failure without rolling back local TaskRun state.
+- Bad: storing Feishu tenant access tokens in `ExternalConnector.config`.
+- Bad: replying from the inbound adapter before external event dedup/route decisions are durable.
+- Bad: blindly retrying an ambiguous thread-reply failure at chat level and risking duplicate/leaked replies.
+
+### 6. Tests Required
+- Chat-level text send request shape.
+- Source-message reply request shape.
+- Missing config/token/chat/text validation.
+- Feishu API failure and missing message id failure.
+- Successful mapping through `ExternalMapping`.
+- Boundary test proving no daemon/runtime execution helpers are imported.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Feishu inbound adapter -> direct HTTP reply -> no mapping / no event status
+```
+
+#### Correct
+```text
+Feishu inbound adapter -> durable gateway/orchestration decision -> services.feishu_replies.send_feishu_text_reply -> external_mapping(feishu message)
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger
