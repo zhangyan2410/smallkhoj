@@ -48,6 +48,21 @@ JIRA_EMAIL=<set outside repo>
 JIRA_API_TOKEN=<set outside repo>
 ```
 
+## Preflight
+
+Before starting the long-running worker, run the no-network preflight from `backend/`:
+
+```bash
+PYTHONPATH=. uv run python -m live_run_preflight_cli \
+  --feishu-chat-id <oc_or_ou_chat_id> \
+  --feishu-chat-type group \
+  --command jira_analysis
+```
+
+The preflight validates worker env, connector rows, non-secret connector config, Jira credential presence, and the Feishu route selector. It does not connect to Feishu or Jira.
+
+Ready output has `ready: true`. If `ready` is false, fix the reported check before launching the worker.
+
 ## Launch Worker
 
 After setting the env vars above, start the Feishu long-connection worker from `backend/`:

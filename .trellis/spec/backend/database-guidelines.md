@@ -665,6 +665,66 @@ python -m feishu_worker_cli --app-secret xxx -> CLI parses messages and creates 
 env/.env secrets -> python -m feishu_worker_cli -> run_feishu_channel_worker -> existing worker/runtime/event-loop services
 ```
 
+## Scenario: Initial Release Live-Run Preflight CLI
+
+### 1. Scope / Trigger
+- Trigger: validating the release live-run setup before starting the Feishu long-connection worker or using real Feishu/Jira credentials in a live scenario.
+- Use this after `integration_bootstrap_cli` and before `feishu_worker_cli`.
+
+### 2. Signatures
+- Service module: `services.live_run_preflight`.
+- CLI module: `live_run_preflight_cli`, run from `backend/` with `python -m live_run_preflight_cli`.
+- Request fields: `feishu_chat_id`, `feishu_chat_type`, `command`.
+- CLI flags: `--feishu-chat-id`, `--feishu-chat-type`, `--command`, `--pretty`.
+- Report shape: top-level `ready: bool` plus `checks[]` with `name`, `status`, `reasonCode`, `reason`, and optional `details`.
+
+### 3. Contracts
+- Preflight is read-only and no-network. It must not call Feishu, Jira, Tencent Cloud, daemon, or runtime providers.
+- Worker settings must be validated through `resolve_feishu_worker_config`.
+- Connector existence/provider/status must be validated through `load_feishu_worker_connectors`.
+- Route readiness must be validated through `resolve_external_route` with `{chatId, chatType, command}`.
+- Jira credentials are checked for presence through `resolve_jira_writeback_credentials`; preflight must not test them against Jira.
+- Preflight must verify matched routes have `channel_id` and `default_assignee_id`, because the release loop requires both before TaskRun creation.
+- CLI must not expose secret flags such as `--jira-api-token`, `--feishu-app-secret`, tenant access tokens, daemon tokens, or cloud credentials.
+
+### 4. Validation & Error Matrix
+- Worker config missing/invalid -> `ready=false`, worker config reason code, no DB queries required.
+- Connector missing/wrong provider/disabled -> `ready=false`, worker connector reason code.
+- Connector non-secret config invalid -> `LIVE_RUN_PREFLIGHT_CONNECTOR_CONFIG_INVALID` or Jira config code.
+- Jira credentials absent -> `LIVE_RUN_PREFLIGHT_JIRA_CREDENTIALS_MISSING`.
+- Route missing/disabled -> gateway route reason code.
+- Route matched but missing channel or default assignee -> `LIVE_RUN_PREFLIGHT_ROUTE_TARGET_MISSING`.
+- All checks passed -> top-level `ready=true`, CLI exit `0`.
+- Preflight completed but not ready -> CLI exit `2`.
+- Unexpected exception -> CLI exit `1`.
+
+### 5. Good/Base/Bad Cases
+- Good: after bootstrap and env setup, preflight reports worker config, connectors, connector config, Jira credentials, and Feishu route all passed.
+- Base: Jira API token is missing; preflight reports not ready without attempting a Jira API call.
+- Base: Feishu route exists but points to no assignee; preflight catches this before a real message creates a failed release loop.
+- Bad: launching `feishu_worker_cli` first and discovering route/credential failures only after a live Feishu message.
+- Bad: adding `--jira-api-token` convenience flags and leaking secrets through shell history.
+- Bad: doing a real Jira issue lookup inside preflight.
+
+### 6. Tests Required
+- Ready preflight covers worker config, connectors, route, and credential presence without network calls.
+- Missing worker config stops before DB.
+- Missing/disabled route returns `ready=false`.
+- Route without channel/assignee returns `ready=false`.
+- Missing Jira credentials returns `ready=false`.
+- CLI help loads without DB/network access and parser rejects secret-shaped flags.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+python -m feishu_worker_cli -> live message arrives -> fails because route has no assignee
+```
+
+#### Correct
+```text
+integration_bootstrap_cli -> live_run_preflight_cli -> feishu_worker_cli -> live message
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger
