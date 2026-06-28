@@ -366,6 +366,58 @@ TaskRun completed -> Feishu reply -> exception aborts lifecycle commit
 TaskRun completed -> local lifecycle update -> Jira writeBack outcome + Feishu feishuReply outcome -> commit local state
 ```
 
+## Scenario: Feishu Raw Event Loop Handler
+
+### 1. Scope / Trigger
+- Trigger: adding the service boundary a Feishu/Lark long-connection worker calls after receiving a raw message event payload.
+- Use this before implementing production worker transport code so SDK callbacks stay thin and business flow remains testable.
+
+### 2. Signatures
+- Service module: `services.feishu_event_loop`.
+- Entry operation: `process_feishu_raw_event(db, raw_event, server_id, feishu_connector_id, jira_connector, creator_id, jira_http_client, jira_credentials, feishu_http_client, feishu_reply_config, bot_open_id=None, bot_name=None)`.
+- Structured outcome: `FeishuEventLoopOutcome(status, reason_code, reason, dispatch_outcome, release_result, accepted_reply, failure_code, failure_reason)`.
+
+### 3. Contracts
+- Raw Feishu payloads must be normalized through `services.feishu_adapter.normalize_feishu_message` before dispatch or business logic reads message fields.
+- Gateway dispatch must go through `services.feishu_adapter.dispatch_feishu_message`; this handler must not duplicate route, dedup, command, or addressing logic.
+- Only `FeishuDispatchOutcome(status="accepted")` may start `services.release_loop.start_feishu_jira_analysis`.
+- Duplicate, unknown-command, unaddressed-group, no-route, and disabled-route outcomes are passthrough outcomes and must not create local Message/Task/TaskRun work.
+- `ReleaseLoopError` after an event is claimed must mark the external event `failed` through `services.integration_gateway.mark_external_event_failed`.
+- Accepted Feishu reply failures are reported as `accepted_reply_failed` but must not roll back local release-loop state.
+- The production long-connection worker should only resolve runtime dependencies and call this service. It should not own normalize/dispatch/release-loop/accepted-reply semantics.
+- The handler must not execute provider/runtime work directly; TaskRun execution remains behind the existing TaskRun/daemon path.
+
+### 4. Validation & Error Matrix
+- Dispatch non-accepted -> return dispatch status with `FEISHU_EVENT_LOOP_DISPATCH_PASSTHROUGH`.
+- Release-loop startup failure -> mark linked external event failed and return `FEISHU_EVENT_LOOP_RELEASE_FAILED` with the release-loop code/reason.
+- Accepted reply send failure -> return `FEISHU_EVENT_LOOP_ACCEPTED_REPLY_FAILED`, preserving `release_result`.
+- Accepted dispatch + release-loop + accepted reply success -> return `FEISHU_EVENT_LOOP_ACCEPTED`.
+
+### 5. Good/Base/Bad Cases
+- Good: long-connection worker receives a raw event, calls `process_feishu_raw_event`, and records a structured outcome for logs/metrics.
+- Good: a duplicate Feishu message returns without Jira lookup, TaskRun creation, or Feishu accepted reply.
+- Base: local Message/Task/TaskRun is created but Feishu accepted reply credentials are missing; local state remains the source of truth and the outcome exposes the reply failure.
+- Bad: SDK callback calls Jira REST, creates TaskRun state, or sends Feishu replies inline outside the service.
+- Bad: retrying accepted-reply failure by starting another release-loop run.
+
+### 6. Tests Required
+- Accepted raw event normalizes, dispatches, starts release loop, and sends accepted reply.
+- Duplicate/drop passthrough does not start release-loop work.
+- Release-loop failure marks the linked external event failed.
+- Accepted-reply failure preserves `release_result`.
+- Boundary test proving the handler does not import daemon/runtime execution helpers.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+lark-oapi worker -> parse raw message -> Jira lookup -> create TaskRun -> Feishu reply
+```
+
+#### Correct
+```text
+lark-oapi worker -> services.feishu_event_loop.process_feishu_raw_event -> adapter/gateway -> release_loop -> reply orchestration
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger

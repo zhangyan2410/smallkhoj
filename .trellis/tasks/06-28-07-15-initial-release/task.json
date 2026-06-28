@@ -26,7 +26,8 @@
     "06-28-06-28-initial-release-taskrun-writeback-hook",
     "06-28-initial-release-jira-writeback-runtime-deps",
     "06-28-initial-release-feishu-outbound-replies",
-    "06-28-initial-release-feishu-reply-orchestration"
+    "06-28-initial-release-feishu-reply-orchestration",
+    "06-28-initial-release-feishu-raw-event-loop"
   ],
   "parent": null,
   "relatedFiles": [],
