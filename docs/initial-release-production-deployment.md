@@ -249,7 +249,8 @@ Live-run foundation data captured on 2026-06-29:
 - The deployed database has server ID `3893c518-c8f8-43ba-af0d-54a7773bbb6d`.
 - The public API created validation channel `#initial-release-validation` with ID `d9d533f2-ccf7-450a-af7f-b27618c7faa9`.
 - The channel creator is human member `release-operator` with ID `d1a19ae7-e1f1-4245-ac51-84c60e12b7e9`.
-- Do not create the release agent assignee through `POST /members/agents` until the local daemon is intentionally connected and ready to start a runtime. That API creates an `AgentWorkspace` and pushes a runtime start command to the daemon, which can trigger local CPU/fan load.
+- On the currently deployed backend, do not create the release agent assignee through `POST /members/agents` until the local daemon is intentionally connected and ready to start a runtime. That API creates an `AgentWorkspace` and pushes a runtime start command to the daemon, which can trigger local CPU/fan load.
+- After deploying a backend that supports it, create release assignees with `autoStart=false` or `startRuntime=false` when you need to register the member/workspace before intentionally starting the runtime.
 - Container-side bootstrap and live-run preflight CLIs must be executed through `uv run python -m ...` inside the backend container. Direct `python -m ...` does not load the image's Python dependencies.
 - Current no-network live-run preflight fails at `workerConfig` with `FEISHU_WORKER_CONFIG_MISSING_CONNECTOR_ID`, which is expected before integration bootstrap and runtime env are configured.
 

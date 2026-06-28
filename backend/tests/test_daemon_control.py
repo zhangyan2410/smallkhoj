@@ -306,6 +306,56 @@ async def test_create_agent_rejects_unavailable_runtime_provider_before_creating
 
 
 @pytest.mark.asyncio
+async def test_create_agent_can_register_without_starting_runtime(monkeypatch):
+    server = SimpleNamespace(id=uuid.uuid4())
+    computer = _computer(detected_runtimes=[{
+        "type": "codex",
+        "runtimeProvider": "krill",
+        "status": "available",
+    }])
+    db = _FakeSession(
+        _ExecuteResult(scalar_one=None),
+        _ExecuteResult(scalar_one=computer),
+        _ExecuteResult(scalar_one=None),
+    )
+    pushed = []
+
+    async def fake_get_server(_db):
+        return server
+
+    async def fake_resolve_human_actor(*_args, **_kwargs):
+        return None
+
+    async def fake_record_activity(*_args, **_kwargs):
+        return None
+
+    async def fake_push(*args):
+        pushed.append(args)
+
+    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
+    monkeypatch.setattr(public_api, "_record_activity", fake_record_activity)
+    monkeypatch.setattr(public_api, "_push_committed_events", fake_record_activity)
+    monkeypatch.setattr(public_api.daemon_control_hub, "push", fake_push)
+    request = _JsonRequest({
+        "name": "release-assignee",
+        "computerId": str(computer.id),
+        "runtime": "codex",
+        "runtimeProvider": "krill",
+        "autoStart": False,
+    })
+
+    response = await public_api.create_agent(request, _auth=None, db=db)
+
+    agent = db.added[0]
+    workspace = db.added[1]
+    assert response["created"] is True
+    assert agent.config["runtimeDesiredStatus"] == "stopped"
+    assert workspace.status == "stopped"
+    assert pushed == []
+
+
+@pytest.mark.asyncio
 async def test_missing_running_workspace_is_rearmed_when_autostart_enabled():
     workspace = _workspace(status="running")
     agent = _runtime_member(config={"runtimeDesiredStatus": "running"}, status="active")

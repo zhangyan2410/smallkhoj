@@ -3391,6 +3391,15 @@ def _public_runtime(value: str | None) -> str:
     return _normalize_runtime(value)
 
 
+def _agent_auto_start_enabled(body: dict) -> bool:
+    value = body.get("autoStart", body.get("startRuntime", True))
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(value)
+
+
 @router.post("/members/agents")
 async def create_agent(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
@@ -3434,6 +3443,9 @@ async def create_agent(
         provider_name = None
     if not runtime_provider_available_for(runtime, runtime_provider, computer):
         raise HTTPException(400, runtime_provider_unavailable_message_for(runtime, runtime_provider))
+    auto_start = _agent_auto_start_enabled(body)
+    desired_status = "running" if auto_start else "stopped"
+    workspace_status = PENDING_RUNTIME_START_STATUS if auto_start else "stopped"
 
     agent = Member(
         server_id=server.id,
@@ -3447,7 +3459,7 @@ async def create_agent(
             "backend": body.get("backend"),
             "runtimeProvider": runtime_provider,
             "provider": provider_name,
-            "runtimeDesiredStatus": "running",
+            "runtimeDesiredStatus": desired_status,
         },
     )
     db.add(agent)
@@ -3459,7 +3471,7 @@ async def create_agent(
         runtime=runtime,
         runtime_command=runtime_command,
         runtime_model=runtime_model,
-        status=PENDING_RUNTIME_START_STATUS,
+        status=workspace_status,
         cwd=body.get("cwd"),
     )
     db.add(workspace)
@@ -3497,7 +3509,8 @@ async def create_agent(
     except Exception:
         logger.exception("member.created event emit failed for agent=%s", agent.id)
 
-    await daemon_control_hub.push(computer.id, runtime_start_command(workspace, agent))
+    if auto_start:
+        await daemon_control_hub.push(computer.id, runtime_start_command(workspace, agent))
     return {
         "created": True,
         "member": await serialize_member(db, agent),

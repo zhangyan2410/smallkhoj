@@ -155,6 +155,7 @@ Future environment support must validate:
   - forwarded daemon methods include message, task, channel, thread, profile, integration, reminder, attachment, and knowledge read/search operations
 - Runtime lifecycle:
   - daemon manages runtime instances by `agentId`; do not use a single global `ClaudeRuntimeDriver` for dynamic agents.
+  - Creating an agent member may register its `AgentWorkspace` without immediately starting a runtime when the API request explicitly sets `autoStart:false` or `startRuntime:false`. In that case, store `runtimeDesiredStatus:"stopped"`, keep the workspace `status:"stopped"`, and do not push a `start_runtime` command to the daemon. The default remains autostart for existing callers.
   - each runtime has its own proxy registration, generated `.slock` wrapper directory, token file, workspace path, captured session id, restart timer, stall watchdog, and lifecycle status.
   - dynamic `start_runtime` commands may arrive through `/daemon/register`, `/daemon/heartbeat`, polling `/events`, or `/ws`; all transports must dispatch the same parsed command object.
   - dynamic runtime workspaces must be isolated. If a command omits `workspacePath`, use a per-agent path under the daemon workspace instead of sharing the daemon root `.slock` wrapper.
