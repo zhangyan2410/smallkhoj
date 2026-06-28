@@ -121,29 +121,6 @@ async function updateHumanAvatarUrlAction(formData: FormData) {
   redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
 }
 
-/**
- * Compact human member row for the humans section below the agent gallery.
- */
-function HumanRow({ member, selected }: { member: Member; selected: boolean }) {
-  const name = profileName(member)
-  const handle = member.handle || `@${member.name}`
-  return (
-    <Link
-      href={memberDetailHref(member.id)}
-      className={`flex items-center gap-2.5 rounded-none border-2 px-3 py-2 text-sm transition-colors hover:bg-paper ${
-        selected ? "border-[var(--ink)] sk-accent-mint-soft" : "border-transparent"
-      }`}
-    >
-      <MemberAvatar member={member} size="sm" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{name}</div>
-        <div className="truncate text-[11px] text-muted-foreground">{handle}</div>
-      </div>
-      <StatusPill status={member.status} label={statusLabel(member.status)} />
-    </Link>
-  )
-}
-
 function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }) {
   return (
     <div className="flex gap-1 overflow-x-auto border-b pb-px">
@@ -785,28 +762,9 @@ export default async function MembersPage({
           </div>
         )}
 
-        {/* No agent card gallery here — the sidebar lists agents by computer
-            and shows lifecycle controls inline when selected. The main area
-            only shows the selected member's detail (MemberDetail above) or an
-            empty-state hint to pick one. */}
-
-        {/* Human members: compact list below. */}
-        {humansList.length > 0 && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <UserRound className="size-4 text-accent-mint" />
-              <h2 className="text-sm font-bold text-accent-mint">{t("humans")}</h2>
-              <span className="rounded-none border border-[var(--ink)] sk-accent-mint-soft px-1.5 py-0.5 text-[10px] font-semibold">
-                {humansList.length}
-              </span>
-            </div>
-            <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-              {humansList.map((member) => (
-                <HumanRow key={member.id} member={member} selected={member.id === selectedMemberId} />
-              ))}
-            </div>
-          </section>
-        )}
+        {/* No agent card gallery or humans list here — the sidebar lists both
+            agents (by computer) and humans. The main area only shows the
+            selected member's detail (MemberDetail above), nothing else. */}
       </div>
     </ProductShell>
   )
