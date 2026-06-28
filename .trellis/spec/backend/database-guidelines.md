@@ -418,6 +418,75 @@ lark-oapi worker -> parse raw message -> Jira lookup -> create TaskRun -> Feishu
 lark-oapi worker -> services.feishu_event_loop.process_feishu_raw_event -> adapter/gateway -> release_loop -> reply orchestration
 ```
 
+## Scenario: Feishu Worker Runtime Boundary
+
+### 1. Scope / Trigger
+- Trigger: making the Feishu/Lark long-connection entry deployable from runtime settings, a worker process, or an injected transport.
+- Use this after the raw event loop exists and before wiring a real SDK callback or process manager hook.
+
+### 2. Signatures
+- Runtime module: `services.feishu_worker_runtime`.
+- Settings: `feishu_worker_enabled`, `feishu_worker_connector_id`, `feishu_worker_jira_connector_id`, `feishu_worker_creator_id`, `feishu_worker_bot_open_id`, `feishu_worker_bot_name`, `feishu_worker_app_id`, `feishu_worker_app_secret`.
+- Config resolver: `resolve_feishu_worker_config(configured_settings=settings)`.
+- Connector resolver: `load_feishu_worker_connectors(db, config)`.
+- Dependency builder: `build_feishu_worker_dependencies(configured_settings=settings)`.
+- Event handler: `handle_feishu_worker_raw_event(db, raw_event, config, connectors, dependencies, close_dependencies=False)`.
+- Test transport: `FakeFeishuEventTransport` plus `run_feishu_event_transport`.
+
+### 3. Contracts
+- Worker settings must have safe empty defaults. Committed examples may include empty placeholders only.
+- Feishu app secrets, Jira API tokens, Feishu access tokens, and SDK credentials must come from runtime settings or a future secret manager, never connector config, event normalized payloads, task data, mappings, or `.trellis`.
+- The worker runtime validates configured connector ids and app credentials before processing events.
+- Feishu connector rows must have `provider="feishu"` and `status="active"`.
+- Jira connector rows must have `provider="jira"` and `status="active"`.
+- Jira credentials are resolved through runtime dependency injection; missing credentials are a structured worker failure before the raw event loop is called.
+- Runtime event handling must delegate to `services.feishu_event_loop.process_feishu_raw_event`; it must not parse Feishu commands, resolve routes, construct Jira REST requests, create TaskRuns, or build reply text.
+- SDK/WebSocket transport must stay behind an injected transport boundary. Unit tests must be able to feed raw events without importing a Feishu SDK or opening a network connection.
+- Owned HTTP clients must be closed on success and failure when the handler owns dependencies.
+- The worker runtime must not execute daemon/runtime/model work directly.
+
+### 4. Validation & Error Matrix
+- Missing Feishu connector id -> `FEISHU_WORKER_CONFIG_MISSING_CONNECTOR_ID`.
+- Missing Jira connector id -> `FEISHU_WORKER_CONFIG_MISSING_JIRA_CONNECTOR_ID`.
+- Missing creator id -> `FEISHU_WORKER_CONFIG_MISSING_CREATOR_ID`.
+- Invalid UUID -> `FEISHU_WORKER_CONFIG_INVALID_UUID`.
+- Missing app id/secret -> `FEISHU_WORKER_CONFIG_MISSING_APP_CREDENTIALS`.
+- Missing connector row -> `FEISHU_WORKER_CONNECTOR_NOT_FOUND`.
+- Wrong connector provider -> `FEISHU_WORKER_CONNECTOR_PROVIDER_MISMATCH`.
+- Disabled connector -> `FEISHU_WORKER_CONNECTOR_DISABLED`.
+- Missing Jira credentials -> `FEISHU_WORKER_JIRA_CREDENTIALS_MISSING`.
+- Raw event loop exception -> `FEISHU_WORKER_EVENT_LOOP_FAILED`.
+- Successful event handoff -> `FEISHU_WORKER_EVENT_PROCESSED`.
+
+### 5. Good/Base/Bad Cases
+- Good: a worker process loads runtime settings, resolves active Feishu/Jira connector rows, receives a raw Feishu event from SDK transport, and calls the raw event loop once.
+- Good: local tests use `FakeFeishuEventTransport` to prove event handoff and dependency cleanup without real Feishu credentials.
+- Base: worker settings are incomplete; startup/health can report a stable config failure and no local work is created.
+- Bad: storing Feishu app secret in `ExternalConnector.config`.
+- Bad: SDK callback parses `分析 JIRA-123` itself or calls Jira/TaskRun services directly.
+- Bad: leaving per-event HTTP clients open after an event-loop failure.
+
+### 6. Tests Required
+- Safe default settings for worker runtime.
+- Missing config and invalid connector outcomes.
+- Active Feishu/Jira connector resolution.
+- Event handler delegates all required dependencies into `process_feishu_raw_event`.
+- Missing Jira credentials skips raw event processing.
+- Owned client cleanup on success and failure.
+- Fake transport feeds raw events without SDK imports.
+- Boundary test proving no daemon/runtime execution helpers are imported.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Feishu SDK callback -> parse command -> Jira lookup -> create TaskRun -> send reply
+```
+
+#### Correct
+```text
+Feishu SDK callback -> worker runtime dependency wrapper -> process_feishu_raw_event -> existing service boundaries
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger

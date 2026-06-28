@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     feishu_reply_base_url: str = "https://open.feishu.cn"
     feishu_reply_access_token: str = ""
 
+    feishu_worker_enabled: bool = False
+    feishu_worker_connector_id: str = ""
+    feishu_worker_jira_connector_id: str = ""
+    feishu_worker_creator_id: str = ""
+    feishu_worker_bot_open_id: str = ""
+    feishu_worker_bot_name: str = "SmallKhoj"
+    feishu_worker_app_id: str = ""
+    feishu_worker_app_secret: str = ""
+
     thread_summary_scheduler_enabled: bool = False
 
 
