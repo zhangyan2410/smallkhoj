@@ -26,6 +26,7 @@ def make_repo(root: Path) -> None:
     write(root / "scripts" / "lighthouse_host_probe.py", "print('host')\n")
     write(root / "scripts" / "post_deploy_smoke.py", "print('smoke')\n")
     write(root / "scripts" / "remote_deploy_evidence.py", "print('evidence')\n")
+    write(root / "scripts" / "update_prod_env_from_stdin.py", "print('env update')\n")
     write(root / ".env.prod", "POSTGRES_PASSWORD=secret\n")
 
 
@@ -62,6 +63,7 @@ class DeploymentBundleTests(unittest.TestCase):
                 "smallkhoj-deploy/scripts/lighthouse_host_probe.py",
                 "smallkhoj-deploy/scripts/post_deploy_smoke.py",
                 "smallkhoj-deploy/scripts/remote_deploy_evidence.py",
+                "smallkhoj-deploy/scripts/update_prod_env_from_stdin.py",
             ]))
             self.assertNotIn(".env.prod", "\n".join(names))
 

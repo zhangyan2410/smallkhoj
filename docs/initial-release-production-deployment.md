@@ -256,6 +256,7 @@ Live-run foundation data captured on 2026-06-29:
 - A later backend image was rebuilt as `linux/amd64`, uploaded from `/Volumes/ORICO/smallkhoj-deploy/smallkhoj-backend-amd64-preflight-missing.tar`, loaded on the Lighthouse host, and the backend service was force-recreated. This deployed the live-run preflight improvement that reports all missing worker runtime settings together.
 - Container-side bootstrap and live-run preflight CLIs must be executed through `uv run python -m ...` inside the backend container. Direct `python -m ...` does not load the image's Python dependencies.
 - Current no-network live-run preflight fails at `workerConfig` with `LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE`, listing `FEISHU_WORKER_CONNECTOR_ID`, `FEISHU_WORKER_JIRA_CONNECTOR_ID`, `FEISHU_WORKER_CREATOR_ID`, `FEISHU_WORKER_APP_ID`, and `FEISHU_WORKER_APP_SECRET`. This is expected before integration bootstrap and runtime env are configured.
+- `scripts/update_prod_env_from_stdin.py` was copied to the current Lighthouse deploy directory and smoke-tested with non-secret `FEISHU_WORKER_ENABLED=false`. The command created `.env.prod.bak`, printed only `<unchanged>`, and left core `post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json` green.
 
 Before installing or starting anything on Tencent Cloud Lighthouse, create the no-secret deployment bundle on your local machine:
 
@@ -362,6 +363,31 @@ vim .env.prod
 ```
 
 If `.env.prod` already exists, the template command refuses to overwrite it unless `--force` is provided.
+
+When updating the existing server env file with Feishu/Jira runtime values, do not put secrets in SSH command arguments. Put the patch file outside the repository, then pipe it over stdin:
+
+```bash
+ssh -i ~/.ssh/<key> ubuntu@<server-ip> \
+  'cd /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy && python3 scripts/update_prod_env_from_stdin.py --env-file .env.prod --json' \
+  < /Volumes/ORICO/smallkhoj-secrets/release-worker.env
+```
+
+`release-worker.env` should contain only the keys you want to update, for example:
+
+```bash
+FEISHU_WORKER_ENABLED=true
+FEISHU_WORKER_CONNECTOR_ID=<bootstrap-output>
+FEISHU_WORKER_JIRA_CONNECTOR_ID=<bootstrap-output>
+FEISHU_WORKER_CREATOR_ID=<release-operator-or-creator-member-id>
+FEISHU_WORKER_APP_ID=<cli_app_id>
+FEISHU_WORKER_APP_SECRET=<set-outside-repo>
+FEISHU_WORKER_BOT_OPEN_ID=<ou_bot_open_id>
+FEISHU_REPLY_ACCESS_TOKEN=<set-outside-repo>
+JIRA_EMAIL=<jira-email>
+JIRA_API_TOKEN=<set-outside-repo>
+```
+
+The updater creates `.env.prod.bak`, refuses unknown keys, and prints only key names with `<set>`, `<empty>`, or `<unchanged>` markers.
 
 Run the repository/config preflight before building or pulling images:
 
