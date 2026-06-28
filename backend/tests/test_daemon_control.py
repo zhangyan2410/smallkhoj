@@ -137,10 +137,19 @@ def _computer(*, active_daemon_id="old-daemon", lease_expires_at=None, status="o
         lease_expires_at = datetime.now(timezone.utc) + timedelta(seconds=30)
     return SimpleNamespace(
         id=uuid.uuid4(),
+        server_id=uuid.uuid4(),
+        name="local-dev",
+        machine_id="machine-old",
+        os="darwin",
+        daemon_version="0.2.0",
+        api_key_prefix=None,
         status=status,
         active_daemon_id=active_daemon_id,
         daemon_lease_expires_at=lease_expires_at,
+        last_heartbeat_at=None,
         detected_runtimes=detected_runtimes or [],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
 
 
@@ -623,6 +632,102 @@ def test_daemon_ws_activity_can_take_over_expired_lease():
     assert updated is True
     assert computer.active_daemon_id == "new-daemon"
     assert computer.daemon_lease_expires_at == now + timedelta(seconds=90)
+
+
+def _connect_ticket(token: str, *, server_id: uuid.UUID):
+    return SimpleNamespace(
+        server_id=server_id,
+        key_prefix=token[:20],
+        token_hash=agent_api._token_hash(token),
+        requested_name="Mac-mini.local",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        revoked_at=None,
+        consumed_at=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_daemon_connect_reuses_offline_same_name_computer_when_machine_id_changed(monkeypatch):
+    token = "sk_connect_same_name_reuse"
+    server = SimpleNamespace(id=uuid.uuid4())
+    ticket = _connect_ticket(token, server_id=server.id)
+    existing = _computer(
+        active_daemon_id=None,
+        lease_expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        status="offline",
+    )
+    existing.server_id = server.id
+    existing.name = "Mac-mini.local"
+    existing.machine_id = "old-local-machine-id"
+    db = _FakeSession(
+        _ExecuteResult(scalar_rows=[ticket]),
+        _ExecuteResult(scalar_one=server),
+        _ExecuteResult(scalar_one=None),
+        _ExecuteResult(scalar_one=existing),
+        _ExecuteResult(),
+        _ExecuteResult(scalar_rows=[]),
+    )
+    monkeypatch.setattr(agent_api, "_new_machine_token", lambda: "sk_machine_test_token")
+
+    result = await agent_api.connect_daemon(
+        agent_api.DaemonConnectRequest(
+            daemonId="daemon-new",
+            machineId="new-local-machine-id",
+            name="Mac-mini.local",
+            os="darwin",
+            daemonVersion="0.2.0",
+            detectedRuntimes=[{"type": "codex", "status": "available"}],
+        ),
+        authorization=f"Bearer {token}",
+        db=db,
+    )
+
+    assert result["connected"] is True
+    assert result["computer"]["id"] == str(existing.id)
+    assert result["computer"]["machineId"] == "new-local-machine-id"
+    assert existing.machine_id == "new-local-machine-id"
+    assert existing.active_daemon_id == "daemon-new"
+    assert existing.status == "online"
+    assert existing.detected_runtimes == [{"type": "codex", "status": "available"}]
+    assert ticket.consumed_at is not None
+    assert len(db.added) == 1
+
+
+@pytest.mark.asyncio
+async def test_daemon_connect_rejects_active_same_name_computer_when_machine_id_changed():
+    token = "sk_connect_active_same_name"
+    server = SimpleNamespace(id=uuid.uuid4())
+    ticket = _connect_ticket(token, server_id=server.id)
+    existing = _computer(
+        active_daemon_id="daemon-active",
+        lease_expires_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+        status="online",
+    )
+    existing.server_id = server.id
+    existing.name = "Mac-mini.local"
+    existing.machine_id = "old-local-machine-id"
+    db = _FakeSession(
+        _ExecuteResult(scalar_rows=[ticket]),
+        _ExecuteResult(scalar_one=server),
+        _ExecuteResult(scalar_one=None),
+        _ExecuteResult(scalar_one=existing),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await agent_api.connect_daemon(
+            agent_api.DaemonConnectRequest(
+                daemonId="daemon-new",
+                machineId="new-local-machine-id",
+                name="Mac-mini.local",
+            ),
+            authorization=f"Bearer {token}",
+            db=db,
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == "Computer already has an active daemon"
+    assert existing.machine_id == "old-local-machine-id"
+    assert ticket.consumed_at is None
 
 
 def test_workspace_heartbeat_does_not_create_event_record_type():

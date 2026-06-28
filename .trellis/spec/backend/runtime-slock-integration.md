@@ -775,6 +775,8 @@ SLOCKMSG
   - `computers.machine_id` is the daemon-generated persistent machine UUID.
   - Unique per server when present: `(server_id, machine_id)`.
   - Computer names are unique per server.
+  - Daemon connect identity resolution is ordered: exact `(server_id, machine_id)` match first; if no machine match exists, a same-server same-name `Computer` may be adopted only when its daemon lease is not active; otherwise create a new row only when neither identity exists.
+  - Same-name offline adoption updates the existing row's `machine_id`, daemon metadata, detected runtimes, machine token, active daemon lease, heartbeat, and status before returning the connect response.
   - Member display names are unique per server.
   - Lease fields are `active_daemon_id`, `daemon_lease_expires_at`, and `last_heartbeat_at`.
 - Daemon behavior:
@@ -803,7 +805,9 @@ SLOCKMSG
 - Expired connect token -> `401 Connect token expired`.
 - Reused connect token -> `409 Connect token already used`.
 - Missing daemon `machineId` -> `400 Missing machineId`.
-- Duplicate computer name for a different machine -> `409 Computer name <name> already exists`.
+- Same-name computer with no exact machine match and no active daemon lease -> reuse that computer, update `machine_id`, and issue a fresh machine token.
+- Same-name computer with no exact machine match but an unexpired active lease -> `409 Computer already has an active daemon`.
+- Duplicate computer name for a different exact machine match -> `409 Computer name <name> already exists`.
 - Same `machineId` while its computer has an unexpired active lease -> `409 Computer already has an active daemon`.
 - Same `machineId` after lease expiry -> reuse the existing computer and issue a fresh machine token.
 - Daemon `register` / `heartbeat` with a different `daemonId` while the stored lease is expired -> accept and replace `active_daemon_id`; stale daemon ids must not block recovery after a process crash.
@@ -817,7 +821,9 @@ SLOCKMSG
 
 - Good: browser generates a connect command; no computer row appears until daemon calls `/daemon/connect`.
 - Good: daemon connects with a persistent `machineId`; backend creates/reuses one computer and returns a fresh `sk_machine_...` token.
+- Good: daemon lost/regenerated its local `machineId` but reconnects with the same local computer name after the previous lease expired; backend adopts the offline same-name row instead of creating a duplicate or returning a name conflict.
 - Good: second daemon for the same online `machineId` is rejected until heartbeat lease expiry.
+- Good: `/computers` shows the existing computer detail and reconnect action when a computer exists, not the new-computer connect form.
 - Good: an expired, reused, or invalid connect command cannot kill a healthy same-server daemon; it exits before launching when the server-scoped wrapper lock points at a live process.
 - Good: user creates an agent later on Members and binds it to the connected computer.
 - Good: browser creates a channel, adds the agent by channel id/member id, sends a human message, and verifies an agent-authored response through `/internal/agent-api/send`.
@@ -832,6 +838,8 @@ SLOCKMSG
   - `connect-command` does not create a computer.
   - `/daemon/connect` creates a computer after a valid token.
   - Same offline `machineId` reuses the existing computer.
+  - Same-name offline computer with a changed `machineId` reuses the existing computer and updates `machine_id`.
+  - Same-name active computer with a changed `machineId` returns `409` and does not consume the connect ticket.
   - Same online `machineId` returns `409`.
   - Duplicate computer/member names return `409`.
   - Expired or reused connect tokens return `401`/`409`.
@@ -845,6 +853,7 @@ SLOCKMSG
   - Generated command includes `SLOCK_CONNECT_TOKEN` and excludes `sk_machine_`.
   - Computer list does not show the pending computer until daemon connect succeeds.
   - Connected computer appears online and the pending command hides.
+  - Existing computer detail is selected by default and the new-computer form is hidden unless a pending generated command is being displayed.
   - Duplicate agent name displays the backend `409` error.
   - DM route heading displays decoded `dm:` text, not `dm%3A`.
 

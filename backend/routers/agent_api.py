@@ -1403,7 +1403,10 @@ async def connect_daemon(
     )
     name_owner = name_result.scalar_one_or_none()
     if name_owner and (computer is None or name_owner.id != computer.id):
-        raise HTTPException(409, f"Computer name {requested_name} already exists")
+        if computer is None:
+            computer = name_owner
+        else:
+            raise HTTPException(409, f"Computer name {requested_name} already exists")
 
     if computer and _lease_active(computer, now):
         raise HTTPException(409, "Computer already has an active daemon")
@@ -1421,6 +1424,7 @@ async def connect_daemon(
         db.add(computer)
         await db.flush()
     else:
+        computer.machine_id = machine_id
         computer.name = requested_name
         computer.os = body.os or computer.os
         computer.daemon_version = body.daemonVersion or computer.daemon_version

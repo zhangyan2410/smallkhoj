@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Panel } from "@/components/ui/panel"
 import { ConnectComputerForm } from "./connect-computer-form"
-import { buildComputerReconnectUrl } from "@/lib/computer-navigation"
+import { buildComputerReconnectUrl, shouldShowConnectComputerForm } from "@/lib/computer-navigation"
 import {
   apiGet,
   API_BASE,
@@ -669,7 +669,7 @@ export default async function ComputersPage({
   const selectedComputerId = searchValue(resolvedSearchParams.computer)
   const selectedComputer = selectedComputerId
     ? computers.find((c) => c.id === selectedComputerId || c.id.startsWith(selectedComputerId))
-    : null
+    : computers[0] ?? null
 
   const pendingCookie = searchValue(resolvedSearchParams.created) || searchValue(resolvedSearchParams.reconnect)
     ? parseCredentialCookie(cookieStore.get("smallkhoj_last_computer_connect_command")?.value)
@@ -681,8 +681,11 @@ export default async function ComputersPage({
     ? computers.find((c) => c.name === pendingCredential.name && (c.status === "online" || c.status === "active"))
     : null
   const credential = connectedComputer ? null : pendingCredential
+  const showConnectComputerForm = shouldShowConnectComputerForm({
+    computerCount: computers.length,
+    hasPendingCredential: Boolean(credential),
+  })
   const error = searchValue(resolvedSearchParams.error)
-  const workspaceCount = computers.reduce((total, c) => total + c.agentWorkspaces.length, 0)
   const runningWorkspaces = computers.reduce(
     (total, c) => total + c.agentWorkspaces.filter((w) => w.status === "running").length,
     0,
@@ -769,12 +772,14 @@ export default async function ComputersPage({
           </span>
         </div>
 
-        <ConnectComputerForm
-          action={createComputerConnectCommandAction}
-          credential={credential}
-          connectedComputerName={connectedComputer?.name}
-          error={error}
-        />
+        {showConnectComputerForm && (
+          <ConnectComputerForm
+            action={createComputerConnectCommandAction}
+            credential={credential}
+            connectedComputerName={connectedComputer?.name}
+            error={error}
+          />
+        )}
 
         {selectedComputer ? (
           <ComputerDetail
