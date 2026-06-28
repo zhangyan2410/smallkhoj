@@ -21,7 +21,7 @@ import {
 } from "lucide-react"
 
 import ActivityTab from "./activity-tab"
-import { CreateAgentCard } from "./create-agent-card"
+import { CreateAgentDialog } from "../chat/[channel]/create-agent-dialog"
 import { MembersList } from "./members-list"
 
 import { MemberAvatar } from "@/components/member-avatar"
@@ -121,112 +121,6 @@ async function updateHumanAvatarUrlAction(formData: FormData) {
   redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
 }
 
-async function controlAgentLifecycleAction(formData: FormData) {
-  "use server"
-  const memberId = String(formData.get("memberId") || "")
-  const workspaceId = String(formData.get("workspaceId") || "")
-  const action = String(formData.get("action") || "").trim()
-  if (!memberId || !workspaceId || !action) {
-    redirect(`/members?member=${encodeURIComponent(memberId)}&error=${encodeURIComponent("Missing member, workspace, or action")}`)
-  }
-
-  const response = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/lifecycle`, {
-    method: "POST",
-    headers: await serverApiHeaders(true),
-    body: JSON.stringify({ action }),
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
-    redirect(`/members?member=${encodeURIComponent(memberId)}&error=${encodeURIComponent(detail)}`)
-  }
-  revalidatePath("/members")
-  redirect(`/members?member=${encodeURIComponent(memberId)}`)
-}
-
-/**
- * Start / Stop / Restart controls for an agent card. Uses a native form bound to
- * the `controlAgentLifecycleAction` server action (per quality-guidelines:
- * critical backend mutations use native form submission so a hydration gap can't
- * silently fail). Each action is gated by the agent's status bucket so only the
- * contextually valid control is offered.
- */
-async function AgentControls({ member }: { member: Member }) {
-  const t = await getTranslations("members")
-  const tCommon = await getTranslations("common")
-  const workspaceId = member.workspaceId
-  const bucket = getStatusBucket(member.status)
-  const canStart = bucket === "OFFLINE" || bucket === "ERROR"
-  const canStop = bucket === "ACTIVE" || bucket === "THINKING" || bucket === "STARTING"
-  const showRestart = Boolean(workspaceId)
-
-  if (!workspaceId) {
-    return (
-      <p className="text-[11px] text-muted-foreground">{t("noWorkspace")}</p>
-    )
-  }
-
-  const control = (action: "start" | "stop" | "restart", label: string, Icon: typeof Play, show: boolean, tone: CategoryTone) => {
-    if (!show) return null
-    const toneClass: Record<CategoryTone, string> = {
-      primary: "",
-      info: "sk-cat-info",
-      success: "sk-cat-success",
-      warning: "sk-cat-warning",
-      danger: "sk-cat-danger",
-      neutral: "",
-    }
-    return (
-      <form action={controlAgentLifecycleAction} className="flex-1">
-        <input type="hidden" name="memberId" value={member.id} />
-        <input type="hidden" name="workspaceId" value={workspaceId} />
-        <input type="hidden" name="action" value={action} />
-        <button
-          type="submit"
-          className={`inline-flex w-full items-center justify-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-[11px] font-medium transition-colors ${toneClass[tone]}`}
-        >
-          <Icon className="size-3" />
-          {label}
-        </button>
-      </form>
-    )
-  }
-
-  return (
-    <div className="mt-1 flex w-full items-stretch gap-1.5">
-      {control("start", tCommon("start"), Play, canStart, "success")}
-      {control("stop", tCommon("stop"), Square, canStop, "danger")}
-      {control("restart", tCommon("restart"), RotateCcw, showRestart, "neutral")}
-    </div>
-  )
-}
-
-/**
- * Agent gallery card: avatar with live status, name, status label, description
- * snippet, and contextual start/stop/restart controls.
- */
-function AgentCard({ member }: { member: Member }) {
-  const name = profileName(member)
-  const description = profileDescription(member)
-  const href = memberDetailHref(member.id)
-
-  return (
-    <div className="group relative flex flex-col items-center gap-3 rounded-none border-2 border-[var(--ink)] bg-card p-4 text-center ring-1 ring-primary/10 transition-all hover:scale-[1.02] hover:ring-primary/30">
-      <Link href={href} className="flex flex-1 flex-col items-center gap-2 self-stretch">
-        <MemberAvatar member={member} size="xl" showStatus />
-        <div className="min-w-0 w-full">
-          <div className="truncate font-semibold">{name}</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">{getStatusLabel(member.status)}</div>
-          {description ? (
-            <div className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{description}</div>
-          ) : null}
-        </div>
-      </Link>
-      <AgentControls member={member} />
-    </div>
-  )
-}
-
 /**
  * Compact human member row for the humans section below the agent gallery.
  */
@@ -236,8 +130,8 @@ function HumanRow({ member, selected }: { member: Member; selected: boolean }) {
   return (
     <Link
       href={memberDetailHref(member.id)}
-      className={`flex items-center gap-2.5 rounded-none border-2 border-[var(--ink)] px-3 py-2 text-sm transition-colors hover:bg-accent ${
-        selected ? "border-primary/20 bg-primary/8" : "border-transparent"
+      className={`flex items-center gap-2.5 rounded-none border-2 px-3 py-2 text-sm transition-colors hover:bg-paper ${
+        selected ? "border-[var(--ink)] sk-accent-mint-soft" : "border-transparent"
       }`}
     >
       <MemberAvatar member={member} size="sm" />
@@ -863,6 +757,7 @@ export default async function MembersPage({
       }
       actions={
         <>
+          <CreateAgentDialog />
           <Link href="/computers">
             <Button variant="outline" size="sm">
               <HardDrive className="size-4" />
@@ -890,35 +785,18 @@ export default async function MembersPage({
           </div>
         )}
 
-        {/* Agent gallery: cards in a responsive grid, with the create-agent
-            form styled as a dashed "add" card as the final grid cell. */}
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Bot className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">{t("agents")}</h2>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {agentsList.length}
-            </span>
-          </div>
-          {agentsList.length === 0 ? (
-            <CreateAgentCard computers={computers} providerOptions={providerOptions} />
-          ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {agentsList.map((member) => (
-                <AgentCard key={member.id} member={member} />
-              ))}
-              <CreateAgentCard computers={computers} providerOptions={providerOptions} />
-            </div>
-          )}
-        </section>
+        {/* No agent card gallery here — the sidebar lists agents by computer
+            and shows lifecycle controls inline when selected. The main area
+            only shows the selected member's detail (MemberDetail above) or an
+            empty-state hint to pick one. */}
 
-        {/* Human members: compact list below the agent gallery. */}
+        {/* Human members: compact list below. */}
         {humansList.length > 0 && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <UserRound className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">{t("humans")}</h2>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              <UserRound className="size-4 text-accent-mint" />
+              <h2 className="text-sm font-bold text-accent-mint">{t("humans")}</h2>
+              <span className="rounded-none border border-[var(--ink)] sk-accent-mint-soft px-1.5 py-0.5 text-[10px] font-semibold">
                 {humansList.length}
               </span>
             </div>

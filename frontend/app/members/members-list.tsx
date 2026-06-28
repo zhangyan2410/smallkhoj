@@ -1,8 +1,10 @@
 import Link from "next/link"
+import { Play, RotateCcw, Square } from "lucide-react"
 
 import { MemberAvatar } from "@/components/member-avatar"
-import { getStatusLabel } from "@/lib/agent-status"
+import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import type { Computer, Member } from "@/lib/control-plane"
+import { controlMemberLifecycleAction as lifecycleAction } from "./actions"
 
 function profileName(member: Member) {
   return member.profile?.displayName || member.displayName
@@ -10,6 +12,41 @@ function profileName(member: Member) {
 
 function memberHref(member: Member) {
   return `/members?member=${encodeURIComponent(member.id)}`
+}
+
+/**
+ * 选中 agent 时，在列表项下方展开 start/stop/restart 控制（server action form）。
+ * 跟随 section tone 着色：start=success 绿、stop=danger 红、restart=neutral。
+ */
+function LifecycleControls({ member, tone }: { member: Member; tone: "green" | "yellow" | "mint" }) {
+  const workspaceId = member.workspaceId
+  if (!workspaceId) return null
+  const bucket = getStatusBucket(member.status)
+  const canStart = bucket === "OFFLINE" || bucket === "ERROR"
+  const canStop = bucket === "ACTIVE" || bucket === "THINKING" || bucket === "STARTING"
+
+  const btn = (action: "start" | "stop" | "restart", Icon: typeof Play, show: boolean, cls: string) => {
+    if (!show) return null
+    return (
+      <form action={lifecycleAction} className="flex-1">
+        <input type="hidden" name="memberId" value={member.id} />
+        <input type="hidden" name="workspaceId" value={workspaceId} />
+        <input type="hidden" name="action" value={action} />
+        <button type="submit" className={`inline-flex w-full items-center justify-center gap-1 rounded-none border-2 border-[var(--ink)] px-1.5 py-1 text-[10px] font-medium transition-colors ${cls}`}>
+          <Icon className="size-2.5" />
+          {action === "start" ? "启动" : action === "stop" ? "停止" : "重启"}
+        </button>
+      </form>
+    )
+  }
+
+  return (
+    <div className="flex w-full items-stretch gap-1 pb-1 pl-9 pr-1 pt-0.5">
+      {btn("start", Play, canStart, "sk-status-success")}
+      {btn("stop", Square, canStop, "sk-status-danger")}
+      {btn("restart", RotateCcw, canStop, "sk-cat-neutral")}
+    </div>
+  )
 }
 
 /**
@@ -51,24 +88,28 @@ export function MembersList({
     const selected = member.id === selectedMemberId
     const activeSoft = tone === "green" ? "sk-accent-green-soft" : tone === "yellow" ? "sk-accent-yellow-soft" : "sk-accent-mint-soft"
     return (
-      <Link
-        key={member.id}
-        href={memberHref(member)}
-        aria-current={selected ? "page" : undefined}
-        className={`group/member flex items-center gap-2.5 rounded-none border-2 px-2 py-1.5 text-sm transition-colors hover:bg-muted/60 ${
-          selected ? `border-[var(--ink)] ${activeSoft} font-semibold` : "border-transparent"
-        }`}
-      >
-        <MemberAvatar member={member} size="sm" />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-foreground">
-            {profileName(member)}
+      <div key={member.id} className="flex flex-col">
+        <Link
+          href={memberHref(member)}
+          aria-current={selected ? "page" : undefined}
+          className={`group/member flex items-center gap-2.5 rounded-none border-2 px-2 py-1.5 text-sm transition-colors hover:bg-muted/60 ${
+            selected ? `border-[var(--ink)] ${activeSoft} font-semibold` : "border-transparent"
+          }`}
+        >
+          <MemberAvatar member={member} size="sm" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium text-foreground">
+              {profileName(member)}
+            </div>
+            <div className="truncate text-[10px] text-sand-muted">
+              {getStatusLabel(member.status)}
+            </div>
           </div>
-          <div className="truncate text-[10px] text-sand-muted">
-            {getStatusLabel(member.status)}
-          </div>
-        </div>
-      </Link>
+        </Link>
+        {selected && member.kind === "agent" && member.workspaceId && (
+          <LifecycleControls member={member} tone={tone} />
+        )}
+      </div>
     )
   }
 
