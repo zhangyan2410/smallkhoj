@@ -95,6 +95,28 @@ FEISHU_WORKER_APP_ID=<app-id>
 FEISHU_WORKER_APP_SECRET=<set-outside-repo>
 ```
 
+## Preflight
+
+Run the repository/config preflight before building or pulling images:
+
+```bash
+python3 scripts/initial_release_deploy_preflight.py --json
+```
+
+Run the env-file preflight before starting the production compose stack. The command does not print secret values:
+
+```bash
+python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --json
+```
+
+Run the runtime preflight on the deployment host, including Tencent Cloud Lighthouse, before binding Caddy to public ports:
+
+```bash
+python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runtime --json
+```
+
+The runtime preflight checks Docker, Docker Compose, memory, disk, and whether ports 80/443 already appear occupied. It does not contact Tencent Cloud, Feishu, Jira, LLM providers, or start production containers.
+
 ## Start
 
 Pull and start the core web stack:

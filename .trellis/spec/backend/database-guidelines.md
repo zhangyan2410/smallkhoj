@@ -725,6 +725,66 @@ python -m feishu_worker_cli -> live message arrives -> fails because route has n
 integration_bootstrap_cli -> live_run_preflight_cli -> feishu_worker_cli -> live message
 ```
 
+## Scenario: Initial Release Production Deploy Preflight CLI
+
+### 1. Scope / Trigger
+- Trigger: changing production compose, Caddy routing, frontend standalone image output, deployment env requirements, or release host readiness checks.
+- Use this before starting the production stack on Tencent Cloud Lighthouse, a tunnel host, or any release candidate machine.
+
+### 2. Signatures
+- CLI module: `scripts/initial_release_deploy_preflight.py`, run from the repository root with `python3 scripts/initial_release_deploy_preflight.py`.
+- Optional flags:
+  - `--env-file <path>`: inspect deployment env without printing secret values.
+  - `--runtime`: inspect current host Docker, memory, disk, and ports.
+  - `--json`: emit machine-readable release evidence.
+  - `--strict-warnings`: return code `2` when warnings exist.
+
+### 3. Contracts
+- Default mode must be offline and no-secret: inspect tracked repo files only.
+- Env-file mode must check required operational keys without printing values for secrets or image names.
+- Runtime mode must not start production containers or contact Tencent Cloud, Feishu, Jira, or LLM providers.
+- Repository checks must cover `docker-compose.prod.yml`, `deploy/Caddyfile`, `frontend/next.config.mjs`, and `frontend/Dockerfile`.
+- Production frontend image readiness requires `output: "standalone"` and a Dockerfile that copies `/app/.next/standalone` and starts `server.js`.
+- Caddy readiness requires `/api/*`, `/internal/*`, `/docs`, and `/openapi.json` to route to `backend:8000`, with `frontend:3000` as the default route.
+- Runtime readiness requires Docker command availability, Docker daemon response, Docker Compose response, memory/disk thresholds, and ports 80/443 not already accepting local TCP connections.
+
+### 4. Validation & Error Matrix
+- Missing production compose/Caddy/frontend config file -> failed check.
+- Missing compose service or route contract -> failed check.
+- Missing `output: "standalone"` -> failed `repo.frontend.standalone`.
+- Missing required env key -> failed `env.required`.
+- Local/IP-only site address, CORS mismatch, or frontend public URL override -> warning unless strict warnings are enabled.
+- Docker command/daemon/compose unavailable -> failed runtime check.
+- Host memory below 1.5 GiB or disk below 8 GiB -> failed runtime check.
+- Host memory below 2 GiB or disk below 12 GiB -> warning.
+- Port 80 or 443 already accepts local TCP connections -> failed runtime check.
+
+### 5. Good/Base/Bad Cases
+- Good: local CI runs `python3 scripts/initial_release_deploy_preflight.py --json` and stores the JSON report with release evidence.
+- Good: deployment host runs `python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runtime --json` before `docker compose up`.
+- Base: IP-only smoke uses `SMALLKHOJ_SITE_ADDRESS=:80`; env preflight warns but does not fail unless `--strict-warnings` is used.
+- Bad: starting Caddy before checking that ports 80/443 are already occupied by another service.
+- Bad: relying on `next build` alone when the production Dockerfile depends on `.next/standalone`.
+- Bad: printing `POSTGRES_PASSWORD`, Jira API tokens, Feishu app secrets, or LLM keys in preflight output.
+
+### 6. Tests Required
+- Unit tests cover passing repo config, missing standalone output, missing env values, and warning exit semantics.
+- CLI smoke: default preflight passes against the current repository.
+- Runtime smoke: runtime preflight runs on the current machine and reports Docker/resource/port status.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+docker compose --env-file .env.prod up -d
+# then discover Caddy routes, frontend image output, or ports are wrong
+```
+
+#### Correct
+```text
+python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runtime --json
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger
