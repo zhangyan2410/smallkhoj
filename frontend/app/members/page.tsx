@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { Suspense } from "react"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
@@ -22,6 +23,7 @@ import {
 
 import ActivityTab from "./activity-tab"
 import { CreateAgentDialog } from "../chat/[channel]/create-agent-dialog"
+import { RestoreMemberSelection } from "./restore-member-selection"
 import { MembersList } from "./members-list"
 
 import { MemberAvatar } from "@/components/member-avatar"
@@ -751,6 +753,9 @@ export default async function MembersPage({
     >
       <div className="space-y-5">
         <RealtimeRefresh eventTypes={["member.created", "member.updated", "member.status.updated"]} />
+        <Suspense fallback={null}>
+          <RestoreMemberSelection />
+        </Suspense>
 
         {selectedMember && (
           <MemberDetail member={selectedMember} computers={computers} activeTab={activeTab} />
