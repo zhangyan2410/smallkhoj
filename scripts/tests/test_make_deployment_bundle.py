@@ -18,6 +18,8 @@ def make_repo(root: Path) -> None:
     write(root / "docker-compose.prod.yml", "services:\n  backend: {}\n")
     write(root / "deploy" / "caddy" / "Dockerfile", "FROM caddy:2\nCOPY Caddyfile /etc/caddy/Caddyfile\n")
     write(root / "deploy" / "caddy" / "Caddyfile", ":80 {\n  reverse_proxy frontend:3000\n}\n")
+    write(root / "frontend" / "Dockerfile", "COPY --from=builder /app/.next/standalone ./\nCMD [\"node\", \"server.js\"]\n")
+    write(root / "frontend" / "next.config.mjs", "export default { output: \"standalone\" };\n")
     write(root / "docs" / "initial-release-production-deployment.md", "# Deploy\n")
     write(root / "scripts" / "create_prod_env_template.py", "print('env template')\n")
     write(root / "scripts" / "initial_release_deploy_preflight.py", "print('preflight')\n")
@@ -52,6 +54,8 @@ class DeploymentBundleTests(unittest.TestCase):
                 "smallkhoj-deploy/deploy/caddy/Caddyfile",
                 "smallkhoj-deploy/docker-compose.prod.yml",
                 "smallkhoj-deploy/docs/initial-release-production-deployment.md",
+                "smallkhoj-deploy/frontend/Dockerfile",
+                "smallkhoj-deploy/frontend/next.config.mjs",
                 "smallkhoj-deploy/manifest.json",
                 "smallkhoj-deploy/scripts/create_prod_env_template.py",
                 "smallkhoj-deploy/scripts/initial_release_deploy_preflight.py",

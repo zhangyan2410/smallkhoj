@@ -208,6 +208,29 @@ FEISHU_WORKER_APP_SECRET=<set-outside-repo>
 
 ## Host Probe
 
+Current Tencent Cloud Lighthouse target for the initial-release deployment probe:
+
+```text
+InstanceId: lhins-6gznhrts
+Region: ap-shanghai
+Public IPv4: 124.222.40.40
+Private IPv4: 10.0.0.15
+Image: Ubuntu22.04-Docker26 / Ubuntu Server 22.04 LTS 64bit
+Shape: 4 vCPU / 4 GB RAM / 40 GB SSD / 3 Mbps / 300 GB monthly traffic
+SSH user: ubuntu
+SSH key: /Users/lee/.ssh/tengxun-ssh-key.pem
+Remote probe dir: /home/ubuntu/smallkhoj-deploy
+```
+
+Provisioning notes captured on 2026-06-29:
+
+- Tencent Lighthouse firewall allows TCP 22, 80, and 443, plus ICMP ping.
+- Docker 26.1.3 and Docker Compose v2.27.1 are present from the selected Docker base image.
+- The `ubuntu` user is in the `docker` group for non-root compose operations.
+- A persistent 3 GiB `/swapfile` is configured in `/etc/fstab`.
+- `lighthouse_ssh_deploy_probe.py` passed host probe and repo preflight with zero failures and zero warnings when run against the remote probe dir above.
+- The instance is in a Chinese mainland region. Domain-based public release still needs ICP filing readiness; IP-only HTTP and outbound Feishu/Jira validation can proceed before a formal domain is ready.
+
 Before installing or starting anything on Tencent Cloud Lighthouse, create the no-secret deployment bundle on your local machine:
 
 ```bash

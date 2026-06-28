@@ -17,6 +17,8 @@ INCLUDED_FILES = (
     "docker-compose.prod.yml",
     "deploy/caddy/Dockerfile",
     "deploy/caddy/Caddyfile",
+    "frontend/Dockerfile",
+    "frontend/next.config.mjs",
     "docs/initial-release-production-deployment.md",
     "scripts/create_prod_env_template.py",
     "scripts/initial_release_deploy_preflight.py",
