@@ -58,6 +58,7 @@ python3 scripts/production_image_transfer.py \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
   --remote-dir /opt/smallkhoj \
+  --platform linux/amd64 \
   --use-vpn-proxy \
   --dry-run
 
@@ -66,6 +67,22 @@ python3 scripts/production_image_transfer.py \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
   --remote-dir /opt/smallkhoj \
+  --platform linux/amd64 \
+  --use-vpn-proxy
+```
+
+Choose `--platform` after confirming the Lighthouse host architecture with the host probe or console. Apple Silicon local Docker builds default to `linux/arm64`; those images must not be reused on a `linux/amd64` Lighthouse host. If the host is ARM, use `--platform linux/arm64`; if it is x86_64, use `--platform linux/amd64`.
+
+`--remote-dir` is the server directory used by SSH/SCP. If you want the local archive to stay on the ORICO disk instead of the system disk, set only `--output-archive` to a `/Volumes/ORICO/...` path:
+
+```bash
+python3 scripts/production_image_transfer.py \
+  --host <server-ip> \
+  --user ubuntu \
+  --identity-file ~/.ssh/<key> \
+  --remote-dir /opt/smallkhoj \
+  --output-archive /Volumes/ORICO/smallkhoj-deploy/smallkhoj-production-images-amd64.tar \
+  --platform linux/amd64 \
   --use-vpn-proxy
 ```
 

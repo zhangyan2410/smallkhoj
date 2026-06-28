@@ -33,6 +33,7 @@ class TransferOptions:
     frontend_image: str = DEFAULT_FRONTEND_IMAGE
     caddy_image: str = DEFAULT_CADDY_IMAGE
     skip_build: bool = False
+    platform: str | None = None
     use_vpn_proxy: bool = False
     proxy_url: str = DEFAULT_PROXY_URL
     next_public_api_base_url: str = ""
@@ -88,6 +89,10 @@ def build_proxy_args(options: TransferOptions) -> list[str]:
     return args
 
 
+def build_platform_args(options: TransferOptions) -> list[str]:
+    return ["--platform", options.platform] if options.platform else []
+
+
 def remote_shell(options: TransferOptions, command: str) -> list[str]:
     return [*ssh_base(options), command]
 
@@ -97,10 +102,12 @@ def build_steps(options: TransferOptions) -> list[PlanStep]:
         return []
 
     proxy_args = build_proxy_args(options)
+    platform_args = build_platform_args(options)
     return [
         PlanStep("build-backend-image", [
             "docker",
             "build",
+            *platform_args,
             *proxy_args,
             "-t",
             options.backend_image,
@@ -109,6 +116,7 @@ def build_steps(options: TransferOptions) -> list[PlanStep]:
         PlanStep("build-frontend-image", [
             "docker",
             "build",
+            *platform_args,
             *proxy_args,
             "--build-arg",
             f"NEXT_PUBLIC_API_BASE_URL={options.next_public_api_base_url}",
@@ -123,6 +131,7 @@ def build_steps(options: TransferOptions) -> list[PlanStep]:
         PlanStep("build-caddy-image", [
             "docker",
             "build",
+            *platform_args,
             *proxy_args,
             "-t",
             options.caddy_image,
@@ -195,6 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--frontend-image", default=DEFAULT_FRONTEND_IMAGE, help=f"Frontend image tag. Default: {DEFAULT_FRONTEND_IMAGE}")
     parser.add_argument("--caddy-image", default=DEFAULT_CADDY_IMAGE, help=f"Caddy image tag. Default: {DEFAULT_CADDY_IMAGE}")
     parser.add_argument("--skip-build", action="store_true", help="Skip docker build and only save/upload/load existing local images.")
+    parser.add_argument("--platform", help="Docker build target platform, for example linux/amd64 or linux/arm64. Omit to use the local Docker default.")
     parser.add_argument("--use-vpn-proxy", action="store_true", help=f"Add Docker build proxy args for the local VPN proxy. Default proxy: {DEFAULT_PROXY_URL}")
     parser.add_argument("--proxy-url", default=DEFAULT_PROXY_URL, help=f"Docker build-container proxy URL. Default: {DEFAULT_PROXY_URL}")
     parser.add_argument("--next-public-api-base-url", default="", help="Frontend NEXT_PUBLIC_API_BASE_URL build arg. Default: empty same-origin mode.")
@@ -217,6 +227,7 @@ def options_from_args(args: argparse.Namespace) -> TransferOptions:
         frontend_image=args.frontend_image,
         caddy_image=args.caddy_image,
         skip_build=args.skip_build,
+        platform=args.platform,
         use_vpn_proxy=args.use_vpn_proxy,
         proxy_url=args.proxy_url,
         next_public_api_base_url=args.next_public_api_base_url,

@@ -904,6 +904,7 @@ POSTGRES_PASSWORD=<set-outside-repo>
   - `--frontend-image <tag>`
   - `--caddy-image <tag>`
   - `--skip-build`
+  - `--platform <docker-platform>`
   - `--use-vpn-proxy`
   - `--proxy-url <url>`
   - `--next-public-api-base-url <url>`
@@ -915,7 +916,9 @@ POSTGRES_PASSWORD=<set-outside-repo>
 ### 3. Contracts
 - Default image tags are `smallkhoj-backend:local-release`, `smallkhoj-frontend:local-release`, and `smallkhoj-caddy:local-release`.
 - Default mode must build backend, frontend, and Caddy images locally; `--skip-build` must omit build steps while preserving `docker save`, `scp`, and remote `docker load`.
+- `--platform` must pass the same Docker build target platform to backend, frontend, and Caddy builds. Omit it only when the local Docker default architecture is known to match the target host.
 - The CLI must save all three app images into one Docker archive, upload the archive to the remote directory, and run `docker load -i <remote-archive>`.
+- `--output-archive` is a local path and may point to `/Volumes/ORICO/...`; `--remote-dir` is a server path and should remain a normal host directory such as `/opt/smallkhoj`.
 - `--use-vpn-proxy` must add Docker build args for `HTTP_PROXY`, `HTTPS_PROXY`, `http_proxy`, and `https_proxy`, using `http://host.docker.internal:7897` by default because the proxy is reached from inside build containers.
 - Frontend builds must pass `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_WS_BASE_URL`, and `NEXT_PUBLIC_API_KEY` as build args; same-origin release mode keeps the first two empty by default.
 - The CLI must not read, upload, or print `.env.prod` or credential-shaped environment values.
@@ -924,19 +927,23 @@ POSTGRES_PASSWORD=<set-outside-repo>
 ### 4. Validation & Error Matrix
 - Missing `--host` -> CLI parser failure.
 - Local Docker build/save failure -> stop and return that command's exit code.
+- Apple Silicon `linux/arm64` images loaded onto a `linux/amd64` host -> container startup fails with architecture mismatch; choose `--platform` before build.
 - SCP failure -> stop before remote `docker load` and return the SCP exit code.
 - Remote `docker load` failure -> return the SSH command exit code.
 - Using loaded local tags with `lighthouse_ssh_deploy_probe.py --compose-up` but without `--use-loaded-images` -> risk pulling nonexistent registry tags; treat this as operator error.
 
 ### 5. Good/Base/Bad Cases
-- Good: local machine runs `production_image_transfer.py --use-vpn-proxy --dry-run`, then runs it for real, edits `.env.prod` image tags to the loaded local-release tags, and starts compose with `--use-loaded-images`.
+- Good: after confirming the Lighthouse host is x86_64, local machine runs `production_image_transfer.py --platform linux/amd64 --use-vpn-proxy --dry-run`, then runs it for real, edits `.env.prod` image tags to the loaded local-release tags, and starts compose with `--use-loaded-images`.
 - Good: images were already built locally, so the operator runs with `--skip-build` to avoid rebuilding and only transfers the current archive.
+- Good: local archive is written to `/Volumes/ORICO/...` with `--output-archive`, while SSH upload still targets `/opt/smallkhoj` with `--remote-dir`.
 - Base: a registry is already ready; skip this CLI and use registry image tags plus the normal pull/build startup path.
 - Bad: building Next.js on the 2 vCPU / 2 GB Lighthouse host.
+- Bad: reusing Apple Silicon `linux/arm64` local-smoke images on an `amd64` Lighthouse host.
+- Bad: setting `--remote-dir /Volumes/ORICO/...`; that path is local-only and normally does not exist on the server.
 - Bad: running `docker compose pull backend frontend` against `smallkhoj-*:local-release` tags after loading them locally.
 
 ### 6. Tests Required
-- Unit tests cover default command planning, SSH identity/port flags, `--skip-build`, VPN proxy build args, no-secret command payloads, and loaded-image compose compatibility.
+- Unit tests cover default command planning, SSH identity/port flags, `--skip-build`, target platform build args, VPN proxy build args, no-secret command payloads, and loaded-image compose compatibility.
 
 ### 7. Wrong vs Correct
 #### Wrong
@@ -948,7 +955,7 @@ docker build -t smallkhoj-frontend:latest ./frontend
 
 #### Correct
 ```text
-python3 scripts/production_image_transfer.py --host <ip> --user ubuntu --use-vpn-proxy
+python3 scripts/production_image_transfer.py --host <ip> --user ubuntu --platform linux/amd64 --use-vpn-proxy
 python3 scripts/lighthouse_ssh_deploy_probe.py --host <ip> --user ubuntu --remote-env-file .env.prod --compose-up --use-loaded-images
 ```
 

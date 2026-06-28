@@ -75,6 +75,23 @@ class ProductionImageTransferTests(unittest.TestCase):
         self.assertIn("NEXT_PUBLIC_API_BASE_URL=", build_commands)
         self.assertIn("NEXT_PUBLIC_WS_BASE_URL=", build_commands)
 
+    def test_platform_is_added_to_all_docker_builds_when_selected(self) -> None:
+        options = transfer.TransferOptions(
+            host="203.0.113.10",
+            user="ubuntu",
+            remote_dir="/opt/smallkhoj",
+            output_archive=Path("/tmp/smallkhoj-images.tar"),
+            platform="linux/amd64",
+        )
+
+        plan = transfer.build_plan(options)
+        build_steps = [step for step in plan.steps if step.label.startswith("build-")]
+
+        self.assertEqual(len(build_steps), 3)
+        for step in build_steps:
+            self.assertIn("--platform", step.argv)
+            self.assertIn("linux/amd64", step.argv)
+
     def test_plan_accepts_ssh_port_and_identity(self) -> None:
         options = transfer.TransferOptions(
             host="203.0.113.10",
