@@ -173,6 +173,15 @@ python3 scripts/lighthouse_ssh_deploy_probe.py \
 
 ## Preflight
 
+Create the server-side env file from the no-secret template, then edit it on the server. The template intentionally contains placeholder values; preflight fails until required placeholders are replaced:
+
+```bash
+python3 scripts/create_prod_env_template.py --output .env.prod
+vim .env.prod
+```
+
+If `.env.prod` already exists, the template command refuses to overwrite it unless `--force` is provided.
+
 Run the repository/config preflight before building or pulling images:
 
 ```bash

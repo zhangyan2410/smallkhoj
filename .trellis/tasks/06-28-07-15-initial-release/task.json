@@ -43,7 +43,8 @@
     "06-28-initial-release-deployment-bundle",
     "06-28-initial-release-local-production-compose-smoke",
     "06-28-initial-release-daemon-websocket-deploy-smoke",
-    "06-28-initial-release-ssh-deployment-probe-runner"
+    "06-28-initial-release-ssh-deployment-probe-runner",
+    "06-28-initial-release-production-env-template-guardrail"
   ],
   "parent": null,
   "relatedFiles": [],

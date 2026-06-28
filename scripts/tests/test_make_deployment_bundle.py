@@ -19,6 +19,7 @@ def make_repo(root: Path) -> None:
     write(root / "deploy" / "caddy" / "Dockerfile", "FROM caddy:2\nCOPY Caddyfile /etc/caddy/Caddyfile\n")
     write(root / "deploy" / "caddy" / "Caddyfile", ":80 {\n  reverse_proxy frontend:3000\n}\n")
     write(root / "docs" / "initial-release-production-deployment.md", "# Deploy\n")
+    write(root / "scripts" / "create_prod_env_template.py", "print('env template')\n")
     write(root / "scripts" / "initial_release_deploy_preflight.py", "print('preflight')\n")
     write(root / "scripts" / "lighthouse_host_probe.py", "print('host')\n")
     write(root / "scripts" / "post_deploy_smoke.py", "print('smoke')\n")
@@ -51,6 +52,7 @@ class DeploymentBundleTests(unittest.TestCase):
                 "smallkhoj-deploy/docker-compose.prod.yml",
                 "smallkhoj-deploy/docs/initial-release-production-deployment.md",
                 "smallkhoj-deploy/manifest.json",
+                "smallkhoj-deploy/scripts/create_prod_env_template.py",
                 "smallkhoj-deploy/scripts/initial_release_deploy_preflight.py",
                 "smallkhoj-deploy/scripts/lighthouse_host_probe.py",
                 "smallkhoj-deploy/scripts/post_deploy_smoke.py",

@@ -153,9 +153,49 @@ class DeployPreflightTests(unittest.TestCase):
             self.assertEqual(env_check.status, "failed")
             self.assertEqual(
                 env_check.details,
-                {"missing": ["SMALLKHOJ_FRONTEND_IMAGE", "POSTGRES_PASSWORD", "BACKEND_CORS_ORIGINS"]},
+                {
+                    "missing": ["SMALLKHOJ_FRONTEND_IMAGE", "POSTGRES_PASSWORD", "BACKEND_CORS_ORIGINS"],
+                    "placeholder": [],
+                },
             )
             self.assertNotIn("registry/smallkhoj-backend:test", preflight.to_json(report))
+
+    def test_env_file_reports_placeholder_values_as_missing_without_leaking_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_repo(root)
+            env_file = root / ".env.prod"
+            write(env_file, """
+                SMALLKHOJ_SITE_ADDRESS=<domain-or-ip-site-address>
+                SMALLKHOJ_BACKEND_IMAGE=<registry>/smallkhoj-backend:<tag>
+                SMALLKHOJ_FRONTEND_IMAGE=<registry>/smallkhoj-frontend:<tag>
+                POSTGRES_PASSWORD=<set-outside-repo>
+                BACKEND_CORS_ORIGINS=<public-origin>
+            """)
+
+            report = preflight.run_preflight(root=root, env_file=env_file)
+
+            self.assertFalse(report.ready)
+            env_check = next(check for check in report.checks if check.name == "env.required")
+            self.assertEqual(env_check.status, "failed")
+            self.assertEqual(
+                env_check.details,
+                {
+                    "missing": [],
+                    "placeholder": [
+                        "SMALLKHOJ_SITE_ADDRESS",
+                        "SMALLKHOJ_BACKEND_IMAGE",
+                        "SMALLKHOJ_FRONTEND_IMAGE",
+                        "POSTGRES_PASSWORD",
+                        "BACKEND_CORS_ORIGINS",
+                    ],
+                },
+            )
+            payload = preflight.to_json(report)
+            self.assertNotIn("<set-outside-repo>", payload)
+            self.assertNotIn("<registry>/smallkhoj-backend:<tag>", payload)
+            self.assertNotIn("<domain-or-ip-site-address>", payload)
+            self.assertNotIn("<public-origin>", payload)
 
     def test_warning_exit_semantics(self) -> None:
         report = preflight.PreflightReport(

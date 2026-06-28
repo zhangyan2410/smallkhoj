@@ -796,6 +796,7 @@ python3 scripts/lighthouse_host_probe.py --json
   - `deploy/caddy/Dockerfile`
   - `deploy/caddy/Caddyfile`
   - `docs/initial-release-production-deployment.md`
+  - `scripts/create_prod_env_template.py`
   - `scripts/initial_release_deploy_preflight.py`
   - `scripts/lighthouse_host_probe.py`
   - `scripts/post_deploy_smoke.py`
@@ -835,6 +836,51 @@ scp -r smallkhoj lighthouse:/opt/smallkhoj
 ```text
 python3 scripts/make_deployment_bundle.py --output /tmp/smallkhoj-deploy-bundle.tar.gz
 scp /tmp/smallkhoj-deploy-bundle.tar.gz lighthouse:/opt/
+```
+
+## Scenario: Initial Release Production Env Template CLI
+
+### 1. Scope / Trigger
+- Trigger: creating or changing the server-side `.env.prod` setup path for the initial release deployment.
+- Use this before editing deployment env requirements, required placeholders, or bundle contents.
+
+### 2. Signatures
+- CLI module: `scripts/create_prod_env_template.py`.
+- Optional flags:
+  - `--output <path>`: write the template to a file instead of stdout.
+  - `--force`: overwrite an existing output file.
+
+### 3. Contracts
+- The template must contain no real secret values.
+- The template must include all required operational env keys checked by deploy preflight.
+- Required values must be placeholder-shaped so `initial_release_deploy_preflight.py --env-file .env.prod` fails until the operator replaces them.
+- The command must refuse to overwrite an existing output file unless `--force` is provided.
+- The deployment bundle may include the generator script but must not include generated `.env.prod`.
+
+### 4. Validation & Error Matrix
+- Existing output file without `--force` -> exit code `2`.
+- Generated required placeholders passed to env preflight -> failed `env.required`.
+- Real filled required values passed to env preflight -> `env.required` passed.
+
+### 5. Good/Base/Bad Cases
+- Good: server operator runs `python3 scripts/create_prod_env_template.py --output .env.prod`, edits values, then runs deploy preflight.
+- Base: operator prints template to stdout to inspect required keys without writing a file.
+- Bad: committing `.env.prod` or adding real Jira/Feishu/LLM tokens to the template.
+- Bad: setting placeholders to non-placeholder text that accidentally passes preflight.
+
+### 6. Tests Required
+- Unit tests cover required template keys, no obvious live secret marker, overwrite refusal, and forced overwrite.
+- Deploy preflight tests cover placeholder required values failing without leaking values.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+POSTGRES_PASSWORD=secret123
+```
+
+#### Correct
+```text
+POSTGRES_PASSWORD=<set-outside-repo>
 ```
 
 ## Scenario: Initial Release SSH Deployment Probe Runner
@@ -918,6 +964,7 @@ python3 scripts/lighthouse_ssh_deploy_probe.py --host <ip> --user ubuntu
 ### 3. Contracts
 - Default mode must be offline and no-secret: inspect tracked repo files only.
 - Env-file mode must check required operational keys without printing values for secrets or image names.
+- Env-file mode must fail required keys that still use placeholder-shaped values such as `<set-outside-repo>`, `<registry>/...:<tag>`, `TODO...`, `CHANGE_ME...`, or `REPLACE_ME...`.
 - Runtime mode must not start production containers or contact Tencent Cloud, Feishu, Jira, or LLM providers.
 - Repository checks must cover `docker-compose.prod.yml`, `deploy/caddy/Dockerfile`, `deploy/caddy/Caddyfile`, `frontend/next.config.mjs`, and `frontend/Dockerfile`.
 - Production compose must build the Caddy image from `./deploy/caddy` so Caddy config is baked into the image instead of relying on a file-level bind mount to `/etc/caddy/Caddyfile`.
@@ -931,6 +978,7 @@ python3 scripts/lighthouse_ssh_deploy_probe.py --host <ip> --user ubuntu
 - Missing compose service or route contract -> failed check.
 - Missing `output: "standalone"` -> failed `repo.frontend.standalone`.
 - Missing required env key -> failed `env.required`.
+- Placeholder value for a required env key -> failed `env.required` with key names only, no values.
 - Local/IP-only site address, CORS mismatch, or frontend public URL override -> warning unless strict warnings are enabled.
 - Docker command/daemon/compose unavailable -> failed runtime check.
 - Host memory below 1.5 GiB or disk below 8 GiB -> failed runtime check.
@@ -946,9 +994,11 @@ python3 scripts/lighthouse_ssh_deploy_probe.py --host <ip> --user ubuntu
 - Bad: changing production defaults to high local ports instead of using env overrides for local smoke.
 - Bad: relying on `next build` alone when the production Dockerfile depends on `.next/standalone`.
 - Bad: printing `POSTGRES_PASSWORD`, Jira API tokens, Feishu app secrets, or LLM keys in preflight output.
+- Bad: treating `<set-outside-repo>` or `<registry>/smallkhoj-backend:<tag>` as valid production env values.
 
 ### 6. Tests Required
 - Unit tests cover passing repo config, missing standalone output, missing env values, and warning exit semantics.
+- Unit tests cover placeholder env values failing without leaking their values.
 - CLI smoke: default preflight passes against the current repository.
 - Runtime smoke: runtime preflight runs on the current machine and reports Docker/resource/port status.
 

@@ -40,6 +40,7 @@ SECRET_ENV_KEYS = {
     "FEISHU_WORKER_APP_SECRET",
     "LLM_API_KEY",
 }
+PLACEHOLDER_PREFIXES = ("<", "TODO", "CHANGE_ME", "REPLACE_ME")
 
 
 @dataclass(frozen=True)
@@ -283,6 +284,16 @@ def sanitize_env_details(env: dict[str, str], keys: tuple[str, ...] | list[str])
     return sanitized
 
 
+def is_placeholder_value(value: str) -> bool:
+    stripped = value.strip()
+    if not stripped:
+        return False
+    upper = stripped.upper()
+    if stripped.startswith("<") and stripped.endswith(">"):
+        return True
+    return any(upper.startswith(prefix) for prefix in PLACEHOLDER_PREFIXES[1:])
+
+
 def site_origin(site_address: str) -> str:
     value = site_address.strip().rstrip("/")
     if not value:
@@ -305,12 +316,13 @@ def check_env_file(env_file: Path) -> list[CheckResult]:
     env = parse_env_file(env_file)
     checks: list[CheckResult] = []
     missing = [key for key in REQUIRED_ENV_KEYS if not env.get(key, "").strip()]
-    if missing:
+    placeholders = [key for key in REQUIRED_ENV_KEYS if is_placeholder_value(env.get(key, ""))]
+    if missing or placeholders:
         checks.append(failed(
             "env.required",
             "DEPLOY_PREFLIGHT_ENV_REQUIRED_MISSING",
-            "Deployment env file is missing required values.",
-            {"missing": missing},
+            "Deployment env file is missing required values or still contains placeholders.",
+            {"missing": missing, "placeholder": placeholders},
         ))
     else:
         checks.append(passed(
@@ -320,7 +332,16 @@ def check_env_file(env_file: Path) -> list[CheckResult]:
         ))
 
     site = env.get("SMALLKHOJ_SITE_ADDRESS", "").strip()
-    if site in {"", ":80", "localhost"} or site.startswith("localhost") or site.startswith("http://"):
+    cors_raw = env.get("BACKEND_CORS_ORIGINS", "")
+    site_placeholder = is_placeholder_value(site)
+    cors_placeholder = any(is_placeholder_value(item.strip()) for item in cors_raw.split(",") if item.strip())
+    if site_placeholder:
+        checks.append(warning(
+            "env.siteAddress",
+            "DEPLOY_PREFLIGHT_SITE_ADDRESS_PLACEHOLDER",
+            "SMALLKHOJ_SITE_ADDRESS still contains a placeholder and must be replaced before deployment.",
+        ))
+    elif site in {"", ":80", "localhost"} or site.startswith("localhost") or site.startswith("http://"):
         checks.append(warning(
             "env.siteAddress",
             "DEPLOY_PREFLIGHT_SITE_ADDRESS_NOT_HTTPS_DOMAIN",
@@ -331,9 +352,15 @@ def check_env_file(env_file: Path) -> list[CheckResult]:
     else:
         checks.append(passed("env.siteAddress", "Site address can be used by Caddy for HTTPS certificate issuance."))
 
-    origin = site_origin(site)
-    cors_origins = [item.strip().rstrip("/") for item in env.get("BACKEND_CORS_ORIGINS", "").split(",") if item.strip()]
-    if origin and cors_origins and origin not in cors_origins:
+    origin = "" if site_placeholder else site_origin(site)
+    cors_origins = [item.strip().rstrip("/") for item in cors_raw.split(",") if item.strip()]
+    if cors_placeholder:
+        checks.append(warning(
+            "env.cors",
+            "DEPLOY_PREFLIGHT_CORS_PLACEHOLDER",
+            "BACKEND_CORS_ORIGINS still contains a placeholder and must be replaced before deployment.",
+        ))
+    elif origin and cors_origins and origin not in cors_origins:
         checks.append(warning(
             "env.cors",
             "DEPLOY_PREFLIGHT_CORS_SITE_ORIGIN_MISSING",
