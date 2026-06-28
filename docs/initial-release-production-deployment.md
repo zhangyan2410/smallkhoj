@@ -253,8 +253,9 @@ Live-run foundation data captured on 2026-06-29:
 - The deployed backend now supports creating release assignees with `autoStart=false` or `startRuntime=false` when you need to register the member/workspace before intentionally starting the runtime.
 - The release assignee `release-runtime-agent` was created with ID `b03d52dc-b863-4e0a-953b-9b0231f325bc`, workspace ID `35d0da28-0b64-4eb6-9359-767559664b18`, runtime `codex`, provider display name `krill`, runtime provider `8220f087-56d0-43e8-af3e-303ef2c2d845`, `runtimeDesiredStatus=stopped`, workspace `status=stopped`, and `pid=null`.
 - Local process inspection after creation found no `aaa-daemon`, `smallkhoj-daemon`, managed `claude`, or managed `codex` runtime process. `post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json` still passed with zero failures and zero warnings after backend restart and assignee creation.
+- A later backend image was rebuilt as `linux/amd64`, uploaded from `/Volumes/ORICO/smallkhoj-deploy/smallkhoj-backend-amd64-preflight-missing.tar`, loaded on the Lighthouse host, and the backend service was force-recreated. This deployed the live-run preflight improvement that reports all missing worker runtime settings together.
 - Container-side bootstrap and live-run preflight CLIs must be executed through `uv run python -m ...` inside the backend container. Direct `python -m ...` does not load the image's Python dependencies.
-- Current no-network live-run preflight fails at `workerConfig` with `FEISHU_WORKER_CONFIG_MISSING_CONNECTOR_ID`, which is expected before integration bootstrap and runtime env are configured.
+- Current no-network live-run preflight fails at `workerConfig` with `LIVE_RUN_PREFLIGHT_WORKER_CONFIG_INCOMPLETE`, listing `FEISHU_WORKER_CONNECTOR_ID`, `FEISHU_WORKER_JIRA_CONNECTOR_ID`, `FEISHU_WORKER_CREATOR_ID`, `FEISHU_WORKER_APP_ID`, and `FEISHU_WORKER_APP_SECRET`. This is expected before integration bootstrap and runtime env are configured.
 
 Before installing or starting anything on Tencent Cloud Lighthouse, create the no-secret deployment bundle on your local machine:
 
