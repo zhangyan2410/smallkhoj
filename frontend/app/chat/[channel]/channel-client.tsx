@@ -269,7 +269,15 @@ export function ChannelClient({
 
   const currentChannel = channels.find((c) => c.name.replace("#", "") === channelName)
   const currentDm = dms.find((dm) => dm.name === channelName)
-  const currentTitle = currentDm?.displayName ?? (currentChannel?.name ?? `#${channelName}`)
+  const currentTitle = (() => {
+    // DM 标题优先用 peer 的干净名字，绝不直接显示后端原始的 "DM @<uuid>"
+    // （否则 hydration 后会闪一下长 id 才切到正确名字）。
+    if (currentDm) {
+      const peerName = currentDm.peer?.profile?.displayName || currentDm.peer?.displayName || currentDm.peer?.name
+      return peerName || tChat("directMessage")
+    }
+    return currentChannel?.name ?? `#${channelName}`
+  })()
   const currentIsDm = Boolean(currentDm)
   const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
   const allKnownMembers = [...members, ...allMembers]
