@@ -389,6 +389,22 @@ JIRA_API_TOKEN=<set-outside-repo>
 
 The updater creates `.env.prod.bak`, refuses unknown keys, and prints only key names with `<set>`, `<empty>`, or `<unchanged>` markers.
 
+External values to collect before running integration bootstrap:
+
+- `FEISHU_WORKER_APP_ID` and `FEISHU_WORKER_APP_SECRET`: in the Feishu Open Platform app detail page, use the app credentials section under credentials/basic information. Feishu's long-connection event client also requires the app ID and app secret.
+- `FEISHU_WORKER_BOT_OPEN_ID`: use Feishu's documented Open ID lookup path, such as API Explorer/OpenAPI lookup, for the bot/application identity used by the app.
+- `--feishu-chat-id`: use the Feishu group ID / `chat_id` lookup path. Feishu documents that `chat_id` can be obtained from group creation responses, group list APIs, API Explorer, or supported client group settings.
+- `JIRA_EMAIL` and `JIRA_API_TOKEN`: use a Jira Cloud account email and an Atlassian API token for Basic auth. Prefer a service account with the minimum Jira project permissions needed for issue read/comment/write-back.
+- `--jira-site-url`: use the Jira Cloud site origin, for example `https://your-team.atlassian.net`.
+
+Reference docs:
+
+- Feishu long connection: `https://open.feishu.cn/document/server-docs/event-subscription-guide/event-subscription-configure-/request-url-configuration-case?lang=zh-CN`
+- Feishu Open ID: `https://open.feishu.cn/document/platform-overveiw/basic-concepts/user-identity-introduction/open-id`
+- Feishu group/chat ID: `https://open.feishu.cn/document/server-docs/group/chat/chat-id-description?lang=zh-CN`
+- Jira REST Basic auth: `https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/`
+- Atlassian API token management: `https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/`
+
 Run the repository/config preflight before building or pulling images:
 
 ```bash
