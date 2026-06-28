@@ -229,6 +229,10 @@ Provisioning notes captured on 2026-06-29:
 - The `ubuntu` user is in the `docker` group for non-root compose operations.
 - A persistent 3 GiB `/swapfile` is configured in `/etc/fstab`.
 - `lighthouse_ssh_deploy_probe.py` passed host probe and repo preflight with zero failures and zero warnings when run against the remote probe dir above.
+- An IP-only `.env.prod` exists on the host for HTTP smoke testing with `SMALLKHOJ_SITE_ADDRESS=:80`, same-origin frontend API/WS settings, and local-release image tags.
+- Core images are available on the host as `smallkhoj-backend:local-release`, `smallkhoj-frontend:local-release`, and `smallkhoj-caddy:local-release`. Backend and Caddy were built as `linux/amd64` locally and loaded on the host; frontend was built natively on the host after local QEMU `linux/amd64` build hit SIGKILL during `next build`.
+- `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy` started the core stack successfully.
+- `post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json` passed with zero failures and zero warnings. Browser evidence via `./twd` shows the deployed login page at `http://124.222.40.40/login`.
 - The instance is in a Chinese mainland region. Domain-based public release still needs ICP filing readiness; IP-only HTTP and outbound Feishu/Jira validation can proceed before a formal domain is ready.
 
 Before installing or starting anything on Tencent Cloud Lighthouse, create the no-secret deployment bundle on your local machine:
