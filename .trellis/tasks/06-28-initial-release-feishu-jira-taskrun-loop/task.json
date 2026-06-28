@@ -1,0 +1,32 @@
+{
+  "id": "initial-release-feishu-jira-taskrun-loop",
+  "name": "initial-release-feishu-jira-taskrun-loop",
+  "title": "Initial release Feishu Jira TaskRun loop",
+  "description": "Wire the first release service-level loop: accepted Feishu jira_analysis command reads Jira issue context, creates SmallKhoj message/task/TaskRun state, and writes TaskRun results back to Jira through integration mappings.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "backend",
+  "package": "backend",
+  "priority": "P0",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-28",
+  "completedAt": null,
+  "branch": "codex/initial-release-feishu-jira-taskrun-loop",
+  "base_branch": "codex/initial-release-feishu-jira-taskrun-loop",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "06-28-07-15-initial-release",
+  "relatedFiles": [
+    "backend/services/feishu_adapter.py",
+    "backend/services/jira_rest.py",
+    "backend/services/integration_gateway.py",
+    "backend/services/task_runs.py",
+    "backend/models/slock.py"
+  ],
+  "notes": "Depends on e3a1a65 integration gateway, 8591b10 Jira REST, and f50285c Feishu adapter. This child wires the first service-level vertical loop; real Feishu SDK worker and UI are out of scope.",
+  "meta": {}
+}

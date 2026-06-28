@@ -251,6 +251,64 @@ lark-oapi callback -> parse text -> create TaskRun -> send daemon command
 lark-oapi callback -> normalize -> services.feishu_adapter.dispatch_feishu_message -> integration gateway event/session/route -> later orchestration creates TaskRun
 ```
 
+## Scenario: Initial Release Feishu-Jira-TaskRun Loop
+
+### 1. Scope / Trigger
+- Trigger: wiring an accepted Feishu `jira_analysis` command to Jira issue lookup, local task/run creation, or Jira comment write-back.
+- Use this for release orchestration. Lower-level adapters remain in `services.feishu_adapter`, `services.jira_rest`, and `services.integration_gateway`.
+
+### 2. Signatures
+- Orchestration module: `services.release_loop`.
+- Start operation: `start_feishu_jira_analysis(db, feishu_outcome, jira_http_client, jira_connector, jira_credentials, creator_id, task_number_allocator=...)`.
+- Write-back operation: `write_back_task_run_to_jira(db, jira_http_client, jira_connector, jira_credentials, issue_key, task_run, task, output_text=None)`.
+- Local records:
+  - `Message` records the Feishu-originated request.
+  - `Task` stores Jira source metadata in `data`.
+  - `TaskRun` is created by `create_task_assignment_and_run`.
+
+### 3. Contracts
+- Only `FeishuDispatchOutcome(status="accepted", command.kind="jira_analysis")` may start this loop.
+- Jira lookup must use `services.jira_rest.fetch_jira_issue`.
+- TaskRun creation must use `services.task_runs.create_task_assignment_and_run`.
+- External event linking must use `services.integration_gateway.link_external_event`.
+- Jira issue/comment mappings must use `services.jira_rest.map_jira_issue` / `map_jira_comment`.
+- The orchestration service creates TaskRun state but must not execute daemon/runtime/provider work directly.
+- Jira lookup/write-back failures must be wrapped in release-loop failure codes while preserving the original Jira cause code.
+
+### 4. Validation & Error Matrix
+- Non-accepted Feishu outcome -> `RELEASE_LOOP_FEISHU_OUTCOME_NOT_ACCEPTED`.
+- Unsupported command -> `RELEASE_LOOP_UNSUPPORTED_COMMAND`.
+- Accepted route without channel -> `RELEASE_LOOP_ROUTE_CHANNEL_MISSING`.
+- Accepted route without assignee -> `RELEASE_LOOP_ASSIGNEE_MISSING`.
+- Jira lookup failure -> `RELEASE_LOOP_JIRA_LOOKUP_FAILED` with `cause_code`.
+- Jira comment failure -> `RELEASE_LOOP_JIRA_WRITEBACK_FAILED` with `cause_code`.
+
+### 5. Good/Base/Bad Cases
+- Good: accepted `@SmallKhoj 分析 JIRA-123` creates a channel message, task, TaskRun, Jira issue mapping, and links the external event to local ids.
+- Good: completed TaskRun output appends a Jira comment and maps `task_run -> jira comment`.
+- Base: Jira write-back fails; local TaskRun output remains available and the caller receives a structured failure.
+- Bad: release orchestration calling daemon control or runtime providers directly.
+- Bad: storing Jira/Feishu state only in `Task.data` without external mappings.
+- Bad: treating this service as the production Feishu long-connection worker; it is the business orchestration boundary.
+
+### 6. Tests Required
+- Reject invalid Feishu outcomes.
+- Accepted command creates message/task/run and links external event ids.
+- Jira issue/comment mappings are created.
+- Jira lookup/write-back failures expose release-loop and cause codes.
+- Boundary test proving no daemon/runtime execution helpers are imported directly.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Feishu accepted command -> Jira lookup -> daemon command -> Jira comment
+```
+
+#### Correct
+```text
+Feishu accepted command -> Jira lookup -> Message/Task/TaskRun state -> daemon runtime later executes TaskRun -> release_loop write-back maps Jira comment
+```
+
 ## Scenario: Computer Binding Columns On Members
 
 ### 1. Scope / Trigger
