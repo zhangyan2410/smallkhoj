@@ -800,6 +800,7 @@ python3 scripts/lighthouse_host_probe.py --json
   - `scripts/initial_release_deploy_preflight.py`
   - `scripts/lighthouse_host_probe.py`
   - `scripts/post_deploy_smoke.py`
+  - `scripts/remote_deploy_evidence.py`
   - generated `README.deploy-bundle.md`
   - generated `manifest.json`
 - The bundle must not include `.env*`, `.git`, `.trellis`, `node_modules`, `.next`, `__pycache__`, local databases, logs, screenshots, task evidence, or secrets.
@@ -945,6 +946,64 @@ ssh ubuntu@host 'docker compose up -d'
 ```text
 python3 scripts/lighthouse_ssh_deploy_probe.py --host <ip> --user ubuntu --dry-run
 python3 scripts/lighthouse_ssh_deploy_probe.py --host <ip> --user ubuntu
+```
+
+## Scenario: Initial Release Remote Deploy Evidence Collector
+
+### 1. Scope / Trigger
+- Trigger: a remote Lighthouse probe, preflight, compose startup, or public smoke fails and the operator needs a no-secret evidence bundle from the local machine.
+- Use this after `lighthouse_ssh_deploy_probe.py` has uploaded/unpacked the deployment bundle on the remote host.
+
+### 2. Signatures
+- CLI module: `scripts/remote_deploy_evidence.py`.
+- Required flag:
+  - `--host <ssh-host-or-ip>`
+- Optional flags:
+  - `--user <ssh-user>`
+  - `--port <ssh-port>`
+  - `--identity-file <path>`
+  - `--remote-dir <path>`
+  - `--bundle-prefix <name>`
+  - `--remote-env-file <path>`
+  - `--public-base-url <url>`
+  - `--allow-http`
+  - `--output <json-path>`
+  - `--dry-run`
+  - `--json`
+
+### 3. Contracts
+- The collector must run remote commands from the unpacked deployment bundle directory.
+- Default evidence must include host probe, repo preflight, compose services, compose ps, recent core service logs, Docker ps, Docker system disk usage, memory snapshot, and disk snapshot.
+- `--remote-env-file` may add runtime preflight, but the collector must not print, cat, upload, or copy `.env.prod`.
+- `--public-base-url` may add local post-deploy smoke output.
+- The local evidence output must be JSON with command labels, command strings, return codes, stdout, and stderr.
+- `--dry-run` and `--json` must expose the command plan without executing SSH/local commands.
+
+### 4. Validation & Error Matrix
+- Missing `--host` -> CLI parser failure.
+- SSH command failure -> captured result with non-zero return code; final exit code non-zero.
+- Public smoke failure -> captured non-zero result; final exit code non-zero.
+- Output path unwritable -> command exits non-zero from file write error.
+
+### 5. Good/Base/Bad Cases
+- Good: failed remote compose startup is followed by one evidence collection command and a JSON artifact with labeled command output.
+- Base: no env file exists yet; collector still gathers host probe, repo preflight, compose service/ps/logs, and host snapshots.
+- Bad: running `cat .env.prod`, `printenv`, or uploading env files as part of evidence collection.
+- Bad: relying only on `docker compose logs` and missing host memory/disk/Docker daemon evidence.
+
+### 6. Tests Required
+- Unit tests cover default command planning, SSH identity/port flags, optional runtime preflight, optional public smoke, and JSON result shape.
+- Manual dry-run should be inspected before first real host use.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+ssh host 'cat .env.prod && docker compose logs'
+```
+
+#### Correct
+```text
+python3 scripts/remote_deploy_evidence.py --host <ip> --user ubuntu --remote-dir /opt/smallkhoj --output /tmp/evidence.json
 ```
 
 ## Scenario: Initial Release Production Deploy Preflight CLI

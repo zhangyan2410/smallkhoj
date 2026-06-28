@@ -22,6 +22,7 @@ INCLUDED_FILES = (
     "scripts/initial_release_deploy_preflight.py",
     "scripts/lighthouse_host_probe.py",
     "scripts/post_deploy_smoke.py",
+    "scripts/remote_deploy_evidence.py",
 )
 
 

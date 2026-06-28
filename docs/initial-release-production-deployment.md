@@ -171,6 +171,22 @@ python3 scripts/lighthouse_ssh_deploy_probe.py \
   --allow-http
 ```
 
+If a remote probe or compose startup fails, collect no-secret evidence from the local machine:
+
+```bash
+python3 scripts/remote_deploy_evidence.py \
+  --host <server-ip> \
+  --user ubuntu \
+  --identity-file ~/.ssh/<key> \
+  --remote-dir /opt/smallkhoj \
+  --remote-env-file .env.prod \
+  --public-base-url http://<server-ip> \
+  --allow-http \
+  --output /tmp/smallkhoj-remote-deploy-evidence.json
+```
+
+The evidence collector records host probe, deploy preflight, compose service/ps/log output, Docker disk usage, memory/disk snapshots, and optional public smoke output. It does not print `.env.prod` or run `printenv`.
+
 ## Preflight
 
 Create the server-side env file from the no-secret template, then edit it on the server. The template intentionally contains placeholder values; preflight fails until required placeholders are replaced:
@@ -335,6 +351,7 @@ Only start `feishu-worker` after preflight reports `ready: true`.
 
 - `curl https://domain/api/health` fails but `/` works: check Caddy `/api/*` routing and backend container logs.
 - `ws.daemonAuth` fails with `POST_DEPLOY_SMOKE_DAEMON_WS_UNEXPECTED_STATUS`: check Caddy `/internal/*` routing and backend container logs. `401` or `403` is expected for this no-token smoke; `101` is unsafe because the daemon WebSocket accepted an unauthenticated upgrade.
+- Remote startup fails but the reason is unclear: run `scripts/remote_deploy_evidence.py` and inspect the JSON labels `host-probe`, `runtime-preflight`, `compose-ps`, and `compose-logs-core`.
 - Daemon command contains `http://backend:8000`: frontend is leaking internal URL into public command generation; set `NEXT_PUBLIC_API_BASE_URL=https://domain` or check forwarded headers through Caddy.
 - Browser WebSocket uses `ws://` on HTTPS page: check `NEXT_PUBLIC_WS_BASE_URL`; empty same-origin should derive `wss://`.
 - Caddy cannot issue a certificate: check DNS A record, firewall ports 80/443, and ICP/provider restrictions.
