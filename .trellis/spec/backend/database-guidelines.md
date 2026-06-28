@@ -725,6 +725,59 @@ python -m feishu_worker_cli -> live message arrives -> fails because route has n
 integration_bootstrap_cli -> live_run_preflight_cli -> feishu_worker_cli -> live message
 ```
 
+## Scenario: Initial Release Lighthouse Host Probe CLI
+
+### 1. Scope / Trigger
+- Trigger: validating a first Tencent Cloud Lighthouse, tunnel, or replacement host before installing packages, creating swap, opening ports, or starting the production compose stack.
+- Use this before the production deploy preflight when the host itself has not been proven ready.
+
+### 2. Signatures
+- CLI module: `scripts/lighthouse_host_probe.py`, run from the repository root with `python3 scripts/lighthouse_host_probe.py`.
+- Optional flags:
+  - `--json`: emit machine-readable host evidence.
+  - `--strict-warnings`: return code `2` when warnings exist.
+
+### 3. Contracts
+- Default mode must be read-only and must not install packages, create swap, change firewall rules, start services, or contact Tencent Cloud APIs.
+- The command must inspect host package-manager access, sudo availability, CPU, memory, swap, disk, Docker, Docker Compose, local ports 80/443, and firewall tooling.
+- The command may emit suggested bootstrap commands, but every suggested command must be marked as not executed.
+- Ubuntu/Debian suggestions may include Docker official apt repository setup, a 2 GiB swapfile, and UFW `80/tcp` / `443/tcp` allow rules.
+- The command must not require or print `.env.prod` secrets.
+
+### 4. Validation & Error Matrix
+- CPU below 2 cores -> warning.
+- Memory below 1.5 GiB -> failed; below 2 GiB -> warning.
+- Swap below 2 GiB or unknown -> warning.
+- Disk free below 8 GiB -> failed; below 12 GiB -> warning.
+- Missing Docker command, unavailable Docker daemon, or unavailable Docker Compose -> failed.
+- Port 80 or 443 already accepts local TCP connections -> failed.
+- Missing package manager, sudo, or firewall tooling -> warning because Tencent Cloud images and security groups vary.
+
+### 5. Good/Base/Bad Cases
+- Good: first SSH session runs `python3 scripts/lighthouse_host_probe.py --json` and saves the JSON before host mutation.
+- Good: a 2 vCPU / 2 GiB host with no swap emits swapfile suggestions before live-run testing.
+- Base: macOS/local development host reports package-manager/sudo/firewall warnings but still emits useful Docker/resource evidence.
+- Bad: running install commands before recording host baseline and discovering later that memory, swap, disk, or ports were the real blocker.
+- Bad: making the probe require Tencent Cloud credentials or a committed deployment env file.
+
+### 6. Tests Required
+- Unit tests cover resource classification, runtime dependency classification, suggested command generation, and warning/failed exit semantics.
+- CLI smoke: host probe runs on the current machine and emits JSON.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+ssh lighthouse
+curl install docker ...
+# no baseline, no swap/disk/port evidence
+```
+
+#### Correct
+```text
+python3 scripts/lighthouse_host_probe.py --json
+# review warnings and suggested commands before any host mutation
+```
+
 ## Scenario: Initial Release Production Deploy Preflight CLI
 
 ### 1. Scope / Trigger

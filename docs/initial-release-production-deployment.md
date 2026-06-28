@@ -95,6 +95,18 @@ FEISHU_WORKER_APP_ID=<app-id>
 FEISHU_WORKER_APP_SECRET=<set-outside-repo>
 ```
 
+## Host Probe
+
+Before installing or starting anything on Tencent Cloud Lighthouse, copy the repository or the `scripts/lighthouse_host_probe.py` file to the host and run the read-only host probe:
+
+```bash
+python3 scripts/lighthouse_host_probe.py --json
+```
+
+The host probe reports OS/package-manager access, sudo availability, CPU, memory, swap, disk, Docker, Docker Compose, ports 80/443, and firewall tooling. It may print suggested bootstrap commands for Ubuntu/Debian Docker install, swapfile creation, and UFW port rules, but it does not execute them.
+
+On a 2 vCPU / 2 GB Lighthouse host, missing or small swap should be treated as a deployment warning to fix before repeated live-run testing. Heavy image builds should still happen off-host.
+
 ## Preflight
 
 Run the repository/config preflight before building or pulling images:

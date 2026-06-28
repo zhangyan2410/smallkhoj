@@ -37,7 +37,8 @@
     "06-28-initial-release-production-url-reverse-proxy-readiness",
     "06-28-initial-release-daemon-single-local-computer-identity",
     "06-28-initial-release-frontend-standalone-production-image",
-    "06-28-initial-release-production-deploy-preflight-cli"
+    "06-28-initial-release-production-deploy-preflight-cli",
+    "06-28-initial-release-lighthouse-host-bootstrap-probe"
   ],
   "parent": null,
   "relatedFiles": [],
