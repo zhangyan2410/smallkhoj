@@ -778,6 +778,64 @@ python3 scripts/lighthouse_host_probe.py --json
 # review warnings and suggested commands before any host mutation
 ```
 
+## Scenario: Initial Release Deployment Bundle CLI
+
+### 1. Scope / Trigger
+- Trigger: preparing the minimal no-secret file set to upload to Tencent Cloud Lighthouse or another release host.
+- Use this when the full repository should not be copied to the server just to run host probe, deploy preflight, compose, Caddy, and post-deploy smoke.
+
+### 2. Signatures
+- CLI module: `scripts/make_deployment_bundle.py`, run from the repository root with `python3 scripts/make_deployment_bundle.py --output <bundle.tar.gz>`.
+- Optional flags:
+  - `--root <repo-root>`
+  - `--prefix <tar-top-level-dir>`
+
+### 3. Contracts
+- The bundle must include:
+  - `docker-compose.prod.yml`
+  - `deploy/Caddyfile`
+  - `docs/initial-release-production-deployment.md`
+  - `scripts/initial_release_deploy_preflight.py`
+  - `scripts/lighthouse_host_probe.py`
+  - `scripts/post_deploy_smoke.py`
+  - generated `README.deploy-bundle.md`
+  - generated `manifest.json`
+- The bundle must not include `.env*`, `.git`, `.trellis`, `node_modules`, `.next`, `__pycache__`, local databases, logs, screenshots, task evidence, or secrets.
+- Manifest entries must include relative path, size, and SHA-256 hash. The top-level manifest must include generation time and current git commit when available.
+- Tar members must live under one relative top-level prefix. No absolute paths or `..` path components are allowed.
+- The generated README must show the server-side order: host probe -> env/preflight -> compose up -> post-deploy smoke.
+
+### 4. Validation & Error Matrix
+- Missing required included file -> fail bundle generation.
+- Included path is absolute, contains `..`, or uses an excluded path segment -> fail.
+- Basename starts with `.env` -> fail.
+- Required file is a symlink -> fail.
+
+### 5. Good/Base/Bad Cases
+- Good: local machine runs `python3 scripts/make_deployment_bundle.py --output /tmp/smallkhoj-deploy-bundle.tar.gz`, uploads the tarball, then runs scripts from `smallkhoj-deploy/`.
+- Good: manifest hash lets the operator prove which deployment scripts were uploaded.
+- Bad: uploading the full repo including `.env.prod`, task archives, logs, browser evidence, or build artifacts.
+- Bad: hand-copying only one script and then discovering compose, Caddyfile, or docs are missing on the server.
+
+### 6. Tests Required
+- Unit tests inspect tarball contents without unsafe extraction.
+- Unit tests verify manifest hashes match tar member bytes.
+- Unit tests verify README command order and env/secret exclusion.
+- CLI smoke generates a bundle under `/tmp` and lists members.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+scp -r smallkhoj lighthouse:/opt/smallkhoj
+# includes unrelated worktrees, caches, evidence, and maybe env files
+```
+
+#### Correct
+```text
+python3 scripts/make_deployment_bundle.py --output /tmp/smallkhoj-deploy-bundle.tar.gz
+scp /tmp/smallkhoj-deploy-bundle.tar.gz lighthouse:/opt/
+```
+
 ## Scenario: Initial Release Production Deploy Preflight CLI
 
 ### 1. Scope / Trigger

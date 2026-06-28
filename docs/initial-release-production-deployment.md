@@ -97,13 +97,26 @@ FEISHU_WORKER_APP_SECRET=<set-outside-repo>
 
 ## Host Probe
 
-Before installing or starting anything on Tencent Cloud Lighthouse, copy the repository or the `scripts/lighthouse_host_probe.py` file to the host and run the read-only host probe:
+Before installing or starting anything on Tencent Cloud Lighthouse, create the no-secret deployment bundle on your local machine:
+
+```bash
+python3 scripts/make_deployment_bundle.py --output /tmp/smallkhoj-deploy-bundle.tar.gz
+```
+
+Upload and unpack the bundle on the server:
+
+```bash
+tar -xzf smallkhoj-deploy-bundle.tar.gz
+cd smallkhoj-deploy
+```
+
+Then run the read-only host probe:
 
 ```bash
 python3 scripts/lighthouse_host_probe.py --json
 ```
 
-The host probe reports OS/package-manager access, sudo availability, CPU, memory, swap, disk, Docker, Docker Compose, ports 80/443, and firewall tooling. It may print suggested bootstrap commands for Ubuntu/Debian Docker install, swapfile creation, and UFW port rules, but it does not execute them.
+The bundle includes `docker-compose.prod.yml`, `deploy/Caddyfile`, this runbook, `manifest.json`, and the deployment probe/preflight/smoke scripts. It does not include `.env.prod` or secrets. The host probe reports OS/package-manager access, sudo availability, CPU, memory, swap, disk, Docker, Docker Compose, ports 80/443, and firewall tooling. It may print suggested bootstrap commands for Ubuntu/Debian Docker install, swapfile creation, and UFW port rules, but it does not execute them.
 
 On a 2 vCPU / 2 GB Lighthouse host, missing or small swap should be treated as a deployment warning to fix before repeated live-run testing. Heavy image builds should still happen off-host.
 

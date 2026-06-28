@@ -39,7 +39,8 @@
     "06-28-initial-release-frontend-standalone-production-image",
     "06-28-initial-release-production-deploy-preflight-cli",
     "06-28-initial-release-lighthouse-host-bootstrap-probe",
-    "06-28-initial-release-post-deploy-smoke-cli"
+    "06-28-initial-release-post-deploy-smoke-cli",
+    "06-28-initial-release-deployment-bundle"
   ],
   "parent": null,
   "relatedFiles": [],
