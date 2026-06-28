@@ -917,7 +917,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend 
 
 ### 3. Contracts
 - The command must be read-only and must not require authentication, app secrets, Jira/Feishu credentials, machine tokens, or deployment env files.
-- Required checks: URL scheme, DNS resolution, TCP connect, frontend root, `/api/health`, `/docs`, and `/openapi.json`.
+- Required checks: URL scheme, DNS resolution, TCP connect, frontend root, `/api/health`, `/docs`, `/openapi.json`, and an unauthenticated daemon WebSocket upgrade probe for `/internal/agent-api/ws`.
+- The daemon WebSocket probe must not send a real machine token. `401` or `403` is a passed check because it proves the route reaches the backend and preserves auth. `101 Switching Protocols` is a failed check without credentials.
 - HTTPS is expected by default. HTTP must warn unless `--allow-http` is used.
 - If DNS, TCP, or TLS prerequisites fail, endpoint checks should fail fast without waiting for repeated HTTP timeouts.
 - Output must not include raw response bodies.
@@ -932,16 +933,21 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend 
 - `/api/health` not 2xx JSON with `status: "ok"` -> failed `http.health`.
 - `/docs` not 2xx/3xx -> failed `http.docs`.
 - `/openapi.json` not 2xx JSON with OpenAPI-like keys -> failed `http.openapi`.
+- `/internal/agent-api/ws` no-token upgrade returns `401` or `403` -> passed `ws.daemonAuth`.
+- `/internal/agent-api/ws` no-token upgrade returns `101` -> failed `POST_DEPLOY_SMOKE_DAEMON_WS_ACCEPTED_WITHOUT_AUTH`.
+- `/internal/agent-api/ws` no-token upgrade returns `404`, `502`, malformed status, or no response -> failed daemon WebSocket route check.
 
 ### 5. Good/Base/Bad Cases
 - Good: `python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --json` returns ready after DNS, TLS, frontend, backend health, docs, and OpenAPI routes all pass.
 - Base: `python3 scripts/post_deploy_smoke.py --base-url http://<server-ip> --allow-http --json` proves IP-only HTTP smoke while ICP/domain/HTTPS are pending.
+- Good: daemon WebSocket smoke receives `403` for an unauthenticated upgrade, proving Caddy `/internal/*` reaches the backend while auth remains enforced.
 - Bad: relying only on `curl /` and missing a broken `/api/*` or `/openapi.json` Caddy route.
 - Bad: opening daemon WebSocket in smoke with a real machine token; daemon validation belongs to the daemon reconnect/live-run gate.
+- Bad: accepting `101 Switching Protocols` for a no-token daemon WebSocket smoke as healthy.
 
 ### 6. Tests Required
 - Unit tests cover successful local fake deployment smoke.
-- Unit tests cover HTTP warning behavior, health failure, and JSON/exit semantics.
+- Unit tests cover HTTP warning behavior, health failure, daemon WebSocket no-auth rejection, daemon WebSocket no-auth acceptance failure, and JSON/exit semantics.
 - CLI smoke against a refused local port should fail quickly without repeated endpoint timeouts.
 
 ### 7. Wrong vs Correct

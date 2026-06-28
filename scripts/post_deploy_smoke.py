@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import http.client
 import json
+import os
 import socket
 import ssl
 import sys
@@ -247,6 +249,85 @@ def check_openapi(base_url: str, *, timeout: float) -> CheckResult:
     return failed("http.openapi", "POST_DEPLOY_SMOKE_OPENAPI_UNEXPECTED", "OpenAPI route returned unexpected JSON.", {"status": probe.status})
 
 
+def websocket_url_for(base_url: str, path: str) -> str:
+    parsed = urlparse(base_url)
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    return urlunparse((scheme, parsed.netloc, path, "", "", ""))
+
+
+def read_http_status_line(sock: socket.socket) -> tuple[int | None, str]:
+    data = b""
+    while b"\r\n" not in data and len(data) < 4096:
+        chunk = sock.recv(1)
+        if not chunk:
+            break
+        data += chunk
+    status_line = data.decode("iso-8859-1", errors="replace").strip()
+    parts = status_line.split()
+    if len(parts) >= 2 and parts[0].startswith("HTTP/"):
+        try:
+            return int(parts[1]), status_line
+        except ValueError:
+            pass
+    return None, status_line
+
+
+def check_daemon_websocket_auth_route(base_url: str, *, timeout: float) -> CheckResult:
+    parsed_base = urlparse(base_url)
+    port = default_port(parsed_base)
+    ws_url = websocket_url_for(base_url, "/internal/agent-api/ws")
+    key = base64.b64encode(os.urandom(16)).decode("ascii")
+    request = "\r\n".join([
+        "GET /internal/agent-api/ws HTTP/1.1",
+        f"Host: {parsed_base.hostname}",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        f"Sec-WebSocket-Key: {key}",
+        "Sec-WebSocket-Version: 13",
+        "User-Agent: smallkhoj-post-deploy-smoke/1",
+        "",
+        "",
+    ]).encode("ascii")
+    try:
+        with socket.create_connection((parsed_base.hostname, port), timeout=timeout) as raw_sock:
+            raw_sock.settimeout(timeout)
+            if parsed_base.scheme == "https":
+                context = ssl.create_default_context()
+                with context.wrap_socket(raw_sock, server_hostname=parsed_base.hostname) as tls_sock:
+                    tls_sock.sendall(request)
+                    status, status_line = read_http_status_line(tls_sock)
+            else:
+                raw_sock.sendall(request)
+                status, status_line = read_http_status_line(raw_sock)
+    except Exception as exc:
+        return failed(
+            "ws.daemonAuth",
+            "POST_DEPLOY_SMOKE_DAEMON_WS_UNREACHABLE",
+            "Daemon WebSocket unauthenticated handshake did not reach a responding route.",
+            {"error": str(exc), "url": ws_url},
+        )
+
+    if status in {401, 403}:
+        return passed(
+            "ws.daemonAuth",
+            "Daemon WebSocket route rejects unauthenticated upgrade requests as expected.",
+            {"status": status, "url": ws_url},
+        )
+    if status == 101:
+        return failed(
+            "ws.daemonAuth",
+            "POST_DEPLOY_SMOKE_DAEMON_WS_ACCEPTED_WITHOUT_AUTH",
+            "Daemon WebSocket accepted an unauthenticated upgrade request.",
+            {"status": status, "url": ws_url},
+        )
+    return failed(
+        "ws.daemonAuth",
+        "POST_DEPLOY_SMOKE_DAEMON_WS_UNEXPECTED_STATUS",
+        "Daemon WebSocket unauthenticated handshake returned an unexpected status.",
+        {"status": status, "statusLine": status_line, "url": ws_url},
+    )
+
+
 def skipped_http_check(name: str, path: str) -> CheckResult:
     return failed(
         name,
@@ -295,6 +376,7 @@ def run_smoke(*, base_url: str, allow_http: bool = False, timeout: float = 8.0) 
         check_health(normalized, timeout=timeout),
         check_docs(normalized, timeout=timeout),
         check_openapi(normalized, timeout=timeout),
+        check_daemon_websocket_auth_route(normalized, timeout=timeout),
     ])
     return SmokeReport(base_url=normalized, checks=checks)
 

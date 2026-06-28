@@ -228,6 +228,8 @@ Run the post-deploy smoke from a machine outside the Docker network:
 python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --json
 ```
 
+The smoke includes a no-secret daemon WebSocket route check. It sends an unauthenticated WebSocket upgrade to `/internal/agent-api/ws` and expects an auth rejection, which proves Caddy reached the backend route without using a real machine token.
+
 For IP-only HTTP smoke tests before DNS/ICP/HTTPS is ready, make the weaker transport explicit:
 
 ```bash
@@ -283,6 +285,7 @@ Only start `feishu-worker` after preflight reports `ready: true`.
 ## Failure Modes
 
 - `curl https://domain/api/health` fails but `/` works: check Caddy `/api/*` routing and backend container logs.
+- `ws.daemonAuth` fails with `POST_DEPLOY_SMOKE_DAEMON_WS_UNEXPECTED_STATUS`: check Caddy `/internal/*` routing and backend container logs. `401` or `403` is expected for this no-token smoke; `101` is unsafe because the daemon WebSocket accepted an unauthenticated upgrade.
 - Daemon command contains `http://backend:8000`: frontend is leaking internal URL into public command generation; set `NEXT_PUBLIC_API_BASE_URL=https://domain` or check forwarded headers through Caddy.
 - Browser WebSocket uses `ws://` on HTTPS page: check `NEXT_PUBLIC_WS_BASE_URL`; empty same-origin should derive `wss://`.
 - Caddy cannot issue a certificate: check DNS A record, firewall ports 80/443, and ICP/provider restrictions.

@@ -8,6 +8,7 @@ from scripts import post_deploy_smoke as smoke
 
 class FakeDeploymentHandler(BaseHTTPRequestHandler):
     health_status = "ok"
+    daemon_ws_status = 403
 
     def log_message(self, format: str, *args) -> None:
         return
@@ -37,13 +38,21 @@ class FakeDeploymentHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"openapi": "3.1.0", "paths": {"/api/health": {}}}).encode())
             return
+        if self.path == "/internal/agent-api/ws":
+            self.send_response(self.daemon_ws_status)
+            self.end_headers()
+            return
         self.send_response(404)
         self.end_headers()
 
 
 class FakeDeploymentServer:
-    def __init__(self, *, health_status: str = "ok") -> None:
-        self.handler = type("Handler", (FakeDeploymentHandler,), {"health_status": health_status})
+    def __init__(self, *, health_status: str = "ok", daemon_ws_status: int = 403) -> None:
+        self.handler = type(
+            "Handler",
+            (FakeDeploymentHandler,),
+            {"health_status": health_status, "daemon_ws_status": daemon_ws_status},
+        )
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self.handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
@@ -66,6 +75,24 @@ class PostDeploySmokeTests(unittest.TestCase):
         self.assertEqual(report.failures, 0)
         self.assertEqual(report.warnings, 0)
         self.assertTrue(any(check.name == "http.health" for check in report.checks))
+        self.assertTrue(any(check.name == "ws.daemonAuth" for check in report.checks))
+
+    def test_daemon_websocket_no_auth_rejection_proves_route(self) -> None:
+        with FakeDeploymentServer(daemon_ws_status=403) as base_url:
+            report = smoke.run_smoke(base_url=base_url, allow_http=True, timeout=2)
+
+        by_name = {check.name: check for check in report.checks}
+        self.assertTrue(report.ready)
+        self.assertEqual(by_name["ws.daemonAuth"].status, "passed")
+        self.assertEqual(by_name["ws.daemonAuth"].details["status"], 403)
+
+    def test_daemon_websocket_must_not_accept_without_auth(self) -> None:
+        with FakeDeploymentServer(daemon_ws_status=101) as base_url:
+            report = smoke.run_smoke(base_url=base_url, allow_http=True, timeout=2)
+
+        by_name = {check.name: check for check in report.checks}
+        self.assertFalse(report.ready)
+        self.assertEqual(by_name["ws.daemonAuth"].status, "failed")
 
     def test_http_scheme_warns_without_allow_http(self) -> None:
         with FakeDeploymentServer() as base_url:

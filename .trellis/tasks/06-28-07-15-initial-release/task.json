@@ -41,7 +41,8 @@
     "06-28-initial-release-lighthouse-host-bootstrap-probe",
     "06-28-initial-release-post-deploy-smoke-cli",
     "06-28-initial-release-deployment-bundle",
-    "06-28-initial-release-local-production-compose-smoke"
+    "06-28-initial-release-local-production-compose-smoke",
+    "06-28-initial-release-daemon-websocket-deploy-smoke"
   ],
   "parent": null,
   "relatedFiles": [],
