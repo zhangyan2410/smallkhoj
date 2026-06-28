@@ -146,12 +146,25 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml --profile feishu-
 
 ## Verify
 
-Run these from a machine outside the Docker network:
+Run the post-deploy smoke from a machine outside the Docker network:
+
+```bash
+python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --json
+```
+
+For IP-only HTTP smoke tests before DNS/ICP/HTTPS is ready, make the weaker transport explicit:
+
+```bash
+python3 scripts/post_deploy_smoke.py --base-url http://<server-ip> --allow-http --json
+```
+
+Fallback manual checks:
 
 ```bash
 curl -I https://smallkhoj.example.com/
 curl https://smallkhoj.example.com/api/health
 curl -I https://smallkhoj.example.com/docs
+curl https://smallkhoj.example.com/openapi.json
 ```
 
 Then validate daemon URL shape with the public server URL:

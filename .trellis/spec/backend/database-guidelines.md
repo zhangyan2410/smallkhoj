@@ -838,6 +838,61 @@ python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runti
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
 ```
 
+## Scenario: Initial Release Post-Deploy Smoke CLI
+
+### 1. Scope / Trigger
+- Trigger: validating a started production stack through its public base URL after Caddy/frontend/backend containers are running.
+- Use this after host probe and production deploy preflight pass, and after `docker compose up -d db backend frontend caddy`.
+
+### 2. Signatures
+- CLI module: `scripts/post_deploy_smoke.py`, run from the repository root with `python3 scripts/post_deploy_smoke.py --base-url <url>`.
+- Optional flags:
+  - `--json`: emit machine-readable public URL evidence.
+  - `--allow-http`: allow HTTP without warning for IP-only or tunnel smoke tests.
+  - `--timeout <seconds>`: per-network-operation timeout.
+  - `--strict-warnings`: return code `2` when warnings exist.
+
+### 3. Contracts
+- The command must be read-only and must not require authentication, app secrets, Jira/Feishu credentials, machine tokens, or deployment env files.
+- Required checks: URL scheme, DNS resolution, TCP connect, frontend root, `/api/health`, `/docs`, and `/openapi.json`.
+- HTTPS is expected by default. HTTP must warn unless `--allow-http` is used.
+- If DNS, TCP, or TLS prerequisites fail, endpoint checks should fail fast without waiting for repeated HTTP timeouts.
+- Output must not include raw response bodies.
+
+### 4. Validation & Error Matrix
+- Invalid base URL -> failed URL parse check.
+- HTTP base URL without `--allow-http` -> warning.
+- DNS failure -> failed `dns.resolve` and skipped endpoint checks marked failed.
+- TCP failure -> failed `tcp.connect` and skipped endpoint checks marked failed.
+- TLS handshake failure on HTTPS -> failed `tls.handshake` and skipped endpoint checks marked failed.
+- Frontend root not 2xx/3xx HTML -> failed `http.frontend`.
+- `/api/health` not 2xx JSON with `status: "ok"` -> failed `http.health`.
+- `/docs` not 2xx/3xx -> failed `http.docs`.
+- `/openapi.json` not 2xx JSON with OpenAPI-like keys -> failed `http.openapi`.
+
+### 5. Good/Base/Bad Cases
+- Good: `python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --json` returns ready after DNS, TLS, frontend, backend health, docs, and OpenAPI routes all pass.
+- Base: `python3 scripts/post_deploy_smoke.py --base-url http://<server-ip> --allow-http --json` proves IP-only HTTP smoke while ICP/domain/HTTPS are pending.
+- Bad: relying only on `curl /` and missing a broken `/api/*` or `/openapi.json` Caddy route.
+- Bad: opening daemon WebSocket in smoke with a real machine token; daemon validation belongs to the daemon reconnect/live-run gate.
+
+### 6. Tests Required
+- Unit tests cover successful local fake deployment smoke.
+- Unit tests cover HTTP warning behavior, health failure, and JSON/exit semantics.
+- CLI smoke against a refused local port should fail quickly without repeated endpoint timeouts.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+curl -I https://domain/
+# frontend works, but /api/health is silently broken
+```
+
+#### Correct
+```text
+python3 scripts/post_deploy_smoke.py --base-url https://domain --json
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger
