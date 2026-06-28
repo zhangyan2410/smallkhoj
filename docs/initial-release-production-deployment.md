@@ -244,6 +244,15 @@ Daemon remote validation captured on 2026-06-29:
 - Local daemon logs during reconnect included `Daemon register synced to http://124.222.40.40`, `WS event: connected`, and repeated `Daemon heartbeat synced to http://124.222.40.40`.
 - After clean shutdown and lease expiry, the Computer returned to `status=offline` with `count=1`. The API still exposed an `activeDaemonId` value on the offline record; this is not a duplicate-registration bug, but it should be cleaned up or normalized in the Computer status API before relying on that field for UI decisions.
 
+Live-run foundation data captured on 2026-06-29:
+
+- The deployed database has server ID `3893c518-c8f8-43ba-af0d-54a7773bbb6d`.
+- The public API created validation channel `#initial-release-validation` with ID `d9d533f2-ccf7-450a-af7f-b27618c7faa9`.
+- The channel creator is human member `release-operator` with ID `d1a19ae7-e1f1-4245-ac51-84c60e12b7e9`.
+- Do not create the release agent assignee through `POST /members/agents` until the local daemon is intentionally connected and ready to start a runtime. That API creates an `AgentWorkspace` and pushes a runtime start command to the daemon, which can trigger local CPU/fan load.
+- Container-side bootstrap and live-run preflight CLIs must be executed through `uv run python -m ...` inside the backend container. Direct `python -m ...` does not load the image's Python dependencies.
+- Current no-network live-run preflight fails at `workerConfig` with `FEISHU_WORKER_CONFIG_MISSING_CONNECTOR_ID`, which is expected before integration bootstrap and runtime env are configured.
+
 Before installing or starting anything on Tencent Cloud Lighthouse, create the no-secret deployment bundle on your local machine:
 
 ```bash
@@ -486,7 +495,8 @@ wss://smallkhoj.example.com/internal/agent-api/ws
 After the web stack is reachable, run the existing integration sequence against the deployment database:
 
 ```bash
-PYTHONPATH=. uv run python -m integration_bootstrap_cli \
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T backend \
+  uv run python -m integration_bootstrap_cli \
   --server-id <server_uuid> \
   --channel-id <channel_uuid> \
   --creator-id <human_member_uuid> \
@@ -498,10 +508,28 @@ PYTHONPATH=. uv run python -m integration_bootstrap_cli \
   --feishu-bot-name SmallKhoj \
   --jira-site-url https://your-team.atlassian.net
 
-PYTHONPATH=. uv run python -m live_run_preflight_cli \
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T backend \
+  uv run python -m live_run_preflight_cli \
   --feishu-chat-id <oc_or_ou_chat_id> \
   --feishu-chat-type group \
   --command jira_analysis
+```
+
+For the current Lighthouse validation database, the known non-secret IDs are:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T backend \
+  uv run python -m integration_bootstrap_cli \
+  --server-id 3893c518-c8f8-43ba-af0d-54a7773bbb6d \
+  --channel-id d9d533f2-ccf7-450a-af7f-b27618c7faa9 \
+  --creator-id d1a19ae7-e1f1-4245-ac51-84c60e12b7e9 \
+  --assignee-id <agent_member_uuid> \
+  --feishu-chat-id <oc_or_ou_chat_id> \
+  --feishu-chat-type group \
+  --feishu-app-id <cli_app_id> \
+  --feishu-bot-open-id <ou_bot_open_id> \
+  --feishu-bot-name SmallKhoj \
+  --jira-site-url https://your-team.atlassian.net
 ```
 
 Only start `feishu-worker` after preflight reports `ready: true`.
