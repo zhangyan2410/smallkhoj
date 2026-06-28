@@ -15,7 +15,8 @@ from pathlib import Path
 
 INCLUDED_FILES = (
     "docker-compose.prod.yml",
-    "deploy/Caddyfile",
+    "deploy/caddy/Dockerfile",
+    "deploy/caddy/Caddyfile",
     "docs/initial-release-production-deployment.md",
     "scripts/initial_release_deploy_preflight.py",
     "scripts/lighthouse_host_probe.py",

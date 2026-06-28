@@ -11,7 +11,32 @@ def write(path: Path, content: str) -> None:
     path.write_text(textwrap.dedent(content).strip() + "\n", encoding="utf-8")
 
 
-def make_repo(root: Path, *, standalone: bool = True) -> None:
+def make_repo(
+    root: Path,
+    *,
+    standalone: bool = True,
+    overridable_ports: bool = False,
+    caddy_build: bool = True,
+) -> None:
+    caddy_ports = (
+        """
+              - "${SMALLKHOJ_HTTP_PORT:-80}:80"
+              - "${SMALLKHOJ_HTTPS_PORT:-443}:443"
+        """
+        if overridable_ports
+        else """
+              - "80:80"
+              - "443:443"
+        """
+    )
+    caddy_build_block = (
+        """
+            build:
+              context: ./deploy/caddy
+        """
+        if caddy_build
+        else ""
+    )
     write(root / "docker-compose.prod.yml", """
         name: smallkhoj-prod
         services:
@@ -31,11 +56,10 @@ def make_repo(root: Path, *, standalone: bool = True) -> None:
               - feishu-worker
           caddy:
             image: caddy:2
+    """ + caddy_build_block + """
             ports:
-              - "80:80"
-              - "443:443"
-    """)
-    write(root / "deploy" / "Caddyfile", """
+    """ + caddy_ports)
+    write(root / "deploy" / "caddy" / "Caddyfile", """
         {$SMALLKHOJ_SITE_ADDRESS:localhost} {
           @backend_api path /api /api/*
           reverse_proxy @backend_api backend:8000
@@ -45,6 +69,10 @@ def make_repo(root: Path, *, standalone: bool = True) -> None:
           reverse_proxy @backend_docs backend:8000
           reverse_proxy frontend:3000
         }
+    """)
+    write(root / "deploy" / "caddy" / "Dockerfile", """
+        FROM caddy:2
+        COPY Caddyfile /etc/caddy/Caddyfile
     """)
     output_line = 'output: "standalone",' if standalone else ""
     write(root / "frontend" / "next.config.mjs", f"""
@@ -73,6 +101,29 @@ class DeployPreflightTests(unittest.TestCase):
             self.assertTrue(report.ready)
             self.assertEqual(report.failures, 0)
             self.assertTrue(any(check.name == "repo.frontend.standalone" for check in report.checks))
+
+    def test_repo_config_accepts_overridable_caddy_host_ports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_repo(root, overridable_ports=True)
+
+            report = preflight.run_preflight(root=root)
+
+            self.assertTrue(report.ready)
+            self.assertEqual(report.failures, 0)
+            port_check = next(check for check in report.checks if check.name == "repo.compose.caddyPorts")
+            self.assertEqual(port_check.status, "passed")
+
+    def test_repo_config_fails_without_caddy_build_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_repo(root, caddy_build=False)
+
+            report = preflight.run_preflight(root=root)
+
+            self.assertFalse(report.ready)
+            build_check = next(check for check in report.checks if check.name == "repo.compose.caddyBuild")
+            self.assertEqual(build_check.status, "failed")
 
     def test_repo_config_fails_when_standalone_output_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

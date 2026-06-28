@@ -793,7 +793,8 @@ python3 scripts/lighthouse_host_probe.py --json
 ### 3. Contracts
 - The bundle must include:
   - `docker-compose.prod.yml`
-  - `deploy/Caddyfile`
+  - `deploy/caddy/Dockerfile`
+  - `deploy/caddy/Caddyfile`
   - `docs/initial-release-production-deployment.md`
   - `scripts/initial_release_deploy_preflight.py`
   - `scripts/lighthouse_host_probe.py`
@@ -854,7 +855,9 @@ scp /tmp/smallkhoj-deploy-bundle.tar.gz lighthouse:/opt/
 - Default mode must be offline and no-secret: inspect tracked repo files only.
 - Env-file mode must check required operational keys without printing values for secrets or image names.
 - Runtime mode must not start production containers or contact Tencent Cloud, Feishu, Jira, or LLM providers.
-- Repository checks must cover `docker-compose.prod.yml`, `deploy/Caddyfile`, `frontend/next.config.mjs`, and `frontend/Dockerfile`.
+- Repository checks must cover `docker-compose.prod.yml`, `deploy/caddy/Dockerfile`, `deploy/caddy/Caddyfile`, `frontend/next.config.mjs`, and `frontend/Dockerfile`.
+- Production compose must build the Caddy image from `./deploy/caddy` so Caddy config is baked into the image instead of relying on a file-level bind mount to `/etc/caddy/Caddyfile`.
+- Production compose may make Caddy host ports overridable for local smoke, but defaults must remain host `80` and `443` mapped to container `80` and `443`.
 - Production frontend image readiness requires `output: "standalone"` and a Dockerfile that copies `/app/.next/standalone` and starts `server.js`.
 - Caddy readiness requires `/api/*`, `/internal/*`, `/docs`, and `/openapi.json` to route to `backend:8000`, with `frontend:3000` as the default route.
 - Runtime readiness requires Docker command availability, Docker daemon response, Docker Compose response, memory/disk thresholds, and ports 80/443 not already accepting local TCP connections.
@@ -873,8 +876,10 @@ scp /tmp/smallkhoj-deploy-bundle.tar.gz lighthouse:/opt/
 ### 5. Good/Base/Bad Cases
 - Good: local CI runs `python3 scripts/initial_release_deploy_preflight.py --json` and stores the JSON report with release evidence.
 - Good: deployment host runs `python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runtime --json` before `docker compose up`.
+- Good: local production smoke sets `SMALLKHOJ_HTTP_PORT=18080` and `SMALLKHOJ_HTTPS_PORT=18443`, while Compose defaults still use public ports on real hosts.
 - Base: IP-only smoke uses `SMALLKHOJ_SITE_ADDRESS=:80`; env preflight warns but does not fail unless `--strict-warnings` is used.
 - Bad: starting Caddy before checking that ports 80/443 are already occupied by another service.
+- Bad: changing production defaults to high local ports instead of using env overrides for local smoke.
 - Bad: relying on `next build` alone when the production Dockerfile depends on `.next/standalone`.
 - Bad: printing `POSTGRES_PASSWORD`, Jira API tokens, Feishu app secrets, or LLM keys in preflight output.
 

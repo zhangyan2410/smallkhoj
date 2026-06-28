@@ -72,15 +72,16 @@ services:
       - backend
 
   caddy:
-    image: ${SMALLKHOJ_CADDY_IMAGE:-caddy:2}
+    image: ${SMALLKHOJ_CADDY_IMAGE:-smallkhoj-caddy:latest}
+    build:
+      context: ./deploy/caddy
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "${SMALLKHOJ_HTTP_PORT:-80}:80"
+      - "${SMALLKHOJ_HTTPS_PORT:-443}:443"
     environment:
       SMALLKHOJ_SITE_ADDRESS: ${SMALLKHOJ_SITE_ADDRESS:-:80}
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

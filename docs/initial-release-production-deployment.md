@@ -33,7 +33,7 @@ Feishu long connection and Jira REST do not require inbound traffic from Feishu 
 
 ## Images
 
-The production compose file uses prebuilt images so a 2-core/2GB server does not have to build Next.js or Python dependencies under memory pressure.
+The production compose file uses prebuilt backend/frontend images so a 2-core/2GB server does not have to build Next.js or Python dependencies under memory pressure. Caddy is built from `deploy/caddy/` because it is a tiny image layer that bakes in the tracked reverse-proxy config and avoids fragile host file mounts.
 
 The frontend Dockerfile copies Next.js standalone output from `.next/standalone`; keep `frontend/next.config.mjs` configured with `output: "standalone"`. A frontend image build must fail the release gate if `.next/standalone/server.js` is missing after `bun run build`.
 
@@ -48,6 +48,17 @@ docker build \
   -t <registry>/smallkhoj-frontend:<tag> ./frontend
 docker push <registry>/smallkhoj-backend:<tag>
 docker push <registry>/smallkhoj-frontend:<tag>
+```
+
+If Docker Hub or package downloads time out on the local network, run Docker builds through the local VPN proxy. From the host, the proxy is `127.0.0.1:7897`; from inside Docker build containers, use `host.docker.internal:7897`:
+
+```bash
+docker build \
+  --build-arg HTTP_PROXY=http://host.docker.internal:7897 \
+  --build-arg HTTPS_PROXY=http://host.docker.internal:7897 \
+  --build-arg http_proxy=http://host.docker.internal:7897 \
+  --build-arg https_proxy=http://host.docker.internal:7897 \
+  -t <registry>/smallkhoj-backend:<tag> ./backend
 ```
 
 For the recommended same-origin deployment, leave `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_WS_BASE_URL` empty at build time. Browser calls will use `/api`, and WebSocket calls will derive `wss://<domain>/api/chat/ws`.
@@ -116,7 +127,7 @@ Then run the read-only host probe:
 python3 scripts/lighthouse_host_probe.py --json
 ```
 
-The bundle includes `docker-compose.prod.yml`, `deploy/Caddyfile`, this runbook, `manifest.json`, and the deployment probe/preflight/smoke scripts. It does not include `.env.prod` or secrets. The host probe reports OS/package-manager access, sudo availability, CPU, memory, swap, disk, Docker, Docker Compose, ports 80/443, and firewall tooling. It may print suggested bootstrap commands for Ubuntu/Debian Docker install, swapfile creation, and UFW port rules, but it does not execute them.
+The bundle includes `docker-compose.prod.yml`, `deploy/caddy/Dockerfile`, `deploy/caddy/Caddyfile`, this runbook, `manifest.json`, and the deployment probe/preflight/smoke scripts. It does not include `.env.prod` or secrets. The host probe reports OS/package-manager access, sudo availability, CPU, memory, swap, disk, Docker, Docker Compose, ports 80/443, and firewall tooling. It may print suggested bootstrap commands for Ubuntu/Debian Docker install, swapfile creation, and UFW port rules, but it does not execute them.
 
 On a 2 vCPU / 2 GB Lighthouse host, missing or small swap should be treated as a deployment warning to fix before repeated live-run testing. Heavy image builds should still happen off-host.
 
@@ -142,12 +153,64 @@ python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runti
 
 The runtime preflight checks Docker, Docker Compose, memory, disk, and whether ports 80/443 already appear occupied. It does not contact Tencent Cloud, Feishu, Jira, LLM providers, or start production containers.
 
+## Local Production Smoke
+
+Before uploading a release bundle to Tencent Cloud Lighthouse, run the production stack locally with temporary ports and no real secrets. This validates the same Compose/Caddy/backend/frontend path without binding privileged ports or using the dev servers.
+
+Create a temporary env file outside the repo:
+
+```bash
+cat >/tmp/smallkhoj-prod-smoke.env <<'EOF'
+SMALLKHOJ_SITE_ADDRESS=:80
+SMALLKHOJ_HTTP_PORT=18080
+SMALLKHOJ_HTTPS_PORT=18443
+SMALLKHOJ_BACKEND_IMAGE=smallkhoj-backend:local-smoke
+SMALLKHOJ_FRONTEND_IMAGE=smallkhoj-frontend:local-smoke
+SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:local-smoke
+POSTGRES_PASSWORD=local-smoke-password
+BACKEND_CORS_ORIGINS=http://127.0.0.1:18080
+EOF
+```
+
+Build local images. Use the VPN proxy build args when network pulls or dependency installs time out:
+
+```bash
+docker build \
+  --build-arg HTTP_PROXY=http://host.docker.internal:7897 \
+  --build-arg HTTPS_PROXY=http://host.docker.internal:7897 \
+  --build-arg http_proxy=http://host.docker.internal:7897 \
+  --build-arg https_proxy=http://host.docker.internal:7897 \
+  -t smallkhoj-backend:local-smoke ./backend
+
+docker build \
+  --build-arg HTTP_PROXY=http://host.docker.internal:7897 \
+  --build-arg HTTPS_PROXY=http://host.docker.internal:7897 \
+  --build-arg http_proxy=http://host.docker.internal:7897 \
+  --build-arg https_proxy=http://host.docker.internal:7897 \
+  --build-arg NEXT_PUBLIC_API_BASE_URL= \
+  --build-arg NEXT_PUBLIC_WS_BASE_URL= \
+  --build-arg NEXT_PUBLIC_API_KEY=sk_public_local \
+  -t smallkhoj-frontend:local-smoke ./frontend
+
+docker build -t smallkhoj-caddy:local-smoke ./deploy/caddy
+```
+
+Start and smoke the stack:
+
+```bash
+docker compose --env-file /tmp/smallkhoj-prod-smoke.env -f docker-compose.prod.yml up -d db backend frontend caddy
+sleep 3
+python3 scripts/post_deploy_smoke.py --base-url http://127.0.0.1:18080 --allow-http --json
+docker compose --env-file /tmp/smallkhoj-prod-smoke.env -f docker-compose.prod.yml down -v
+```
+
 ## Start
 
 Pull and start the core web stack:
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+docker compose --env-file .env.prod -f docker-compose.prod.yml pull db backend frontend
+docker compose --env-file .env.prod -f docker-compose.prod.yml build caddy
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
 ```
 

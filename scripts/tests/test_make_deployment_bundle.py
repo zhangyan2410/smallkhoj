@@ -16,7 +16,8 @@ def write(path: Path, content: str) -> None:
 
 def make_repo(root: Path) -> None:
     write(root / "docker-compose.prod.yml", "services:\n  backend: {}\n")
-    write(root / "deploy" / "Caddyfile", ":80 {\n  reverse_proxy frontend:3000\n}\n")
+    write(root / "deploy" / "caddy" / "Dockerfile", "FROM caddy:2\nCOPY Caddyfile /etc/caddy/Caddyfile\n")
+    write(root / "deploy" / "caddy" / "Caddyfile", ":80 {\n  reverse_proxy frontend:3000\n}\n")
     write(root / "docs" / "initial-release-production-deployment.md", "# Deploy\n")
     write(root / "scripts" / "initial_release_deploy_preflight.py", "print('preflight')\n")
     write(root / "scripts" / "lighthouse_host_probe.py", "print('host')\n")
@@ -45,7 +46,8 @@ class DeploymentBundleTests(unittest.TestCase):
 
             self.assertEqual(names, sorted([
                 "smallkhoj-deploy/README.deploy-bundle.md",
-                "smallkhoj-deploy/deploy/Caddyfile",
+                "smallkhoj-deploy/deploy/caddy/Dockerfile",
+                "smallkhoj-deploy/deploy/caddy/Caddyfile",
                 "smallkhoj-deploy/docker-compose.prod.yml",
                 "smallkhoj-deploy/docs/initial-release-production-deployment.md",
                 "smallkhoj-deploy/manifest.json",

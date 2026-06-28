@@ -99,6 +99,18 @@ def contains_all(text: str, needles: tuple[str, ...] | list[str]) -> bool:
     return all(needle in text for needle in needles)
 
 
+def has_caddy_port_contract(compose_text: str) -> bool:
+    http_contracts = ('"80:80"', "'80:80'", "${SMALLKHOJ_HTTP_PORT:-80}:80")
+    https_contracts = ('"443:443"', "'443:443'", "${SMALLKHOJ_HTTPS_PORT:-443}:443")
+    return any(marker in compose_text for marker in http_contracts) and any(
+        marker in compose_text for marker in https_contracts
+    )
+
+
+def has_caddy_build_contract(compose_text: str) -> bool:
+    return contains_all(compose_text, ("caddy:", "build:", "context: ./deploy/caddy"))
+
+
 def check_repo_config(root: Path) -> list[CheckResult]:
     checks: list[CheckResult] = []
 
@@ -121,8 +133,38 @@ def check_repo_config(root: Path) -> list[CheckResult]:
                 "Production compose declares db, backend, frontend, caddy, and feishu-worker.",
             ))
 
+        if has_caddy_port_contract(compose_text):
+            checks.append(passed(
+                "repo.compose.caddyPorts",
+                "Production compose binds Caddy to default public ports and may allow local smoke overrides.",
+            ))
+        else:
+            checks.append(failed(
+                "repo.compose.caddyPorts",
+                "DEPLOY_PREFLIGHT_COMPOSE_CONTRACT_MISSING",
+                "Production compose is missing Caddy host port bindings for HTTP and HTTPS.",
+                {
+                    "requiredMarkers": [
+                        '"80:80" or "${SMALLKHOJ_HTTP_PORT:-80}:80"',
+                        '"443:443" or "${SMALLKHOJ_HTTPS_PORT:-443}:443"',
+                    ]
+                },
+            ))
+
+        if has_caddy_build_contract(compose_text):
+            checks.append(passed(
+                "repo.compose.caddyBuild",
+                "Production compose builds the Caddy image from the tracked deploy/caddy config.",
+            ))
+        else:
+            checks.append(failed(
+                "repo.compose.caddyBuild",
+                "DEPLOY_PREFLIGHT_COMPOSE_CONTRACT_MISSING",
+                "Production compose must build the Caddy image from ./deploy/caddy.",
+                {"requiredMarkers": ["build:", "context: ./deploy/caddy"]},
+            ))
+
         compose_expectations = {
-            "repo.compose.caddyPorts": ('"80:80"', '"443:443"'),
             "repo.compose.backendExpose": ('backend:', 'expose:', '"8000"'),
             "repo.compose.frontendExpose": ('frontend:', 'expose:', '"3000"'),
             "repo.compose.feishuWorkerProfile": ("feishu-worker:", "profiles:", "- feishu-worker"),
@@ -138,7 +180,7 @@ def check_repo_config(root: Path) -> list[CheckResult]:
                     {"requiredMarkers": list(needles)},
                 ))
 
-    caddy_path, caddy_error = require_file(root, "deploy/Caddyfile")
+    caddy_path, caddy_error = require_file(root, "deploy/caddy/Caddyfile")
     if caddy_error:
         checks.append(caddy_error)
     else:
@@ -159,6 +201,20 @@ def check_repo_config(root: Path) -> list[CheckResult]:
                     f"Caddyfile is missing expected markers for {name}.",
                     {"requiredMarkers": list(needles)},
                 ))
+
+    caddy_dockerfile_path, caddy_dockerfile_error = require_file(root, "deploy/caddy/Dockerfile")
+    if caddy_dockerfile_error:
+        checks.append(caddy_dockerfile_error)
+    else:
+        caddy_dockerfile = read_text(caddy_dockerfile_path)
+        if contains_all(caddy_dockerfile, ("FROM caddy:2", "COPY Caddyfile /etc/caddy/Caddyfile")):
+            checks.append(passed("repo.caddy.dockerfile", "Caddy Dockerfile bakes the tracked Caddyfile into the image."))
+        else:
+            checks.append(failed(
+                "repo.caddy.dockerfile",
+                "DEPLOY_PREFLIGHT_CADDY_DOCKERFILE_CONTRACT_MISSING",
+                "deploy/caddy/Dockerfile must copy Caddyfile to /etc/caddy/Caddyfile.",
+            ))
 
     next_config_path, next_config_error = require_file(root, "frontend/next.config.mjs")
     if next_config_error:
