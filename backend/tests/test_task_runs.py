@@ -893,6 +893,15 @@ async def test_agent_task_run_lifecycle_endpoint_triggers_terminal_writeback_hoo
         updated_at=None,
     )
     hook_calls = []
+    class _Client:
+        def __init__(self):
+            self.closed = False
+
+        async def aclose(self):
+            self.closed = True
+
+    client = _Client()
+    dependencies = SimpleNamespace(name="jira-runtime-deps", jira_http_client=client)
 
     async def fake_update_task_run_lifecycle(db_arg, **kwargs):
         return run
@@ -908,6 +917,7 @@ async def test_agent_task_run_lifecycle_endpoint_triggers_terminal_writeback_hoo
 
     monkeypatch.setattr(agent_api, "update_task_run_lifecycle", fake_update_task_run_lifecycle, raising=False)
     monkeypatch.setattr(agent_api, "handle_terminal_task_run_writeback", fake_writeback_hook, raising=False)
+    monkeypatch.setattr(agent_api, "build_task_run_writeback_dependencies", lambda: dependencies, raising=False)
     db = _FakeSession()
 
     response = await agent_api.update_task_run_lifecycle_endpoint(
@@ -933,6 +943,8 @@ async def test_agent_task_run_lifecycle_endpoint_triggers_terminal_writeback_hoo
     assert response["writeBack"]["status"] == "failed"
     assert response["writeBack"]["reasonCode"] == "TASK_RUN_WRITEBACK_NO_JIRA_CREDENTIALS"
     assert hook_calls[0]["task_run"] is run
+    assert hook_calls[0]["dependencies"] is dependencies
+    assert client.closed is True
 
 
 def test_serialize_task_run_uses_public_camel_case_contract():

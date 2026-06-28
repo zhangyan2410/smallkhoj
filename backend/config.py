@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     llm_api_base: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
 
+    jira_email: str = ""
+    jira_api_token: str = ""
+
     thread_summary_scheduler_enabled: bool = False
 
 

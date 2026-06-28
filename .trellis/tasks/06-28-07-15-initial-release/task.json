@@ -23,7 +23,8 @@
     "06-28-initial-release-jira-rest-mvp",
     "06-28-initial-release-feishu-long-connection-mvp",
     "06-28-initial-release-feishu-jira-taskrun-loop",
-    "06-28-06-28-initial-release-taskrun-writeback-hook"
+    "06-28-06-28-initial-release-taskrun-writeback-hook",
+    "06-28-initial-release-jira-writeback-runtime-deps"
   ],
   "parent": null,
   "relatedFiles": [],

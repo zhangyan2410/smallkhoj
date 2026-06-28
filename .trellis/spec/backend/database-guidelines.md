@@ -370,6 +370,58 @@ TaskRun lifecycle endpoint -> append Jira comment inline -> fail request on Jira
 TaskRun lifecycle endpoint -> update local TaskRun -> services.task_run_writeback handles provider side effect -> commit local state with writeBack outcome
 ```
 
+## Scenario: Jira Write-Back Runtime Dependency Bridge
+
+### 1. Scope / Trigger
+- Trigger: making the TaskRun terminal write-back hook usable in a single-instance release deployment before a full secret manager exists.
+- Use this for backend settings, env-based Jira credentials, and HTTP client wiring into `services.task_run_writeback`.
+
+### 2. Signatures
+- Settings: `config.Settings.jira_email`, `config.Settings.jira_api_token`.
+- Runtime module: `services.integration_runtime`.
+- Dependency builder: `build_task_run_writeback_dependencies(configured_settings=settings)`.
+- Credential resolver: `resolve_jira_writeback_credentials(connector, configured_settings=settings)`.
+- Cleanup helper: `close_task_run_writeback_dependencies(dependencies)`.
+
+### 3. Contracts
+- Jira `siteUrl` remains non-secret `ExternalConnector.config` data.
+- Jira email/API token come from runtime settings or a future secret resolver, not from connector config, external events, task data, or mappings.
+- Missing or incomplete Jira credentials return `None` from the resolver so the write-back hook can emit `TASK_RUN_WRITEBACK_NO_JIRA_CREDENTIALS`.
+- The production dependency builder uses `httpx.AsyncClient(trust_env=False)` to avoid accidental proxy/environment coupling.
+- Endpoint code that creates a per-request write-back HTTP client must close it after the hook returns or raises.
+- This bridge is a release-stage single-instance mechanism, not the final tenant-aware secret manager.
+
+### 4. Validation & Error Matrix
+- Both `JIRA_EMAIL` and `JIRA_API_TOKEN` empty -> resolver returns `None`.
+- Only one Jira credential present -> resolver returns `None`.
+- Both credentials present -> resolver returns `{email, apiToken}` with whitespace stripped.
+- Dependency builder returns a `TaskRunWritebackDependencies` object with Jira HTTP client and credentials resolver.
+- Endpoint terminal lifecycle path passes dependencies into the write-back hook and closes the owned HTTP client.
+
+### 5. Good/Base/Bad Cases
+- Good: deployment sets `JIRA_EMAIL` and `JIRA_API_TOKEN`; TaskRun completion can append a Jira comment through the existing mapping-driven hook.
+- Base: deployment does not set Jira credentials; TaskRun completion still commits locally and returns a structured missing-credentials writeBack outcome.
+- Bad: storing Jira API tokens in `external_connectors.config` or `.trellis` task artifacts.
+- Bad: relying on system proxy env vars for Jira write-back behavior in the release path.
+
+### 6. Tests Required
+- Settings expose safe empty defaults.
+- Resolver returns `None` for incomplete credentials and normalized credentials for complete settings.
+- Dependency builder exposes client + resolver and can be closed.
+- Lifecycle endpoint passes dependencies into `handle_terminal_task_run_writeback` and closes the owned client.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+ExternalConnector.config = {"siteUrl": "...", "apiToken": "..."}
+```
+
+#### Correct
+```text
+ExternalConnector.config = {"siteUrl": "..."}
+JIRA_EMAIL / JIRA_API_TOKEN -> services.integration_runtime -> TaskRunWritebackDependencies
+```
+
 ## Scenario: Computer Binding Columns On Members
 
 ### 1. Scope / Trigger

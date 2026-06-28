@@ -51,6 +51,10 @@ from services.memory_api import (
     write_task_memory_summary,
     write_memory_entry,
 )
+from services.integration_runtime import (
+    build_task_run_writeback_dependencies,
+    close_task_run_writeback_dependencies,
+)
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.task_run_writeback import handle_terminal_task_run_writeback, serialize_task_run_writeback_outcome
 from services.task_runs import (
@@ -4005,7 +4009,15 @@ async def update_task_run_lifecycle_endpoint(
 
     writeback_outcome = None
     if run.status in TERMINAL_TASK_RUN_STATUSES:
-        writeback_outcome = await handle_terminal_task_run_writeback(db, task_run=run)
+        writeback_dependencies = build_task_run_writeback_dependencies()
+        try:
+            writeback_outcome = await handle_terminal_task_run_writeback(
+                db,
+                task_run=run,
+                dependencies=writeback_dependencies,
+            )
+        finally:
+            await close_task_run_writeback_dependencies(writeback_dependencies)
 
     await db.commit()
     await db.refresh(run)
