@@ -507,6 +507,7 @@ Feishu SDK callback -> worker runtime dependency wrapper -> process_feishu_raw_e
 - SDK callback messages must be converted into the raw Feishu event shape accepted by `services.feishu_adapter.normalize_feishu_message`.
 - The converter should preserve event id, message id, chat id/type, sender open id, content text, mentions, thread/root/parent ids, and create time when available.
 - Transport callbacks must call `services.feishu_worker_runtime.handle_feishu_worker_raw_event` with close-owned dependencies.
+- Transport callbacks must open and close one DB session per incoming message when `db_factory()` returns an async context manager such as `models.async_session()`. Direct fake DB objects may remain supported for unit tests.
 - Transport code must not parse Feishu commands, resolve routes, construct Jira REST requests, create TaskRuns, or build Feishu reply text.
 - Unit tests must use fake channel objects and must not open real Feishu network connections.
 - Worker entrypoint config/connector failures must return structured startup outcomes before channel creation or connection.
@@ -532,6 +533,7 @@ Feishu SDK callback -> worker runtime dependency wrapper -> process_feishu_raw_e
 - Connect/disconnect calls are delegated to the underlying channel object.
 - Channel factory lazy-import behavior is covered.
 - Worker entrypoint returns config/connector failures without connecting.
+- Message callback enters and exits an async DB context around `handle_feishu_worker_raw_event`.
 - Boundary test proving no daemon/runtime or Jira/TaskRun business helpers are imported.
 
 ### 7. Wrong vs Correct

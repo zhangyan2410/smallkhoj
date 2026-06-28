@@ -1,8 +1,9 @@
 """Feishu Channel SDK transport adapter for the worker runtime."""
 
 import json
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, AsyncIterator, Callable
 
 from config import settings
 from services.feishu_worker_runtime import (
@@ -100,6 +101,18 @@ def create_feishu_channel(config: Any) -> Any:
     return FeishuChannel(app_id=config.app_id, app_secret=config.app_secret)
 
 
+@asynccontextmanager
+async def _db_session_from_factory(db_factory: Callable[[], Any]) -> AsyncIterator[Any]:
+    db_or_context = db_factory()
+    enter = getattr(db_or_context, "__aenter__", None)
+    exit_ = getattr(db_or_context, "__aexit__", None)
+    if enter is not None and exit_ is not None:
+        async with db_or_context as db:
+            yield db
+        return
+    yield db_or_context
+
+
 class FeishuChannelSDKTransport:
     def __init__(
         self,
@@ -118,14 +131,15 @@ class FeishuChannelSDKTransport:
         self.outcomes: list[Any] = []
 
     async def _on_message(self, message: Any) -> Any:
-        outcome = await handle_feishu_worker_raw_event(
-            self.db_factory(),
-            raw_event=sdk_message_to_raw_event(message, self.config),
-            config=self.config,
-            connectors=self.connectors,
-            dependencies=self.dependencies_factory(),
-            close_dependencies=True,
-        )
+        async with _db_session_from_factory(self.db_factory) as db:
+            outcome = await handle_feishu_worker_raw_event(
+                db,
+                raw_event=sdk_message_to_raw_event(message, self.config),
+                config=self.config,
+                connectors=self.connectors,
+                dependencies=self.dependencies_factory(),
+                close_dependencies=True,
+            )
         self.outcomes.append(outcome)
         return outcome
 

@@ -31,7 +31,8 @@
     "06-28-06-28-initial-release-feishu-worker-runtime",
     "06-28-06-28-initial-release-feishu-channel-sdk-transport",
     "06-28-initial-release-integration-bootstrap-cli",
-    "06-28-initial-release-feishu-worker-cli"
+    "06-28-initial-release-feishu-worker-cli",
+    "06-28-feishu-worker-db-session-lifecycle-hardening"
   ],
   "parent": null,
   "relatedFiles": [],

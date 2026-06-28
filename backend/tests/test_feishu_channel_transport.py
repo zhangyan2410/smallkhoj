@@ -24,11 +24,15 @@ from services.feishu_worker_runtime import FeishuWorkerDependencies, resolve_fei
 class _AsyncSessionContext:
     def __init__(self, db):
         self.db = db
+        self.entered = False
+        self.exited = False
 
     async def __aenter__(self):
+        self.entered = True
         return self.db
 
     async def __aexit__(self, exc_type, exc, tb):
+        self.exited = True
         return False
 
 
@@ -158,6 +162,36 @@ async def test_transport_registers_message_handler_and_forwards_to_worker_runtim
     assert calls[0][1]["raw_event"]["event"]["message"]["message_id"] == "om_1"
     assert calls[0][1]["close_dependencies"] is True
     assert transport.outcomes[0].status == "processed"
+
+
+@pytest.mark.asyncio
+async def test_transport_opens_and_closes_db_context_for_each_message(monkeypatch):
+    config = resolve_feishu_worker_config(configured_settings=_settings()).config
+    channel = _FakeChannel()
+    db_context = _AsyncSessionContext("db-session")
+    calls = []
+
+    async def fake_handle(db, **kwargs):
+        calls.append((db, kwargs))
+        assert db_context.entered is True
+        assert db_context.exited is False
+        return SimpleNamespace(status="processed", reason_code="FEISHU_WORKER_EVENT_PROCESSED")
+
+    monkeypatch.setattr(feishu_channel_transport, "handle_feishu_worker_raw_event", fake_handle)
+    transport = FeishuChannelSDKTransport(
+        channel=channel,
+        config=config,
+        connectors=SimpleNamespace(feishu_connector=SimpleNamespace(), jira_connector=SimpleNamespace()),
+        db_factory=lambda: db_context,
+        dependencies_factory=_dependencies,
+    )
+
+    await transport.connect()
+    await channel.handlers["message"](_sdk_message())
+
+    assert calls[0][0] == "db-session"
+    assert db_context.entered is True
+    assert db_context.exited is True
 
 
 def test_create_feishu_channel_lazy_imports_lark_channel(monkeypatch):
