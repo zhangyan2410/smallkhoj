@@ -35,6 +35,8 @@ Feishu long connection and Jira REST do not require inbound traffic from Feishu 
 
 The production compose file uses prebuilt images so a 2-core/2GB server does not have to build Next.js or Python dependencies under memory pressure.
 
+The frontend Dockerfile copies Next.js standalone output from `.next/standalone`; keep `frontend/next.config.mjs` configured with `output: "standalone"`. A frontend image build must fail the release gate if `.next/standalone/server.js` is missing after `bun run build`.
+
 Build and push images from a stronger machine or CI:
 
 ```bash

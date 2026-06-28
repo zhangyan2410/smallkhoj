@@ -6,6 +6,7 @@ const internalApiBase = (process.env.INTERNAL_API_BASE_URL || "http://localhost:
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
+  output: "standalone",
   async rewrites() {
     return [
       {

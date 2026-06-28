@@ -35,7 +35,8 @@
     "06-28-feishu-worker-db-session-lifecycle-hardening",
     "06-28-initial-release-live-run-preflight-cli",
     "06-28-initial-release-production-url-reverse-proxy-readiness",
-    "06-28-initial-release-daemon-single-local-computer-identity"
+    "06-28-initial-release-daemon-single-local-computer-identity",
+    "06-28-initial-release-frontend-standalone-production-image"
   ],
   "parent": null,
   "relatedFiles": [],
