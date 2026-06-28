@@ -121,6 +121,7 @@ async def test_startup_seed_emits_task_assignment_and_run_table_ddl(monkeypatch)
     assert "CREATE INDEX IF NOT EXISTS idx_task_runs_task" in statements
     assert "CREATE INDEX IF NOT EXISTS idx_task_assignments_assignee" in statements
     assert "ALTER TABLE task_assignments DROP CONSTRAINT IF EXISTS ck_task_assignments_role" in statements
+    assert "external_feishu" in statements
 
 
 def test_task_run_tables_are_declared_with_runtime_context_columns():
@@ -175,6 +176,10 @@ def test_task_run_tables_are_declared_with_runtime_context_columns():
         "failure_code",
         "output_message_id",
     } <= set(run_table.c.keys())
+    assignment_mode_constraint = next(
+        constraint for constraint in assignment_table.constraints if constraint.name == "ck_task_assignments_mode"
+    )
+    assert "external_feishu" in str(assignment_mode_constraint.sqltext)
 
 
 @pytest.mark.asyncio

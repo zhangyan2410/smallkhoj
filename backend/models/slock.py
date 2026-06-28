@@ -291,7 +291,7 @@ class TaskAssignment(Base):
         Index("idx_task_assignments_assignee", "assignee_id", "status"),
         CheckConstraint("assignee_type IN ('member', 'agent')", name="ck_task_assignments_assignee_type"),
         CheckConstraint(
-            "assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created')",
+            "assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created', 'external_feishu')",
             name="ck_task_assignments_mode",
         ),
         CheckConstraint("status IN ('active', 'completed', 'cancelled')", name="ck_task_assignments_status"),

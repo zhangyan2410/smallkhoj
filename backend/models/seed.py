@@ -251,11 +251,17 @@ async def create_tables():
                 created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 CONSTRAINT ck_task_assignments_assignee_type CHECK (assignee_type IN ('member', 'agent')),
-                CONSTRAINT ck_task_assignments_mode CHECK (assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created')),
+                CONSTRAINT ck_task_assignments_mode CHECK (assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created', 'external_feishu')),
                 CONSTRAINT ck_task_assignments_status CHECK (status IN ('active', 'completed', 'cancelled'))
             )
         """))
         await conn.execute(text("ALTER TABLE task_assignments DROP CONSTRAINT IF EXISTS ck_task_assignments_role"))
+        await conn.execute(text("ALTER TABLE task_assignments DROP CONSTRAINT IF EXISTS ck_task_assignments_mode"))
+        await conn.execute(text("""
+            ALTER TABLE task_assignments
+            ADD CONSTRAINT ck_task_assignments_mode
+            CHECK (assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created', 'external_feishu'))
+        """))
         await conn.execute(text("ALTER TABLE task_assignments ALTER COLUMN role TYPE VARCHAR(80)"))
         await conn.execute(text("ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS role_key VARCHAR(80)"))
         await conn.execute(text("ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS role_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb"))

@@ -545,6 +545,67 @@ FeishuChannel.on("message") -> parse command -> fetch Jira -> create TaskRun
 FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_raw_event -> existing raw event loop
 ```
 
+## Scenario: Initial Release Integration Bootstrap CLI
+
+### 1. Scope / Trigger
+- Trigger: preparing a real 7-15 Feishu/Jira live-run by creating connector/route rows and worker env guidance.
+- Use this when an operator needs stable Feishu/Jira connector IDs and a Feishu `jira_analysis` route without manually editing the database.
+
+### 2. Signatures
+- Service module: `services.integration_bootstrap`.
+- CLI module: `integration_bootstrap_cli`, run from `backend/` with `python -m integration_bootstrap_cli`.
+- Request fields: `server_id`, `channel_id`, `creator_id`, `assignee_id`, `feishu_chat_id`, `feishu_chat_type`, `feishu_app_id`, `feishu_bot_open_id`, `feishu_bot_name`, `jira_site_url`.
+- Connector upsert keys:
+  - Feishu connector: `(server_id, provider="feishu", name)`.
+  - Jira connector: `(server_id, provider="jira", name)`.
+- Route upsert key: `(server_id, connector_id, name)`.
+- Feishu route selector: `{"chatId": ..., "chatType": ..., "command": "jira_analysis"}`.
+- TaskRun DB compatibility: `task_assignments.assignment_mode` must allow `external_feishu` in both `models/slock.py` and startup DDL in `models/seed.py`.
+
+### 3. Contracts
+- Bootstrap requires existing `Server`, `Channel`, creator `Member`, and assignee `Member` rows. It must not silently create product identity records.
+- Referenced channel and members must belong to the selected server.
+- Bootstrap may create/update `ExternalConnector`, `ExternalRoute`, and `ChannelMember` rows only after required references validate.
+- Bootstrap is idempotent for the same connector and route names; repeat runs update non-secret config and route targets instead of creating duplicates.
+- Persisted connector config may include Feishu app ID, bot open ID, bot name, and Jira site URL.
+- Persisted connector config must not include Feishu app secret, Feishu access tokens, Jira API token, Tencent Cloud credentials, or daemon connect tokens.
+- CLI output must include env names expected by `services.feishu_worker_runtime.resolve_feishu_worker_config`, with placeholders for secret values.
+- The CLI must not expose flags for secret values such as `--feishu-app-secret` or `--jira-api-token`.
+
+### 4. Validation & Error Matrix
+- Missing server/channel/creator/assignee -> `BOOTSTRAP_REFERENCE_NOT_FOUND`, no connector or route writes.
+- Channel or member from another server -> `BOOTSTRAP_REFERENCE_SCOPE_MISMATCH`, no connector or route writes.
+- Existing disabled initial-release connector/route -> reactivate and update it because the operator explicitly requested bootstrap.
+- Missing runtime Feishu/Jira credentials after bootstrap -> worker/runtime config errors, not bootstrap errors.
+- Existing DB with old `task_assignments` mode constraint -> startup must drop/re-add `ck_task_assignments_mode` so `external_feishu` can persist.
+
+### 5. Good/Base/Bad Cases
+- Good: bootstrap creates active Feishu/Jira connector rows, creates a route matching `@SmallKhoj 分析 JIRA-123`, ensures creator/assignee are channel members, and prints worker env guidance.
+- Good: running bootstrap twice with the same names does not create duplicate connector/route rows.
+- Base: bootstrap succeeds without real app secrets; those are set only in runtime env before launching the worker.
+- Bad: using SQL console edits to create connector IDs because the live-run path then cannot be reproduced on the server.
+- Bad: storing `appSecret` or `apiToken` in `ExternalConnector.config`.
+- Bad: changing `release_loop.py` to use a new assignment mode without updating ORM constraints, startup DDL, and regression tests.
+
+### 6. Tests Required
+- Bootstrap creates Feishu/Jira connectors and one Feishu route from existing references.
+- Bootstrap reuses existing connector/route rows and updates them in place.
+- Missing references fail before partial connector/route writes.
+- Serialized bootstrap output includes required worker env keys and secret placeholders.
+- CLI parser rejects secret flags.
+- ORM and startup DDL tests assert `external_feishu` is present in `ck_task_assignments_mode`.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Manual DB rows -> copy connector IDs from psql history -> run worker with secrets stored in connector config
+```
+
+#### Correct
+```text
+python -m integration_bootstrap_cli -> non-secret connector/route rows + env guidance -> secrets only in runtime env -> Feishu worker launch
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger

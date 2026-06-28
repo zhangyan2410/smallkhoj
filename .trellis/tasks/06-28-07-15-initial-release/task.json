@@ -29,7 +29,8 @@
     "06-28-initial-release-feishu-reply-orchestration",
     "06-28-initial-release-feishu-raw-event-loop",
     "06-28-06-28-initial-release-feishu-worker-runtime",
-    "06-28-06-28-initial-release-feishu-channel-sdk-transport"
+    "06-28-06-28-initial-release-feishu-channel-sdk-transport",
+    "06-28-initial-release-integration-bootstrap-cli"
   ],
   "parent": null,
   "relatedFiles": [],
