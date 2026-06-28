@@ -73,6 +73,8 @@ The initial release should therefore be:
 - **R11: Integration gateway skeleton.** SmallKhoj should introduce or reserve the minimal connector/route/event/session/mapping model needed to keep Feishu/Jira integration out of ad hoc feature code.
 - **R12: TaskRun as execution boundary.** Feishu/Jira events should create or update SmallKhoj channel/task state, then start or attach to a TaskRun. Runtime execution must happen through existing daemon/runtime delivery, not inside the Feishu/Jira adapter.
 - **R13: Multi-machine validation.** The release must validate more than one daemon/computer path: reconnect, lease, target runtime selection, offline behavior, and evidence reporting should be exercised with repeatable scripts.
+- **R14: Versioned daemon distribution.** Product daemon onboarding must use a downloadable, versioned daemon artifact or install flow. The UI/backend must not generate commands that depend on a developer repository checkout path.
+- **R15: Foundation reliability gates.** A non-Feishu/Jira foundation target must prove Server/account scope, channel access, daemon distribution, Computer identity, daemon WebSocket, TaskRun evidence, deployment, capacity, backup/restore, config/secrets, and recovery before the initial release is considered usable.
 
 ## Minimum Useful Scope
 
@@ -103,6 +105,8 @@ These concepts can be implemented incrementally. The first code slice may hard-c
 
 - `.trellis/tasks/06-23-daemon-connect-maturity-and-onboarding/` covers daemon connection maturity.
 - `.trellis/tasks/06-26-daemon-single-local-computer-identity/` covers the single local Computer identity blocker.
+- `.trellis/tasks/06-29-06-29-initial-release-daemon-distribution-versioning/` covers the release-grade daemon packaging, download, install, version, and upgrade blocker.
+- `.trellis/tasks/06-29-06-29-initial-release-foundation-reliability-risk-gates/` covers the lower-layer risk register, validation gates, and release decision criteria independent of Feishu/Jira credentials.
 - `.trellis/tasks/06-25-taskrun-config-templates/` covers TaskRun templates, role snapshots, output policy, and runtime evidence. This release should use that work as the execution boundary for Feishu-originated tasks.
 - `.trellis/tasks/06-09-product-maturity-gap-decomposition/` contains broader product maturity decomposition; this release task should select from it, not inherit all of it.
 - `.trellis/tasks/06-27-chat-conversation-minimap-navigator/` is useful later, but should remain outside this release unless message navigation becomes a direct blocker for the primary loop.
@@ -161,6 +165,9 @@ These concepts can be implemented incrementally. The first code slice may hard-c
 - [ ] Reverse proxy, HTTPS certificate, backend WebSocket proxying, and daemon WebSocket proxying are verified.
 - [ ] Daemon reconnect does not create duplicate local Computer records for the same physical machine.
 - [ ] The UI hides or blocks new-computer onboarding when the current local machine already has a Computer identity.
+- [ ] Product daemon onboarding works from a downloaded/versioned daemon artifact or install flow and does not require a SmallKhoj repository checkout.
+- [ ] Daemon version is visible through CLI, backend Computer state, and UI; unsupported versions are diagnosed or explicitly deferred.
+- [ ] Foundation reliability gates have been run and every P0 foundation risk is pass, fixed, or explicitly accepted with a documented warning.
 - [ ] Multi-machine validation covers at least two daemon/computer paths or one physical + one simulated machine identity, including target runtime selection and offline behavior.
 - [ ] The primary scenario exposes human-readable status and failure reasons in the product UI.
 - [ ] Runtime/provider/daemon failures have trace or log evidence reachable from the operator workflow.
