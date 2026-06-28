@@ -4,6 +4,7 @@ import unittest
 from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import release_worker_rollout as rollout
 
@@ -80,6 +81,51 @@ class ReleaseWorkerRolloutTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 2)
         self.assertIn("--start-worker requires --apply", stderr.getvalue())
+
+    def test_execution_stops_before_remote_mutation_when_validation_fails(self) -> None:
+        plan = rollout.build_plan(self.options(start_worker=True))
+        calls: list[str] = []
+
+        def fake_run(step: rollout.PlanStep) -> rollout.CommandResult:
+            calls.append(step.label)
+            return rollout.CommandResult(
+                label=step.label,
+                command=step.display_command,
+                returncode=2,
+                stdout='{"ready": false}',
+                stderr="",
+            )
+
+        with patch.object(rollout, "run_step", side_effect=fake_run):
+            results = rollout.execute_plan(plan, apply=True)
+
+        self.assertEqual(calls, ["validate-release-worker-env"])
+        self.assertEqual([result.label for result in results], ["validate-release-worker-env"])
+
+    def test_execution_stops_before_worker_start_when_preflight_fails(self) -> None:
+        plan = rollout.build_plan(self.options(start_worker=True))
+        calls: list[str] = []
+
+        def fake_run(step: rollout.PlanStep) -> rollout.CommandResult:
+            calls.append(step.label)
+            return rollout.CommandResult(
+                label=step.label,
+                command=step.display_command,
+                returncode=2 if step.label == "live-run-preflight" else 0,
+                stdout="{}",
+                stderr="",
+            )
+
+        with patch.object(rollout, "run_step", side_effect=fake_run):
+            results = rollout.execute_plan(plan, apply=True)
+
+        self.assertEqual(calls, [
+            "validate-release-worker-env",
+            "apply-release-worker-env",
+            "restart-backend",
+            "live-run-preflight",
+        ])
+        self.assertNotIn("start-feishu-worker", [result.label for result in results])
 
 
 if __name__ == "__main__":
