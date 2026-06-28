@@ -72,12 +72,12 @@ export const STATUS_LABELS: Record<string, string> = {
 }
 
 const BUCKET_DOT_CLASS: Record<StatusBucket, string> = {
-  OFFLINE: "bg-slate-400",
-  IDLE: "bg-emerald-500",
-  STARTING: "bg-orange-400 animate-pulse",
-  THINKING: "bg-amber-400 animate-pulse",
-  ACTIVE: "bg-indigo-500 animate-[pulse_0.8s_ease-in-out_infinite]",
-  ERROR: "bg-red-500",
+  OFFLINE: "bg-muted-foreground",
+  IDLE: "bg-success",
+  STARTING: "bg-warning animate-pulse",
+  THINKING: "bg-warning animate-pulse",
+  ACTIVE: "bg-info animate-[pulse_0.8s_ease-in-out_infinite]",
+  ERROR: "bg-danger",
 }
 
 function normalizeStatus(status?: string | null): string {

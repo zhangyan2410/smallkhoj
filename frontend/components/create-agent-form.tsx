@@ -122,7 +122,7 @@ export function CreateAgentForm({
             required
             value={computerId}
             onChange={(event) => setComputerId(event.target.value)}
-            className="h-8 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+            className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset dark:bg-input/30"
           >
             <option value="">Select...</option>
             {computers.map((c) => (
@@ -139,7 +139,7 @@ export function CreateAgentForm({
             name="runtime"
             value={runtime}
             onChange={(event) => setRuntime(event.target.value)}
-            className="h-8 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+            className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset dark:bg-input/30"
           >
             <option value="claude_code">Claude Code</option>
             <option value="codex">Codex</option>

@@ -27,14 +27,14 @@ import {
 
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, StatusPill } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, type CategoryTone, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Panel } from "@/components/ui/panel"
 import { ConnectComputerForm } from "./connect-computer-form"
 import { buildComputerReconnectUrl } from "@/lib/computer-navigation"
 import {
   apiGet,
-  badgeClass,
   dotClass,
   formatTime,
   runtimeLabel,
@@ -257,14 +257,10 @@ async function deleteComputerAction(formData: FormData) {
   redirect("/computers?deleted=1")
 }
 
-function StatusBadge({ status }: { status: string }) {
-  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
-}
-
 function Field({ label, value, icon }: { label: string; value?: string | null; icon?: React.ReactNode }) {
   return (
-    <div className="min-w-0 rounded-md border bg-background p-2">
-      <div className="flex items-center gap-1 text-[11px] font-medium uppercase text-muted-foreground">
+    <div className="min-w-0 rounded-none border-2 border-[var(--ink)] bg-sand-card p-2">
+      <div className="flex items-center gap-1 text-sm font-medium text-foreground">
         {icon}
         {label}
       </div>
@@ -273,22 +269,23 @@ function Field({ label, value, icon }: { label: string; value?: string | null; i
   )
 }
 
-function runtimeStatusColor(status?: string) {
-  if (!status) return "text-muted-foreground border-border"
+/** runtime 安装状态 → CategoryTone 单一真源。色走 sk-cat-* token。 */
+function runtimeStatusKind(status?: string): CategoryTone {
+  if (!status) return "neutral"
   switch (status) {
     case "installed":
     case "available":
     case "active":
-      return "text-emerald-600 border-emerald-200 bg-emerald-50"
+      return "success"
     case "not_installed":
     case "unavailable":
     case "missing":
-      return "text-rose-600 border-rose-200 bg-rose-50"
+      return "danger"
     case "unknown":
     case "detecting":
-      return "text-amber-600 border-amber-200 bg-amber-50"
+      return "warning"
     default:
-      return "text-muted-foreground border-border"
+      return "neutral"
   }
 }
 
@@ -314,21 +311,18 @@ function runtimeStatusIcon(status?: string) {
 function RuntimeStatusChip({ runtime }: { runtime: RuntimeInfo }) {
   if (typeof runtime === "string") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-        {runtime}
-      </span>
+      <RuntimeChip tone="neutral" className="gap-1">{runtime}</RuntimeChip>
     )
   }
   const status = runtime.status
   const label = runtimeLabel(runtime)
-  const colorClass = runtimeStatusColor(status)
   const icon = runtimeStatusIcon(status)
 
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs ${colorClass}`}>
+    <RuntimeChip tone={runtimeStatusKind(status)} className="gap-1">
       {icon}
       {label}
-    </span>
+    </RuntimeChip>
   )
 }
 
@@ -365,7 +359,7 @@ function ComputerDetail({
           <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
             <Monitor className="size-5 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate">{computer.name}</span>
-            <StatusBadge status={computer.status} />
+            <StatusPill status={computer.status} label={statusLabel(computer.status)} />
           </CardTitle>
           <CardDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
             <span>{computer.os || copy.unknownOs}</span>
@@ -382,11 +376,11 @@ function ComputerDetail({
         </CardHeader>
         <CardContent className="space-y-5 pt-4">
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Power className="size-3" />
               {copy.lifecycleControls}
             </div>
-            <div className="rounded-md border p-3">
+            <div className="rounded-none border-2 border-[var(--ink)] p-3">
               <div className="flex flex-wrap gap-2">
                 <form action={createComputerReconnectCommandAction}>
                   <input type="hidden" name="computerId" value={computer.id} />
@@ -416,7 +410,7 @@ function ComputerDetail({
                 {copy.lifecycleHelp}
               </p>
               {computer.status === "offline" || leaseExpired ? (
-                <p className="mt-1 text-xs text-amber-700">
+                <p className="mt-1 text-xs text-warning">
                   {copy.offlineHelp}
                 </p>
               ) : null}
@@ -424,14 +418,14 @@ function ComputerDetail({
           </div>
 
           {reconnectCredential?.computerId === computer.id && reconnectComputerId === computer.id && (
-            <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+            <div className="space-y-2 rounded-none border-2 border-[var(--ink)] bg-muted/40 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs font-medium uppercase text-muted-foreground">{copy.reconnectCommand}</div>
+                <div className="text-sm font-medium text-foreground">{copy.reconnectCommand}</div>
                 <div className="text-xs text-muted-foreground">{copy.useOn(computer.name)}</div>
               </div>
               <code
                 data-testid="reconnect-command"
-                className="block whitespace-pre-wrap break-all rounded-md border bg-background p-2 text-xs"
+                className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
               >
                 {reconnectCredential.command}
               </code>
@@ -456,7 +450,7 @@ function ComputerDetail({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Cpu className="size-3" />
               {copy.detectedRuntimes}
             </div>
@@ -471,12 +465,12 @@ function ComputerDetail({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Network className="size-3" />
               {copy.agentWorkspaces}
             </div>
-            <div className="overflow-hidden rounded-md border">
-              <div className="hidden grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] gap-2 border-b bg-muted/60 px-3 py-2 text-xs font-medium uppercase text-muted-foreground md:grid">
+            <div className="overflow-hidden rounded-none border">
+              <div className="hidden grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] gap-2 border-b bg-muted/60 px-3 py-2 text-sm font-medium text-foreground md:grid">
                 <span>{copy.agent}</span>
                 <span>{copy.runtime}</span>
                 <span>{copy.status}</span>
@@ -503,20 +497,20 @@ function ComputerDetail({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Trash2 className="size-3" />
               {copy.delete}
             </div>
-            <div className="rounded-md border border-rose-200 bg-rose-50/50 p-3">
+            <Panel variant="flat" className="sk-cat-danger space-y-3 p-3">
               <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 size-4 text-rose-500" />
+                <AlertTriangle className="mt-0.5 size-4" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-rose-700">{copy.deleteComputer}</p>
-                  <p className="mt-1 text-xs text-rose-600">
+                  <p className="text-sm font-semibold">{copy.deleteComputer}</p>
+                  <p className="mt-1 text-xs">
                     {copy.deleteComputerDesc}
                   </p>
                   {deleteBlockingWorkspaces > 0 && (
-                    <p className="mt-1 text-xs text-rose-600">
+                    <p className="mt-1 text-xs">
                       {copy.deleteBlocking(deleteBlockingWorkspaces)}
                     </p>
                   )}
@@ -527,7 +521,6 @@ function ComputerDetail({
                       size="sm"
                       variant="outline"
                       disabled={deleteBlockingWorkspaces > 0}
-                      className="border-rose-200 text-rose-700 hover:bg-rose-100"
                     >
                       <Trash2 className="size-3.5" />
                       {copy.delete}
@@ -535,7 +528,7 @@ function ComputerDetail({
                   </form>
                 </div>
               </div>
-            </div>
+            </Panel>
           </div>
         </CardContent>
       </Card>
@@ -582,7 +575,7 @@ function WorkspaceRow({
           {workspace.runtimeProvider || workspace.runtimeModel || workspace.runtimeCommand || copy.providerDefault}
         </div>
       </div>
-      <StatusBadge status={workspace.status} />
+      <StatusPill status={workspace.status} label={statusLabel(workspace.status)} />
       <div className="font-mono text-xs text-muted-foreground">{workspace.pid ?? copy.none}</div>
       <div className="truncate font-mono text-xs text-muted-foreground" title={workspace.sessionId ?? ""}>
         {workspace.sessionId ? shortId(workspace.sessionId) : copy.none}
@@ -590,7 +583,7 @@ function WorkspaceRow({
       <div className="min-w-0 text-xs text-muted-foreground">
         <div className="truncate">{workspace.cwd || copy.noCwd}</div>
         {runtimeError ? (
-          <div className="mt-1 flex items-start gap-1 text-rose-600" title={runtimeError}>
+          <div className="mt-1 flex items-start gap-1 text-destructive" title={runtimeError}>
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
             <span className="break-words">{runtimeError}</span>
           </div>
@@ -641,7 +634,7 @@ function ComputerListRow({ computer, selectedId, copy }: { computer: Computer; s
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-medium">{computer.name}</span>
-              <StatusBadge status={computer.status} />
+              <StatusPill status={computer.status} label={statusLabel(computer.status)} />
             </div>
             <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
               <span>{computer.os || copy.unknownOs}</span>
@@ -700,19 +693,42 @@ export default async function ComputersPage({
       title={copy.title}
       description={copy.description}
       session={session}
+      listTitle="Computers"
+      list={
+        <nav className="flex h-full min-h-0 flex-col">
+          <div className="flex items-center justify-between border-b border-sand-border px-3 py-2.5 text-sm">
+            <span className="font-semibold text-sand-ink">{copy.computerCount(computers.length)}</span>
+            <span className="text-xs text-sand-muted">{onlineComputers} {copy.online}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {computers.map((computer) => (
+              <ComputerListRow key={computer.id} computer={computer} selectedId={selectedComputerId} copy={copy} />
+            ))}
+            {computers.length === 0 && (
+              <p className="px-2 py-4 text-center text-xs text-sand-muted">{copy.noComputers}</p>
+            )}
+          </div>
+        </nav>
+      }
+      listConfig={{
+        storageKey: "smallkhoj.computers.listWidth",
+        defaultWidth: 300,
+        min: 240,
+        max: 420,
+      }}
       sidebarTitle={copy.runtimeSnapshot}
       sidebarDescription={copy.runtimeSnapshotDesc}
       sidebar={
         <div className="space-y-2">
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">{copy.registered}</div>
             <div className="mt-1 text-2xl font-semibold">{computers.length}</div>
           </div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">{copy.online}</div>
             <div className="mt-1 text-2xl font-semibold">{onlineComputers}</div>
           </div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">{copy.runningWorkspaces}</div>
             <div className="mt-1 text-2xl font-semibold">{runningWorkspaces}</div>
           </div>
@@ -736,28 +752,19 @@ export default async function ComputersPage({
     >
       <RealtimeRefresh eventTypes={["workspace.updated", "runtime.updated", "computer.status.updated", "member.status.updated"]} />
       <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Card size="sm">
-            <CardHeader>
-              <CardDescription>{copy.registered}</CardDescription>
-              <CardTitle className="text-2xl">
-                {computers.length}
-                <span className="ml-2 text-xs font-normal text-muted-foreground">{onlineComputers} {copy.online}</span>
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card size="sm">
-            <CardHeader>
-              <CardDescription>{copy.agentWorkspaces}</CardDescription>
-              <CardTitle className="text-2xl">{workspaceCount}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card size="sm">
-            <CardHeader>
-              <CardDescription>{copy.runningWorkspaces}</CardDescription>
-              <CardTitle className="text-2xl">{runningWorkspaces}</CardTitle>
-            </CardHeader>
-          </Card>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-primary" />
+            {copy.registered} <span className="font-medium text-foreground">{computers.length}</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-success" />
+            {copy.online} <span className="font-medium text-foreground">{onlineComputers}</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-warning" />
+            {copy.runningWorkspaces} <span className="font-medium text-foreground">{runningWorkspaces}</span>
+          </span>
         </div>
 
         <ConnectComputerForm
@@ -775,23 +782,11 @@ export default async function ComputersPage({
             copy={copy}
           />
         ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Monitor className="size-4" />
-              {copy.computerCount(computers.length)}
-              <span className="text-xs">({copy.selectForDetail})</span>
-            </div>
-            {computers.map((computer) => (
-              <ComputerListRow key={computer.id} computer={computer} selectedId={selectedComputerId} copy={copy} />
-            ))}
-            {computers.length === 0 && (
-              <Card>
-                <CardContent>
-                  <EmptyState title={copy.noComputers} description={copy.noComputersDesc} />
-                </CardContent>
-              </Card>
-            )}
-          </div>
+          <Card>
+            <CardContent>
+              <EmptyState title={copy.selectForDetail} description={copy.noComputersDesc} />
+            </CardContent>
+          </Card>
         )}
       </div>
     </ProductShell>

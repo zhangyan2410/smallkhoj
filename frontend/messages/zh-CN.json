@@ -52,6 +52,7 @@
   "chat": {
     "channel": "频道",
     "directMessage": "私信",
+    "sidebarSubtitle": "频道与私信",
     "channels": "频道",
     "dms": "私信",
     "membersOnline": "在线成员",

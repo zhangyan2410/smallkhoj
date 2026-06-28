@@ -1,23 +1,7 @@
 import type { ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
-
-const statusStyles: Record<string, string> = {
-  online: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  active: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  running: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  done: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  idle: "border-amber-200 bg-amber-50 text-amber-700",
-  pending: "border-amber-200 bg-amber-50 text-amber-700",
-  pending_start: "border-amber-200 bg-amber-50 text-amber-700",
-  in_review: "border-amber-200 bg-amber-50 text-amber-700",
-  busy: "border-amber-200 bg-amber-50 text-amber-700",
-  in_progress: "border-sky-200 bg-sky-50 text-sky-700",
-  failed: "border-rose-200 bg-rose-50 text-rose-700",
-  cancelled: "border-rose-200 bg-rose-50 text-rose-700",
-  offline: "border-rose-200 bg-rose-50 text-rose-700",
-  stopped: "border-rose-200 bg-rose-50 text-rose-700",
-}
+import { badgeClass } from "@/lib/control-plane"
 
 export function StatusPill({
   status,
@@ -31,8 +15,10 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex h-6 shrink-0 items-center rounded-md border px-2 text-xs font-medium",
-        statusStyles[status] ?? "border-border bg-muted text-muted-foreground",
+        /* 手作风：墨色硬描边 + 直角 + 实色状态底。
+           badgeClass 是单一真源（lib/control-plane.ts），改状态色只改那里。 */
+        "inline-flex h-6 shrink-0 items-center rounded-none border-2 border-[var(--ink)] px-2 text-xs font-semibold",
+        badgeClass(status),
         className
       )}
     >
@@ -41,17 +27,36 @@ export function StatusPill({
   )
 }
 
+export type CategoryTone = "primary" | "info" | "success" | "warning" | "danger" | "neutral"
+
+/**
+ * 分类标签（≠ 状态）。颜色走单一真源 sk-cat-* token，改分类色只改 globals.css。
+ * tone 选语义：primary 默认中海蓝；info/success/warning/danger 对应 sk-cat-*；
+ * 不要再用 className 覆盖颜色（border-emerald-200 bg-emerald-50 这类）。
+ */
+const chipToneClass: Record<CategoryTone, string> = {
+  primary: "border-[var(--ink)] sk-accent-blue-soft",
+  info: "border-[var(--ink)] sk-cat-info",
+  success: "border-[var(--ink)] sk-cat-success",
+  warning: "border-[var(--ink)] sk-cat-warning",
+  danger: "border-[var(--ink)] sk-cat-danger",
+  neutral: "border-[var(--ink)] sk-cat-neutral",
+}
+
 export function RuntimeChip({
   children,
   className,
+  tone = "primary",
 }: {
   children: ReactNode
   className?: string
+  tone?: CategoryTone
 }) {
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 max-w-full items-center rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary",
+        "inline-flex min-h-6 max-w-full items-center rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs font-medium",
+        chipToneClass[tone],
         className
       )}
     >
@@ -106,7 +111,7 @@ export function Toolbar({
   return (
     <div
       className={cn(
-        "flex min-h-10 flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2",
+        "flex min-h-10 flex-wrap items-center gap-2 rounded-none border-2 border-[var(--ink)] bg-card px-3 py-2",
         className
       )}
     >

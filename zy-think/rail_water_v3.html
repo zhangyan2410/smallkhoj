@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>侧边栏 v3 · 水纹可见 + 底部沙滩</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    background: oklch(0.95 0.006 220);
+    padding: 32px 24px 64px;
+    color: oklch(0.28 0.03 240);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: oklch(0.5 0.02 240); margin-bottom: 24px; max-width: 900px; line-height: 1.6; }
+  .stage { display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; }
+  .col { text-align: center; }
+  .col h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .col p { font-size: 11px; color: oklch(0.5 0.02 240); margin-bottom: 12px; max-width: 190px; line-height: 1.5; }
+
+  .rail {
+    width: 64px;
+    height: 640px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 16px 0;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 oklch(0.3 0.02 240 / 0.08), 0 20px 50px oklch(0.3 0.10 240 / 0.18);
+    position: relative;
+    isolation: isolate;
+  }
+
+  /* ===== 三层叠加：用独立 div 保证可见，不靠伪元素 ===== */
+  /* L0 底色渐变：深海青顶 → 中海蓝 → 暖沙底（完整水→沙叙事） */
+  .layer-bg {
+    position: absolute; inset: 0; z-index: 0;
+    background: linear-gradient(180deg,
+      oklch(0.26 0.095 226) 0%,
+      oklch(0.34 0.105 220) 10%,
+      oklch(0.52 0.115 208) 22%,
+      oklch(0.70 0.110 198) 38%,
+      oklch(0.82 0.085 195) 56%,
+      oklch(0.88 0.060 120) 78%,
+      oklch(0.90 0.045 80) 92%,
+      oklch(0.91 0.040 70) 100%);
+  }
+  /* L1 水纹：用明显的横向波浪带，不是模糊椭圆。几条清晰的水线 */
+  .layer-ripple {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background-image:
+      linear-gradient(180deg, transparent 32%, oklch(0.99 0.03 188 / 0.40) 33.5%, transparent 35%),
+      linear-gradient(180deg, transparent 50%, oklch(0.99 0.03 188 / 0.32) 51.2%, transparent 53%),
+      linear-gradient(180deg, transparent 66%, oklch(0.99 0.03 188 / 0.24) 67%, transparent 68.5%);
+  }
+  /* L2 阳光：明显的暖白光柱，从顶部偏左斜射 */
+  .layer-sun {
+    position: absolute; z-index: 2; pointer-events: none;
+    top: -10%; left: 10%;
+    width: 140%; height: 60%;
+    background: radial-gradient(ellipse 40% 80% at 32% 0%,
+      oklch(1 0.07 90 / 0.55) 0%,
+      oklch(0.98 0.08 130 / 0.28) 28%,
+      transparent 62%);
+    transform: rotate(8deg);
+    transform-origin: top left;
+  }
+  /* 水面高光线 */
+  .layer-shine {
+    position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 3;
+    background: linear-gradient(90deg, transparent 20%, oklch(1 0.05 180 / 0.85) 50%, transparent 80%);
+    box-shadow: 0 0 6px oklch(1 0.05 180 / 0.6);
+  }
+
+  .logo, .ico, .avatar, .spacer { position: relative; z-index: 4; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 8px; font-size: 18px;
+    background: oklch(0.96 0.05 188 / 0.95);
+    color: oklch(0.24 0.10 208);
+    box-shadow: 0 2px 10px oklch(0.22 0.08 220 / 0.4);
+  }
+  .ico {
+    width: 38px; height: 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px;
+    transition: background .15s, color .15s;
+  }
+  /* 顶部深色区图标白 */
+  .ico.dark { color: oklch(0.97 0.012 195); }
+  /* 浅色区图标深青 */
+  .ico.mid { color: oklch(0.30 0.07 210); }
+  /* 底部沙滩区图标深棕暖 */
+  .ico.sand { color: oklch(0.34 0.05 60); }
+  .ico:hover { background: oklch(1 0 0 / 0.16); }
+  .ico.active {
+    background: oklch(0.28 0.10 210);
+    color: oklch(0.96 0.02 190);
+    box-shadow: 0 0 0 3px oklch(0.28 0.10 210 / 0.2), 0 4px 14px oklch(0.3 0.10 200 / 0.25);
+    position: relative;
+  }
+  .ico.active::before {
+    content: ""; position: absolute; left: -13px; top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 24px; border-radius: 0 3px 3px 0;
+    background: oklch(0.58 0.14 195);
+    box-shadow: 0 0 10px oklch(0.58 0.14 195 / 0.75);
+  }
+  .spacer { flex: 1; }
+  .avatar {
+    width: 38px; height: 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600;
+    background: oklch(1 0 0 / 0.6);
+    color: oklch(0.30 0.05 60);
+    border: 1px solid oklch(1 0 0 / 0.5);
+  }
+
+  .legend { margin-top: 16px; max-width: 190px; margin-left: auto; margin-right: auto; }
+  .legend .bar { height: 14px; border-radius: 7px; background: linear-gradient(180deg,oklch(0.26 0.095 226),oklch(0.52 0.115 208) 30%,oklch(0.82 0.085 195) 55%,oklch(0.90 0.045 80) 90%,oklch(0.91 0.04 70)); margin-bottom: 6px; }
+  .legend .marks { display:flex; font-size:9px; color:oklch(0.45 0.02 240); justify-content:space-between; }
+
+  .note { margin-top: 40px; max-width: 900px; font-size: 12.5px; line-height: 1.75; color: oklch(0.38 0.02 240); }
+  .note b { color: oklch(0.28 0.03 240); }
+  .note code { background: oklch(0.92 0.01 240); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+  <h1>侧边栏 v3</h1>
+  <p class="sub">
+    两个改动：① 水纹改成<strong>清晰的横向水线</strong>（3 条，肉眼明显），不再用模糊椭圆；
+    ② 阳光提亮到 0.55 且加<strong>斜射角度</strong>，能看到一束光柱；③ <strong>底部接上沙滩暖色</strong>，完整「深海青 → 中海蓝 → 暖沙」。
+    右边是色带图例 + 水纹/阳光对照。
+  </p>
+
+  <div class="stage">
+    <div class="col">
+      <h3>v3 完整版</h3>
+      <p>深色收窄 + 清晰水线 + 斜射阳光 + 底部沙滩</p>
+      <div class="rail">
+        <div class="layer-bg"></div>
+        <div class="layer-ripple"></div>
+        <div class="layer-sun"></div>
+        <div class="layer-shine"></div>
+        <div class="logo">✦</div>
+        <div class="ico dark">🔍</div>
+        <div class="ico dark">💬</div>
+        <div class="ico mid active">✓</div>
+        <div class="ico mid">👥</div>
+        <div class="ico mid">💻</div>
+        <div class="ico mid">🔔</div>
+        <div class="spacer"></div>
+        <div class="avatar">L</div>
+        <div class="ico sand">⚙</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h3>色带 · 水→沙</h3>
+      <p>从上到下：深海青 → 中海蓝 → 透亮青 → 暖沙</p>
+      <div class="legend">
+        <div class="bar"></div>
+        <div class="marks"><span>深海</span><span>中海</span><span>浅青</span><span>暖沙</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h3>只有水纹</h3>
+      <p>去掉阳光，单看 3 条水线</p>
+      <div class="rail">
+        <div class="layer-bg"></div>
+        <div class="layer-ripple"></div>
+        <div class="layer-shine"></div>
+        <div class="logo">✦</div>
+        <div class="ico dark">🔍</div>
+        <div class="ico dark">💬</div>
+        <div class="ico mid active">✓</div>
+        <div class="ico mid">👥</div>
+        <div class="ico mid">💻</div>
+        <div class="ico mid">🔔</div>
+        <div class="spacer"></div>
+        <div class="avatar">L</div>
+        <div class="ico sand">⚙</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>怎么保证这次看得见：</b><br>
+    • 水纹从「模糊椭圆 radial-gradient」改成<strong>明确的横向水线</strong>（<code>linear-gradient</code> 在固定高度画一条亮带），3 条分别在 33% / 51% / 67% 高度，<strong>边界清晰</strong>，不会再被压扁看不清。<br>
+    • 阳光透明度 0.55 + 旋转 8° 斜射，是从顶部偏左往右下打的光柱，能看到<strong>明暗渐变</strong>。<br>
+    • 底部 78% 起过渡到暖沙（hue 80→70），跟顶部冷青形成<strong>冷暖对比</strong>，就是你要的「沙滩」收尾。<br><br>
+    如果还是看不见，可能是浏览器渲染问题，我会改用 SVG 硬画。先看这版：水线 3 条够不够/要不要更多？阳光角度对吗？底部沙滩色对吗？
+  </div>
+</body>
+</html>

@@ -11,22 +11,25 @@ import {
   Filter,
   ListChecks,
   MessageSquare,
-  PanelRight,
   Plus,
   Shield,
 } from "lucide-react"
 
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, StatusPill, Toolbar } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, StatusPill, Toolbar } from "@/components/product-ui"
 import { TaskRecoveryCockpit, type TaskRecoveryCopy } from "@/components/memory-entry-surface"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { apiGet, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
+import { FieldLabel, Select, Textarea } from "@/components/ui/form"
+import { TaskListPanel } from "@/components/task-list-panel"
+import { TaskFormDialogs } from "@/components/task-form-dialogs"
+import { apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders, getSessionToken } from "@/lib/server-auth"
 
 import { TaskDndBoard } from "@/components/task-dnd-board"
+import { TaskDetailDialog } from "@/components/task-detail-dialog"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
@@ -344,55 +347,9 @@ function firstParam(value: string | string[] | undefined, fallback = "") {
   return value ?? fallback
 }
 
-function StatusBadge({ status }: { status: string }) {
-  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
-}
+// StatusBadge 包装已删 —— 直接用 StatusPill（内部已调 badgeClass 单一真源）
 
-function Select({
-  id,
-  name,
-  items,
-  fallback,
-  splitValue = false,
-  defaultValue,
-  emptyLabel = "",
-}: {
-  id: string
-  name: string
-  items: string[]
-  fallback?: string
-  splitValue?: boolean
-  defaultValue?: string
-  emptyLabel?: string
-}) {
-  const options = items.length > 0 ? items : fallback ? [fallback] : []
-  return (
-    <select
-      id={id}
-      name={name}
-      defaultValue={defaultValue ?? (splitValue ? options[0]?.split("|")[0] : fallback || options[0])}
-      className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-    >
-      {!fallback && <option value="">{emptyLabel}</option>}
-      {options.map((item) => {
-        const [value, label] = splitValue ? item.split("|", 2) : [item, item]
-        return (
-          <option key={item} value={value}>
-            {label}
-          </option>
-        )
-      })}
-    </select>
-  )
-}
-
-function FieldLabel({ htmlFor, children }: { htmlFor: string; children: string }) {
-  return (
-    <label htmlFor={htmlFor} className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">
-      {children}
-    </label>
-  )
-}
+// FieldLabel/Select 已抽到 @/components/ui/form，下方表单直接使用。
 
 function filteredTasks(tasks: Task[], filters: { channel: string; creator: string; assignee: string; status: string }) {
   return tasks.filter((task) => {
@@ -414,29 +371,7 @@ function sourceHref(source: TaskSource) {
   return query ? `${path}?${query}` : path
 }
 
-function dotClass(status: string) {
-  switch (status) {
-    case "online":
-    case "active":
-    case "running":
-    case "done":
-    case "fired":
-      return "bg-emerald-500"
-    case "idle":
-    case "pending":
-    case "in_review":
-      return "bg-amber-500"
-    case "in_progress":
-      return "bg-sky-500"
-    case "failed":
-    case "cancelled":
-    case "offline":
-    case "stopped":
-      return "bg-rose-500"
-    default:
-      return "bg-muted-foreground"
-  }
-}
+// dotClass 已收口到 lib/control-plane 单一真源（上方 import）
 
 function EvidenceIcon({ type }: { type: EvidenceEntry["type"] }) {
   switch (type) {
@@ -469,7 +404,7 @@ function entryLabel(type: EvidenceEntry["type"], copy: TasksCopy) {
 
 function EvidenceEntryRow({ entry, copy }: { entry: EvidenceEntry; copy: TasksCopy }) {
   return (
-    <div className="flex items-start gap-2 rounded-md border bg-background px-2.5 py-2">
+    <div className="flex items-start gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
       <EvidenceIcon type={entry.type} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -486,15 +421,17 @@ function EvidenceEntryRow({ entry, copy }: { entry: EvidenceEntry; copy: TasksCo
         )}
         {entry.decision && (
           <div className="mt-1">
-            <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium ${
-              entry.decision === "approved" || entry.decision === "pass"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : entry.decision === "rejected" || entry.decision === "fail"
-                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                  : "border-border bg-muted text-muted-foreground"
-            }`}>
+            <RuntimeChip
+              tone={
+                entry.decision === "approved" || entry.decision === "pass"
+                  ? "success"
+                  : entry.decision === "rejected" || entry.decision === "fail"
+                    ? "danger"
+                    : "neutral"
+              }
+            >
               {entry.decision}
-            </span>
+            </RuntimeChip>
           </div>
         )}
         {entry.note && (
@@ -539,7 +476,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
       <div className="grid gap-2 text-sm">
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">{copy.status}</span>
-          <StatusBadge status={task.status} />
+          <StatusPill status={task.status} label={statusLabel(task.status)} />
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">{copy.assignee}</span>
@@ -550,7 +487,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           <span>{task.creator ? `@${task.creator}` : copy.unknown}</span>
         </div>
       </div>
-      <div className="rounded-md border bg-background p-3">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
         <h3 className="text-sm font-medium">{copy.activity}</h3>
         {activity.length > 0 ? (
           <div className="mt-2 space-y-2">
@@ -572,7 +509,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           <p className="mt-2 text-xs text-muted-foreground">{copy.noActivity}</p>
         )}
       </div>
-      <div className="rounded-md border bg-background p-3">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
         <h3 className="text-sm font-medium">{copy.source}</h3>
         {source ? (
           <div className="mt-2 space-y-2 text-xs text-muted-foreground">
@@ -592,7 +529,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
             {source.channel && sourceLink && (
               <Link
                 href={sourceLink}
-                className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/15"
+                className="inline-flex items-center gap-1 rounded-none border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/15"
               >
                 <MessageSquare className="size-3" />
                 {copy.openSourceChannel(source.channel)}
@@ -603,14 +540,14 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           <p className="mt-2 text-xs text-muted-foreground">{copy.noSource}</p>
         )}
       </div>
-      <div className="rounded-md border bg-background p-3">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
         <h3 className="text-sm font-medium">{copy.evidence}</h3>
         <div className="mt-2 space-y-2 text-xs text-muted-foreground">
           {(evidence?.notes || []).map((note) => (
-            <div key={note} className="rounded-md border border-dashed bg-muted/30 px-2 py-1.5">{note}</div>
+            <div key={note} className="rounded-none border border-dashed bg-muted/30 px-2 py-1.5">{note}</div>
           ))}
           {(evidence?.links || []).map((link) => (
-            <div key={`${link.label}-${link.href}`} className="flex items-center gap-1.5 rounded-md border border-dashed bg-muted/30 px-2 py-1.5">
+            <div key={`${link.label}-${link.href}`} className="flex items-center gap-1.5 rounded-none border border-dashed bg-muted/30 px-2 py-1.5">
               <ExternalLink className="size-3" />
               {link.label || link.href || copy.evidenceLink}
             </div>
@@ -632,7 +569,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           <div className="flex gap-2">
             <select
               name="entryType"
-              className="h-7 shrink-0 rounded-md border bg-background px-2 text-xs"
+              className="h-7 shrink-0 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
               defaultValue="note"
             >
               <option value="note">{copy.evidenceTypeNote}</option>
@@ -650,7 +587,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
         </form>
       </div>
       <TaskRecoveryCockpit entries={memoryEntries} copy={copy.taskRecovery} />
-      <div className="rounded-md border border-dashed bg-muted/30 p-2.5">
+      <div className="rounded-none border border-dashed bg-muted/30 p-2.5">
         <div className="flex items-start gap-2">
           <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
@@ -660,10 +597,11 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
         </div>
         <form action={requestTaskMemoryAction} className="mt-2 space-y-2">
           <input type="hidden" name="taskId" value={task.id} />
-          <textarea
+          <Textarea
             name="memoryInstruction"
             placeholder={copy.memoryInstructionPlaceholder}
-            className="min-h-14 w-full resize-none rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+            rows={3}
+            className="resize-none text-xs"
           />
           <div className="flex flex-wrap gap-1.5" aria-label={copy.outputDirections}>
             {MEMORY_OUTPUT_DIRECTIONS.map((direction) => (
@@ -675,7 +613,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
                   defaultChecked={direction === "final_summary" || direction === "evidence"}
                   className="peer sr-only"
                 />
-                <span className="inline-flex rounded-md border bg-background px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
+                <span className="inline-flex rounded-none border-2 border-[var(--ink)] bg-sand-card px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
                   {outputDirectionLabel(direction, copy)}
                 </span>
               </label>
@@ -686,14 +624,14 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           </Button>
         </form>
       </div>
-      <div className="rounded-md border bg-background p-3">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
         <h3 className="text-sm font-medium">{copy.review}</h3>
         <form action={addReviewNoteAction} className="mt-2 space-y-2">
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="currentData" value={JSON.stringify(task.data ?? {})} />
           <select
             name="reviewDecision"
-            className="h-7 w-full rounded-md border bg-background px-2 text-xs"
+            className="h-7 w-full rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
           >
             <option value="">{copy.selectDecision}</option>
             <option value="approved">{copy.approved}</option>
@@ -757,6 +695,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
     assignee: filters.assignee,
     status: filters.status,
   }
+  const tasksBaseHref = `/tasks?${new URLSearchParams(filterRecord).toString()}`
 
   return (
     <ProductShell
@@ -764,19 +703,60 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
       title={copy.title}
       description={copy.description}
       session={session}
+      listTitle={copy.boardListSurface}
+      listConfig={{ storageKey: "smallkhoj.tasks.listWidth", defaultWidth: 300, min: 240, max: 440 }}
+      list={
+        <TaskListPanel
+          tasks={visibleTasks}
+          selectedTaskId={selectedTask?.id}
+          filters={filterRecord}
+          createLabel={copy.createTask}
+          emptyLabel="No tasks"
+        />
+      }
       sidebarTitle={copy.detailTitle}
       sidebarDescription={copy.detailDescription}
       sidebar={<TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} copy={copy} />}
+      mainScrollable={false}
       actions={
-        <Link href="/daemon">
-          <Button variant="outline" size="sm">
-            {copy.controlPlane}
-          </Button>
-        </Link>
+        <>
+          <TaskFormDialogs
+            createAction={createTaskAction}
+            updateAction={updateTaskAction}
+            channels={channels}
+            agents={agents}
+            templates={activeTemplates}
+            tasks={tasks}
+            copy={{
+              create: copy.create,
+              createTask: copy.createTask,
+              createTaskDesc: copy.createTaskDesc,
+              createTitlePlaceholder: copy.createTitlePlaceholder,
+              titleLabel: copy.titleLabel,
+              descriptionLabel: copy.descriptionLabel,
+              createDescPlaceholder: copy.createDescPlaceholder,
+              channel: copy.channel,
+              assignee: copy.assignee,
+              unassigned: copy.unassigned,
+              taskRunTemplate: copy.taskRunTemplate,
+              status: copy.status,
+              update: copy.update,
+              updateTask: copy.updateTask,
+              updateTaskDesc: copy.updateTaskDesc,
+              task: copy.task,
+              keepBlankPlaceholder: copy.keepBlankPlaceholder,
+            }}
+          />
+          <Link href="/daemon">
+            <Button variant="outline" size="sm">
+              {copy.controlPlane}
+            </Button>
+          </Link>
+        </>
       }
     >
       <RealtimeRefresh eventTypes={["task.created", "task.updated"]} />
-      <div className="space-y-5">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto pr-1">
         <Toolbar>
           <ListChecks className="size-4 text-primary" />
           <span className="text-sm font-medium">{copy.boardListSurface}</span>
@@ -818,103 +798,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
           </Card>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Plus className="size-4" />
-                {copy.createTask}
-              </CardTitle>
-              <CardDescription>{copy.createTaskDesc}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={createTaskAction} className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <FieldLabel htmlFor="task-title">{copy.titleLabel}</FieldLabel>
-                  <Input id="task-title" name="title" required placeholder={copy.createTitlePlaceholder} />
-                </div>
-                <div className="sm:col-span-2">
-                  <FieldLabel htmlFor="task-description">{copy.descriptionLabel}</FieldLabel>
-                  <Input id="task-description" name="description" placeholder={copy.createDescPlaceholder} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="task-channel">{copy.channel}</FieldLabel>
-                  <Select id="task-channel" name="channel" items={channels.map((channel) => channel.name)} fallback="#all" />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="task-assignee">{copy.assignee}</FieldLabel>
-                  <Select id="task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} emptyLabel={copy.unassigned} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="task-template">{copy.taskRunTemplate}</FieldLabel>
-                  <Select
-                    id="task-template"
-                    name="template"
-                    items={activeTemplates.map((template) => `${template.slug}|${template.name}`)}
-                    splitValue
-                    emptyLabel="Default"
-                  />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="task-status">{copy.status}</FieldLabel>
-                  <Select id="task-status" name="status" items={TASK_STATUS_OPTIONS} fallback="todo" splitValue />
-                </div>
-                <div className="flex items-end">
-                  <Button type="submit" size="sm" className="w-full">
-                    {copy.create}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+        {/* 创建/更新表单已收进顶部对话框（TaskFormDialogs），主区只保留看板主体 */}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <PanelRight className="size-4" />
-                {copy.updateTask}
-              </CardTitle>
-              <CardDescription>{copy.updateTaskDesc}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={updateTaskAction} className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <FieldLabel htmlFor="update-task-id">{copy.task}</FieldLabel>
-                  <Select
-                    id="update-task-id"
-                    name="taskId"
-                    items={tasks.map((task) => `${task.id}|#${task.number} ${task.title}`)}
-                    splitValue
-                    emptyLabel={copy.task}
-                  />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="update-task-title">{copy.titleLabel}</FieldLabel>
-                  <Input id="update-task-title" name="title" placeholder={copy.keepBlankPlaceholder} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="update-task-description">{copy.descriptionLabel}</FieldLabel>
-                  <Input id="update-task-description" name="description" placeholder={copy.keepBlankPlaceholder} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="update-task-status">{copy.status}</FieldLabel>
-                  <Select id="update-task-status" name="status" items={TASK_STATUS_OPTIONS} fallback="in_review" splitValue />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="update-task-assignee">{copy.assignee}</FieldLabel>
-                  <Select id="update-task-assignee" name="assignee" items={agents.map((agent) => agent.handle!)} emptyLabel={copy.unassigned} />
-                </div>
-                <div className="sm:col-span-2">
-                  <Button type="submit" size="sm" variant="outline" className="w-full">
-                    {copy.update}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-
-        <form action="/tasks" className="grid gap-3 rounded-md border bg-card p-3 sm:grid-cols-2 xl:grid-cols-5">
+        <form action="/tasks" className="grid gap-3 rounded-none border-2 border-[var(--ink)] bg-card p-3 sm:grid-cols-2 xl:grid-cols-5">
           <input type="hidden" name="view" value={view} />
           <div className="xl:col-span-5 flex items-center gap-2 text-sm font-medium">
             <Filter className="size-4 text-primary" />
@@ -955,6 +841,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
           sessionToken={sessionToken}
         />
       </div>
+      <TaskDetailDialog open={!!selectedTaskId} closeHref={tasksBaseHref}>
+        <TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} copy={copy} />
+      </TaskDetailDialog>
     </ProductShell>
   )
 }

@@ -274,6 +274,50 @@ export function formatTime(value?: string | null) {
   }).format(date)
 }
 
+/**
+ * 找 member 在哪台 computer 上的 agent workspace（运行时实例）。
+ * 收口 members/computers/activity 三处重复的 member→workspace join：
+ *   computers.find(c => c.id === member.computerId)?.agentWorkspaces.find(w => w.agentId === member.id)
+ * 单一真源，改 join 逻辑只改这里。
+ */
+export function findMemberWorkspace(member: { computerId?: string | null; id: string }, computers: Computer[]): AgentWorkspace | undefined {
+  if (!member.computerId) return undefined
+  const computer = computers.find((c) => c.id === member.computerId)
+  return computer?.agentWorkspaces.find((w) => w.agentId === member.id)
+}
+
+/**
+ * Activity 分类 → CategoryTone 单一真源。
+ * 给 ActivityTypeBadge / RuntimeChip 用，替代散落的 labelColorMap 硬编码色。
+ * 改分类配色只改这里 + globals.css 的 --cat-* token。
+ */
+export function activityCategoryKind(label: string): "info" | "success" | "warning" | "danger" | "neutral" {
+  switch (label) {
+    case "Message":
+    case "Output":
+    case "Thread":
+      return "info"
+    case "Task":
+    case "Reminder":
+    case "Working":
+    case "Thinking":
+      return "warning"
+    case "Runtime":
+    case "Heartbeat":
+    case "Idle":
+    case "Integration":
+      return "success"
+    case "Reaction":
+    case "Channel":
+    case "Profile":
+      return "neutral"
+    case "Error":
+      return "danger"
+    default:
+      return "neutral"
+  }
+}
+
 export function statusLabel(status: string) {
   const labels: Record<string, string> = {
     todo: "待办",
@@ -308,7 +352,7 @@ export function dotClass(status: string) {
     case "running":
     case "done":
     case "fired":
-      return "bg-emerald-500"
+      return "bg-success"
     case "idle":
     case "pending":
     case "pending_start":
@@ -317,28 +361,29 @@ export function dotClass(status: string) {
     case "busy":
     case "stopping":
     case "restarting":
-      return "bg-amber-500"
+      return "bg-warning"
     case "in_progress":
-      return "bg-sky-500"
+      return "bg-info"
     case "failed":
     case "crashed":
     case "cancelled":
     case "offline":
     case "stopped":
-      return "bg-rose-500"
+      return "bg-danger"
     default:
       return "bg-muted-foreground"
   }
 }
 
-export function badgeClass(status: string) {
+/** 状态语义分类 —— 单一真源，供 badgeClass/dotClass/StatusPill 复用。 */
+export function statusKind(status: string): "success" | "warning" | "info" | "danger" | "neutral" {
   switch (status) {
     case "online":
     case "active":
     case "running":
     case "done":
     case "fired":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700"
+      return "success"
     case "idle":
     case "pending":
     case "pending_start":
@@ -347,17 +392,33 @@ export function badgeClass(status: string) {
     case "busy":
     case "stopping":
     case "restarting":
-      return "border-amber-200 bg-amber-50 text-amber-700"
+      return "warning"
     case "in_progress":
-      return "border-sky-200 bg-sky-50 text-sky-700"
+      return "info"
     case "failed":
     case "crashed":
     case "cancelled":
     case "offline":
     case "stopped":
-      return "border-rose-200 bg-rose-50 text-rose-700"
+      return "danger"
     default:
-      return "border-border bg-muted text-muted-foreground"
+      return "neutral"
+  }
+}
+
+export function badgeClass(status: string) {
+  const kind = statusKind(status)
+  switch (kind) {
+    case "success":
+      return "sk-status-success"
+    case "warning":
+      return "sk-status-warning"
+    case "info":
+      return "sk-status-info"
+    case "danger":
+      return "sk-status-danger"
+    default:
+      return "bg-muted text-muted-foreground"
   }
 }
 

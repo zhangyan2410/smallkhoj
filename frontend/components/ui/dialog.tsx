@@ -49,7 +49,7 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-lg outline-none transition",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-none border-2 border-[var(--ink)] bg-background p-6 sk-hard-shadow outline-none transition",
           className
         )}
         {...props}
@@ -59,7 +59,7 @@ function DialogContent({
         <DialogPrimitive.Close
           data-slot="dialog-close"
           aria-label="Close"
-          className="absolute top-4 right-4 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="absolute top-4 right-4 inline-flex size-7 items-center justify-center rounded-none text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           ✕
         </DialogPrimitive.Close>

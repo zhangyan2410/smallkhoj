@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>SmallKhoj 色板对比 — 三种质感</title>
+<style>
+  :root {
+    --ink: oklch(0.28 0.03 240);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    background: oklch(0.96 0.005 240);
+    color: var(--ink);
+    padding: 32px 24px 64px;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.01em; }
+  .sub { font-size: 13px; color: oklch(0.5 0.02 240); margin-bottom: 28px; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 1320px; margin: 0 auto; }
+  @media (max-width: 1100px) { .row { grid-template-columns: 1fr; } }
+  .card {
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 oklch(0.3 0.02 240 / 0.06), 0 12px 32px oklch(0.3 0.02 240 / 0.10);
+    background: #fff;
+  }
+  .card-head { padding: 14px 16px; border-bottom: 1px solid oklch(0.92 0.01 240); display:flex; align-items:baseline; justify-content:space-between; }
+  .card-head .name { font-size: 15px; font-weight: 700; }
+  .card-head .tag { font-size: 11px; color: oklch(0.5 0.02 240); }
+
+  /* 模拟一个迷你 app：左 rail + 右聊天 */
+  .app { display: grid; grid-template-columns: 52px 1fr; height: 420px; }
+  .rail { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0; }
+  .rail .logo { width: 30px; height: 30px; border-radius: 9px; margin-bottom: 6px; }
+  .ico { width: 30px; height: 30px; border-radius: 9px; display:flex; align-items:center; justify-content:center; font-size: 14px; color: oklch(0.55 0.02 240); }
+  .chat { display: flex; flex-direction: column; padding: 14px; gap: 10px; overflow: hidden; }
+  .ch-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .msg { display: flex; gap: 8px; }
+  .msg.me { justify-content: flex-end; }
+  .av { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; font-size: 10px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; }
+  .bubble { max-width: 78%; padding: 8px 11px; border-radius: 12px; font-size: 12px; line-height: 1.45; }
+  .b-agent { background: #fff; }
+  .b-me, .b-me * { color: #fff; }
+  .name-row { font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+  .inputbar { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: #fff; }
+  .inputbar .ph { font-size: 12px; color: oklch(0.55 0.02 240); flex: 1; }
+  .send { width: 28px; height: 28px; border-radius: 50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size: 13px; }
+
+  .swatches { display: flex; height: 34px; }
+  .sw { flex: 1; display:flex; align-items:flex-end; justify-content:center; padding-bottom: 4px; }
+  .sw span { font-size: 9px; font-family: ui-monospace, monospace; }
+
+  /* ============ A 鲜亮通透 ============ */
+  .A .app { background: oklch(0.985 0.004 220); }
+  .A .rail { background: oklch(0.96 0.018 200); }
+  .A .logo { background: oklch(0.70 0.13 195); }
+  .A .ico.active { background: oklch(0.70 0.13 195); color: #fff; box-shadow: 0 0 0 4px oklch(0.70 0.13 195 / 0.18); }
+  .A .chat { background: oklch(0.975 0.012 85); }
+  .A .ch-title { color: oklch(0.32 0.04 225); }
+  .A .b-agent { box-shadow: 0 4px 12px oklch(0.3 0.02 240 / 0.08); color: oklch(0.30 0.04 225); }
+  .A .av { background: oklch(0.70 0.13 195); }
+  .A .name-row { color: oklch(0.62 0.12 195); }
+  .A .b-me { background: oklch(0.70 0.13 195); }
+  .A .inputbar { box-shadow: 0 4px 12px oklch(0.3 0.02 240 / 0.08); }
+  .A .send { background: oklch(0.70 0.13 195); box-shadow: 0 0 0 4px oklch(0.70 0.13 195 / 0.18); }
+
+  /* ============ B 低饱和高级 ============ */
+  .B .app { background: oklch(0.965 0.006 230); }
+  .B .rail { background: oklch(0.94 0.012 215); }
+  .B .logo { background: oklch(0.58 0.07 210); }
+  .B .ico.active { background: oklch(0.58 0.07 210); color: #fff; }
+  .B .chat { background: oklch(0.95 0.008 80); }
+  .B .ch-title { color: oklch(0.34 0.025 230); }
+  .B .b-agent { background: oklch(0.99 0.003 230); box-shadow: 0 1px 0 oklch(0.88 0.01 230); color: oklch(0.34 0.025 230); }
+  .B .av { background: oklch(0.58 0.07 210); }
+  .B .name-row { color: oklch(0.50 0.05 210); }
+  .B .b-me { background: oklch(0.55 0.07 212); }
+  .B .inputbar { background: oklch(0.99 0.003 230); box-shadow: 0 1px 0 oklch(0.88 0.01 230); }
+  .B .send { background: oklch(0.55 0.07 212); }
+
+  /* ============ C 阳光感 ============ */
+  .C .app { background: linear-gradient(180deg, oklch(0.99 0.005 210) 0%, oklch(0.96 0.014 85) 100%); }
+  .C .rail { background: oklch(0.93 0.025 190); }
+  .C .logo { background: linear-gradient(135deg, oklch(0.72 0.11 190), oklch(0.62 0.10 205)); }
+  .C .ico.active { background: linear-gradient(135deg, oklch(0.72 0.11 190), oklch(0.62 0.10 205)); color:#fff; box-shadow: 0 0 0 4px oklch(0.72 0.11 190 / 0.22); }
+  .C .chat { background: transparent; }
+  .C .ch-title { color: oklch(0.33 0.035 220); }
+  .C .b-agent { background: oklch(0.995 0.004 90); box-shadow: 0 6px 16px oklch(0.35 0.03 200 / 0.10); color: oklch(0.30 0.04 220); }
+  .C .av { background: linear-gradient(135deg, oklch(0.72 0.11 190), oklch(0.62 0.10 205)); }
+  .C .name-row { color: oklch(0.58 0.10 200); }
+  .C .b-me { background: linear-gradient(135deg, oklch(0.70 0.11 190), oklch(0.60 0.10 205)); }
+  .C .inputbar { background: oklch(0.995 0.004 90); box-shadow: 0 6px 16px oklch(0.35 0.03 200 / 0.10); }
+  .C .send { background: linear-gradient(135deg, oklch(0.72 0.11 190), oklch(0.62 0.10 205)); box-shadow: 0 0 0 4px oklch(0.72 0.11 190 / 0.22); }
+</style>
+</head>
+<body>
+  <h1>SmallKhoj 色板对比</h1>
+  <p class="sub">基于原图真实色相（深蓝 258 → 青蓝 195 → 暖沙 70）。三版只改「质感」，色相不变。选一个告诉我。</p>
+
+  <div class="row">
+    <!-- A -->
+    <div class="card A">
+      <div class="card-head"><span class="name">A · 鲜亮通透</span><span class="tag">提纯 · 活力</span></div>
+      <div class="app">
+        <div class="rail">
+          <div class="logo"></div>
+          <div class="ico active">💬</div>
+          <div class="ico">✓</div>
+          <div class="ico">👥</div>
+          <div class="ico">⚙</div>
+        </div>
+        <div class="chat">
+          <div class="ch-title"># design</div>
+          <div class="msg"><div class="av">M</div><div><div class="name-row">Maya</div><div class="bubble b-agent">把导航栏底色换成淡青蓝，激活态加柔光晕，你觉得呢？</div></div></div>
+          <div class="msg me"><div class="bubble b-me">可以，青蓝比紫蓝透亮多了，更像水的颜色。</div></div>
+          <div class="msg"><div class="av">L</div><div><div class="name-row">Leo</div><div class="bubble b-agent">同意。暖沙做卡片底，冷暖平衡。</div></div></div>
+          <div class="inputbar"><span class="ph">Message #design</span><div class="send">➤</div></div>
+        </div>
+      </div>
+      <div class="swatches">
+        <div class="sw" style="background:oklch(0.985 0.004 220)"><span>底</span></div>
+        <div class="sw" style="background:oklch(0.96 0.018 200)"><span>rail</span></div>
+        <div class="sw" style="background:oklch(0.975 0.012 85)"><span>沙</span></div>
+        <div class="sw" style="background:oklch(0.70 0.13 195);color:#fff"><span>主</span></div>
+        <div class="sw" style="background:oklch(0.52 0.12 200);color:#fff"><span>深</span></div>
+      </div>
+    </div>
+
+    <!-- B -->
+    <div class="card B">
+      <div class="card-head"><span class="name">B · 低饱和高级</span><span class="tag">雾气 · 安静</span></div>
+      <div class="app">
+        <div class="rail">
+          <div class="logo"></div>
+          <div class="ico active">💬</div>
+          <div class="ico">✓</div>
+          <div class="ico">👥</div>
+          <div class="ico">⚙</div>
+        </div>
+        <div class="chat">
+          <div class="ch-title"># design</div>
+          <div class="msg"><div class="av">M</div><div><div class="name-row">Maya</div><div class="bubble b-agent">把导航栏底色换成淡青蓝，激活态加柔光晕，你觉得呢？</div></div></div>
+          <div class="msg me"><div class="bubble b-me">可以，青蓝比紫蓝透亮多了，更像水的颜色。</div></div>
+          <div class="msg"><div class="av">L</div><div><div class="name-row">Leo</div><div class="bubble b-agent">同意。暖沙做卡片底，冷暖平衡。</div></div></div>
+          <div class="inputbar"><span class="ph">Message #design</span><div class="send">➤</div></div>
+        </div>
+      </div>
+      <div class="swatches">
+        <div class="sw" style="background:oklch(0.965 0.006 230)"><span>底</span></div>
+        <div class="sw" style="background:oklch(0.94 0.012 215)"><span>rail</span></div>
+        <div class="sw" style="background:oklch(0.95 0.008 80)"><span>沙</span></div>
+        <div class="sw" style="background:oklch(0.58 0.07 210);color:#fff"><span>主</span></div>
+        <div class="sw" style="background:oklch(0.40 0.06 212);color:#fff"><span>深</span></div>
+      </div>
+    </div>
+
+    <!-- C -->
+    <div class="card C">
+      <div class="card-head"><span class="name">C · 阳光感</span><span class="tag">光感 · 温度</span></div>
+      <div class="app">
+        <div class="rail">
+          <div class="logo"></div>
+          <div class="ico active">💬</div>
+          <div class="ico">✓</div>
+          <div class="ico">👥</div>
+          <div class="ico">⚙</div>
+        </div>
+        <div class="chat">
+          <div class="ch-title"># design</div>
+          <div class="msg"><div class="av">M</div><div><div class="name-row">Maya</div><div class="bubble b-agent">把导航栏底色换成淡青蓝，激活态加柔光晕，你觉得呢？</div></div></div>
+          <div class="msg me"><div class="bubble b-me">可以，青蓝比紫蓝透亮多了，更像水的颜色。</div></div>
+          <div class="msg"><div class="av">L</div><div><div class="name-row">Leo</div><div class="bubble b-agent">同意。暖沙做卡片底，冷暖平衡。</div></div></div>
+          <div class="inputbar"><span class="ph">Message #design</span><div class="send">➤</div></div>
+        </div>
+      </div>
+      <div class="swatches">
+        <div class="sw" style="background:oklch(0.99 0.005 210)"><span>底</span></div>
+        <div class="sw" style="background:oklch(0.93 0.025 190)"><span>rail</span></div>
+        <div class="sw" style="background:oklch(0.96 0.014 85)"><span>沙</span></div>
+        <div class="sw" style="background:oklch(0.70 0.11 190);color:#fff"><span>主</span></div>
+        <div class="sw" style="background:oklch(0.52 0.10 200);color:#fff"><span>深</span></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="sub" style="margin-top:28px;max-width:1320px;margin-left:auto;margin-right:auto">
+    三版的<strong>色相完全一致</strong>（都来自原图提取），差别只在明度/纯度/光感的处理。
+    A 最鲜亮、B 最克制高级、C 最有阳光氛围。看完告诉我选哪个，或者「A 的主色 + C 的背景」这种混搭也行。
+  </p>
+</body>
+</html>

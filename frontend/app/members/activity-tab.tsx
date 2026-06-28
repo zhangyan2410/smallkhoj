@@ -11,7 +11,7 @@ import {
 import { EmptyState } from "@/components/product-ui"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ActivityEventCard, type ActivityItem } from "@/components/agent-activity-list"
-import { apiGet, badgeClass, dotClass, formatTime, statusLabel, shortId, type Member, type Computer, type AgentWorkspace } from "@/lib/control-plane"
+import { apiGet, badgeClass, dotClass, findMemberWorkspace, formatTime, statusLabel, shortId, type Member, type Computer, type AgentWorkspace } from "@/lib/control-plane"
 
 function RuntimeStateSummary({ member, workspace }: { member: Member; workspace?: AgentWorkspace }) {
   const lifecycleStates = [
@@ -31,7 +31,7 @@ function RuntimeStateSummary({ member, workspace }: { member: Member; workspace?
         {lifecycleStates.map(({ key, label, active }) => (
           <span
             key={key}
-            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${
+            className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs font-medium ${
               active
                 ? badgeClass(key)
                 : "border-border bg-muted text-muted-foreground opacity-60"
@@ -47,8 +47,7 @@ function RuntimeStateSummary({ member, workspace }: { member: Member; workspace?
 }
 
 export default function ActivityTab({ member, computers }: { member: Member; computers: Computer[] }) {
-  const computer = computers.find((c) => c.id === member.computerId)
-  const workspace = computer?.agentWorkspaces.find((w) => w.agentId === member.id)
+  const workspace = findMemberWorkspace(member, computers)
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -113,7 +112,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
       {member.kind === "agent" && workspace && (
         <div className="space-y-2">
           <div className="text-xs font-medium uppercase text-muted-foreground">Session Timeline</div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Launched</span>
@@ -169,7 +168,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
           <div className="space-y-4">
             {messageActivities.length > 0 && (
               <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-sky-700">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-accent-blue">
                   <MessageSquare className="size-3" />
                   Messages ({messageActivities.length})
                 </div>
@@ -180,7 +179,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
             )}
             {taskActivities.length > 0 && (
               <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-accent-rose">
                   <ClipboardList className="size-3" />
                   Tasks ({taskActivities.length})
                 </div>
@@ -191,7 +190,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
             )}
             {runtimeActivities.length > 0 && (
               <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-accent-mint">
                   <Cpu className="size-3" />
                   Runtime ({runtimeActivities.length})
                 </div>

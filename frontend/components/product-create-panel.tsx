@@ -86,9 +86,9 @@ export function ComputerConnectForm({ compact = false }: { compact?: boolean }) 
         </form>
         {state.error && <p className="text-sm text-destructive">{state.error}</p>}
         {state.command && (
-          <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+          <div className="space-y-2 rounded-none border-2 border-[var(--ink)] bg-muted/40 p-3">
             <div className="text-xs font-medium uppercase text-muted-foreground">Run on the target computer</div>
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-background p-2 text-xs">{state.command}</pre>
+            <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-none bg-background p-2 text-xs">{state.command}</pre>
           </div>
         )}
       </CardContent>
@@ -151,7 +151,7 @@ export function AgentCreateForm({ computers, compact = false }: { computers: Com
             name="computerId"
             value={computerId}
             onChange={(event) => setComputerId(event.target.value)}
-            className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
+            className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
             required
           >
             {computers.map((computer) => (
@@ -160,7 +160,7 @@ export function AgentCreateForm({ computers, compact = false }: { computers: Com
               </option>
             ))}
           </select>
-          <select name="runtime" className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm">
+          <select name="runtime" className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
             {runtimeOptions.map((runtime) => (
               <option key={runtime} value={runtime}>
                 {runtimeLabel(runtime)}
@@ -179,7 +179,7 @@ export function AgentCreateForm({ computers, compact = false }: { computers: Com
         {computers.length === 0 && <p className="text-sm text-muted-foreground">Connect a computer before creating agents.</p>}
         {state.error && <p className="text-sm text-destructive">{state.error}</p>}
         {state.token && (
-          <p className="break-all rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
+          <p className="break-all rounded-none border-2 border-[var(--ink)] bg-muted/40 p-2 text-xs text-muted-foreground">
             Agent token created: {state.token}
           </p>
         )}
@@ -234,7 +234,7 @@ export function ChannelCreateForm({ members, compact = false }: { members: Membe
           </div>
           <div className="flex flex-wrap gap-2">
             {members.map((member) => (
-              <label key={member.id} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
+              <label key={member.id} className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-xs">
                 <input name="memberIds" type="checkbox" value={member.id} />
                 @{member.name}
                 <span className="text-muted-foreground">[{member.kind}]</span>
@@ -292,7 +292,7 @@ export function ChannelMemberAddForm({
       <CardContent className="space-y-3">
         <form onSubmit={onSubmit} className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-            <select name="channel" className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm" required>
+            <select name="channel" className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset" required>
               {channels.map((channel) => (
                 <option key={channel.id} value={channel.rawName || channel.name.replace("#", "")}>
                   {channel.name}
@@ -305,7 +305,7 @@ export function ChannelMemberAddForm({
           </div>
           <div className="flex flex-wrap gap-2">
             {members.map((member) => (
-              <label key={member.id} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
+              <label key={member.id} className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-xs">
                 <input name="memberIds" type="checkbox" value={member.id} />
                 @{member.name}
                 <span className="text-muted-foreground">[{member.kind}]</span>

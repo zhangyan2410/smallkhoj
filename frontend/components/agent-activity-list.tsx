@@ -21,7 +21,8 @@ import {
   User,
 } from "lucide-react"
 
-import { apiGet, formatTime, shortId } from "@/lib/control-plane"
+import { apiGet, activityCategoryKind, formatTime, shortId } from "@/lib/control-plane"
+import { RuntimeChip } from "@/components/product-ui"
 
 export type ActivityItem = {
   id: string
@@ -96,23 +97,7 @@ const activityTypeLabel: Record<string, string> = {
   failed: "Error",
 }
 
-const labelColorMap: Record<string, string> = {
-  Message: "border-sky-200 bg-sky-50 text-sky-700",
-  Task: "border-amber-200 bg-amber-50 text-amber-700",
-  Runtime: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  Heartbeat: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  Working: "border-orange-200 bg-orange-50 text-orange-700",
-  Thinking: "border-yellow-200 bg-yellow-50 text-yellow-700",
-  Output: "border-blue-200 bg-blue-50 text-blue-700",
-  Idle: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  Reaction: "border-pink-200 bg-pink-50 text-pink-700",
-  Channel: "border-violet-200 bg-violet-50 text-violet-700",
-  Reminder: "border-orange-200 bg-orange-50 text-orange-700",
-  Profile: "border-primary/30 bg-primary/10 text-primary",
-  Integration: "border-teal-200 bg-teal-50 text-teal-700",
-  Thread: "border-indigo-200 bg-indigo-50 text-indigo-700",
-  Error: "border-rose-200 bg-rose-50 text-rose-700",
-}
+// NOTE: labelColorMap removed — 分类色走单一真源 activityCategoryKind() + sk-cat-* token。
 
 function ActivityIcon({ type }: { type: string }) {
   const Icon = activityIcons[type] ?? Terminal
@@ -122,10 +107,10 @@ function ActivityIcon({ type }: { type: string }) {
 function ActivityTypeBadge({ type }: { type: string }) {
   const label = activityTypeLabel[type] ?? type
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${labelColorMap[label] ?? "border-border bg-muted text-muted-foreground"}`}>
+    <RuntimeChip tone={activityCategoryKind(label)} className="min-h-5 gap-1 px-1.5 py-0.5 text-[11px]">
       <ActivityIcon type={type} />
       {label}
-    </span>
+    </RuntimeChip>
   )
 }
 
@@ -144,7 +129,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
   const hasDetails = Object.keys(item.details).length > 0
 
   return (
-    <div className="rounded-md border bg-background">
+    <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card">
       <button
         onClick={() => hasDetails && setExpanded(!expanded)}
         className={`flex w-full items-center gap-2 px-3 py-2 text-left ${hasDetails ? "cursor-pointer hover:bg-accent/50" : "cursor-default"}`}
@@ -185,7 +170,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             {item.details.thought != null && (
               <div className="mt-1">
                 <span className="text-[11px] text-muted-foreground">Thought</span>
-                <pre className="mt-0.5 max-h-32 overflow-auto rounded bg-muted p-1.5 text-[11px]">
+                <pre className="mt-0.5 max-h-32 overflow-auto rounded-none bg-muted p-1.5 text-[11px]">
                   {String(item.details.thought)}
                 </pre>
               </div>
@@ -193,7 +178,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             {item.details.commandPreview != null && (
               <div className="mt-1">
                 <span className="text-[11px] text-muted-foreground">Command</span>
-                <pre className="mt-0.5 max-h-24 overflow-auto rounded bg-muted p-1.5 text-[11px]">
+                <pre className="mt-0.5 max-h-24 overflow-auto rounded-none bg-muted p-1.5 text-[11px]">
                   {String(item.details.commandPreview)}
                 </pre>
               </div>
@@ -214,7 +199,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             )}
             <details className="mt-1">
               <summary className="cursor-pointer text-[11px] text-muted-foreground">raw details</summary>
-              <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted p-2 text-[11px]">
+              <pre className="mt-1 max-h-40 overflow-auto rounded-none bg-muted p-2 text-[11px]">
                 {JSON.stringify(item.details, null, 2)}
               </pre>
             </details>
@@ -292,7 +277,7 @@ export function AgentActivityList({
           </h2>
           <button
             onClick={() => void refreshActivity()}
-            className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+            className="rounded-none border-2 border-[var(--ink)] px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
           >
             Refresh
           </button>
@@ -300,7 +285,7 @@ export function AgentActivityList({
       )}
       {loading && <p className="py-8 text-center text-sm text-muted-foreground">Loading activity...</p>}
       {!loading && activity.length === 0 && !compact && (
-        <div className="rounded-lg border border-dashed py-10 text-center">
+        <div className="rounded-none border border-dashed py-10 text-center">
           <Cpu className="mx-auto size-7 text-muted-foreground/50" />
           <p className="mt-2 text-sm text-muted-foreground">No activity yet.</p>
         </div>

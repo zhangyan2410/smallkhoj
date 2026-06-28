@@ -70,17 +70,22 @@ export function MessageFrame({
       <div className={cn("min-w-0 flex-1", bodyClassName)}>
         <div className="flex items-start justify-between gap-2">
           <div data-slot="message-author" className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-            <span className="truncate font-semibold text-foreground">{memberAvatarName(member).replace(/^@/, "")}</span>
+            <span
+              className="truncate font-semibold"
+              style={stripeColor ? { color: stripeColor } : undefined}
+            >
+              {memberAvatarName(member).replace(/^@/, "")}
+            </span>
             <span
               className={cn(
-                "rounded px-1.5 py-0.5 text-[0.65rem] font-medium",
-                role === "assistant" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                "rounded-none border border-[var(--ink)] px-1.5 py-0.5 text-[0.65rem] font-medium",
+                role === "assistant" ? "sk-accent-blue-soft" : "sk-cat-neutral"
               )}
             >
               {visibleRole}
             </span>
             {visibleTime ? (
-              <span className="whitespace-nowrap text-xs text-muted-foreground" title={time ?? undefined}>
+              <span className="whitespace-nowrap text-xs text-sand-muted" title={time ?? undefined}>
                 {visibleTime}
               </span>
             ) : null}
@@ -88,7 +93,7 @@ export function MessageFrame({
           </div>
           {actions ? <div className="shrink-0">{actions}</div> : null}
         </div>
-        <div data-slot="message-body" className="mt-1">
+        <div data-slot="message-body" className="sk-bubble mt-1 rounded-none px-3 py-2 text-paper-ink">
           {children}
         </div>
       </div>

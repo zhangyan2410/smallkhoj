@@ -34,11 +34,12 @@ import {
   Shield,
 } from "lucide-react"
 
-import { EmptyState, StatusPill } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
 import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
 import { Card, CardContent } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/form"
 import { Button } from "@/components/ui/button"
-import { apiGet, apiHeaders, apiPatch, apiPost, badgeClass, formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
+import { apiGet, apiHeaders, apiPatch, apiPost,  formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
 import { AGENT_DRAG_MIME, parseAgentDragPayload, type AgentDragPayload } from "@/lib/drag-data"
 import { applyHighWater, connectRealtimeEvents, type HighWater } from "@/lib/realtime-events"
 
@@ -99,10 +100,6 @@ type ActivityItem = {
   type: string
   description: string
   timestamp?: string | null
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
 }
 
 function formatChannelName(channel: string | null | undefined, agentName?: string | null): string {
@@ -202,14 +199,14 @@ function SortableTaskCard({
           className={`transition-all ${
             selected ? "border-primary/60 bg-primary/5 ring-1 ring-primary/20" : ""
           } ${
-            recentlyUpdated ? "border-emerald-300 bg-emerald-50 ring-1 ring-emerald-200" : ""
+            recentlyUpdated ? "border-[var(--success)] bg-[color-mix(in_oklch,var(--success)_12%,transparent)] ring-1 ring-[var(--success)]/40" : ""
           } ${
-            isAgentOver ? "border-purple-400 bg-purple-50 ring-2 ring-purple-200" : ""
+            isAgentOver ? "border-primary/50 bg-primary/10 ring-2 ring-primary/30" : ""
           } ${
             dragDisabled
               ? "hover:border-primary/40 hover:bg-primary/5"
-              : "hover:border-primary/60 hover:bg-primary/5 hover:shadow-sm hover:ring-1 hover:ring-primary/15"
-          } ${isDragging ? "border-primary/70 bg-primary/10 shadow-lg ring-2 ring-primary/30" : ""}`}
+              : "hover:border-primary/60 hover:bg-primary/5 sk-hard-shadow-sm hover:ring-1 hover:ring-primary/15"
+          } ${isDragging ? "border-primary/70 bg-primary/10 sk-hard-shadow ring-2 ring-primary/30" : ""}`}
         >
           <CardContent className="space-y-2">
             <div className="flex items-start justify-between gap-3">
@@ -220,26 +217,26 @@ function SortableTaskCard({
                 <div className="mt-1 line-clamp-2 text-sm font-medium">{task.title}</div>
               </div>
               <div className="flex items-center gap-1 transition-transform group-hover:translate-x-0.5">
-                <StatusBadge status={task.status} />
+                <StatusPill status={task.status} label={statusLabel(task.status)} />
               </div>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               {task.creator && (
-                <span className="rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">创建 @{task.creator}</span>
+                <RuntimeChip tone="info" className="min-h-0 px-1.5 py-0.5">创建 @{task.creator}</RuntimeChip>
               )}
               {task.assignee && (
-                <span className="rounded bg-purple-50 px-1.5 py-0.5 font-medium text-purple-700">负责 @{task.assignee}</span>
+                <RuntimeChip tone="primary" className="min-h-0 px-1.5 py-0.5">负责 @{task.assignee}</RuntimeChip>
               )}
               <span className="text-muted-foreground">{formatTime(task.updatedAt || task.createdAt)}</span>
             </div>
             {source && (
-              <div className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+              <div className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
                 <ExternalLink className="size-3" />
                 {source.channel ? formatChannelName(source.channel, agentName) : (source.type || "来源")}
               </div>
             )}
             {isAgentOver && (
-              <div className="rounded-md border border-purple-200 bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
+              <div className="rounded-none border-2 border-[var(--ink)] bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                 松开以分配 agent
               </div>
             )}
@@ -282,13 +279,13 @@ function TaskStatusColumn({
     <section
       ref={setNodeRef}
       data-status={status}
-      className={`min-w-0 rounded-md border p-1.5 transition-all ${
+      className={`min-w-0 rounded-none border-2 border-[var(--ink)] p-1.5 transition-all ${
         isDropTarget
-          ? "border-primary/60 bg-primary/10 shadow-sm ring-2 ring-primary/15"
+          ? "border-primary/60 bg-primary/10 sk-hard-shadow-sm ring-2 ring-primary/15"
           : "bg-muted/20"
       }`}
     >
-      <div className={`mb-1.5 flex items-center justify-between gap-2 rounded px-1 py-0.5 ${
+      <div className={`mb-1.5 flex items-center justify-between gap-2 rounded-none px-1 py-0.5 ${
         isDropTarget ? "bg-primary/10 text-primary" : ""
       }`}>
         <span className="text-xs font-medium">{statusLabel(status)}</span>
@@ -312,7 +309,7 @@ function TaskStatusColumn({
           ))}
         </SortableContext>
         {tasks.length === 0 && (
-          <div className="rounded-md border border-dashed py-4 text-center text-[0.65rem] text-muted-foreground">
+          <div className="rounded-none border border-dashed py-4 text-center text-[0.65rem] text-muted-foreground">
             {isDropTarget ? "松开以放置" : "空"}
           </div>
         )}
@@ -334,15 +331,15 @@ function ListRow({ task, selected, onSelect }: { task: Task; selected: boolean; 
         <div className="truncate font-medium">{task.title}</div>
         <div className="mt-1 flex flex-wrap gap-2 text-xs">
           {task.creator && (
-            <span className="rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">创建 @{task.creator}</span>
+            <RuntimeChip tone="info" className="min-h-0 px-1.5 py-0.5">创建 @{task.creator}</RuntimeChip>
           )}
           {task.assignee && (
-            <span className="rounded bg-purple-50 px-1.5 py-0.5 font-medium text-purple-700">负责 @{task.assignee}</span>
+            <RuntimeChip tone="primary" className="min-h-0 px-1.5 py-0.5">负责 @{task.assignee}</RuntimeChip>
           )}
           <span className="text-muted-foreground">更新 {formatTime(task.updatedAt || task.createdAt)}</span>
         </div>
       </div>
-      <StatusBadge status={task.status} />
+      <StatusPill status={task.status} label={statusLabel(task.status)} />
     </button>
   )
 }
@@ -368,7 +365,7 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
     }
   })()
   return (
-    <div className="flex items-start gap-2 rounded-md border bg-background px-2.5 py-2">
+    <div className="flex items-start gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
       {icon}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -379,15 +376,18 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
         {entry.content && <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{entry.content}</p>}
         {entry.decision && (
           <div className="mt-1">
-            <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium ${
-              entry.decision === "approved" || entry.decision === "pass"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : entry.decision === "rejected" || entry.decision === "fail"
-                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                  : "border-border bg-muted text-muted-foreground"
-            }`}>
+            <RuntimeChip
+              className="min-h-0 px-1.5 py-0.5"
+              tone={
+                entry.decision === "approved" || entry.decision === "pass"
+                  ? "success"
+                  : entry.decision === "rejected" || entry.decision === "fail"
+                    ? "danger"
+                    : "neutral"
+              }
+            >
               {entry.decision}
-            </span>
+            </RuntimeChip>
           </div>
         )}
         {entry.note && <p className="mt-1 text-xs text-muted-foreground">{entry.note}</p>}
@@ -442,7 +442,7 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-md border border-dashed bg-muted/30 p-2.5">
+    <form onSubmit={handleSubmit} className="rounded-none border border-dashed bg-muted/30 p-2.5">
       <div className="flex items-start gap-2">
         <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
@@ -452,10 +452,11 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
           </p>
         </div>
       </div>
-      <textarea
+      <Textarea
         name="memoryInstruction"
         placeholder="补充要求，例如测试证据、剩余风险"
-        className="mt-2 min-h-14 w-full resize-none rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+        rows={3}
+        className="mt-2 resize-none text-xs"
         disabled={!hasAgentAssignee || status === "sending"}
       />
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -469,7 +470,7 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
               className="peer sr-only"
               disabled={!hasAgentAssignee || status === "sending"}
             />
-            <span className="inline-flex rounded-md border bg-background px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
+            <span className="inline-flex rounded-none border-2 border-[var(--ink)] bg-sand-card px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
               {memoryOutputDirectionLabel(direction)}
             </span>
           </label>
@@ -545,7 +546,7 @@ function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionTok
 
   if (loading) {
     return (
-      <div className="rounded-md border bg-background p-2.5">
+      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
         <h4 className="text-xs font-medium">任务记忆</h4>
         <p className="mt-1.5 text-xs text-muted-foreground">Loading memory...</p>
       </div>
@@ -572,7 +573,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
       <div className="grid gap-1.5 text-xs">
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">状态</span>
-          <StatusBadge status={task.status} />
+          <StatusPill status={task.status} label={statusLabel(task.status)} />
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">负责人</span>
@@ -584,7 +585,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
         </div>
       </div>
       {source && (
-        <div className="rounded-md border bg-background p-2.5">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
           <h4 className="text-xs font-medium">来源</h4>
           <div className="mt-1.5 space-y-1 text-xs text-muted-foreground">
             <div>类型: {source.type || "message"}</div>
@@ -593,11 +594,11 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
         </div>
       )}
       {(entries.length > 0 || (evidence?.notes?.length ?? 0) > 0) && (
-        <div className="rounded-md border bg-background p-2.5">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
           <h4 className="text-xs font-medium">证据</h4>
           <div className="mt-1.5 space-y-1.5">
             {(evidence?.notes || []).map((note) => (
-              <div key={note} className="rounded-md border border-dashed bg-muted/30 px-2 py-1 text-xs">{note}</div>
+              <div key={note} className="rounded-none border border-dashed bg-muted/30 px-2 py-1 text-xs">{note}</div>
             ))}
             {entries.map((entry, i) => (
               <EvidenceEntryRow key={`${entry.type}-${entry.timestamp}-${i}`} entry={entry} />
@@ -606,7 +607,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
         </div>
       )}
       {activity.length > 0 && (
-        <div className="rounded-md border bg-background p-2.5">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
           <h4 className="text-xs font-medium">活动</h4>
           <div className="mt-1.5 space-y-1.5">
             {activity.map((item) => (
@@ -646,6 +647,9 @@ export type TaskBoardProps = {
   initialSelectedTaskId?: string | null
   /** Callback when a task is moved (for optimistic updates in parent) */
   onTaskMoved?: (taskId: string, newStatus: string) => void
+  /** Optional override: clicking a card navigates (e.g. to ?task=) instead of
+      toggling local selection. When provided, handleSelect calls this. */
+  onSelectTask?: (task: Task) => void
 }
 
 export function TaskBoard({
@@ -659,6 +663,7 @@ export function TaskBoard({
   sessionToken,
   initialSelectedTaskId,
   onTaskMoved,
+  onSelectTask,
 }: TaskBoardProps) {
   const [view, setView] = useState<"board" | "list">(initialView)
   const [tasks, setTasks] = useState<Task[]>(preloadedTasks ?? [])
@@ -738,8 +743,12 @@ export function TaskBoard({
   }, [selectedTask, showDetail])
 
   const handleSelect = useCallback((task: Task) => {
+    if (onSelectTask) {
+      onSelectTask(task)
+      return
+    }
     setSelectedTask((prev) => (prev?.id === task.id ? null : task))
-  }, [])
+  }, [onSelectTask])
 
   const updateLocalTask = useCallback((taskId: string, updater: (task: Task) => Task) => {
     setTasks((prev) => prev.map((task) => (task.id === taskId ? updater(task) : task)))
@@ -883,7 +892,7 @@ export function TaskBoard({
   return (
     <div className="space-y-3">
       {dragError && (
-        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+        <div className="rounded-none border-2 border-[var(--ink)] sk-cat-danger px-3 py-2 text-xs">
           {dragError}
         </div>
       )}
@@ -916,7 +925,7 @@ export function TaskBoard({
           <DragOverlay>
             {activeTask ? (
               <div className="rotate-1 opacity-95">
-                <Card size="sm" className="border-primary/60 bg-card shadow-xl ring-2 ring-primary/20">
+                <Card size="sm" className="border-primary/60 bg-card sk-hard-shadow ring-2 ring-primary/20">
                   <CardContent className="space-y-2">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -925,7 +934,7 @@ export function TaskBoard({
                         </div>
                         <div className="mt-1 line-clamp-2 text-sm font-medium">{activeTask.title}</div>
                       </div>
-                      <StatusBadge status={activeTask.status} />
+                      <StatusPill status={activeTask.status} label={statusLabel(activeTask.status)} />
                     </div>
                     <div className="text-xs text-muted-foreground">移动到目标状态列</div>
                   </CardContent>
@@ -937,7 +946,7 @@ export function TaskBoard({
       ) : view === "board" ? (
         boardContent
       ) : (
-        <div className="overflow-hidden rounded-md border bg-card">
+        <div className="overflow-hidden rounded-none border-2 border-[var(--ink)] bg-card">
           {tasks.map((task) => (
             <ListRow
               key={task.id}
@@ -950,7 +959,7 @@ export function TaskBoard({
       )}
 
       {showDetail && selectedTask && (
-        <div className="rounded-md border bg-card p-3">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-card p-3">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold">任务详情</h3>
             <button

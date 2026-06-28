@@ -2,9 +2,12 @@
 
 import { useCallback, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ListChecks } from "lucide-react"
 
 import { TaskBoard, type Task } from "@/components/task-board"
+import { StatusPill } from "@/components/product-ui"
+import { statusLabel } from "@/lib/control-plane"
 
 export type TaskDndBoardProps = {
   tasks: Task[]
@@ -21,23 +24,8 @@ function taskHref(task: Task, filters: Record<string, string>) {
   return `/tasks?${params.toString()}`
 }
 
-function StatusBadge({ status }: { status: string }) {
-  // Inline simple status display for list view
-  const colorMap: Record<string, string> = {
-    todo: "bg-slate-100 text-slate-700",
-    in_progress: "bg-sky-50 text-sky-700",
-    in_review: "bg-amber-50 text-amber-700",
-    done: "bg-emerald-50 text-emerald-700",
-    closed: "bg-muted text-muted-foreground",
-  }
-  return (
-    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${colorMap[status] || colorMap.closed}`}>
-      {status}
-    </span>
-  )
-}
-
 export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoardProps) {
+  const router = useRouter()
   const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({})
 
   const localTasks = useMemo(
@@ -64,6 +52,11 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
     status: filters.status,
   }
 
+  // 点击看板卡片 -> 导航到 ?task=（打开详情 Dialog），单一真源是 URL
+  const handleSelectTask = useCallback((task: Task) => {
+    router.push(taskHref(task, filterRecord))
+  }, [router, filterRecord])
+
   return (
     <div>
       {view === "board" ? (
@@ -76,9 +69,10 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
           dragDisabled={false}
           sessionToken={sessionToken}
           onTaskMoved={handleTaskMoved}
+          onSelectTask={handleSelectTask}
         />
       ) : (
-        <div className="overflow-hidden rounded-md border bg-card">
+        <div className="overflow-hidden rounded-none border-2 border-[var(--ink)] bg-card">
           {localTasks.map((task) => (
             <Link
               key={task.id}
@@ -95,7 +89,7 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
                   <span>updated {new Date(task.updatedAt || task.createdAt || 0).toLocaleString()}</span>
                 </div>
               </div>
-              <StatusBadge status={task.status} />
+              <StatusPill status={task.status} label={statusLabel(task.status)} />
               <ListChecks className="size-4 text-muted-foreground" />
             </Link>
           ))}

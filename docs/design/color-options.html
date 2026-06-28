@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>SmallKhoj Visual Hierarchy 配色方案</title>
+<style>
+  :root {
+    --sand: #e8dcc4;
+    --sand-card: #f2ead8;
+    --ink: #111827;
+    --paper: #fdfaf3;
+  }
+  body { margin:0; padding:24px; background:#d9cdb5; font-family: -apple-system, "PingFang SC", sans-serif; color:#1a1a2e; }
+  h1 { text-align:center; color:#111827; font-size:20px; margin-bottom:6px; }
+  .sub { text-align:center; color:#5a4a30; font-size:13px; margin-bottom:24px; }
+  .schemes { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; }
+  .scheme { background:var(--paper); border:2px solid var(--ink); box-shadow:3px 3px 0 var(--ink); padding:16px; }
+  .scheme h2 { font-size:15px; margin:0 0 4px; }
+  .scheme p { font-size:12px; color:#5a4a30; margin:0 0 14px; }
+  .swatches { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .sw { width:54px; height:40px; border:1.5px solid var(--ink); display:flex; align-items:center; justify-content:center; font-size:9px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.5); }
+  .demo { background:var(--sand); border:1.5px solid var(--ink); padding:10px; }
+  .demo-title { font-size:12px; font-weight:600; margin-bottom:8px; color:#3a2a15; }
+  .tabs { display:flex; gap:4px; margin-bottom:10px; }
+  .tab { padding:5px 10px; font-size:11px; border:1.5px solid var(--ink); font-weight:500; }
+  .btn { display:inline-block; padding:5px 10px; font-size:11px; border:1.5px solid var(--ink); margin-right:4px; font-weight:500; }
+  .chip { display:inline-block; padding:2px 7px; font-size:10px; border:1.5px solid var(--ink); margin:0 3px 3px 0; }
+  .msg { background:var(--paper); border:1.5px solid var(--ink); padding:8px; font-size:11px; margin-top:8px; }
+  .msg-meta { font-size:10px; margin-bottom:4px; }
+  .label { font-size:9px; color:#6a5a40; margin-top:10px; margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px; }
+
+  /* Scheme A: 海洋手绘 (蓝+青+珊瑚+金) */
+  .a-primary { background:#2f7fc4; }       /* 中海蓝 215 */
+  .a-teal { background:#1f9e8f; }          /* 青绿 180 */
+  .a-coral { background:#d65648; }         /* 珊瑚 25 */
+  .a-gold { background:#d9a521; color:#3a2a00; text-shadow:none; }  /* 手绘金 85 */
+  .a-tab-active { background:#2f7fc4; color:#fff; }
+  .a-tab { background:#fdfaf3; color:#5a4a30; }
+  .a-link { color:#2f7fc4; }
+
+  /* Scheme B: 水彩马卡龙 (低饱和粉彩多色) */
+  .b-primary { background:#5b9bc9; }       /* 雾蓝 */
+  .b-mint { background:#6fb89a; }          /* 薄荷 */
+  .b-rose { background:#d98a9e; }          /* 玫瑰粉 */
+  .b-amber { background:#e0b35e; color:#3a2a00; text-shadow:none; }  /* 琥珀 */
+  .b-lav { background:#8a9bc9; }           /* 雾紫蓝(不偏紫,蓝为主) */
+  .b-tab-active { background:#5b9bc9; color:#fff; }
+  .b-tab { background:#fdfaf3; color:#5a4a30; }
+  .b-link { color:#3a7ab0; }
+
+  /* Scheme C: 强对比手绘 (高饱和原色, 童书风) */
+  .c-primary { background:#1e6fb8; }       /* 强蓝 */
+  .c-yellow { background:#f2c12e; color:#3a2a00; text-shadow:none; }  /* 手绘黄 */
+  .c-red { background:#d63838; }           /* 手绘红 */
+  .c-green { background:#2fa84f; }         /* 手绘绿 */
+  .c-purple { background:#6b4ba0; }        /* 手绘紫(允许,作强调点缀) */
+  .c-tab-active { background:#1e6fb8; color:#fff; }
+  .c-tab { background:#fdfaf3; color:#3a2a15; }
+  .c-link { color:#1e6fb8; }
+</style>
+</head>
+<body>
+<h1>SmallKhoj Visual Hierarchy — 配色方案对比</h1>
+<p class="sub">基底统一：暖沙底 + 墨边直角手作风。区别在强调色的色相丰富度。选一个，我落地到 token。</p>
+
+<div class="schemes">
+
+  <!-- Scheme A -->
+  <div class="scheme">
+    <h2>A. 海洋手绘</h2>
+    <p>4 色相：中海蓝(主) + 青绿 + 珊瑚 + 手绘金。取自你项目已有的 agent palette，协调度高。</p>
+    <div class="swatches">
+      <div class="sw a-primary">蓝215</div>
+      <div class="sw a-teal">青180</div>
+      <div class="sw a-coral">珊瑚25</div>
+      <div class="sw a-gold">金85</div>
+    </div>
+    <div class="demo">
+      <div class="demo-title">预览 · 海洋手绘</div>
+      <div class="tabs">
+        <span class="tab a-tab-active">聊天</span>
+        <span class="tab a-tab">任务</span>
+        <span class="tab a-tab">记忆</span>
+      </div>
+      <div>
+        <span class="btn a-primary">发送</span>
+        <span class="btn" style="background:#fdfaf3">取消</span>
+      </div>
+      <div class="label">分类标签</div>
+      <span class="chip a-teal">青-消息</span>
+      <span class="chip a-gold">金-任务</span>
+      <span class="chip a-coral">珊瑚-错误</span>
+      <span class="chip a-primary">蓝-信息</span>
+      <div class="msg">
+        <div class="msg-meta">xiaofei · <span class="a-link" style="font-weight:500">任务#1 链接</span></div>
+        收到任务，已 claim。给你一份上手指南…
+      </div>
+    </div>
+  </div>
+
+  <!-- Scheme B -->
+  <div class="scheme">
+    <h2>B. 水彩马卡龙</h2>
+    <p>5 色相低饱和粉彩：雾蓝+薄荷+玫瑰+琥珀。柔和、艺术感强，但对比稍弱。</p>
+    <div class="swatches">
+      <div class="sw b-primary">雾蓝</div>
+      <div class="sw b-mint">薄荷</div>
+      <div class="sw b-rose">玫瑰</div>
+      <div class="sw b-amber">琥珀</div>
+      <div class="sw b-lav">雾蓝紫</div>
+    </div>
+    <div class="demo">
+      <div class="demo-title">预览 · 水彩马卡龙</div>
+      <div class="tabs">
+        <span class="tab b-tab-active">聊天</span>
+        <span class="tab b-tab">任务</span>
+        <span class="tab b-tab">记忆</span>
+      </div>
+      <div>
+        <span class="btn b-primary">发送</span>
+        <span class="btn" style="background:#fdfaf3">取消</span>
+      </div>
+      <div class="label">分类标签</div>
+      <span class="chip b-mint">薄荷</span>
+      <span class="chip b-amber">琥珀</span>
+      <span class="chip b-rose">玫瑰</span>
+      <span class="chip b-primary">雾蓝</span>
+      <div class="msg">
+        <div class="msg-meta">xiaofei · <span class="b-link" style="font-weight:500">任务#1 链接</span></div>
+        收到任务，已 claim。给你一份上手指南…
+      </div>
+    </div>
+  </div>
+
+  <!-- Scheme C -->
+  <div class="scheme">
+    <h2>C. 童书手绘</h2>
+    <p>高饱和原色：强蓝+手绘黄+红+绿(+紫点缀)。最像 Croodles 头像的童书感，对比最强。</p>
+    <div class="swatches">
+      <div class="sw c-primary">强蓝</div>
+      <div class="sw c-yellow">手绘黄</div>
+      <div class="sw c-red">手绘红</div>
+      <div class="sw c-green">手绘绿</div>
+      <div class="sw c-purple">紫点缀</div>
+    </div>
+    <div class="demo">
+      <div class="demo-title">预览 · 童书手绘</div>
+      <div class="tabs">
+        <span class="tab c-tab-active">聊天</span>
+        <span class="tab c-tab">任务</span>
+        <span class="tab c-tab">记忆</span>
+      </div>
+      <div>
+        <span class="btn c-primary">发送</span>
+        <span class="btn" style="background:#fdfaf3">取消</span>
+      </div>
+      <div class="label">分类标签</div>
+      <span class="chip c-green">绿</span>
+      <span class="chip c-yellow">黄</span>
+      <span class="chip c-red">红</span>
+      <span class="chip c-primary">蓝</span>
+      <div class="msg">
+        <div class="msg-meta">xiaofei · <span class="c-link" style="font-weight:500">任务#1 链接</span></div>
+        收到任务，已 claim。给你一份上手指南…
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="sub" style="margin-top:24px">三个方案都修了对比度（muted 文字加深）。区别只在强调色色相丰富度。告诉我选 A / B / C，或从里面挑色组合。</p>
+</body>
+</html>

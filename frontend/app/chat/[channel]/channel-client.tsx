@@ -5,26 +5,18 @@ import Link from "next/link"
 import { useTranslations } from "next-intl"
 import {
   Activity,
-  Bell,
   Bookmark,
-  Bot,
   CheckSquare,
   Clipboard,
   Database,
   Files,
-  HardDrive,
-  Hash,
   ImageIcon,
   ListChecks,
   MessageCircle,
-  MessageSquare,
   Paperclip,
   Plus,
-  Search,
   Send,
-  Settings,
   Smile,
-  Sparkles,
   Trash2,
   Users,
   X,
@@ -60,11 +52,6 @@ import {
   type PublicEventEnvelope,
 } from "@/lib/realtime-events"
 import { channelMemberAddPayload } from "@/lib/channel-members"
-import { AGENT_DRAG_MIME, parseAgentDragPayload, serializeAgentDragPayload } from "@/lib/drag-data"
-import { getAgentColor } from "@/lib/agent-color"
-import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
-import { CreateChannelDialog } from "./create-channel-dialog"
-import { CreateAgentDialog } from "./create-agent-dialog"
 import { memberForMessageSender } from "@/lib/member-avatar"
 
 type ChannelInfo = { id: string; name: string; type: string; description?: string }
@@ -133,20 +120,16 @@ type SavedItem = {
 }
 
 const conversationTabs = [
-  { key: "chat", labelKey: "tabChat", icon: MessageCircle },
-  { key: "tasks", labelKey: "tabTasks", icon: ListChecks },
-  { key: "memory", labelKey: "tabMemory", icon: Database },
-  { key: "files", labelKey: "tabFiles", icon: Files },
-  { key: "activity", labelKey: "tabActivity", icon: Activity },
-]
-const CHAT_SIDEBAR_WIDTH_KEY = "smallkhoj.chat.sidebarWidth"
-const CHAT_SIDEBAR_MIN_WIDTH = 220
-const CHAT_SIDEBAR_MAX_WIDTH = 420
-const CHAT_SIDEBAR_DEFAULT_WIDTH = 260
+  { key: "chat", labelKey: "tabChat", icon: MessageCircle, tone: "blue" },
+  { key: "tasks", labelKey: "tabTasks", icon: ListChecks, tone: "rose" },
+  { key: "memory", labelKey: "tabMemory", icon: Database, tone: "mint" },
+  { key: "files", labelKey: "tabFiles", icon: Files, tone: "green" },
+  { key: "activity", labelKey: "tabActivity", icon: Activity, tone: "purple" },
+] as const
 const THREAD_PANEL_WIDTH_KEY = "smallkhoj.chat.threadWidth"
 const THREAD_PANEL_MIN_WIDTH = 320
-const THREAD_PANEL_MAX_WIDTH = 560
-const THREAD_PANEL_DEFAULT_WIDTH = 384
+const THREAD_PANEL_MAX_WIDTH = 760
+const THREAD_PANEL_DEFAULT_WIDTH = 420
 
 function channelPathSegment(value: string) {
   return encodeURIComponent(value)
@@ -254,7 +237,7 @@ export function ChannelClient({
   const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null)
   const [threadData, setThreadData] = useState<ThreadData | null>(null)
   const [threadLoading, setThreadLoading] = useState(false)
-  const [showMembers, setShowMembers] = useState(true)
+  const [showMembers, setShowMembers] = useState(false)
   const [channelId, setChannelId] = useState(initialChannelId)
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(() => new Set())
   const [taskMessageIds, setTaskMessageIds] = useState<Set<string>>(() => new Set())
@@ -269,13 +252,7 @@ export function ChannelClient({
   const [memoryProposalLoading, setMemoryProposalLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
-  const [agentDropChannelId, setAgentDropChannelId] = useState<string | null>(null)
-  const [agentDropError, setAgentDropError] = useState<string | null>(null)
-  const [sidebarWidthOverride, setSidebarWidthOverride] = useState<number | null>(null)
   const [threadWidthOverride, setThreadWidthOverride] = useState<number | null>(null)
-  // Per-conversation unread counts (in-memory only; reset on page load).
-  // Keyed by channel/DM id. Cleared when the user navigates to that conversation.
-  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const dragDepthRef = useRef(0)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -283,22 +260,24 @@ export function ChannelClient({
   const messageEndRef = useRef<HTMLDivElement>(null)
   const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
 
-  const storedSidebarWidth = useSyncExternalStore(
-    subscribePanelWidthStore,
-    () => readStoredPanelWidth(CHAT_SIDEBAR_WIDTH_KEY, CHAT_SIDEBAR_DEFAULT_WIDTH, CHAT_SIDEBAR_MIN_WIDTH, CHAT_SIDEBAR_MAX_WIDTH),
-    () => CHAT_SIDEBAR_DEFAULT_WIDTH,
-  )
   const storedThreadWidth = useSyncExternalStore(
     subscribePanelWidthStore,
     () => readStoredPanelWidth(THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_DEFAULT_WIDTH, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),
     () => THREAD_PANEL_DEFAULT_WIDTH,
   )
-  const sidebarWidth = sidebarWidthOverride ?? storedSidebarWidth
   const threadWidth = threadWidthOverride ?? storedThreadWidth
 
   const currentChannel = channels.find((c) => c.name.replace("#", "") === channelName)
   const currentDm = dms.find((dm) => dm.name === channelName)
-  const currentTitle = currentDm?.displayName ?? (currentChannel?.name ?? `#${channelName}`)
+  const currentTitle = (() => {
+    // DM 标题优先用 peer 的干净名字，绝不直接显示后端原始的 "DM @<uuid>"
+    // （否则 hydration 后会闪一下长 id 才切到正确名字）。
+    if (currentDm) {
+      const peerName = currentDm.peer?.profile?.displayName || currentDm.peer?.displayName || currentDm.peer?.name
+      return peerName || tChat("directMessage")
+    }
+    return currentChannel?.name ?? `#${channelName}`
+  })()
   const currentIsDm = Boolean(currentDm)
   const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
   const allKnownMembers = [...members, ...allMembers]
@@ -345,33 +324,15 @@ export function ChannelClient({
     window.addEventListener("pointerup", handlePointerUp, { once: true })
   }
 
-  function handleSidebarResizePointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    startPanelResize(
-      event,
-      sidebarWidth,
-      (width) => setPersistentPanelWidth(width, setSidebarWidthOverride, CHAT_SIDEBAR_WIDTH_KEY, CHAT_SIDEBAR_MIN_WIDTH, CHAT_SIDEBAR_MAX_WIDTH),
-      "right-edge",
-    )
-  }
-
+  // Thread resize = ONE drag line between message area and thread. The message
+  // area is flex-1 so it automatically shrinks as thread grows; only threadWidth
+  // needs to change. The line is the shared boundary the user described.
   function handleThreadResizePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     startPanelResize(
       event,
       threadWidth,
       (width) => setPersistentPanelWidth(width, setThreadWidthOverride, THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),
       "left-edge",
-    )
-  }
-
-  function handleSidebarResizeKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
-    event.preventDefault()
-    setPersistentPanelWidth(
-      sidebarWidth + (event.key === "ArrowRight" ? 16 : -16),
-      setSidebarWidthOverride,
-      CHAT_SIDEBAR_WIDTH_KEY,
-      CHAT_SIDEBAR_MIN_WIDTH,
-      CHAT_SIDEBAR_MAX_WIDTH,
     )
   }
 
@@ -417,13 +378,6 @@ export function ChannelClient({
       }
       if (match && !cancelled) {
         setChannelId(match.id)
-        // Navigating to a conversation clears its unread counter.
-        setUnreadCounts((prev) => {
-          if (!(match.id in prev)) return prev
-          const next = { ...prev }
-          delete next[match.id]
-          return next
-        })
         const mRes = await fetch(`${API_BASE}/api/v1/channels/${match.id}/members`, { headers: h })
         if (mRes.ok) { const md = await mRes.json(); if (!cancelled) setMembers(md.members || []) }
       }
@@ -703,15 +657,6 @@ export function ChannelClient({
           void refreshAllMembers()
           return
         }
-        // Unread tracking: a new message in a conversation we are NOT currently
-        // viewing increments its in-memory unread counter. The scope.id tells us
-        // which channel/DM the message belongs to.
-        if (event.type === "message.created") {
-          const eventChannelId = event.scope?.id
-          if (eventChannelId && eventChannelId !== channelId) {
-            setUnreadCounts((prev) => ({ ...prev, [eventChannelId]: (prev[eventChannelId] ?? 0) + 1 }))
-          }
-        }
         if (!shouldHandleRealtimeEvent(event, { channelId, channelName })) {
           // Event belongs to another channel/DM or to a non-chat scope:
           // refresh sidebar lists so unread/new channels are visible.
@@ -779,36 +724,6 @@ export function ChannelClient({
     await apiPost(`/api/v1/channels/${targetChannelId}/members`, channelMemberAddPayload(memberId), sessionToken)
     if (targetChannelId === channelId) {
       await refreshMembers()
-    }
-  }
-
-  function handleChannelAgentDragOver(event: React.DragEvent, targetChannelId: string) {
-    if (!event.dataTransfer.types.includes(AGENT_DRAG_MIME)) return
-    event.preventDefault()
-    event.stopPropagation()
-    event.dataTransfer.dropEffect = "copy"
-    setAgentDropError(null)
-    setAgentDropChannelId(targetChannelId)
-  }
-
-  function handleChannelAgentDragLeave(event: React.DragEvent, targetChannelId: string) {
-    if (!event.dataTransfer.types.includes(AGENT_DRAG_MIME)) return
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-    if (agentDropChannelId === targetChannelId) setAgentDropChannelId(null)
-  }
-
-  async function handleChannelAgentDrop(event: React.DragEvent, targetChannelId: string) {
-    if (!event.dataTransfer.types.includes(AGENT_DRAG_MIME)) return
-    event.preventDefault()
-    event.stopPropagation()
-    setAgentDropChannelId(null)
-    const payload = parseAgentDragPayload(event.dataTransfer.getData(AGENT_DRAG_MIME))
-    if (!payload || payload.kind !== "agent") return
-    try {
-      await addMemberToChannel(targetChannelId, payload.id)
-    } catch (error) {
-      console.error("Drop agent into channel failed:", error)
-      setAgentDropError(error instanceof Error ? error.message : "Failed to add agent")
     }
   }
 
@@ -971,7 +886,7 @@ export function ChannelClient({
           onClick={() => openThread(message)}
           aria-label={tChat("replyInThread")}
           title={tChat("reply")}
-          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <MessageCircle className="size-3.5" />
         </button>
@@ -980,7 +895,7 @@ export function ChannelClient({
           onClick={() => toggleReaction(message, "👍")}
           aria-label={tChat("react")}
           title={tChat("react")}
-          className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
             hasReacted ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
@@ -991,7 +906,7 @@ export function ChannelClient({
           onClick={() => void toggleSaved(message.id)}
           aria-label={tChat("saveMessage")}
           title={tChat("saveMessage")}
-          className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
             isSaved ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
@@ -1002,7 +917,7 @@ export function ChannelClient({
           onClick={() => handleCreateTaskFromMessage(message)}
           aria-label={tChat("createTaskFromMessage")}
           title={tChat("asTask")}
-          className={`inline-flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
             isTasked ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
@@ -1013,7 +928,7 @@ export function ChannelClient({
           onClick={() => handleCopyMessage(message)}
           aria-label={tChat("copyMessage")}
           title={tChat("copyMessage")}
-          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Clipboard className="size-3.5" />
         </button>
@@ -1060,313 +975,118 @@ export function ChannelClient({
   const activeReplies = threadData?.replies ?? (threadData?.messages || []).filter((msg) => msg.parentId)
 
   return (
-    <div className="flex h-screen bg-background">
-      <nav
-        aria-label="Primary"
-        className="hidden w-14 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-3 sm:flex"
-      >
-        <Link
-          href="/"
-          aria-label="Home"
-          className="mb-1 flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.66_0.14_262)] text-primary-foreground"
-        >
-          <Sparkles className="size-4" />
-        </Link>
-        {[
-          { href: "/?focus=search", label: tChat("search"), icon: Search },
-          { href: "/chat", label: tChat("tabChat"), icon: MessageSquare, active: true },
-          { href: "/tasks", label: tChat("tabTasks"), icon: CheckSquare },
-          { href: "/members", label: tChat("members"), icon: Bot },
-          { href: "/computers", label: tChat("computers"), icon: HardDrive },
-          { href: "/daemon", label: tChat("activity"), icon: Bell },
-        ].map(({ href, label, icon: Icon, active }) => (
-          <Link
-            key={label}
-            href={href}
-            aria-label={label}
-            title={label}
-            className={`flex size-9 items-center justify-center rounded-xl transition-colors ${
-              active
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            }`}
-          >
-            <Icon className="size-[18px]" />
-          </Link>
-        ))}
-        <Link
-          href="/settings"
-          aria-label={tChat("settings")}
-          title={tChat("settings")}
-          className="mt-auto flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          <Settings className="size-[18px]" />
-        </Link>
-      </nav>
-
-      <aside
-        className="relative hidden shrink-0 border-r bg-sidebar sm:flex sm:flex-col"
-        style={{ width: sidebarWidth }}
-      >
-        <div className="border-b p-3">
-          <Link href="/" className="block rounded-md px-2 py-1.5 text-sm font-semibold hover:bg-sidebar-accent">
-            SmallKhoj
-            <span className="block text-xs font-normal text-muted-foreground">{tChat("workbench")}</span>
-          </Link>
-        </div>
-        <div className="p-3">
-          <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">{tChat("attention")}</h3>
-          <div className="space-y-1">
-            <Link href="/daemon" className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
-              <Activity className="size-3.5" />
-              {tChat("activity")}
-            </Link>
-            <Link href="/?focus=saved" className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
-              <Bookmark className="size-3.5" />
-              {tChat("saved")}
-            </Link>
-          </div>
-          <div className="mb-2 mt-5 flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase text-muted-foreground">{tChat("channels")}</h3>
-            <CreateChannelDialog />
-          </div>
-          <div className="space-y-1">
-            {[...channels].sort((a, b) => a.name.localeCompare(b.name)).map((ch) => {
-              const chUnread = unreadCounts[ch.id] ?? 0
-              return (
-                <Link
-                  key={ch.id}
-                  href={`/chat/${channelPathSegment(ch.name.replace("#", ""))}`}
-                  onDragOver={(event) => handleChannelAgentDragOver(event, ch.id)}
-                  onDragLeave={(event) => handleChannelAgentDragLeave(event, ch.id)}
-                  onDrop={(event) => void handleChannelAgentDrop(event, ch.id)}
-                  title={tChat("dropAgentToChannel")}
-                  className={`block truncate rounded-md border px-2 py-1.5 text-sm transition-colors ${
-                    ch.name.replace("#", "") === channelName ? "border-primary/20 bg-primary/10 font-medium text-primary" : "border-transparent hover:bg-sidebar-accent"
-                  } ${
-                    agentDropChannelId === ch.id ? "border-primary/50 bg-primary/10 ring-1 ring-primary/25" : ""
-                  }`}
-                >
-                  <span className="inline-flex min-w-0 items-center gap-1">
-                    <Hash className="size-3" />
-                    <span className="truncate">{ch.name.replace("#", "")}</span>
-                    {/* Low-density unread indicator: a subtle dot, no count. */}
-                    {chUnread > 0 && (
-                      <span className="ml-auto size-1.5 rounded-full bg-primary" aria-label={tChat("unread", { count: chUnread })} />
-                    )}
-                    {chUnread === 0 && <span className="ml-auto text-[0.7rem] text-muted-foreground">ch</span>}
-                  </span>
-                </Link>
-              )
-            })}
-          </div>
-          {agentDropError && <p className="mt-2 text-xs text-destructive">{agentDropError}</p>}
-          <div className="mb-2 mt-5 flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase text-muted-foreground">{tChat("dms")}</h3>
-            <CreateAgentDialog />
-          </div>
-          <div className="space-y-1">
-            {dms.map((dm) => {
-              const avatarMember = dmAvatarMember(dm)
-              const isAgentDm = avatarMember.kind === "agent"
-              const dmUnread = unreadCounts[dm.id] ?? 0
-              const isActive = dm.name === channelName
-              return (
-                <Link
-                  key={dm.id}
-                  href={`/chat/${channelPathSegment(dm.name)}`}
-                  draggable={isAgentDm}
-                  onDragStart={isAgentDm ? (event) => {
-                    event.dataTransfer.effectAllowed = "copy"
-                    event.dataTransfer.setData(AGENT_DRAG_MIME, serializeAgentDragPayload(avatarMember))
-                    event.dataTransfer.setData("text/plain", avatarMember.handle || avatarMember.displayName || avatarMember.name)
-                  } : undefined}
-                  title={isAgentDm ? tChat("dragAgentToChannel") : undefined}
-                  style={isAgentDm && dmUnread > 0 ? { borderLeftColor: getAgentColor(avatarMember.id) } : undefined}
-                  className={`block truncate rounded-md border border-l-2 px-2 py-1.5 text-sm ${
-                    isActive ? "bg-primary/10 font-medium text-primary" : "hover:bg-sidebar-accent"
-                  } ${dmUnread > 0 && !isActive ? "font-semibold" : ""} ${
-                    isAgentDm && dmUnread > 0 ? "border-l-primary/40" : "border-l-transparent"
-                  } ${isAgentDm ? "cursor-grab active:cursor-grabbing" : ""}`}
-                >
-                  <span className="inline-flex min-w-0 items-center gap-2">
-                    <MemberAvatar member={avatarMember} size="sm" />
-                    <span className="truncate">{avatarMember.displayName || avatarMember.name}</span>
-                    {dmUnread > 0 && (
-                      <span
-                        className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
-                        aria-label={`${dmUnread} unread`}
-                      >
-                        {dmUnread > 99 ? "99+" : dmUnread}
-                      </span>
-                    )}
-                  </span>
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-        {/* Active agents panel: shows agents whose status bucket is ACTIVE,
-            THINKING, or STARTING. Auto-hides when none are active. Stays
-            current via the existing member.status.updated SSE subscription. */}
-        {(() => {
-          const activeAgents = allMembers.filter((m) => {
-            if (m.kind !== "agent") return false
-            const bucket = getStatusBucket(m.status)
-            return bucket === "ACTIVE" || bucket === "THINKING" || bucket === "STARTING"
-          })
-          if (activeAgents.length === 0) return null
-          return (
-            <div className="border-t p-3">
-              <div className="mb-2 flex items-center gap-2">
-                <h3 className="text-xs font-medium uppercase text-muted-foreground">{tChat("running")}</h3>
-                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                  {activeAgents.length}
-                </span>
-              </div>
-              <div className="space-y-1">
-                {activeAgents.map((agent) => (
-                  <div key={agent.id} className="flex items-center gap-2 py-0.5 text-sm">
-                    <MemberAvatar member={agent} size="xs" showStatus />
-                    <span className="truncate">{agent.displayName || agent.name}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">{getStatusLabel(agent.status)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })()}
-        <div className="mt-auto border-t p-3">
-          <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">{tChat("membersOnline")}</h3>
-          {members.map((m) => (
-            <div key={m.id} className="flex items-center gap-2 py-1 text-sm">
-              <MemberAvatar member={m} size="xs" />
-              <span className="truncate">{m.displayName}</span>
-              <span className="ml-auto text-xs text-muted-foreground">{memberKindLabel(m.kind)}</span>
-            </div>
-          ))}
-        </div>
-        <div
-          role="separator"
-          aria-label="Resize chat sidebar"
-          aria-orientation="vertical"
-          aria-valuemin={CHAT_SIDEBAR_MIN_WIDTH}
-          aria-valuemax={CHAT_SIDEBAR_MAX_WIDTH}
-          aria-valuenow={sidebarWidth}
-          tabIndex={0}
-          data-testid="chat-sidebar-resize-handle"
-          onPointerDown={handleSidebarResizePointerDown}
-          onKeyDown={handleSidebarResizeKeyDown}
-          className="absolute inset-y-0 -right-1 z-20 w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border hover:after:w-0.5 hover:after:bg-primary/60 focus-visible:after:w-0.5 focus-visible:after:bg-primary"
-        />
-      </aside>
-
-      <div className="flex flex-1 flex-col">
-        <header className="border-b px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-sand" data-chat-root data-region="chat-main">
+        <header className="shrink-0 border-b px-4 py-2">
+          <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
               {currentDm ? (
-                <MemberAvatar member={dmAvatarMember(currentDm)} size="xl" />
+                <MemberAvatar member={dmAvatarMember(currentDm)} size="sm" />
               ) : (
-                <Avatar size="xl" name={currentTitle} />
+                <Avatar size="sm" name={currentTitle} />
               )}
               <div className="min-w-0">
-                <h1 className="truncate text-lg font-semibold">{currentTitle}</h1>
-                <div className="mt-1 flex items-center gap-2">
+                <h1 className="truncate text-sm font-semibold leading-tight">{currentTitle}</h1>
+                <div className="mt-0.5 flex items-center gap-2 text-xs text-sand-muted">
                   <RuntimeChip>{currentIsDm ? tChat("directMessageChip") : tChat("channel")}</RuntimeChip>
-                  <span className="text-xs text-muted-foreground">{tChat("rootMessages", { count: messages.length })}</span>
+                  <span>{tChat("rootMessages", { count: messages.length })}</span>
                 </div>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={showMembers ? tChat("hideMembers") : tChat("showMembers")}
-              onClick={() => setShowMembers(!showMembers)}
-            >
-              <Users className="size-4" />
-              {members.length}
-            </Button>
-            {!currentIsDm && currentChannel?.id && (
-              <Button
-                variant="outline"
-                size="sm"
-                aria-label={tChat("deleteChannel")}
-                onClick={handleDeleteChannel}
-                className="border-rose-200 text-rose-700 hover:bg-rose-50"
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            )}
-          </div>
-          <div className="mt-3 flex gap-1">
-            {conversationTabs.map(({ key, labelKey, icon: Icon }) => {
-              const tabKey = key as "chat" | "tasks" | "memory" | "files" | "activity"
-              const label = tChat(labelKey)
-              const isActive = activeTab === tabKey
-              return (
-                <button
-                  key={key}
+            {/* Tab strip — each tab carries its functional accent color
+                (blue/rose/mint/green/purple). Active = solid accent + white text,
+                inactive = soft accent + dark text. All combos are contrast-safe. */}
+            <div className="ml-4 flex gap-1 border-l pl-4">
+              {conversationTabs.map(({ key, labelKey, icon: Icon, tone }) => {
+                const tabKey = key as "chat" | "tasks" | "memory" | "files" | "activity"
+                const label = tChat(labelKey)
+                const isActive = activeTab === tabKey
+                // full static class strings (so they survive CSS purging/merge);
+                // active = solid accent + white text, inactive = soft accent + dark text
+                const tabClass: Record<string, { on: string; off: string }> = {
+                  blue: { on: "sk-accent-blue", off: "sk-accent-blue-soft" },
+                  rose: { on: "sk-accent-rose", off: "sk-accent-rose-soft" },
+                  mint: { on: "sk-accent-mint", off: "sk-accent-mint-soft" },
+                  green: { on: "sk-accent-green", off: "sk-accent-green-soft" },
+                  purple: { on: "sk-accent-purple", off: "sk-accent-purple-soft" },
+                }
+                return (
+                  <Button
+                    key={key}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className={`${isActive ? tabClass[tone].on : tabClass[tone].off} border-[var(--ink)]`}
+                    onClick={() => {
+                      setActiveTab(tabKey)
+                      if (tabKey === "files") void refreshFiles()
+                      if (tabKey === "memory") void refreshMemory()
+                    }}
+                  >
+                    <Icon className="size-3.5" />
+                    {label}
+                  </Button>
+                )
+              })}
+            </div>
+            <div className="ml-auto flex items-center gap-1">
+              {!currentIsDm && (
+                <Button
                   type="button"
-                  onClick={() => {
-                    setActiveTab(tabKey)
-                    if (tabKey === "files") {
-                      void refreshFiles()
-                    }
-                    if (tabKey === "memory") {
-                      void refreshMemory()
-                    }
-                  }}
-                  className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
-                    isActive
-                      ? "border-primary/30 bg-primary/10 text-primary"
-                      : "bg-background text-muted-foreground hover:bg-muted"
-                  }`}
+                  size="sm"
+                  variant={showMembers ? "default" : "outline"}
+                  onClick={() => setShowMembers((v) => !v)}
+                  aria-pressed={showMembers}
                 >
-                  <Icon className="size-3.5" />
-                  {label}
+                  <Users className="size-3.5" />
+                  {tChat("membersCount", { count: members.length })}
+                </Button>
+              )}
+              {!currentIsDm && currentChannel?.id && (
+                <button
+                  type="button"
+                  aria-label={tChat("deleteChannel")}
+                  title={tChat("deleteChannel")}
+                  onClick={handleDeleteChannel}
+                  className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
                 </button>
-              )
-            })}
+              )}
+            </div>
           </div>
         </header>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div
-            className="flex flex-1 flex-col relative"
+            className="flex min-h-0 min-w-0 flex-1 flex-col relative overflow-hidden"
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
             {isDragOver && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-primary/10 backdrop-blur-sm border-2 border-dashed border-primary/40 m-2 rounded-lg">
-                <div className="rounded-lg bg-background p-6 shadow-lg border text-center">
-                  <Files className="mx-auto size-10 text-primary mb-3" />
-                  <p className="text-sm font-medium">{tChat("dropFileTitle")}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {channelId ? tChat("dropFileReady") : tChat("dropFileNoChannel")}
-                  </p>
-                </div>
+              <div className="pointer-events-none absolute inset-2 z-50 flex flex-col items-center justify-center rounded-none border-2 border-dashed border-[var(--ink)] bg-[var(--accent-blue-soft)]">
+                <Files className="size-7 text-accent-blue" />
+                <p className="mt-2 text-sm font-medium">{tChat("dropFileTitle")}</p>
+                <p className="text-xs text-sand-muted">
+                  {channelId ? tChat("dropFileReady") : tChat("dropFileNoChannel")}
+                </p>
               </div>
             )}
             {activeTab === "activity" ? (
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="mx-auto max-w-3xl">
+              <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
+                <div className="mr-auto w-full max-w-[1248px]">
                   {dmAgent ? (
                     <AgentActivityList agentId={dmAgent.id} runtimeOnly limit={40} />
                   ) : (
-                    <div className="rounded-lg border border-dashed py-10 text-center">
-                      <Activity className="mx-auto size-7 text-muted-foreground/50" />
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {tChat("activityAgentOnly")}
-                      </p>
-                    </div>
+                    <p className="py-12 text-center text-sm text-muted-foreground">
+                      {tChat("activityAgentOnly")}
+                    </p>
                   )}
                 </div>
               </div>
             ) : activeTab === "tasks" ? (
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
                   <TaskBoard
                     channelName={currentChannel?.name ?? currentDm?.name ?? channelName}
                     initialView="board"
@@ -1375,8 +1095,8 @@ export function ChannelClient({
                   />
               </div>
             ) : activeTab === "memory" ? (
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="mx-auto max-w-3xl">
+              <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
+                <div className="mr-auto w-full max-w-[1248px]">
                   <MemoryProposalQueue
                     proposals={memoryProposals}
                     loading={memoryProposalLoading}
@@ -1388,88 +1108,90 @@ export function ChannelClient({
                 <ChannelMemorySurface entries={memoryEntries} loading={memoryLoading} channelTitle={currentTitle} copy={channelMemoryCopy} />
               </div>
             ) : activeTab === "files" ? (
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="mx-auto max-w-3xl">
+              <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
+                <div className="mr-auto w-full max-w-[1248px]">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-sm font-semibold">{tChat("filesTitle")}</h2>
-                    <span className="text-xs text-muted-foreground">{tChat("fileCount", { count: files.length })}</span>
+                    <span className="text-xs text-sand-muted">{tChat("fileCount", { count: files.length })}</span>
                   </div>
                   {filesLoading && <p className="py-12 text-center text-sm text-muted-foreground">{tChat("filesLoading")}</p>}
                   {!filesLoading && files.length === 0 && (
-                    <div className="rounded-lg border border-dashed py-12 text-center">
-                      <Files className="mx-auto size-8 text-muted-foreground/50" />
-                      <p className="mt-2 text-sm text-muted-foreground">{tChat("noFiles", { channel: currentTitle })}</p>
-                    </div>
+                    <p className="py-12 text-center text-sm text-muted-foreground">{tChat("noFiles", { channel: currentTitle })}</p>
                   )}
-                  <div className="space-y-2">
+                  <ul className="divide-y divide-border">
                     {files.map((file) => {
                       const uploader = allMembers.find((m) => m.id === file.uploadedBy) ?? members.find((m) => m.id === file.uploadedBy)
                       const isImage = file.mimeType.startsWith("image/")
                       return (
-                        <div key={file.id} className="group/file flex items-start gap-3 rounded-lg border bg-card p-3 shadow-sm">
-                          <div className={`flex size-10 shrink-0 items-center justify-center rounded-md border ${isImage ? "bg-primary/10 border-primary/20" : "bg-muted border-border"}`}>
-                            {isImage ? <ImageIcon className="size-5 text-primary" /> : <Files className="size-5 text-muted-foreground" />}
+                        <li key={file.id} className="group/file flex items-center gap-3 py-2.5">
+                          <div className={`flex size-8 shrink-0 items-center justify-center rounded-none ${isImage ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                            {isImage ? <ImageIcon className="size-4" /> : <Files className="size-4" />}
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="truncate text-sm font-medium">{file.originalName}</span>
-                              <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                              <span className="shrink-0 text-xs text-sand-muted">{formatFileSize(file.size)}</span>
                             </div>
-                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="mt-0.5 flex items-center gap-2 text-xs text-sand-muted">
                               <span>{uploader?.displayName || tChat("unknown")}</span>
-                              <span>·</span>
-                              <span>{file.createdAt ? new Date(file.createdAt).toLocaleString() : ""}</span>
-                            </div>
-                            <div className="mt-1.5 flex items-center gap-2">
-                              {file.messageId && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveTab("chat")
-                                    const timer = window.setTimeout(() => {
-                                      const target = document.querySelector<HTMLElement>(`[data-testid="message-${file.messageId}"]`)
-                                      target?.scrollIntoView({ block: "center" })
-                                      target?.focus()
-                                    }, 150)
-                                    window.setTimeout(() => window.clearTimeout(timer), 5000)
-                                  }}
-                                  className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
-                                >
-                                  <MessageCircle className="size-3" />
-                                  {tChat("openMessage")}
-                                </button>
+                              {file.createdAt && (
+                                <>
+                                  <span>·</span>
+                                  <span>{new Date(file.createdAt).toLocaleString()}</span>
+                                </>
                               )}
-                              {file.previewUrl && (
-                                <a
-                                  href={`${API_BASE}${file.previewUrl}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
-                                >
-                                  <ImageIcon className="size-3" />
-                                  {tChat("preview")}
-                                </a>
-                              )}
-                              <a
-                                href={`${API_BASE}${file.url}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted"
-                              >
-                                {tChat("download")}
-                              </a>
                             </div>
                           </div>
-                        </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {file.messageId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab("chat")
+                                  const timer = window.setTimeout(() => {
+                                    const target = document.querySelector<HTMLElement>(`[data-testid="message-${file.messageId}"]`)
+                                    target?.scrollIntoView({ block: "center" })
+                                    target?.focus()
+                                  }, 150)
+                                  window.setTimeout(() => window.clearTimeout(timer), 5000)
+                                }}
+                                title={tChat("openMessage")}
+                                className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                              >
+                                <MessageCircle className="size-3.5" />
+                              </button>
+                            )}
+                            {file.previewUrl && (
+                              <a
+                                href={`${API_BASE}${file.previewUrl}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={tChat("preview")}
+                                className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                              >
+                                <ImageIcon className="size-3.5" />
+                              </a>
+                            )}
+                            <a
+                              href={`${API_BASE}${file.url}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={tChat("download")}
+                              className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                              <Files className="size-3.5" />
+                            </a>
+                          </div>
+                        </li>
                       )
                     })}
-                  </div>
+                  </ul>
                 </div>
               </div>
             ) : (
               <>
-                <div ref={messageListRef} data-testid="chat-message-list" className="flex-1 overflow-y-auto p-4">
-                <div className="mx-auto max-w-3xl space-y-3">
+                <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
+                <div className="mr-auto w-full max-w-[1248px] space-y-3">
                 {messages.map((msg) => {
                   const isSaved = savedMessageIds.has(msg.id)
                   const senderMember = memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)
@@ -1477,8 +1199,8 @@ export function ChannelClient({
                     <div
                       key={msg.id}
                       data-testid={`message-${msg.id}`}
-                      className={`group/message relative rounded-lg p-2.5 transition-colors focus-within:bg-accent hover:bg-accent ${
-                        isSaved ? "bg-primary/5" : ""
+                      className={`group/message relative -mx-2 min-w-0 px-2 py-1.5 transition-colors ${
+                        isSaved ? "sk-accent-rose-soft/40" : ""
                       }`}
                       tabIndex={0}
                     >
@@ -1493,12 +1215,12 @@ export function ChannelClient({
                         badges={
                           <>
                             {isSaved && (
-                              <Bookmark className="size-3 text-primary" aria-label={tChat("savedBadge")} />
+                              <Bookmark className="size-3 text-accent-rose" aria-label={tChat("savedBadge")} />
                             )}
                             {taskLinks[msg.id] && (
                               <Link
                                 href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                                className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                                className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-accent-rose-soft px-1.5 py-0.5 text-[0.7rem] font-medium hover:opacity-85"
                               >
                                 <CheckSquare className="size-3" />
                                 {tChat("taskBadge")}
@@ -1514,14 +1236,14 @@ export function ChannelClient({
                       >
                       <MarkdownMessage content={msg.content} />
                       {(msg.replyCount || msg.threadSummary) && (
-                        <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+                        <div className="mt-1.5 pl-10">
                           {msg.threadSummary?.summary && (
-                            <p className="mb-2 text-muted-foreground">{msg.threadSummary.summary}</p>
+                            <p className="mb-1 text-xs text-sand-muted">{msg.threadSummary.summary}</p>
                           )}
                           <button
                             type="button"
                             onClick={() => openThread(msg)}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-foreground hover:underline"
+                            className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] bg-paper px-1.5 py-0.5 text-xs font-medium text-accent-blue hover:sk-accent-blue-soft"
                           >
                             <MessageCircle className="size-3" />
                             {msg.replyCount ? tChat("replyCount", { count: msg.replyCount }) : tChat("reply")}
@@ -1529,16 +1251,16 @@ export function ChannelClient({
                         </div>
                       )}
                       {msg.reactionCounts && Object.keys(msg.reactionCounts).length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
+                        <div className="mt-1.5 flex flex-wrap gap-1">
                           {Object.entries(msg.reactionCounts).map(([emoji, count]) => (
                             <button
                               key={emoji}
                               type="button"
                               onClick={() => toggleReaction(msg, emoji)}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                              className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs transition-colors ${
                                 didReact(msg, emoji)
-                                  ? "border-primary/30 bg-primary/10 text-primary"
-                                  : "border-border bg-background text-muted-foreground hover:bg-muted"
+                                  ? "sk-accent-rose-soft"
+                                  : "bg-paper text-sand-ink hover:bg-muted/60"
                               }`}
                               aria-label={tChat("reactionCount", { count, reaction: emoji })}
                             >
@@ -1559,8 +1281,8 @@ export function ChannelClient({
               </div>
             </div>
 
-            <div className="border-t p-4">
-              <div className="mx-auto flex max-w-3xl items-center gap-2">
+            <div data-region="composer" className="shrink-0 border-t-2 border-[var(--ink)] bg-sand-deep p-3">
+              <div className="mr-auto flex w-full max-w-[1248px] min-w-0 items-center gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1573,34 +1295,17 @@ export function ChannelClient({
                     e.target.value = ""
                   }}
                 />
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="icon"
                   aria-label={tChat("attachFile")}
                   title={tChat("attachFile")}
                   disabled={uploading || !channelId}
                   onClick={() => openFilePicker()}
-                  className={`inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 ${
-                    uploading || !channelId
-                      ? "text-muted-foreground opacity-60"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
                 >
-                  <Paperclip className="size-4" />
-                </button>
-                <button
-                  type="button"
-                  aria-label={tChat("attachImage")}
-                  title={tChat("attachImage")}
-                  disabled={uploading || !channelId}
-                  onClick={() => openFilePicker("image/*")}
-                  className={`inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-2 ${
-                    uploading || !channelId
-                      ? "text-muted-foreground opacity-60"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  <ImageIcon className="size-4" />
-                </button>
+                  <Paperclip className="size-3.5" />
+                </Button>
                 <Input
                   name="content"
                   value={input}
@@ -1608,28 +1313,32 @@ export function ChannelClient({
                   onKeyDown={handleKeyDown}
                   placeholder={currentDm ? tChat("dmComposePlaceholder", { peer: currentTitle.replace(/^DM @/, "") }) : tChat("composePlaceholder", { channel: currentTitle.replace(/^#/, "") })}
                   className="flex-1"
+                  style={{ backgroundColor: "var(--paper)" }}
                 />
                 <button
                   type="button"
                   onClick={() => setAsTask(!asTask)}
                   aria-pressed={asTask}
                   aria-label={tChat("sendAsTask")}
-                  className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground select-none hover:text-foreground"
+                  title={tChat("asTask")}
+                  className={`inline-flex cursor-pointer items-center gap-1 text-xs select-none ${
+                    asTask ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                  }`}
                 >
-                  <span className={`inline-flex size-5 items-center justify-center rounded border ${asTask ? "border-primary" : "border-muted-foreground/30"}`}>
-                    {asTask && <CheckSquare className="size-3.5 text-primary pointer-events-none" />}
+                  <span className={`inline-flex size-4 items-center justify-center border-2 border-[var(--ink)] ${asTask ? "bg-primary text-primary-foreground" : ""}`}>
+                    {asTask && <CheckSquare className="size-3 pointer-events-none" />}
                   </span>
                   {tChat("asTask")}
                 </button>
-                <button
+                <Button
                   type="button"
+                  size="icon"
                   aria-label={tChat("sendMessage")}
                   onClick={handleSend}
                   disabled={!input.trim()}
-                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  <Send className="size-4" />
-                </button>
+                  <Send className="size-3.5" />
+                </Button>
               </div>
             </div>
           </>
@@ -1639,7 +1348,8 @@ export function ChannelClient({
           {activeThreadId && (
             <aside
               aria-label={tChat("thread")}
-              className="relative shrink-0 border-l bg-background p-4"
+              data-region="thread-panel"
+              className="relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-card p-4"
               style={{ width: threadWidth }}
             >
               <div
@@ -1653,15 +1363,14 @@ export function ChannelClient({
                 data-testid="thread-panel-resize-handle"
                 onPointerDown={handleThreadResizePointerDown}
                 onKeyDown={handleThreadResizeKeyDown}
-                className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border hover:after:w-0.5 hover:after:bg-primary/60 focus-visible:after:w-0.5 focus-visible:after:bg-primary"
+                className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border hover:after:w-0.5 hover:after:bg-[var(--ink)] focus-visible:after:w-0.5 focus-visible:after:bg-[var(--ink)]"
               />
               <div className="flex h-full flex-col">
-                <div className="mb-3 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
+                <div className="mb-2 flex items-center justify-between gap-3 border-b pb-2">
                     <div className="min-w-0">
                       <h2 className="truncate text-sm font-semibold">{tChat("thread")}</h2>
                       {activeRoot && (
-                        <p className="truncate text-xs text-muted-foreground">
+                        <p className="truncate text-xs text-sand-muted">
                           {activeRoot.sender.replace(/^@/, "")} · {tChat("replyCount", { count: threadData?.replyCount ?? 0 })}
                         </p>
                       )}
@@ -1673,21 +1382,20 @@ export function ChannelClient({
                       setActiveThreadId(null)
                       setThreadData(null)
                     }}
-                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border hover:bg-accent"
+                    className="inline-flex size-7 shrink-0 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
-                    <X className="size-4" />
+                    <X className="size-3.5" />
                   </button>
                 </div>
                 {threadData?.threadSummary?.summary && (
-                  <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-foreground">
-                    <span className="font-medium">{tChat("summary")}</span> {threadData.threadSummary.summary}
-                  </div>
+                  <p className="mb-2 text-xs text-sand-muted">
+                    <span className="font-medium text-foreground">{tChat("summary")}</span> {threadData.threadSummary.summary}
+                  </p>
                 )}
-                </div>
 
-                <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
                   {activeRoot && (
-                    <div className="group/message relative rounded-md border bg-card p-3 focus-within:ring-1 focus-within:ring-ring" tabIndex={0}>
+                    <div className="group/message relative -mx-1 px-1 py-1.5 rounded-none" tabIndex={0}>
                       <MessageFrame
                         member={memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers)}
                         senderType={activeRoot.senderType}
@@ -1706,7 +1414,7 @@ export function ChannelClient({
                       {taskLinks[activeRoot.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[activeRoot.id])}`}
-                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                          className="mt-1.5 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-accent-rose-soft px-1.5 py-0.5 text-[0.7rem] font-medium hover:opacity-85"
                         >
                           <CheckSquare className="size-3" />
                           {tChat("openTask")}
@@ -1714,16 +1422,16 @@ export function ChannelClient({
                       )}
                       <MarkdownMessage content={activeRoot.content} compact />
                       {activeRoot.reactionCounts && Object.keys(activeRoot.reactionCounts).length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
+                        <div className="mt-1.5 flex flex-wrap gap-1">
                           {Object.entries(activeRoot.reactionCounts).map(([emoji, count]) => (
                             <button
                               key={emoji}
                               type="button"
                               onClick={() => toggleReaction(activeRoot, emoji)}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                              className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs transition-colors ${
                                 didReact(activeRoot, emoji)
-                                  ? "border-primary/30 bg-primary/10 text-primary"
-                                  : "border-border bg-background text-muted-foreground hover:bg-muted"
+                                  ? "sk-accent-rose-soft"
+                                  : "bg-paper text-sand-ink hover:bg-muted/60"
                               }`}
                               aria-label={tChat("reactionCount", { count, reaction: emoji })}
                             >
@@ -1733,18 +1441,13 @@ export function ChannelClient({
                           ))}
                         </div>
                       )}
-                      {threadData?.threadSummary?.summary && (
-                        <p className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-                          {threadData.threadSummary.summary}
-                        </p>
-                      )}
                       </MessageFrame>
                     </div>
                   )}
 
                   {threadLoading && <p className="py-8 text-center text-sm text-muted-foreground">{tChat("threadLoading")}</p>}
                   {activeReplies.map((msg) => (
-                    <div key={msg.id} className="group/message relative rounded-md border bg-card p-3 focus-within:ring-1 focus-within:ring-ring" tabIndex={0}>
+                    <div key={msg.id} className="group/message relative -mx-1 px-1 py-1.5 rounded-none" tabIndex={0}>
                       <MessageFrame
                         member={memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)}
                         senderType={msg.senderType}
@@ -1763,7 +1466,7 @@ export function ChannelClient({
                       {taskLinks[msg.id] && (
                         <Link
                           href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary hover:bg-primary/20"
+                          className="mt-1.5 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-accent-rose-soft px-1.5 py-0.5 text-[0.7rem] font-medium hover:opacity-85"
                         >
                           <CheckSquare className="size-3" />
                           {tChat("openTask")}
@@ -1771,16 +1474,16 @@ export function ChannelClient({
                       )}
                       <MarkdownMessage content={msg.content} compact />
                       {msg.reactionCounts && Object.keys(msg.reactionCounts).length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
+                        <div className="mt-1.5 flex flex-wrap gap-1">
                           {Object.entries(msg.reactionCounts).map(([emoji, count]) => (
                             <button
                               key={emoji}
                               type="button"
                               onClick={() => toggleReaction(msg, emoji)}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                              className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs transition-colors ${
                                 didReact(msg, emoji)
-                                  ? "border-primary/30 bg-primary/10 text-primary"
-                                  : "border-border bg-background text-muted-foreground hover:bg-muted"
+                                  ? "sk-accent-rose-soft"
+                                  : "bg-paper text-sand-ink hover:bg-muted/60"
                               }`}
                               aria-label={tChat("reactionCount", { count, reaction: emoji })}
                             >
@@ -1798,23 +1501,24 @@ export function ChannelClient({
                   )}
                 </div>
 
-                <div className="mt-3 flex gap-2 border-t pt-3">
+                <div className="mt-3 flex shrink-0 gap-2 border-t pt-3 min-w-0">
                   <Input
                     value={threadInput}
                     onChange={(e) => setThreadInput(e.target.value)}
                     onKeyDown={handleThreadKeyDown}
                     placeholder={tChat("replyPlaceholder")}
                     className="flex-1"
+                  style={{ backgroundColor: "var(--paper)" }}
                   />
-                  <button
+                  <Button
                     type="button"
+                    size="icon"
                     aria-label={tChat("sendThreadReply")}
                     onClick={handleThreadSend}
                     disabled={!threadInput.trim()}
-                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
                   >
                     <Send className="size-4" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             </aside>
@@ -1823,67 +1527,85 @@ export function ChannelClient({
           {!activeThreadId && showMembers && (
             <aside
               aria-label={tChat("channelMembers")}
-              className="w-64 shrink-0 border-l bg-background p-4 space-y-4 overflow-y-auto"
+              data-region="members-panel"
+              className="flex h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-card"
             >
-              <h3 className="text-sm font-semibold">{tChat("membersCount", { count: members.length })}</h3>
-              {members.map((m) => (
-                <div
-                  key={m.id}
-                  data-testid={`channel-member-${m.displayName}`}
-                  className="flex items-center justify-between gap-2"
+              {/* drawer header: title + close */}
+              <div className="flex shrink-0 items-center justify-between border-b-2 border-[var(--ink)] px-3 py-2">
+                <h3 className="text-xs font-semibold text-sand-ink">
+                  {tChat("membersCount", { count: members.length })}
+                </h3>
+                <button
+                  type="button"
+                  aria-label={tChat("channelMembers")}
+                  onClick={() => setShowMembers(false)}
+                  className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
-                  <div className="flex items-center gap-2 text-sm">
-                    <MemberAvatar member={m} size="sm" />
-                    <span className="truncate">{m.displayName}</span>
-                    <span className="text-xs text-muted-foreground">{statusLabel(m.status)}</span>
-                  </div>
-                  {m.kind === "agent" && !currentIsDm && (
-                    <button
-                      aria-label={tChat("removeMember", { member: m.displayName || m.name })}
-                      onClick={() => handleRemoveMember(m.id)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="size-3" />
-                    </button>
-                  )}
-                </div>
-              ))}
-
-              {!currentIsDm && (
-              <div className="border-t pt-3 space-y-2">
-                <h4 className="text-xs font-medium uppercase text-muted-foreground">{tChat("addMember")}</h4>
-                <div className="flex gap-2">
-                  <select
-                    aria-label={tChat("addChannelMember")}
-                    data-testid="add-channel-member-select"
-                    name="memberId"
-                    ref={addMemberSelectRef}
-                    className="flex-1 rounded-md border bg-background px-2 py-1 text-sm"
-                  >
-                    <option value="">{tChat("selectMember")}</option>
-                    {allMembers
-                      .filter((m) => !members.some((cm) => cm.id === m.id))
-                      .map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.displayName} ({memberKindLabel(m.kind)})
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="button"
-                    aria-label={tChat("addMemberToChannel")}
-                    onClick={handleAddMember}
-                    className="inline-flex h-7 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-[0.8rem] font-medium text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                  >
-                    <Plus className="size-3" />
-                  </button>
-                </div>
+                  <X className="size-3.5" />
+                </button>
               </div>
+
+              {/* add member on TOP (was buried at the bottom) */}
+              {!currentIsDm && (
+                <div className="shrink-0 space-y-1.5 border-b-2 border-[var(--ink)] p-3">
+                  <h4 className="text-xs font-semibold text-sand-muted">{tChat("addMember")}</h4>
+                  <div className="flex gap-1">
+                    <select
+                      aria-label={tChat("addChannelMember")}
+                      data-testid="add-channel-member-select"
+                      name="memberId"
+                      ref={addMemberSelectRef}
+                      className="min-w-0 flex-1 rounded-none border-2 border-[var(--ink)] bg-transparent px-1.5 py-1 text-xs outline-none focus-visible:border-ring"
+                    >
+                      <option value="">{tChat("selectMember")}</option>
+                      {allMembers
+                        .filter((m) => !members.some((cm) => cm.id === m.id))
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.displayName} ({memberKindLabel(m.kind)})
+                          </option>
+                        ))}
+                    </select>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      aria-label={tChat("addMemberToChannel")}
+                      onClick={handleAddMember}
+                    >
+                      <Plus className="size-3" />
+                    </Button>
+                  </div>
+                </div>
               )}
+
+              {/* member list */}
+              <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-2">
+                <ul className="space-y-0.5">
+                  {members.map((m) => (
+                    <li
+                      key={m.id}
+                      data-testid={`channel-member-${m.displayName}`}
+                      className="group/member flex min-w-0 items-center gap-2 px-1.5 py-1 text-sm hover:bg-muted/60"
+                    >
+                      <MemberAvatar member={m} size="xs" />
+                      <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
+                      <span className="shrink-0 text-xs text-sand-muted">{statusLabel(m.status)}</span>
+                      {m.kind === "agent" && !currentIsDm && (
+                        <button
+                          aria-label={tChat("removeMember", { member: m.displayName || m.name })}
+                          onClick={() => handleRemoveMember(m.id)}
+                          className="size-5 shrink-0 items-center justify-center text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover/member:flex"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </aside>
           )}
         </div>
       </div>
-    </div>
   )
 }

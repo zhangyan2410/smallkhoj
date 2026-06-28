@@ -52,6 +52,7 @@
   "chat": {
     "channel": "Channel",
     "directMessage": "Direct message",
+    "sidebarSubtitle": "Channels & DMs",
     "channels": "Channels",
     "dms": "DMs",
     "membersOnline": "Members Online",

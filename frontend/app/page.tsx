@@ -19,7 +19,7 @@ import {
 import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, Toolbar } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, Toolbar } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -196,7 +196,7 @@ function SearchResults({ query, results }: {
             <Link
               key={`${result.type}-${result.id}`}
               href={href}
-              className="flex items-start gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+              className="flex items-start gap-2 rounded-none px-3 py-2 text-sm hover:bg-accent"
             >
               <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
               <span className="min-w-0 flex-1">
@@ -283,7 +283,7 @@ export default async function Home({
               <label htmlFor="dm-peer" className="mb-1 block text-xs font-medium text-muted-foreground">
                 Start DM with
               </label>
-              <select id="dm-peer" name="peer" required className="h-8 w-full rounded-lg border bg-background px-2.5 text-sm">
+              <select id="dm-peer" name="peer" required className="h-8 w-full rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
                 <option value="">Select member...</option>
                 {agents.map((m) => (
                   <option key={m.id} value={m.displayName}>{m.displayName}</option>
@@ -336,7 +336,8 @@ export default async function Home({
           <>
             {/* Brand header + greeting */}
             <div className="space-y-1">
-              <h1 className="bg-gradient-brand bg-clip-text text-3xl font-bold text-transparent sm:text-4xl">
+              {/* Per DESIGN.md: no gradient text. Use weight + size for hierarchy. */}
+              <h1 className="text-foreground text-3xl font-semibold tracking-tight sm:text-4xl">
                 {t("brand")}
               </h1>
               <p className="text-muted-foreground">
@@ -351,7 +352,7 @@ export default async function Home({
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                   <div>
                     <CardTitle className="flex items-center gap-2 text-base">
-                      <MessageSquare className="size-4 text-primary" />
+                      <MessageSquare className="size-4 text-accent-blue" />
                       {t("recentMessages")}
                     </CardTitle>
                     <CardDescription>{t("recentMessagesDesc")}</CardDescription>
@@ -373,7 +374,7 @@ export default async function Home({
                         <Link
                           key={item.id}
                           href={channelHref}
-                          className="flex items-start gap-2.5 rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent"
+                          className="flex items-start gap-2.5 rounded-none px-2 py-2 text-sm transition-colors hover:bg-accent"
                         >
                           <Hash className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                           <div className="min-w-0 flex-1">
@@ -395,10 +396,10 @@ export default async function Home({
               <Card>
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <Bot className="size-4 text-primary" />
+                    <Bot className="size-4 text-accent-mint" />
                     {t("activeAgents")}
                   </CardTitle>
-                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                  <span className="rounded-none border border-[var(--ink)] sk-accent-mint-soft px-2 py-0.5 text-[11px] font-semibold">
                     {activeAgents.length}
                   </span>
                 </CardHeader>
@@ -410,7 +411,7 @@ export default async function Home({
                       <Link
                         key={agent.id}
                         href={`/chat/${encodeURIComponent(agent.displayName || agent.name)}`}
-                        className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent"
+                        className="flex items-center gap-2.5 rounded-none px-2 py-1.5 text-sm transition-colors hover:bg-accent"
                       >
                         <MemberAvatar member={agent} size="sm" showStatus />
                         <span className="min-w-0 flex-1 truncate font-medium">{agent.displayName || agent.name}</span>
@@ -426,7 +427,7 @@ export default async function Home({
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                   <div>
                     <CardTitle className="flex items-center gap-2 text-base">
-                      <CheckSquare className="size-4 text-primary" />
+                      <CheckSquare className="size-4 text-accent-rose" />
                       {t("pendingTasks")}
                     </CardTitle>
                     <CardDescription>{t("pendingTasksDesc")}</CardDescription>
@@ -439,14 +440,14 @@ export default async function Home({
                 </CardHeader>
                 <CardContent>
                   <div className="mb-3 flex gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-                      <span className="size-1.5 rounded-full bg-amber-500" />
+                    <RuntimeChip tone="warning" className="gap-1 py-1">
+                      <span className="size-1.5 rounded-full bg-[var(--cat-warning-fg)]" />
                       {t("openCount", { count: openTasks.length })}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/15 px-2 py-1 text-xs font-medium text-sky-700 dark:text-sky-400">
-                      <span className="size-1.5 rounded-full bg-sky-500" />
+                    </RuntimeChip>
+                    <RuntimeChip tone="info" className="gap-1 py-1">
+                      <span className="size-1.5 rounded-full bg-[var(--cat-info-fg)]" />
                       {t("inProgressCount", { count: inProgressTasks.length })}
-                    </span>
+                    </RuntimeChip>
                   </div>
                   {pendingTasks.length === 0 ? (
                     <EmptyState title={t("noPendingTasks")} description={t("noPendingTasksDesc")} />
@@ -456,11 +457,11 @@ export default async function Home({
                         <Link
                           key={task.id}
                           href="/tasks"
-                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent"
+                          className="flex items-center gap-2 rounded-none px-2 py-1.5 text-sm transition-colors hover:bg-accent"
                         >
                           <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
                           <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">{task.status}</span>
+                          <span className="shrink-0 rounded-none bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">{task.status}</span>
                         </Link>
                       ))}
                     </div>
@@ -472,7 +473,7 @@ export default async function Home({
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <Activity className="size-4 text-primary" />
+                    <Activity className="size-4 text-accent-purple" />
                     {t("workspace")}
                   </CardTitle>
                 </CardHeader>

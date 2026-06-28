@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>侧边栏渐变预览 — 从提取色到设计</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    background: oklch(0.96 0.005 220);
+    padding: 32px 24px 64px;
+    color: oklch(0.28 0.03 240);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: oklch(0.5 0.02 240); margin-bottom: 28px; max-width: 900px; }
+  .stage { display: flex; gap: 48px; align-items: flex-start; flex-wrap: wrap; }
+  .col { text-align: center; }
+  .col h3 { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .col p { font-size: 11px; color: oklch(0.5 0.02 240); margin-bottom: 12px; max-width: 180px; }
+
+  /* 真实侧边栏：56px 宽，纵向满高（模拟 h-screen） */
+  .rail {
+    width: 56px;
+    height: 600px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 14px 0;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 oklch(0.3 0.02 240 / 0.06), 0 16px 40px oklch(0.3 0.02 240 / 0.12);
+    position: relative;
+  }
+  .logo {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 6px; font-size: 16px;
+  }
+  .ico {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; transition: all .15s;
+  }
+  .ico.active { position: relative; }
+  /* 激活态左侧高亮条 */
+  .ico.active::before {
+    content: ""; position: absolute; left: -11px; top: 50%;
+    transform: translateY(-50%); width: 3px; height: 20px;
+    border-radius: 0 3px 3px 0;
+  }
+  .spacer { flex: 1; }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600;
+  }
+
+  /* ====== V1 透亮浅水：整体亮，青→浅蓝，不放深色 ====== */
+  .v1 {
+    background: linear-gradient(180deg,
+      oklch(0.94 0.04 195) 0%,
+      oklch(0.88 0.055 200) 35%,
+      oklch(0.82 0.07 205) 70%,
+      oklch(0.76 0.08 210) 100%);
+  }
+  .v1 .logo { background: oklch(0.72 0.12 195); color:#fff; box-shadow: 0 0 0 3px oklch(0.72 0.12 195 / 0.2); }
+  .v1 .ico { color: oklch(0.40 0.06 215); }
+  .v1 .ico:hover { background: oklch(1 0 0 / 0.25); }
+  .v1 .ico.active { background: oklch(1 0 0 / 0.35); color: oklch(0.30 0.07 215); }
+  .v1 .ico.active::before { background: oklch(0.65 0.13 195); }
+  .v1 .avatar { background: oklch(1 0 0 / 0.4); color: oklch(0.35 0.06 215); }
+
+  /* ====== V2 真实水深：贴合提取带，上亮青→下深蓝 ====== */
+  .v2 {
+    background: linear-gradient(180deg,
+      oklch(0.82 0.08 190) 0%,
+      oklch(0.70 0.11 198) 30%,
+      oklch(0.56 0.13 208) 65%,
+      oklch(0.42 0.12 220) 100%);
+  }
+  .v2 .logo { background: oklch(0.92 0.05 190); color: oklch(0.35 0.10 200); }
+  .v2 .ico { color: oklch(0.97 0.01 200); }
+  .v2 .ico:hover { background: oklch(1 0 0 / 0.18); }
+  .v2 .ico.active { background: oklch(1 0 0 / 0.28); color: #fff; }
+  .v2 .ico.active::before { background: oklch(0.90 0.06 190); }
+  .v2 .avatar { background: oklch(1 0 0 / 0.25); color: #fff; }
+
+  /* ====== V3 深海通透：更沉，上中青→下深海蓝，高级感 ====== */
+  .v3 {
+    background: linear-gradient(180deg,
+      oklch(0.72 0.10 195) 0%,
+      oklch(0.58 0.12 202) 40%,
+      oklch(0.44 0.11 215) 75%,
+      oklch(0.33 0.09 230) 100%);
+  }
+  .v3 .logo { background: oklch(0.88 0.06 195); color: oklch(0.30 0.08 205); }
+  .v3 .ico { color: oklch(0.92 0.02 200); }
+  .v3 .ico:hover { background: oklch(1 0 0 / 0.15); }
+  .v3 .ico.active { background: oklch(0.85 0.10 195); color: oklch(0.25 0.06 210); box-shadow: 0 0 0 3px oklch(0.85 0.10 195 / 0.25); }
+  .v3 .ico.active::before { background: oklch(0.85 0.10 195); }
+  .v3 .avatar { background: oklch(0.85 0.10 195); color: oklch(0.25 0.06 210); }
+
+  .legend { margin-top: 40px; max-width: 900px; font-size: 12px; line-height: 1.7; color: oklch(0.4 0.02 240); }
+  .legend code { background: oklch(0.92 0.01 240); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+  <h1>侧边栏渐变 — 三个深度</h1>
+  <p class="sub">渐变色相全部来自原图提取（青 195 → 蓝 215 → 深蓝 230）。三个版本只是「水有多深」。配你真实的侧边栏结构（logo + 6 图标 + 头像 + 设置）。</p>
+
+  <div class="stage">
+    <div class="col">
+      <h3>V1 · 浅水透亮</h3>
+      <p>整体亮，像浅滩/水面。最清爽，图标深色清晰。</p>
+      <div class="rail v1">
+        <div class="logo">✦</div>
+        <div class="ico">🔍</div>
+        <div class="ico active">💬</div>
+        <div class="ico">✓</div>
+        <div class="ico">👥</div>
+        <div class="ico">💻</div>
+        <div class="ico">🔔</div>
+        <div class="spacer"></div>
+        <div class="avatar">L</div>
+        <div class="ico">⚙</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h3>V2 · 真实水深</h3>
+      <p>最贴提取带：上亮青 → 下深蓝。图标白字。</p>
+      <div class="rail v2">
+        <div class="logo">✦</div>
+        <div class="ico">🔍</div>
+        <div class="ico active">💬</div>
+        <div class="ico">✓</div>
+        <div class="ico">👥</div>
+        <div class="ico">💻</div>
+        <div class="ico">🔔</div>
+        <div class="spacer"></div>
+        <div class="avatar">L</div>
+        <div class="ico">⚙</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h3>V3 · 深海通透</h3>
+      <p>更沉更高级，激活项提亮成浅青。氛围最强。</p>
+      <div class="rail v3">
+        <div class="logo">✦</div>
+        <div class="ico">🔍</div>
+        <div class="ico active">💬</div>
+        <div class="ico">✓</div>
+        <div class="ico">👥</div>
+        <div class="ico">💻</div>
+        <div class="ico">🔔</div>
+        <div class="spacer"></div>
+        <div class="avatar">L</div>
+        <div class="ico">⚙</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <strong>说明</strong>：三版色相一致（都是青195→蓝215→深蓝230 的渐变），差别在<strong>明度落点</strong>（水多浅/多深）。<br>
+    V1 浅水最亮，图标深色好认；V2 最还原提取带，但底部偏深文字要白色；V3 最沉最高级，靠激活项提亮制造对比。<br>
+    激活态：V1/V2 用半透明白底 + 左侧青色高亮条；V3 用亮青实色块（深底上的反差）。<br><br>
+    选一个告诉我，或说「V2 的上半 + V3 的下半」这种混搭。选定后这个渐变就锁死，可以直接写进 <code>product-shell.tsx</code> 的 <code>bg-sidebar</code>。
+  </div>
+</body>
+</html>

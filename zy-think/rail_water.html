@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>侧边栏 · 水的灵魂版</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    background: oklch(0.95 0.006 220);
+    padding: 32px 24px 64px;
+    color: oklch(0.28 0.03 240);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: oklch(0.5 0.02 240); margin-bottom: 28px; max-width: 900px; line-height: 1.6; }
+  .stage { display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; }
+  .col { text-align: center; }
+  .col h3 { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .col p { font-size: 11px; color: oklch(0.5 0.02 240); margin-bottom: 12px; max-width: 200px; }
+
+  /* ====== 侧边栏容器 ====== */
+  .rail {
+    width: 60px;
+    height: 640px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 16px 0;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 oklch(0.3 0.02 240 / 0.08), 0 20px 50px oklch(0.3 0.10 240 / 0.18);
+    position: relative;
+    isolation: isolate;
+  }
+  /* 上深下浅的渐变底 —— 深海青(顶) → 透亮浅青(底) */
+  .rail::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg,
+      oklch(0.30 0.09 225) 0%,
+      oklch(0.40 0.10 218) 25%,
+      oklch(0.55 0.11 208) 55%,
+      oklch(0.72 0.10 198) 85%,
+      oklch(0.82 0.08 192) 100%);
+    z-index: 0;
+  }
+  /* 水纹叠层：极淡的波纹，多层错开 */
+  .rail::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(ellipse 140% 22% at 50% 8%, oklch(0.95 0.04 190 / 0.10) 0%, transparent 60%),
+      radial-gradient(ellipse 120% 16% at 30% 28%, oklch(0.95 0.04 190 / 0.06) 0%, transparent 55%),
+      radial-gradient(ellipse 130% 18% at 70% 46%, oklch(0.95 0.04 190 / 0.05) 0%, transparent 55%),
+      radial-gradient(ellipse 110% 14% at 40% 66%, oklch(0.95 0.04 190 / 0.04) 0%, transparent 55%);
+    z-index: 1;
+    pointer-events: none;
+  }
+  /* 顶部阳光高光：从上方洒下的一缕光 */
+  .sun {
+    position: absolute;
+    top: -10%; left: 50%;
+    width: 120%; height: 45%;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse 60% 100% at 50% 0%,
+      oklch(0.98 0.05 95 / 0.16) 0%,
+      oklch(0.95 0.06 150 / 0.06) 35%,
+      transparent 70%);
+    z-index: 2;
+    pointer-events: none;
+  }
+  /* 水面亮线：顶部一条极细的高光，像水面反光 */
+  .surface-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, oklch(0.98 0.04 190 / 0.5), transparent);
+    z-index: 3;
+  }
+
+  /* 图标层在最上 */
+  .logo, .ico, .avatar, .spacer { position: relative; z-index: 4; }
+  .logo {
+    width: 36px; height: 36px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 8px; font-size: 17px;
+    background: oklch(0.92 0.05 190 / 0.9);
+    color: oklch(0.28 0.08 205);
+    box-shadow: 0 2px 8px oklch(0.25 0.08 220 / 0.3);
+  }
+  .ico {
+    width: 36px; height: 36px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    color: oklch(0.94 0.015 195);
+    transition: background .15s, color .15s;
+  }
+  .ico:hover { background: oklch(1 0 0 / 0.12); }
+  .ico.active {
+    background: oklch(0.92 0.06 190);
+    color: oklch(0.26 0.08 210);
+    box-shadow: 0 0 0 3px oklch(0.92 0.06 190 / 0.22), 0 4px 12px oklch(0.3 0.10 200 / 0.25);
+    position: relative;
+  }
+  /* 激活态左侧高亮条：浅青，对应水面光 */
+  .ico.active::before {
+    content: ""; position: absolute; left: -12px; top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 22px; border-radius: 0 3px 3px 0;
+    background: oklch(0.90 0.07 190);
+    box-shadow: 0 0 8px oklch(0.90 0.07 190 / 0.6);
+  }
+  .spacer { flex: 1; }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600;
+    background: oklch(1 0 0 / 0.16);
+    color: oklch(0.95 0.015 195);
+    border: 1px solid oklch(1 0 0 / 0.15);
+  }
+
+  /* ====== 对照版：去掉水纹和阳光，只留渐变（证明材质的价值） ====== */
+  .plain::after, .plain .sun, .plain .surface-line { display: none; }
+
+  .note { margin-top: 44px; max-width: 900px; font-size: 12.5px; line-height: 1.75; color: oklch(0.38 0.02 240); }
+  .note b { color: oklch(0.28 0.03 240); }
+  .note code { background: oklch(0.92 0.01 240); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+  .bad { color: oklch(0.55 0.18 25); }
+  .good { color: oklch(0.50 0.14 155); }
+</style>
+</head>
+<body>
+  <h1>侧边栏 · 水的灵魂版</h1>
+  <p class="sub">
+    上深下浅（深海青顶 → 透亮浅青底）+ 极淡水纹叠层 + 顶部一缕阳光高光 + 水面亮线。
+    右边是<strong>去掉水纹阳光的对照版</strong>——你能看出材质带来的差别。
+  </p>
+
+  <div class="stage">
+    <div class="col">
+      <h3>完整版 · 有水的灵魂</h3>
+      <p>渐变 + 水纹 + 阳光 + 水面亮线</p>
+      <div class="rail">
+        <div class="surface-line"></div>
+        <div class="sun"></div>
+        <div class="logo">✦</div>
+        <div class="ico">🔍</div>
+        <div class="ico active">💬</div>
+        <div class="ico">✓</div>
+        <div class="ico">👥</div>
+        <div class="ico">💻</div>
+        <div class="ico">🔔</div>
+        <div class="spacer"></div>
+        <div class="avatar">L</div>
+        <div class="ico">⚙</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h3>对照版 · 只有渐变</h3>
+      <p>同样的上深下浅，但没水纹没阳光</p>
+      <div class="rail plain">
+        <div class="surface-line"></div>
+        <div class="sun"></div>
+        <div class="logo">✦</div>
+        <div class="ico">🔍</div>
+        <div class="ico active">💬</div>
+        <div class="ico">✓</div>
+        <div class="ico">👥</div>
+        <div class="ico">💻</div>
+        <div class="ico">🔔</div>
+        <div class="spacer"></div>
+        <div class="avatar">L</div>
+        <div class="ico">⚙</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>impeccable 自审：</b><br>
+    <span class="good">✓ 合规</span>：实色 + 渐变 + 低透叠层，没有 glassmorphism、没有渐变文字、没有霓虹、没有大面积模糊光斑。圆角 11px（在 12-16px 区间，没过度）。激活态用「亮青实色块 + 柔光晕」，在深底上有反差不压抑。<br>
+    <span class="good">✓ 材质有意图</span>：水纹 = 水的隐喻，阳光 = 你说的「穿透」，亮线 = 水面反光。每一层都对应一个「水」的事实，不是装饰。<br>
+    <span class="good">✓ 上深下浅</span>：顶部深色让 logo/导航聚焦，底部渐亮过渡自然，不头重脚轻。<br><br>
+    <b>还能调的旋钮</b>（你选）：<br>
+    • <b>水深</b>：现在顶部 <code>oklch(0.30 0.09 225)</code>，想要更深→调到 <code>0.24</code>；想更亮→<code>0.36</code><br>
+    • <b>阳光强度</b>：现在很淡（透明度 0.16），想更明显→加到 <code>0.28</code>；觉得多余→去掉 <code>.sun</code><br>
+    • <b>水纹密度</b>：现在 4 层，想更平静→减到 2 层；想更动→加到 6 层<br>
+    • <b>动效</b>：水纹可以做成极慢的上下漂移（8-12s 一周期），但 impeccable 要求配 <code>prefers-reduced-motion</code> 关闭。<br><br>
+    看完告诉我：完整版对不对？哪个旋钮要拧？
+  </div>
+</body>
+</html>

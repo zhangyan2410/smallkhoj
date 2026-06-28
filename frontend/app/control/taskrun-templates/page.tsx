@@ -7,6 +7,7 @@ import { EmptyState, RuntimeChip, StatusPill, Toolbar } from "@/components/produ
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/form"
 import { API_BASE, apiGet, type TaskRunTemplate } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
@@ -191,12 +192,12 @@ function TemplateFields({ template }: { template?: TaskRunTemplate }) {
       </div>
       <div className="md:col-span-2">
         <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground" htmlFor={`${template?.slug ?? "new"}-system`}>系统指令</label>
-        <textarea
+        <Textarea
           id={`${template?.slug ?? "new"}-system`}
           name="systemInstruction"
           required
           defaultValue={template?.systemInstruction ?? ""}
-          className="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          rows={6}
         />
       </div>
       <div>
@@ -258,11 +259,11 @@ function TemplateRow({ template }: { template: TaskRunTemplate }) {
         </div>
         <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
           <details className="w-full lg:w-auto">
-            <summary className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md border px-2.5 text-xs font-medium hover:bg-muted">
+            <summary className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2.5 text-xs font-medium hover:bg-muted">
               <FilePenLine className="size-3.5" />
               编辑
             </summary>
-            <form action={updateTemplateAction} className="mt-3 grid gap-3 rounded-md border bg-muted/25 p-3 lg:w-[42rem]">
+            <form action={updateTemplateAction} className="mt-3 grid gap-3 rounded-none border-2 border-[var(--ink)] bg-muted/25 p-3 lg:w-[42rem]">
               <input type="hidden" name="templateSlug" value={template.slug} />
               <TemplateFields template={template} />
               <div className="flex justify-end">
@@ -309,7 +310,7 @@ export default async function TaskRunTemplatesPage() {
     >
       <div className="space-y-5">
         <Toolbar>
-          <Layers3 className="size-4 text-primary" />
+          <Layers3 className="size-4 text-accent-rose" />
           <span className="text-sm font-medium">模板控制面</span>
           <span className="text-xs text-muted-foreground">{activeCount} active / {templates.length} total</span>
         </Toolbar>

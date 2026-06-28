@@ -22,7 +22,7 @@ export function ProviderSelect({
         id="agent-provider"
         name="runtimeProvider"
         value={selectedValue}
-        className="h-9 min-w-36 rounded-md border bg-background px-3 text-sm"
+        className="h-9 min-w-36 rounded-none border-2 border-[var(--ink)] bg-transparent px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
         onChange={(e) => {
           setRuntimeProvider(e.target.value)
         }}

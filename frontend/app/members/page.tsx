@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { Suspense } from "react"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
@@ -21,19 +22,21 @@ import {
 } from "lucide-react"
 
 import ActivityTab from "./activity-tab"
-import { CreateAgentCard } from "./create-agent-card"
+import { CreateAgentDialog } from "../chat/[channel]/create-agent-dialog"
+import { RestoreMemberSelection } from "./restore-member-selection"
+import { MembersList } from "./members-list"
 
 import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, StatusPill, type CategoryTone } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
   API_BASE,
   apiGet,
-  badgeClass,
+  findMemberWorkspace,
   formatTime,
   type Computer,
   type Member,
@@ -67,6 +70,13 @@ function searchValue(value: string | string[] | undefined) {
 
 type TabKey = "profile" | "permissions" | "dms" | "reminders" | "workspace" | "apps" | "activity"
 
+const MEMBERS_LIST_WIDTH = {
+  storageKey: "smallkhoj.members.listWidth",
+  defaultWidth: 260,
+  min: 220,
+  max: 380,
+} as const
+
 const memberTabs: Array<{ key: TabKey; label: string; icon: typeof User }> = [
   { key: "profile", label: "Profile", icon: User },
   { key: "permissions", label: "Permissions", icon: Shield },
@@ -84,14 +94,10 @@ function memberDetailHref(memberId: string, tab?: TabKey) {
   return `/members?${params.toString()}`
 }
 
-function StatusBadge({ status }: { status: string }) {
-  return <StatusPill status={status} label={statusLabel(status)} className={badgeClass(status)} />
-}
-
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div className="min-w-0 rounded-md border bg-background p-2">
-      <div className="text-[11px] font-medium uppercase text-muted-foreground">{label}</div>
+    <div className="min-w-0 rounded-none border-2 border-[var(--ink)] bg-sand-card p-2">
+      <div className="text-sm font-medium text-foreground">{label}</div>
       <div className="mt-1 truncate font-mono text-xs">{value || "none"}</div>
     </div>
   )
@@ -115,127 +121,6 @@ async function updateHumanAvatarUrlAction(formData: FormData) {
   }
   revalidatePath("/members")
   redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
-}
-
-async function controlAgentLifecycleAction(formData: FormData) {
-  "use server"
-  const memberId = String(formData.get("memberId") || "")
-  const workspaceId = String(formData.get("workspaceId") || "")
-  const action = String(formData.get("action") || "").trim()
-  if (!memberId || !workspaceId || !action) {
-    redirect(`/members?member=${encodeURIComponent(memberId)}&error=${encodeURIComponent("Missing member, workspace, or action")}`)
-  }
-
-  const response = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/lifecycle`, {
-    method: "POST",
-    headers: await serverApiHeaders(true),
-    body: JSON.stringify({ action }),
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
-    redirect(`/members?member=${encodeURIComponent(memberId)}&error=${encodeURIComponent(detail)}`)
-  }
-  revalidatePath("/members")
-  redirect(`/members?member=${encodeURIComponent(memberId)}`)
-}
-
-/**
- * Start / Stop / Restart controls for an agent card. Uses a native form bound to
- * the `controlAgentLifecycleAction` server action (per quality-guidelines:
- * critical backend mutations use native form submission so a hydration gap can't
- * silently fail). Each action is gated by the agent's status bucket so only the
- * contextually valid control is offered.
- */
-async function AgentControls({ member }: { member: Member }) {
-  const t = await getTranslations("members")
-  const tCommon = await getTranslations("common")
-  const workspaceId = member.workspaceId
-  const bucket = getStatusBucket(member.status)
-  const canStart = bucket === "OFFLINE" || bucket === "ERROR"
-  const canStop = bucket === "ACTIVE" || bucket === "THINKING" || bucket === "STARTING"
-  const showRestart = Boolean(workspaceId)
-
-  if (!workspaceId) {
-    return (
-      <p className="text-[11px] text-muted-foreground">{t("noWorkspace")}</p>
-    )
-  }
-
-  const control = (action: "start" | "stop" | "restart", label: string, Icon: typeof Play, show: boolean, tone: string) => {
-    if (!show) return null
-    return (
-      <form action={controlAgentLifecycleAction} className="flex-1">
-        <input type="hidden" name="memberId" value={member.id} />
-        <input type="hidden" name="workspaceId" value={workspaceId} />
-        <input type="hidden" name="action" value={action} />
-        <button
-          type="submit"
-          className={`inline-flex w-full items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${tone}`}
-        >
-          <Icon className="size-3" />
-          {label}
-        </button>
-      </form>
-    )
-  }
-
-  return (
-    <div className="mt-1 flex w-full items-stretch gap-1.5">
-      {control("start", tCommon("start"), Play, canStart, "border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950")}
-      {control("stop", tCommon("stop"), Square, canStop, "border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950")}
-      {control("restart", tCommon("restart"), RotateCcw, showRestart, "border-border text-muted-foreground hover:bg-accent")}
-    </div>
-  )
-}
-
-/**
- * Agent gallery card: avatar with live status, name, status label, description
- * snippet, and contextual start/stop/restart controls.
- */
-function AgentCard({ member }: { member: Member }) {
-  const name = profileName(member)
-  const description = profileDescription(member)
-  const href = memberDetailHref(member.id)
-
-  return (
-    <div className="group relative flex flex-col items-center gap-3 rounded-xl border bg-card p-4 text-center ring-1 ring-primary/10 transition-all hover:scale-[1.02] hover:ring-primary/30">
-      <Link href={href} className="flex flex-1 flex-col items-center gap-2 self-stretch">
-        <MemberAvatar member={member} size="xl" showStatus />
-        <div className="min-w-0 w-full">
-          <div className="truncate font-semibold">{name}</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">{getStatusLabel(member.status)}</div>
-          {description ? (
-            <div className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{description}</div>
-          ) : null}
-        </div>
-      </Link>
-      <AgentControls member={member} />
-    </div>
-  )
-}
-
-/**
- * Compact human member row for the humans section below the agent gallery.
- */
-function HumanRow({ member, selected }: { member: Member; selected: boolean }) {
-  const name = profileName(member)
-  const handle = member.handle || `@${member.name}`
-  return (
-    <Link
-      href={memberDetailHref(member.id)}
-      className={`flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent ${
-        selected ? "border-primary/20 bg-primary/8" : "border-transparent"
-      }`}
-    >
-      <MemberAvatar member={member} size="sm" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{name}</div>
-        <div className="truncate text-[11px] text-muted-foreground">{handle}</div>
-      </div>
-      <StatusBadge status={member.status} />
-    </Link>
-  )
 }
 
 function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }) {
@@ -265,7 +150,7 @@ function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }
 function ProfileTab({ member, computers }: { member: Member; computers: Computer[] }) {
   const description = profileDescription(member)
   const computer = computers.find((c) => c.id === member.computerId)
-  const workspace = computer?.agentWorkspaces.find((w) => w.agentId === member.id)
+  const workspace = findMemberWorkspace(member, computers)
 
   return (
     <div className="space-y-4">
@@ -275,10 +160,10 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
           <div className="text-lg font-semibold">{profileName(member)}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">{member.handle || `@${member.displayName}`}</span>
-            <StatusBadge status={member.status} />
-            <span className="rounded-md bg-muted px-2 py-0.5 text-xs">{member.kind}</span>
+            <StatusPill status={member.status} label={statusLabel(member.status)} />
+            <RuntimeChip tone="neutral">{member.kind}</RuntimeChip>
             {(member.config?.provider || member.runtimeProvider || member.backend) && (
-              <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
+              <span className="rounded-none bg-muted px-2 py-0.5 text-xs">
                 {member.config?.provider || member.runtimeProvider || member.backend}
               </span>
             )}
@@ -288,9 +173,9 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
       </div>
 
       {member.kind === "human" && (
-        <form action={updateHumanAvatarUrlAction} className="rounded-md border bg-muted/20 p-3">
+        <form action={updateHumanAvatarUrlAction} className="rounded-none border-2 border-[var(--ink)] bg-muted/20 p-3">
           <input type="hidden" name="memberId" value={member.id} />
-          <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <UserRound className="size-3" />
             Human Avatar
           </div>
@@ -317,7 +202,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
 
       {member.kind === "agent" && computer && (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Cpu className="size-3" />
             Runtime Binding
           </div>
@@ -337,7 +222,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
 
       {member.skills && member.skills.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Wrench className="size-3" />
             Skills
           </div>
@@ -400,7 +285,7 @@ function PermissionsTab({ member }: { member: Member }) {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Shield className="size-3" />
               Permissions
             </div>
@@ -411,7 +296,7 @@ function PermissionsTab({ member }: { member: Member }) {
           {Object.keys(permissions).length > 0 ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {Object.entries(permissions).map(([key, enabled]) => (
-                <div key={key} className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+                <div key={key} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
                   <span className="text-sm">{key}</span>
                   <span className={`text-xs font-medium ${enabled ? "text-emerald-600" : "text-muted-foreground"}`}>
                     {enabled ? "enabled" : "disabled"}
@@ -426,7 +311,7 @@ function PermissionsTab({ member }: { member: Member }) {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Activity className="size-3" />
               Actions
             </div>
@@ -437,7 +322,7 @@ function PermissionsTab({ member }: { member: Member }) {
           {Object.keys(actions).length > 0 ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {Object.entries(actions).map(([key, enabled]) => (
-                <div key={key} className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+                <div key={key} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
                   <span className="text-sm">{key}</span>
                   <span className={`text-xs font-medium ${enabled ? "text-emerald-600" : "text-muted-foreground"}`}>
                     {enabled ? "on" : "off"}
@@ -454,13 +339,13 @@ function PermissionsTab({ member }: { member: Member }) {
       {isAgent && <AddPermissionForm memberId={member.id} permissions={permissions} actions={actions} />}
 
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Shield className="size-3" />
           Enforcement status
         </div>
-        <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+        <div className="rounded-none border-2 border-[var(--ink)] bg-muted/30 p-3 space-y-2">
           <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-amber-500" />
+            <span className="size-2 rounded-full bg-warning" />
             <span className="text-sm">Config persisted but not enforced at runtime</span>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -535,14 +420,14 @@ function AddPermissionForm({ memberId, permissions, actions }: {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Shield className="size-3" />
           Permission entries
         </div>
         {Object.keys(permissions).length > 0 && (
           <div className="space-y-1">
             {Object.entries(permissions).map(([key, enabled]) => (
-              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
                 <input type="hidden" name="memberId" value={memberId} />
                 <input type="hidden" name="type" value="permissions" />
                 <input type="hidden" name="key" value={key} />
@@ -553,7 +438,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
                   <Button type="submit" size="sm" variant={enabled ? "default" : "outline"}>
                     {enabled ? "enabled" : "disabled"}
                   </Button>
-                  <button formAction={removePermissionEntryAction} className="text-xs text-rose-500 hover:text-rose-700" title="Remove">
+                  <button formAction={removePermissionEntryAction} className="text-xs text-destructive hover:opacity-80" title="Remove">
                     remove
                   </button>
                   <input type="hidden" formAction={undefined} name="existing" value={JSON.stringify(permissions)} />
@@ -567,7 +452,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
           <input type="hidden" name="type" value="permissions" />
           <input type="hidden" name="existing" value={JSON.stringify(permissions)} />
           <Input name="key" placeholder="permission key" className="max-w-[200px]" />
-          <select name="value" className="h-9 rounded-md border bg-background px-2 text-sm">
+          <select name="value" className="h-9 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
             <option value="true">enabled</option>
             <option value="false">disabled</option>
           </select>
@@ -576,14 +461,14 @@ function AddPermissionForm({ memberId, permissions, actions }: {
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Activity className="size-3" />
           Action entries
         </div>
         {Object.keys(actions).length > 0 && (
           <div className="space-y-1">
             {Object.entries(actions).map(([key, enabled]) => (
-              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
                 <input type="hidden" name="memberId" value={memberId} />
                 <input type="hidden" name="type" value="actions" />
                 <input type="hidden" name="key" value={key} />
@@ -594,7 +479,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
                   <Button type="submit" size="sm" variant={enabled ? "default" : "outline"}>
                     {enabled ? "on" : "off"}
                   </Button>
-                  <button formAction={removePermissionEntryAction} className="text-xs text-rose-500 hover:text-rose-700" title="Remove">
+                  <button formAction={removePermissionEntryAction} className="text-xs text-destructive hover:opacity-80" title="Remove">
                     remove
                   </button>
                   <input type="hidden" formAction={undefined} name="existing" value={JSON.stringify(actions)} />
@@ -608,7 +493,7 @@ function AddPermissionForm({ memberId, permissions, actions }: {
           <input type="hidden" name="type" value="actions" />
           <input type="hidden" name="existing" value={JSON.stringify(actions)} />
           <Input name="key" placeholder="action key" className="max-w-[200px]" />
-          <select name="value" className="h-9 rounded-md border bg-background px-2 text-sm">
+          <select name="value" className="h-9 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
             <option value="true">on</option>
             <option value="false">off</option>
           </select>
@@ -626,9 +511,9 @@ function DmTab({ member }: { member: Member }) {
         title={`Direct messages with ${profileName(member)}`}
         description="Agent DM history and conversation threads will appear here."
       />
-      <div className="rounded-md border border-dashed bg-muted/30 p-3">
+      <div className="rounded-none border border-dashed bg-muted/30 p-3">
         <p className="text-xs text-muted-foreground">
-          DM channel for this member is <code className="rounded bg-muted px-1 font-mono">dm:&lt;your-id&gt;-&lt;member-id&gt;</code>.
+          DM channel for this member is <code className="rounded-none bg-muted px-1 font-mono">dm:&lt;your-id&gt;-&lt;member-id&gt;</code>.
           Use the Chat page to view conversation history.
         </p>
         <div className="mt-2">
@@ -651,7 +536,7 @@ function RemindersTab({ member }: { member: Member }) {
         title={`Reminders for ${profileName(member)}`}
         description="Active and pending reminders assigned to this member."
       />
-      <div className="rounded-md border border-dashed bg-muted/30 p-3">
+      <div className="rounded-none border border-dashed bg-muted/30 p-3">
         <p className="text-xs text-muted-foreground">
           Scheduled reminders for this {member.kind} are managed through the Control Plane dispatch.
           Reminders fire based on the configured delay and channel.
@@ -675,17 +560,17 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
     )
   }
 
-  const workspace = computer.agentWorkspaces.find((w) => w.agentId === member.id)
+  const workspace = findMemberWorkspace(member, computers)
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <div className="text-xs font-medium uppercase text-muted-foreground">Bound Computer</div>
-        <div className="rounded-md border bg-background p-3">
+        <div className="text-sm font-medium text-foreground">Bound Computer</div>
+        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
           <div className="flex items-center gap-2">
-            <HardDrive className="size-4 text-muted-foreground" />
+            <HardDrive className="size-4 text-accent-green" />
             <span className="text-sm font-medium">{computer.name}</span>
-            <StatusBadge status={computer.status} />
+            <StatusPill status={computer.status} label={statusLabel(computer.status)} />
           </div>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             <Field label="os" value={computer.os} />
@@ -697,8 +582,8 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
 
       {workspace && (
         <div className="space-y-2">
-          <div className="text-xs font-medium uppercase text-muted-foreground">Agent Workspace</div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="text-sm font-medium text-foreground">Agent Workspace</div>
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="grid gap-2 sm:grid-cols-2">
               <Field label="status" value={workspace.status} />
               <Field label="pid" value={workspace.pid?.toString() ?? "none"} />
@@ -714,16 +599,16 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
       )}
 
       {!workspace && member.kind === "agent" && (
-        <div className="rounded-md border border-dashed bg-muted/30 p-3">
+        <div className="rounded-none border border-dashed bg-muted/30 p-3">
           <p className="text-xs text-muted-foreground">
-            This agent is bound to <code className="rounded bg-muted px-1 font-mono">{computer.name}</code> but has no
+            This agent is bound to <code className="rounded-none bg-muted px-1 font-mono">{computer.name}</code> but has no
             active workspace. The workspace is created when the daemon launches a runtime session for this agent.
           </p>
         </div>
       )}
 
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Cpu className="size-3" />
           Detected Runtimes
         </div>
@@ -746,7 +631,7 @@ function AppsTab({ member }: { member: Member }) {
         title={`Apps for ${profileName(member)}`}
         description="Integrations and connected apps will appear here."
       />
-      <div className="rounded-md border border-dashed bg-muted/30 p-3">
+      <div className="rounded-none border border-dashed bg-muted/30 p-3">
         <p className="text-xs text-muted-foreground">
           App integrations are configured per agent through the runtime provider settings.
           Available integrations depend on the agent&apos;s runtime capabilities.
@@ -774,7 +659,7 @@ function MemberDetail({
           {member.kind === "agent" && (
             <form action={deleteMemberAction} className="ml-auto">
               <input type="hidden" name="memberId" value={member.id} />
-              <Button type="submit" size="sm" variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50">
+              <Button type="submit" size="sm" variant="outline">
                 <Trash2 className="size-3.5" />
                 Delete
               </Button>
@@ -828,19 +713,22 @@ export default async function MembersPage({
       title={t("title")}
       description={t("description")}
       session={session}
+      list={<MembersList members={members} computers={computers} selectedMemberId={selectedMemberId} />}
+      listTitle="Members"
+      listConfig={MEMBERS_LIST_WIDTH}
       sidebarTitle={t("memberGroups")}
       sidebarDescription={t("selectMember")}
       sidebar={
         <div className="space-y-2">
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">Humans</div>
             <div className="mt-1 text-2xl font-semibold">{humansList.length}</div>
           </div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">Agents</div>
             <div className="mt-1 text-2xl font-semibold">{agentsList.length}</div>
           </div>
-          <div className="rounded-md border bg-background p-3">
+          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
             <div className="text-xs text-muted-foreground">Bound agents</div>
             <div className="mt-1 text-2xl font-semibold">{boundAgents}</div>
           </div>
@@ -848,6 +736,7 @@ export default async function MembersPage({
       }
       actions={
         <>
+          <CreateAgentDialog />
           <Link href="/computers">
             <Button variant="outline" size="sm">
               <HardDrive className="size-4" />
@@ -864,56 +753,23 @@ export default async function MembersPage({
     >
       <div className="space-y-5">
         <RealtimeRefresh eventTypes={["member.created", "member.updated", "member.status.updated"]} />
+        <Suspense fallback={null}>
+          <RestoreMemberSelection />
+        </Suspense>
 
         {selectedMember && (
           <MemberDetail member={selectedMember} computers={computers} activeTab={activeTab} />
         )}
 
         {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <div className="rounded-none border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
             {error}
           </div>
         )}
 
-        {/* Agent gallery: cards in a responsive grid, with the create-agent
-            form styled as a dashed "add" card as the final grid cell. */}
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Bot className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">{t("agents")}</h2>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {agentsList.length}
-            </span>
-          </div>
-          {agentsList.length === 0 ? (
-            <CreateAgentCard computers={computers} providerOptions={providerOptions} />
-          ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {agentsList.map((member) => (
-                <AgentCard key={member.id} member={member} />
-              ))}
-              <CreateAgentCard computers={computers} providerOptions={providerOptions} />
-            </div>
-          )}
-        </section>
-
-        {/* Human members: compact list below the agent gallery. */}
-        {humansList.length > 0 && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <UserRound className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">{t("humans")}</h2>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                {humansList.length}
-              </span>
-            </div>
-            <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-              {humansList.map((member) => (
-                <HumanRow key={member.id} member={member} selected={member.id === selectedMemberId} />
-              ))}
-            </div>
-          </section>
-        )}
+        {/* No agent card gallery or humans list here — the sidebar lists both
+            agents (by computer) and humans. The main area only shows the
+            selected member's detail (MemberDetail above), nothing else. */}
       </div>
     </ProductShell>
   )

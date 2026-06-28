@@ -120,11 +120,11 @@ test("avatar seeds prefer stable identity fields", () => {
 })
 
 test("status mapping covers lifecycle states through one helper", () => {
-  assert.equal(statusDotClass("running"), "bg-indigo-500 animate-[pulse_0.8s_ease-in-out_infinite]")
-  assert.equal(statusDotClass("online"), "bg-emerald-500")
-  assert.equal(statusDotClass("pending_start"), "bg-orange-400 animate-pulse")
-  assert.equal(statusDotClass("failed"), "bg-red-500")
-  assert.equal(statusDotClass("offline"), "bg-slate-400")
+  assert.equal(statusDotClass("running"), "bg-info animate-[pulse_0.8s_ease-in-out_infinite]")
+  assert.equal(statusDotClass("online"), "bg-success")
+  assert.equal(statusDotClass("pending_start"), "bg-warning animate-pulse")
+  assert.equal(statusDotClass("failed"), "bg-danger")
+  assert.equal(statusDotClass("offline"), "bg-muted-foreground")
 })
 
 test("MemberAvatar renders the status dot on the top-right corner", () => {
@@ -135,7 +135,7 @@ test("MemberAvatar renders the status dot on the top-right corner", () => {
   assert.match(markup, /data-status="running"/)
   assert.match(markup, /-right-0\.5/)
   assert.match(markup, /-top-0\.5/)
-  assert.match(markup, /bg-indigo-500/)
+  assert.match(markup, /bg-info/)
 })
 
 test("memberAvatarName produces readable fallback text", () => {

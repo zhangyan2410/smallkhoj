@@ -128,7 +128,7 @@ function MemoryArtifactPreview({ view, compact = false }: { view: MemoryArtifact
   const src = artifactUrl(view.href)
   if (view.viewer === "image" && src) {
     return (
-      <a href={src} target="_blank" rel="noreferrer" className="mt-2 block overflow-hidden rounded-md border bg-muted">
+      <a href={src} target="_blank" rel="noreferrer" className="mt-2 block overflow-hidden rounded-none border-2 border-[var(--ink)] bg-muted">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={src} alt={view.label} className={compact ? "max-h-28 w-full object-cover" : "max-h-48 w-full object-cover"} />
       </a>
@@ -138,7 +138,7 @@ function MemoryArtifactPreview({ view, compact = false }: { view: MemoryArtifact
     return (
       <video
         suppressHydrationWarning
-        className={compact ? "mt-2 max-h-28 w-full rounded-md border bg-black" : "mt-2 max-h-48 w-full rounded-md border bg-black"}
+        className={compact ? "mt-2 max-h-28 w-full rounded-none border-2 border-[var(--ink)] bg-black" : "mt-2 max-h-48 w-full rounded-none border-2 border-[var(--ink)] bg-black"}
         controls
         src={src}
       >
@@ -148,7 +148,7 @@ function MemoryArtifactPreview({ view, compact = false }: { view: MemoryArtifact
   }
   if (src) {
     return (
-      <a href={src} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[0.7rem] text-primary hover:bg-muted">
+      <a href={src} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-[0.7rem] text-accent-mint hover:bg-muted">
         <ExternalLink className="size-3" />
         Open output
       </a>
@@ -161,14 +161,14 @@ export function MemoryEntryRow({ entry, compact = false, showPreview = true }: {
   const view = artifactViewForEntry(entry)
   const text = entry.contentText?.trim()
   return (
-    <div className="flex items-start gap-2 rounded-md border bg-background px-2.5 py-2">
+    <div className="flex items-start gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
       <MemoryEntryIcon entry={entry} />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className={compact ? "truncate text-xs font-medium" : "truncate text-sm font-medium"}>{entry.title || entry.path}</span>
-          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">{entry.entryKind || view.viewer}</span>
+          <span className="shrink-0 rounded-none bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">{entry.entryKind || view.viewer}</span>
         </div>
-        <div className="mt-1 truncate font-mono text-[0.7rem] text-primary">{entry.path}</div>
+        <div className="mt-1 truncate font-mono text-[0.7rem] text-accent-mint">{entry.path}</div>
         {text && <p className={compact ? "mt-1 whitespace-pre-wrap text-xs text-muted-foreground line-clamp-3" : "mt-1 whitespace-pre-wrap text-xs text-muted-foreground line-clamp-5"}>{text}</p>}
         {showPreview && <MemoryArtifactPreview view={view} compact={compact} />}
         <div className="mt-1 flex flex-wrap gap-2 text-[0.65rem] text-muted-foreground">
@@ -194,7 +194,7 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
   const scoreLabel = copy.scoreLabel(completeness.score)
   const primaryEntries = [model.brief, model.plan, model.progress, model.finalSummary].filter((entry): entry is MemoryEntry => Boolean(entry))
   return (
-    <div className="rounded-md border bg-background p-3">
+    <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-medium">{copy.title}</h3>
@@ -207,7 +207,7 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
             [copy.progress, completeness.hasProgress],
             [copy.output, completeness.hasOutput],
           ].map(([label, active]) => (
-            <span key={String(label)} className={active ? "rounded bg-primary/10 px-1.5 py-0.5 text-primary" : "rounded bg-muted px-1.5 py-0.5"}>
+            <span key={String(label)} className={active ? "rounded-none bg-primary/10 px-1.5 py-0.5 text-accent-mint" : "rounded-none bg-muted px-1.5 py-0.5"}>
               {label}
             </span>
           ))}
@@ -218,12 +218,12 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
       ) : (
         <div className="mt-3 space-y-3">
           {model.subtasks.length > 0 && (
-            <div className="rounded-md bg-muted/50 p-2">
+            <div className="rounded-none bg-muted/50 p-2">
               <div className="mb-1 text-xs font-medium">{copy.taskBreakdown}</div>
               <div className="space-y-1">
                 {model.subtasks.slice(0, compact ? 4 : 8).map((item) => (
                   <div key={`${item.sourcePath}:${item.text}`} className="flex items-start gap-2 text-xs">
-                    {item.done ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />}
+                    {item.done ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" /> : <Circle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />}
                     <span className={item.done ? "text-muted-foreground line-through" : ""}>{item.text}</span>
                   </div>
                 ))}
@@ -270,7 +270,7 @@ export function ChannelMemorySurface({ entries, loading, channelTitle, copy = de
       {loading ? (
         <p className="py-12 text-center text-sm text-muted-foreground">{copy.loading}</p>
       ) : entries.length === 0 ? (
-        <div className="rounded-lg border border-dashed py-12 text-center">
+        <div className="rounded-none border border-dashed py-12 text-center">
           <Database className="mx-auto size-8 text-muted-foreground/50" />
           <p className="mt-2 text-sm text-muted-foreground">{copy.empty}</p>
         </div>
@@ -312,7 +312,7 @@ export function MemoryProposalQueue({
 }) {
   if (loading && proposals.length === 0) {
     return (
-      <section className="mb-4 rounded-md border bg-muted/30 p-3">
+      <section className="mb-4 rounded-none border-2 border-[var(--ink)] bg-muted/30 p-3">
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.reviewQueue}</h3>
         <p className="mt-2 text-xs text-muted-foreground">{copy.loading}</p>
       </section>
@@ -320,23 +320,23 @@ export function MemoryProposalQueue({
   }
   if (proposals.length === 0) return null
   return (
-    <section className="mb-4 rounded-md border bg-background p-3">
+    <section className="mb-4 rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.reviewQueue}</h3>
           <p className="text-xs text-muted-foreground">{copy.openProposals}</p>
         </div>
-        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-primary">{proposals.length}</span>
+        <span className="rounded-none bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-accent-mint">{proposals.length}</span>
       </div>
       <div className="space-y-2">
         {proposals.map((proposal) => (
-          <div key={proposal.id} className="rounded-md border bg-muted/20 p-2">
+          <div key={proposal.id} className="rounded-none border-2 border-[var(--ink)] bg-muted/20 p-2">
             <div className="flex min-w-0 items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
-                  <Sparkles className="size-3.5 shrink-0 text-primary" />
+                  <Sparkles className="size-3.5 shrink-0 text-accent-mint" />
                   <span className="truncate text-sm font-medium">{proposal.path}</span>
-                  <span className="shrink-0 rounded bg-background px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">{proposal.status}</span>
+                  <span className="shrink-0 rounded-none bg-background px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">{proposal.status}</span>
                 </div>
                 {proposal.reason && <p className="mt-1 text-xs text-muted-foreground">{proposal.reason}</p>}
               </div>
@@ -345,7 +345,7 @@ export function MemoryProposalQueue({
                   <button
                     type="button"
                     onClick={() => onAccept(proposal)}
-                    className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-[0.7rem] text-emerald-700 hover:bg-emerald-50"
+                    className="inline-flex h-7 items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-cat-success px-2 text-[0.7rem] hover:opacity-85"
                     aria-label={copy.acceptAria(proposal.path)}
                   >
                     <CheckCircle2 className="size-3.5" />
@@ -356,7 +356,7 @@ export function MemoryProposalQueue({
                   <button
                     type="button"
                     onClick={() => onReject(proposal)}
-                    className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-[0.7rem] text-destructive hover:bg-destructive/10"
+                    className="inline-flex h-7 items-center gap-1 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2 text-[0.7rem] text-destructive hover:bg-destructive/10"
                     aria-label={copy.rejectAria(proposal.path)}
                   >
                     <XCircle className="size-3.5" />
@@ -366,7 +366,7 @@ export function MemoryProposalQueue({
               </div>
             </div>
             {proposal.proposedContentText && (
-              <pre className="mt-2 max-h-32 overflow-auto rounded bg-background p-2 text-xs whitespace-pre-wrap text-muted-foreground">
+              <pre className="mt-2 max-h-32 overflow-auto rounded-none bg-background p-2 text-xs whitespace-pre-wrap text-muted-foreground">
                 {proposal.proposedContentText}
               </pre>
             )}

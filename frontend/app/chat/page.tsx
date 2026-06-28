@@ -84,8 +84,8 @@ export default async function ChatPage() {
       sidebar={
         <div className="space-y-2">
           <RuntimeChip>{t("tabChat")}</RuntimeChip>
-          <RuntimeChip className="border-sky-200 bg-sky-50 text-sky-700">{t("tabTasks")}</RuntimeChip>
-          <RuntimeChip className="border-slate-200 bg-slate-50 text-slate-700">{t("tabFiles")}</RuntimeChip>
+          <RuntimeChip tone="info">{t("tabTasks")}</RuntimeChip>
+          <RuntimeChip tone="neutral">{t("tabFiles")}</RuntimeChip>
         </div>
       }
     >
@@ -103,7 +103,7 @@ export default async function ChatPage() {
               <Link
                 key={channel.id}
                 href={`/chat/${channelPathSegment(channel.name)}`}
-                className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-accent"
+                className="flex min-h-11 items-center gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 text-sm hover:bg-accent"
               >
                 <Hash className="size-4 text-primary" />
                 <span className="min-w-0 flex-1 truncate font-medium">{channel.name}</span>
@@ -127,7 +127,7 @@ export default async function ChatPage() {
               <Link
                 key={dm.id}
                 href={`/chat/${channelPathSegment(dm.name)}`}
-                className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-accent"
+                className="flex min-h-11 items-center gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 text-sm hover:bg-accent"
               >
                 <MemberAvatar member={dmAvatarMember(dm)} size="sm" />
                 <span className="min-w-0 flex-1 truncate font-medium">

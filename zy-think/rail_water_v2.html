@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>侧边栏 v2 · 深色收窄 + 明显水纹阳光</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    background: oklch(0.95 0.006 220);
+    padding: 32px 24px 64px;
+    color: oklch(0.28 0.03 240);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: oklch(0.5 0.02 240); margin-bottom: 28px; max-width: 900px; line-height: 1.6; }
+  .stage { display: flex; gap: 48px; align-items: flex-start; flex-wrap: wrap; }
+  .col { text-align: center; }
+  .col h3 { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .col p { font-size: 11px; color: oklch(0.5 0.02 240); margin-bottom: 12px; max-width: 200px; }
+
+  /* ====== 侧边栏 ====== */
+  .rail {
+    width: 60px;
+    height: 640px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 16px 0;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 oklch(0.3 0.02 240 / 0.08), 0 20px 50px oklch(0.3 0.10 240 / 0.18);
+    position: relative;
+    isolation: isolate;
+  }
+  /* 底层渐变：深色只占顶部一小条（~16%），下方主体是浅色 */
+  .rail::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg,
+      oklch(0.28 0.09 226) 0%,
+      oklch(0.34 0.10 220) 12%,
+      oklch(0.50 0.11 210) 22%,
+      oklch(0.66 0.11 200) 38%,
+      oklch(0.78 0.095 196) 55%,
+      oklch(0.86 0.075 193) 75%,
+      oklch(0.90 0.06 192) 100%);
+    z-index: 0;
+  }
+  /* 水纹：明显但清晰。用横向 ellipse 模拟水面波纹的弧线 */
+  .rail::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(ellipse 160% 14% at 50% 30%, oklch(0.98 0.04 188 / 0.30) 0%, transparent 60%),
+      radial-gradient(ellipse 140% 11% at 35% 48%, oklch(0.98 0.04 188 / 0.24) 0%, transparent 60%),
+      radial-gradient(ellipse 150% 12% at 65% 64%, oklch(0.98 0.04 188 / 0.22) 0%, transparent 60%),
+      radial-gradient(ellipse 130% 10% at 45% 80%, oklch(0.98 0.04 188 / 0.18) 0%, transparent 60%);
+    z-index: 1;
+    pointer-events: none;
+  }
+  /* 阳光：一束明显的暖白光柱，从顶部偏左斜射下来 */
+  .sun {
+    position: absolute;
+    top: -15%; left: 15%;
+    width: 130%; height: 70%;
+    background: radial-gradient(ellipse 45% 70% at 35% 0%,
+      oklch(0.99 0.06 95 / 0.42) 0%,
+      oklch(0.97 0.07 130 / 0.20) 30%,
+      transparent 65%);
+    z-index: 2;
+    pointer-events: none;
+    transform: rotate(0deg);
+  }
+  /* 水面亮线：顶部高光 */
+  .surface-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, oklch(0.99 0.04 190 / 0.7), transparent);
+    z-index: 3;
+  }
+
+  .logo, .ico, .avatar, .spacer { position: relative; z-index: 4; }
+  .logo {
+    width: 36px; height: 36px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 8px; font-size: 17px;
+    background: oklch(0.95 0.05 190 / 0.92);
+    color: oklch(0.26 0.09 208);
+    box-shadow: 0 2px 8px oklch(0.25 0.08 220 / 0.35);
+  }
+  .ico {
+    width: 36px; height: 36px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    color: oklch(0.97 0.012 195);
+    transition: background .15s, color .15s;
+  }
+  /* 顶部深色区（logo + 前2图标）文字白；进入浅色区后图标转深色 */
+  .ico.mid { color: oklch(0.30 0.07 212); }
+  .ico:hover { background: oklch(1 0 0 / 0.14); }
+  .ico.active {
+    background: oklch(0.30 0.10 210);
+    color: oklch(0.96 0.02 190);
+    box-shadow: 0 0 0 3px oklch(0.30 0.10 210 / 0.18), 0 4px 12px oklch(0.3 0.10 200 / 0.22);
+    position: relative;
+  }
+  .ico.active::before {
+    content: ""; position: absolute; left: -12px; top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 22px; border-radius: 0 3px 3px 0;
+    background: oklch(0.55 0.14 195);
+    box-shadow: 0 0 10px oklch(0.55 0.14 195 / 0.7);
+  }
+  .spacer { flex: 1; }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600;
+    background: oklch(1 0 0 / 0.5);
+    color: oklch(0.28 0.06 210);
+    border: 1px solid oklch(1 0 0 / 0.4);
+  }
+
+  .note { margin-top: 44px; max-width: 900px; font-size: 12.5px; line-height: 1.75; color: oklch(0.38 0.02 240); }
+  .note b { color: oklch(0.28 0.03 240); }
+  .note code { background: oklch(0.92 0.01 240); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+  <h1>侧边栏 v2</h1>
+  <p class="sub">
+    两个改动：① 深色只占顶部约 16%（logo + 前两图标），下方迅速过渡到浅色主体；
+    ② 水纹和阳光都加强了——波纹透明度 0.18→0.30（有清晰弧线），阳光透明度 0.16→0.42（能看到一束光柱）。
+  </p>
+
+  <div class="stage">
+    <div class="col">
+      <h3>v2 完整版</h3>
+      <p>深色收窄 + 明显水纹 + 明显阳光</p>
+      <div class="rail">
+        <div class="surface-line"></div>
+        <div class="sun"></div>
+        <div class="logo">✦</div>
+        <div class="ico">🔍</div>
+        <div class="ico">💬</div>
+        <div class="ico mid active">✓</div>
+        <div class="ico mid">👥</div>
+        <div class="ico mid">💻</div>
+        <div class="ico mid">🔔</div>
+        <div class="spacer"></div>
+        <div class="avatar">L</div>
+        <div class="ico mid">⚙</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h3>v1 对照（旧版）</h3>
+      <p>深色占一半 + 水纹阳光太淡</p>
+      <div class="rail" style="--old:1">
+        <div class="surface-line"></div>
+        <!-- 旧版渐变覆盖 -->
+        <div style="position:absolute;inset:0;z-index:0;background:linear-gradient(180deg,oklch(0.30 0.09 225) 0%,oklch(0.40 0.10 218) 25%,oklch(0.55 0.11 208) 55%,oklch(0.72 0.10 198) 85%,oklch(0.82 0.08 192) 100%);"></div>
+        <div style="position:absolute;inset:0;z-index:1;background-image:radial-gradient(ellipse 140% 22% at 50% 8%,oklch(0.95 0.04 190 / 0.10) 0%,transparent 60%),radial-gradient(ellipse 120% 16% at 30% 28%,oklch(0.95 0.04 190 / 0.06) 0%,transparent 55%);pointer-events:none;"></div>
+        <div style="position:absolute;top:-10%;left:50%;width:120%;height:45%;transform:translateX(-50%);background:radial-gradient(ellipse 60% 100% at 50% 0%,oklch(0.98 0.05 95 / 0.16) 0%,transparent 70%);z-index:2;pointer-events:none;"></div>
+        <div class="logo">✦</div>
+        <div class="ico">🔍</div>
+        <div class="ico active">💬</div>
+        <div class="ico">✓</div>
+        <div class="ico">👥</div>
+        <div class="ico">💻</div>
+        <div class="ico">🔔</div>
+        <div class="spacer"></div>
+        <div class="avatar">L</div>
+        <div class="ico">⚙</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>这次怎么改的：</b><br>
+    • <b>深色收窄</b>：深色段（L&lt;0.5）只占 0→22%，约一个半图标的高度。下方 78% 都是浅色主体。<br>
+    • <b>水纹加强</b>：透明度从 0.04-0.10 提到 0.18-0.30，4 条横向弧线现在能清楚看到「波纹」的形状。<br>
+    • <b>阳光加强</b>：透明度从 0.16 提到 0.42，能明显看到顶部偏左有一束暖白光柱斜射下来。<br>
+    • <b>图标配色</b>：深色区图标白，浅色区图标转深青（<code>.mid</code>），保证各区域对比度都够。<br><br>
+    看完告诉我：比例对了吗？水纹阳光这次看得见了吗？还要再强 / 再弱？
+  </div>
+</body>
+</html>

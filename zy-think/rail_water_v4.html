@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>侧边栏 v4 · SVG 硬画水纹阳光</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    background: oklch(0.95 0.006 220);
+    padding: 32px 24px 64px;
+    color: oklch(0.28 0.03 240);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: oklch(0.5 0.02 240); margin-bottom: 24px; max-width: 900px; line-height: 1.6; }
+  .stage { display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; }
+  .col { text-align: center; }
+  .col h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .col p { font-size: 11px; color: oklch(0.5 0.02 240); margin-bottom: 12px; max-width: 200px; line-height: 1.5; }
+
+  /* rail：SVG 当背景画在底层，图标用绝对定位浮在上面 */
+  .rail {
+    width: 64px;
+    height: 640px;
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 oklch(0.3 0.02 240 / 0.08), 0 20px 50px oklch(0.3 0.10 240 / 0.18);
+  }
+  .rail svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .nav {
+    position: relative; z-index: 2;
+    height: 100%;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 5px; padding: 16px 0;
+  }
+  .logo {
+    width: 38px; height: 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 8px; font-size: 18px;
+    background: oklch(0.96 0.05 188 / 0.95);
+    color: oklch(0.24 0.10 208);
+    box-shadow: 0 2px 10px oklch(0.22 0.08 220 / 0.4);
+  }
+  .ico {
+    width: 38px; height: 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px;
+    transition: background .15s, color .15s;
+  }
+  .ico.dark { color: oklch(0.97 0.012 195); }
+  .ico.mid { color: oklch(0.30 0.07 210); }
+  .ico.sand { color: oklch(0.34 0.05 60); }
+  .ico:hover { background: oklch(1 0 0 / 0.16); }
+  .ico.active {
+    background: oklch(0.28 0.10 210);
+    color: oklch(0.96 0.02 190);
+    box-shadow: 0 0 0 3px oklch(0.28 0.10 210 / 0.2), 0 4px 14px oklch(0.3 0.10 200 / 0.25);
+    position: relative;
+  }
+  .ico.active::before {
+    content: ""; position: absolute; left: -13px; top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 24px; border-radius: 0 3px 3px 0;
+    background: oklch(0.58 0.14 195);
+    box-shadow: 0 0 10px oklch(0.58 0.14 195 / 0.75);
+  }
+  .spacer { flex: 1; }
+  .avatar {
+    width: 38px; height: 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600;
+    background: oklch(1 0 0 / 0.6);
+    color: oklch(0.30 0.05 60);
+    border: 1px solid oklch(1 0 0 / 0.5);
+  }
+
+  .note { margin-top: 40px; max-width: 900px; font-size: 12.5px; line-height: 1.75; color: oklch(0.38 0.02 240); }
+  .note b { color: oklch(0.28 0.03 240); }
+</style>
+</head>
+<body>
+  <h1>侧边栏 v4 · SVG 硬画</h1>
+  <p class="sub">
+    放弃 CSS 叠层（在你浏览器里丢层），改用 <strong>SVG</strong> 把水纹波浪线、阳光光柱全部硬画出来。SVG 不依赖层叠上下文，一定渲染。
+    底部已接上<strong>沙滩暖色</strong>。右边两个是单看水纹 / 单看阳光的拆解图。
+  </p>
+
+  <div class="stage">
+    <!-- 完整版 -->
+    <div class="col">
+      <h3>v4 完整版</h3>
+      <p>SVG 水纹 + 阳光 + 底部沙滩</p>
+      <div class="rail">
+        <!-- viewBox: 宽 64 高 640，跟容器 1:1 -->
+        <svg viewBox="0 0 64 640" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- 主渐变：深海青 → 中海蓝 → 透亮青 → 暖沙 -->
+            <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stop-color="oklch(0.26 0.095 226)"/>
+              <stop offset="10%" stop-color="oklch(0.34 0.105 220)"/>
+              <stop offset="22%" stop-color="oklch(0.52 0.115 208)"/>
+              <stop offset="38%" stop-color="oklch(0.70 0.110 198)"/>
+              <stop offset="56%" stop-color="oklch(0.82 0.085 195)"/>
+              <stop offset="78%" stop-color="oklch(0.88 0.060 120)"/>
+              <stop offset="92%" stop-color="oklch(0.90 0.045 80)"/>
+              <stop offset="100%" stop-color="oklch(0.91 0.040 70)"/>
+            </linearGradient>
+            <!-- 阳光：暖白 → 透明，竖直方向斜射 -->
+            <linearGradient id="sun" x1="0.25" y1="0" x2="0.7" y2="0.6">
+              <stop offset="0%"  stop-color="oklch(1 0.08 90)" stop-opacity="0.6"/>
+              <stop offset="35%" stop-color="oklch(0.98 0.07 140)" stop-opacity="0.25"/>
+              <stop offset="70%" stop-color="oklch(0.98 0.05 170)" stop-opacity="0.05"/>
+              <stop offset="100%" stop-color="oklch(0.98 0.05 170)" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+
+          <!-- 底色 -->
+          <rect width="64" height="640" fill="url(#water)"/>
+
+          <!-- 阳光光柱：一个斜的椭圆/多边形，从顶部偏左打下来 -->
+          <polygon points="6,-20 40,-20 60,380 30,400" fill="url(#sun)"/>
+
+          <!-- 水纹：3 条明显的横向波浪线（正弦曲线 path） -->
+          <!-- 第1条 在 y=210 附近 -->
+          <path d="M -4,210 Q 16,200 32,210 T 68,210" stroke="oklch(0.99 0.03 188)" stroke-opacity="0.55" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+          <!-- 第2条 在 y=330 附近，更柔 -->
+          <path d="M -4,330 Q 16,322 32,330 T 68,330" stroke="oklch(0.99 0.03 188)" stroke-opacity="0.45" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          <!-- 第3条 在 y=430 附近 -->
+          <path d="M -4,430 Q 16,424 32,430 T 68,430" stroke="oklch(0.99 0.03 188)" stroke-opacity="0.35" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+
+          <!-- 水面高光线（顶部一条亮线） -->
+          <rect x="0" y="0" width="64" height="2" fill="oklch(1 0.05 180)" opacity="0.8"/>
+        </svg>
+
+        <div class="nav">
+          <div class="logo">✦</div>
+          <div class="ico dark">🔍</div>
+          <div class="ico dark">💬</div>
+          <div class="ico mid active">✓</div>
+          <div class="ico mid">👥</div>
+          <div class="ico mid">💻</div>
+          <div class="ico mid">🔔</div>
+          <div class="spacer"></div>
+          <div class="avatar">L</div>
+          <div class="ico sand">⚙</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 拆解：只有水纹（透明底） -->
+    <div class="col">
+      <h3>拆解 · 只有水纹</h3>
+      <p>看 3 条波浪线 + 顶部亮线</p>
+      <div class="rail">
+        <svg viewBox="0 0 64 640" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="64" height="640" fill="oklch(0.40 0.09 215)"/>
+          <path d="M -4,210 Q 16,200 32,210 T 68,210" stroke="oklch(0.99 0.03 188)" stroke-opacity="0.75" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+          <path d="M -4,330 Q 16,322 32,330 T 68,330" stroke="oklch(0.99 0.03 188)" stroke-opacity="0.6" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+          <path d="M -4,430 Q 16,424 32,430 T 68,430" stroke="oklch(0.99 0.03 188)" stroke-opacity="0.45" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          <rect x="0" y="0" width="64" height="2" fill="oklch(1 0.05 180)" opacity="0.9"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 拆解：只有阳光（透明底） -->
+    <div class="col">
+      <h3>拆解 · 只有阳光</h3>
+      <p>看那束斜射的暖白光柱</p>
+      <div class="rail">
+        <svg viewBox="0 0 64 640" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="sun2" x1="0.25" y1="0" x2="0.7" y2="0.6">
+              <stop offset="0%"  stop-color="oklch(1 0.08 90)" stop-opacity="0.85"/>
+              <stop offset="35%" stop-color="oklch(0.98 0.07 140)" stop-opacity="0.4"/>
+              <stop offset="70%" stop-color="oklch(0.98 0.05 170)" stop-opacity="0.1"/>
+              <stop offset="100%" stop-color="oklch(0.98 0.05 170)" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <rect width="64" height="640" fill="oklch(0.40 0.09 215)"/>
+          <polygon points="6,-20 40,-20 60,380 30,400" fill="url(#sun2)"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>SVG 硬画的好处：</b>水纹是真实的正弦曲线 <code>&lt;path&gt;</code>（<code>Q...T...</code> 画的波浪），阳光是斜的 <code>&lt;polygon&gt;</code> + <code>&lt;linearGradient&gt;</code>。
+    这些都是 SVG 矢量元素，浏览器一定渲染，不依赖 CSS 层叠上下文。<br><br>
+    看完告诉我：① <b>水纹 3 条够不够/要不要更多波浪</b>；② <b>阳光那束光柱看到了吗，角度对吗</b>；③ <b>底部沙滩色对吗</b>。
+    这次应该能看见了。如果还看不见，那就是图本身被压缩太小，我会把单个 rail 放大单独截图。
+  </div>
+</body>
+</html>
