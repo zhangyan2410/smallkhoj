@@ -126,6 +126,67 @@ Feishu handler -> parse message -> create TaskRun -> call runtime/daemon directl
 Feishu handler -> claim external_event -> resolve external_route/session -> create/link SmallKhoj channel/task/TaskRun state -> existing TaskRun/daemon path executes -> external_mapping/write-back records outcome
 ```
 
+## Scenario: Jira REST Outbound Write-Back
+
+### 1. Scope / Trigger
+- Trigger: adding or changing Jira Cloud outbound REST operations for issue lookup, comment write-back, or Jira object mappings.
+- Use this for the 7-15 release path where Jira is a durable external work-record target. Jira webhook ingestion is a separate future scenario.
+
+### 2. Signatures
+- Service module: `services.jira_rest`.
+- Config resolver: `resolve_jira_config(connector, credentials={email, apiToken})`.
+- Issue lookup: `GET {siteUrl}/rest/api/3/issue/{issueIdOrKey}`.
+- Comment write-back: `POST {siteUrl}/rest/api/3/issue/{issueIdOrKey}/comment`.
+- Comment body: Jira Atlassian Document Format document under JSON key `body`.
+- Mapping helpers:
+  - `map_jira_issue(... local_type, local_id, issue_key, issue_url)`.
+  - `map_jira_comment(... local_type, local_id, comment_id, comment_url)`.
+
+### 3. Contracts
+- Jira credentials are runtime inputs or secret-manager outputs. Do not commit real Jira email/API token values.
+- `ExternalConnector.config` may store non-secret `siteUrl`; tokens must not be stored in `ExternalEvent.normalized` or mappings.
+- Jira Cloud REST uses Basic auth with `email:apiToken` encoded in the `Authorization` header.
+- Plain text TaskRun output must be converted to minimal ADF before comment write-back.
+- Successful issue/comment associations must use `external_mappings`; do not add a Jira-specific mapping table.
+- Jira service must not import daemon/runtime execution helpers. It only reads/writes Jira and records external mappings.
+
+### 4. Validation & Error Matrix
+- Missing `siteUrl` -> `JIRA_CONFIG_MISSING_SITE_URL`.
+- Non-HTTPS or malformed `siteUrl` -> `JIRA_CONFIG_INVALID_SITE_URL`.
+- Missing email/API token -> `JIRA_CREDENTIALS_MISSING`.
+- Jira 401/403 -> `JIRA_AUTH_FAILED`.
+- Jira 404 -> `JIRA_ISSUE_NOT_FOUND`.
+- Jira issue lookup 5xx/other -> `JIRA_API_FAILED`.
+- Jira comment 5xx/other -> `JIRA_COMMENT_FAILED`.
+- Jira comment response without id -> `JIRA_COMMENT_FAILED`.
+
+### 5. Good/Base/Bad Cases
+- Good: `fetch_jira_issue` normalizes key, id, summary, status, description text, and browser URL for TaskRun context.
+- Good: `append_jira_comment` posts ADF and maps `task_run -> jira comment` through integration gateway.
+- Base: issue lookup succeeds but later comment write-back fails; local TaskRun output remains the source of truth.
+- Bad: storing Jira API token in connector config snapshots, event normalized payloads, or test fixtures.
+- Bad: writing Jira comments by constructing ad hoc JSON outside the service, bypassing ADF conversion tests.
+- Bad: updating Jira workflow status in the REST MVP before comment/evidence write-back is reliable.
+
+### 6. Tests Required
+- Config validation for missing/invalid site URL and missing credentials.
+- Fake HTTP test for issue lookup URL, method, auth header, and normalized issue shape.
+- Fake HTTP test for comment POST URL, ADF body, and returned comment URL.
+- Failure-code tests for auth, not found, and provider errors.
+- Mapping tests proving issue/comment mappings are `ExternalMapping` rows.
+- Boundary test proving `services.jira_rest` does not import runtime/daemon execution helpers.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+TaskRun completion -> Jira adapter writes comment -> stores jira_comment_id in task.data
+```
+
+#### Correct
+```text
+TaskRun completion -> services.jira_rest.append_jira_comment -> services.integration_gateway.create_external_mapping(local task_run -> jira comment)
+```
+
 ## Scenario: Computer Binding Columns On Members
 
 ### 1. Scope / Trigger

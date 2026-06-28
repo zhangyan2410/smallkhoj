@@ -19,7 +19,8 @@
   "pr_url": null,
   "subtasks": [],
   "children": [
-    "06-28-initial-release-integration-gateway-foundation"
+    "06-28-initial-release-integration-gateway-foundation",
+    "06-28-initial-release-jira-rest-mvp"
   ],
   "parent": null,
   "relatedFiles": [],
