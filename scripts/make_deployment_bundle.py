@@ -26,6 +26,7 @@ INCLUDED_FILES = (
     "scripts/post_deploy_smoke.py",
     "scripts/remote_deploy_evidence.py",
     "scripts/update_prod_env_from_stdin.py",
+    "scripts/validate_release_worker_env.py",
 )
 
 
@@ -114,6 +115,10 @@ python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runti
 
 When patching an existing `.env.prod` with Feishu/Jira runtime values, pipe
 KEY=value lines over stdin so secrets do not appear in command arguments:
+
+```bash
+python3 scripts/validate_release_worker_env.py --json /path/outside/repo/release-worker.env
+```
 
 ```bash
 python3 scripts/update_prod_env_from_stdin.py --env-file .env.prod --json < /path/outside/repo/release-worker.env

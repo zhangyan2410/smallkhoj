@@ -857,12 +857,15 @@ tccli lighthouse DescribeInstances --profile smallkhoj-release --region ap-guang
   - `scripts/lighthouse_host_probe.py`
   - `scripts/post_deploy_smoke.py`
   - `scripts/remote_deploy_evidence.py`
+  - `scripts/validate_release_worker_env.py`
+  - `scripts/update_prod_env_from_stdin.py`
   - generated `README.deploy-bundle.md`
   - generated `manifest.json`
 - The bundle must not include `.env*`, `.git`, `.trellis`, `node_modules`, `.next`, `__pycache__`, local databases, logs, screenshots, task evidence, or secrets.
 - Manifest entries must include relative path, size, and SHA-256 hash. The top-level manifest must include generation time and current git commit when available.
 - Tar members must live under one relative top-level prefix. No absolute paths or `..` path components are allowed.
 - The generated README must show the server-side order: host probe -> env/preflight -> compose up -> post-deploy smoke.
+- When Feishu/Jira runtime values are patched from a repo-external `release-worker.env`, the README must show `validate_release_worker_env.py` before `update_prod_env_from_stdin.py`. The validator/updater may print key names and readiness labels only, never configured values.
 
 ### 4. Validation & Error Matrix
 - Missing required included file -> fail bundle generation.

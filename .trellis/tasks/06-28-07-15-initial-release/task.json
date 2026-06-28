@@ -47,7 +47,8 @@
     "06-28-initial-release-production-env-template-guardrail",
     "06-28-initial-release-remote-deploy-evidence-collector",
     "06-28-initial-release-production-image-transfer-runner",
-    "06-28-initial-release-image-platform-selection"
+    "06-28-initial-release-image-platform-selection",
+    "06-29-06-29-initial-release-production-env-validation"
   ],
   "parent": null,
   "relatedFiles": [],

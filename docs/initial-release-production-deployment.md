@@ -367,6 +367,10 @@ If `.env.prod` already exists, the template command refuses to overwrite it unle
 When updating the existing server env file with Feishu/Jira runtime values, do not put secrets in SSH command arguments. Put the patch file outside the repository, then pipe it over stdin:
 
 ```bash
+python3 scripts/validate_release_worker_env.py --json /Volumes/ORICO/smallkhoj-secrets/release-worker.env
+```
+
+```bash
 ssh -i ~/.ssh/<key> ubuntu@<server-ip> \
   'cd /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy && python3 scripts/update_prod_env_from_stdin.py --env-file .env.prod --json' \
   < /Volumes/ORICO/smallkhoj-secrets/release-worker.env
@@ -387,7 +391,7 @@ JIRA_EMAIL=<jira-email>
 JIRA_API_TOKEN=<set-outside-repo>
 ```
 
-The updater creates `.env.prod.bak`, refuses unknown keys, and prints only key names with `<set>`, `<empty>`, or `<unchanged>` markers.
+The validator refuses unknown or malformed keys, treats empty/placeholder required values as missing, and prints only key names plus readiness metadata. The updater creates `.env.prod.bak`, refuses unknown keys, and prints only key names with `<set>`, `<empty>`, or `<unchanged>` markers.
 
 External values to collect before running integration bootstrap:
 

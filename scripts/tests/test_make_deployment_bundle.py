@@ -27,6 +27,7 @@ def make_repo(root: Path) -> None:
     write(root / "scripts" / "post_deploy_smoke.py", "print('smoke')\n")
     write(root / "scripts" / "remote_deploy_evidence.py", "print('evidence')\n")
     write(root / "scripts" / "update_prod_env_from_stdin.py", "print('env update')\n")
+    write(root / "scripts" / "validate_release_worker_env.py", "print('validate env')\n")
     write(root / ".env.prod", "POSTGRES_PASSWORD=secret\n")
 
 
@@ -64,6 +65,7 @@ class DeploymentBundleTests(unittest.TestCase):
                 "smallkhoj-deploy/scripts/post_deploy_smoke.py",
                 "smallkhoj-deploy/scripts/remote_deploy_evidence.py",
                 "smallkhoj-deploy/scripts/update_prod_env_from_stdin.py",
+                "smallkhoj-deploy/scripts/validate_release_worker_env.py",
             ]))
             self.assertNotIn(".env.prod", "\n".join(names))
 
@@ -101,6 +103,7 @@ class DeploymentBundleTests(unittest.TestCase):
             self.assertLess(readme.index("lighthouse_host_probe.py"), readme.index("initial_release_deploy_preflight.py"))
             self.assertLess(readme.index("initial_release_deploy_preflight.py"), readme.index("docker compose"))
             self.assertLess(readme.index("docker compose"), readme.index("post_deploy_smoke.py"))
+            self.assertLess(readme.index("validate_release_worker_env.py"), readme.index("update_prod_env_from_stdin.py"))
 
     def test_tar_member_names_are_relative_under_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
