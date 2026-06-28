@@ -1,0 +1,14 @@
+{$SMALLKHOJ_SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	@backend_api path /api /api/*
+	reverse_proxy @backend_api backend:8000
+
+	@backend_internal path /internal /internal/*
+	reverse_proxy @backend_internal backend:8000
+
+	@backend_docs path /docs /docs/* /openapi.json
+	reverse_proxy @backend_docs backend:8000
+
+	reverse_proxy frontend:3000
+}

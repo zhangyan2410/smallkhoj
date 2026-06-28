@@ -1,0 +1,93 @@
+name: smallkhoj-prod
+
+services:
+  db:
+    image: ${SMALLKHOJ_POSTGRES_IMAGE:-pgvector/pgvector:pg16}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smallkhoj}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD outside repo}
+      POSTGRES_DB: ${POSTGRES_DB:-smallkhoj}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    image: ${SMALLKHOJ_BACKEND_IMAGE:-smallkhoj-backend:latest}
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      DEBUG: ${DEBUG:-false}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-smallkhoj}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD outside repo}@db:5432/${POSTGRES_DB:-smallkhoj}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_API_BASE: ${LLM_API_BASE:-https://api.openai.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      JIRA_EMAIL: ${JIRA_EMAIL:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+      FEISHU_REPLY_BASE_URL: ${FEISHU_REPLY_BASE_URL:-https://open.feishu.cn}
+      FEISHU_REPLY_ACCESS_TOKEN: ${FEISHU_REPLY_ACCESS_TOKEN:-}
+      THREAD_SUMMARY_SCHEDULER_ENABLED: ${THREAD_SUMMARY_SCHEDULER_ENABLED:-false}
+    depends_on:
+      - db
+
+  frontend:
+    image: ${SMALLKHOJ_FRONTEND_IMAGE:-smallkhoj-frontend:latest}
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+      NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-}
+      NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-sk_public_local}
+    depends_on:
+      - backend
+
+  feishu-worker:
+    image: ${SMALLKHOJ_BACKEND_IMAGE:-smallkhoj-backend:latest}
+    profiles:
+      - feishu-worker
+    restart: unless-stopped
+    command: ["uv", "run", "python", "-m", "feishu_worker_cli"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-smallkhoj}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD outside repo}@db:5432/${POSTGRES_DB:-smallkhoj}
+      FEISHU_WORKER_ENABLED: ${FEISHU_WORKER_ENABLED:-true}
+      FEISHU_WORKER_CONNECTOR_ID: ${FEISHU_WORKER_CONNECTOR_ID:-}
+      FEISHU_WORKER_JIRA_CONNECTOR_ID: ${FEISHU_WORKER_JIRA_CONNECTOR_ID:-}
+      FEISHU_WORKER_CREATOR_ID: ${FEISHU_WORKER_CREATOR_ID:-}
+      FEISHU_WORKER_BOT_OPEN_ID: ${FEISHU_WORKER_BOT_OPEN_ID:-}
+      FEISHU_WORKER_BOT_NAME: ${FEISHU_WORKER_BOT_NAME:-SmallKhoj}
+      FEISHU_WORKER_APP_ID: ${FEISHU_WORKER_APP_ID:-}
+      FEISHU_WORKER_APP_SECRET: ${FEISHU_WORKER_APP_SECRET:-}
+      JIRA_EMAIL: ${JIRA_EMAIL:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+      FEISHU_REPLY_BASE_URL: ${FEISHU_REPLY_BASE_URL:-https://open.feishu.cn}
+      FEISHU_REPLY_ACCESS_TOKEN: ${FEISHU_REPLY_ACCESS_TOKEN:-}
+    depends_on:
+      - db
+      - backend
+
+  caddy:
+    image: ${SMALLKHOJ_CADDY_IMAGE:-caddy:2}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SMALLKHOJ_SITE_ADDRESS: ${SMALLKHOJ_SITE_ADDRESS:-:80}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

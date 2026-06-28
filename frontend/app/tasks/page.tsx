@@ -25,13 +25,12 @@ import { Input } from "@/components/ui/input"
 import { FieldLabel, Select, Textarea } from "@/components/ui/form"
 import { TaskListPanel } from "@/components/task-list-panel"
 import { TaskFormDialogs } from "@/components/task-form-dialogs"
-import { apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
+import { API_BASE, apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders, getSessionToken } from "@/lib/server-auth"
 
 import { TaskDndBoard } from "@/components/task-dnd-board"
 import { TaskDetailDialog } from "@/components/task-detail-dialog"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
 const TASK_STATUS_OPTIONS = TASK_STATUSES.map((status) => `${status}|${statusLabel(status)}`)
 const MEMORY_OUTPUT_DIRECTIONS = ["final_summary", "evidence", "artifacts", "next_steps", "channel_memory"]

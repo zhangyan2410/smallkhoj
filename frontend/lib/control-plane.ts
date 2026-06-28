@@ -1,4 +1,8 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
+import { resolveApiBase } from "./runtime-url"
+
+export const BROWSER_API_BASE = resolveApiBase(process.env, "browser")
+export const SERVER_API_BASE = resolveApiBase(process.env, "server")
+export const API_BASE = typeof window === "undefined" ? SERVER_API_BASE : BROWSER_API_BASE
 export const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
 export const SESSION_COOKIE_NAME = "smallkhoj_session"
 

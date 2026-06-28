@@ -48,13 +48,19 @@ export function useResizablePanel({
   useEffect(() => {
     if (didRead.current) return
     didRead.current = true
+    let timeout: number | undefined
     try {
       const raw = window.localStorage.getItem(storageKey)
       const parsed = raw ? Number(raw) : defaultWidth
       const next = Number.isFinite(parsed) ? clamp(parsed) : defaultWidth
-      if (next !== defaultWidth) setStored(next)
+      if (next !== defaultWidth) {
+        timeout = window.setTimeout(() => setStored(next), 0)
+      }
     } catch {
       // ignore
+    }
+    return () => {
+      if (timeout !== undefined) window.clearTimeout(timeout)
     }
   }, [storageKey, defaultWidth, clamp])
 

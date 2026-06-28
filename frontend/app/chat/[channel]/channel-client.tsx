@@ -42,6 +42,7 @@ import {
   type MemoryProposal,
   statusLabel,
   API_BASE,
+  BROWSER_API_BASE,
 } from "@/lib/control-plane"
 import {
   applyHighWater,
@@ -1163,7 +1164,7 @@ export function ChannelClient({
                             )}
                             {file.previewUrl && (
                               <a
-                                href={`${API_BASE}${file.previewUrl}`}
+                                href={`${BROWSER_API_BASE}${file.previewUrl}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={tChat("preview")}
@@ -1173,7 +1174,7 @@ export function ChannelClient({
                               </a>
                             )}
                             <a
-                              href={`${API_BASE}${file.url}`}
+                              href={`${BROWSER_API_BASE}${file.url}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               title={tChat("download")}

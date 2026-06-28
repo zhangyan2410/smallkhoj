@@ -15,7 +15,7 @@ import {
 } from "lucide-react"
 
 import {
-  API_BASE,
+  BROWSER_API_BASE,
   formatTime,
   type MemoryEntry,
   type MemoryProposal,
@@ -108,7 +108,7 @@ function formatFileSize(bytes?: number) {
 function artifactUrl(href: string | null) {
   if (!href) return null
   if (href.startsWith("http://") || href.startsWith("https://") || href.startsWith("data:")) return href
-  if (href.startsWith("/api/")) return `${API_BASE}${href}`
+  if (href.startsWith("/api/")) return `${BROWSER_API_BASE}${href}`
   return href
 }
 

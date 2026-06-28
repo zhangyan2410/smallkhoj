@@ -23,11 +23,9 @@ import { EmptyState, RuntimeChip, Toolbar } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { apiGet, formatTime, type Computer, type Member } from "@/lib/control-plane"
+import { API_BASE, apiGet, formatTime, type Computer, type Member } from "@/lib/control-plane"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 
 type Channel = {
   id: string

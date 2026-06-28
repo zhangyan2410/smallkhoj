@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import {
@@ -35,6 +35,7 @@ import { ConnectComputerForm } from "./connect-computer-form"
 import { buildComputerReconnectUrl } from "@/lib/computer-navigation"
 import {
   apiGet,
+  API_BASE,
   dotClass,
   formatTime,
   runtimeLabel,
@@ -45,8 +46,7 @@ import {
   type RuntimeInfo,
 } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
+import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
 
 type TranslationFn = (key: string, values?: Record<string, string | number>) => string
 
@@ -146,10 +146,11 @@ async function createComputerConnectCommandAction(formData: FormData) {
   "use server"
 
   const name = String(formData.get("name") || "").trim() || "unregistered-computer"
+  const publicServerUrl = resolvePublicApiBaseFromHeaders(process.env, await headers())
   const response = await fetch(`${API_BASE}/api/v1/computers/connect-command`, {
     method: "POST",
     headers: await serverApiHeaders(true),
-    body: JSON.stringify({ name, serverUrl: API_BASE }),
+    body: JSON.stringify({ name, serverUrl: publicServerUrl }),
   })
 
   if (!response.ok) {
@@ -181,10 +182,11 @@ async function createComputerReconnectCommandAction(formData: FormData) {
   const computerId = String(formData.get("computerId") || "").trim()
   if (!computerId) redirect("/computers?error=Missing%20computer")
 
+  const publicServerUrl = resolvePublicApiBaseFromHeaders(process.env, await headers())
   const response = await fetch(`${API_BASE}/api/v1/computers/${computerId}/reconnect-command`, {
     method: "POST",
     headers: await serverApiHeaders(true),
-    body: JSON.stringify({ serverUrl: API_BASE }),
+    body: JSON.stringify({ serverUrl: publicServerUrl }),
   })
 
   if (!response.ok) {

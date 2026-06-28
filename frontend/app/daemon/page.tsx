@@ -25,10 +25,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { StatusPill } from "@/components/product-ui"
-import { dotClass, statusLabel } from "@/lib/control-plane"
+import { API_BASE, dotClass, statusLabel } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 
 type Channel = {
   id: string

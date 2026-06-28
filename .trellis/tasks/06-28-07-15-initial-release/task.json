@@ -33,7 +33,8 @@
     "06-28-initial-release-integration-bootstrap-cli",
     "06-28-initial-release-feishu-worker-cli",
     "06-28-feishu-worker-db-session-lifecycle-hardening",
-    "06-28-initial-release-live-run-preflight-cli"
+    "06-28-initial-release-live-run-preflight-cli",
+    "06-28-initial-release-production-url-reverse-proxy-readiness"
   ],
   "parent": null,
   "relatedFiles": [],

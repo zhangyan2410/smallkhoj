@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { KeyRound, Server, Shield, SlidersHorizontal } from "lucide-react"
 
@@ -10,14 +10,16 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Panel } from "@/components/ui/panel"
-import { apiGet, formatTime } from "@/lib/control-plane"
+import { API_BASE, apiGet, formatTime } from "@/lib/control-plane"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
 
 export default async function SettingsPage() {
   const session = await requireCurrentAccount()
   const sessionToken = await getSessionToken()
   const apiKeys = await getApiKeys(sessionToken)
   const lastSecret = parseLastApiKeyCookie((await cookies()).get("smallkhoj_last_api_key")?.value)
+  const publicApiBase = resolvePublicApiBaseFromHeaders(process.env, await headers())
 
   return (
     <ProductShell
@@ -29,7 +31,7 @@ export default async function SettingsPage() {
       sidebarDescription="Secondary surfaces stay reachable without taking over the main app."
       sidebar={
         <div className="grid gap-2">
-          <a href="http://localhost:8000/docs" target="_blank" className="rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm hover:bg-accent">
+          <a href={`${publicApiBase}/docs`} target="_blank" className="rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm hover:bg-accent">
             API Docs
           </a>
           <Link href="/daemon" className="rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm hover:bg-accent">
@@ -200,7 +202,7 @@ async function createApiKeyAction(formData: FormData) {
   "use server"
 
   const resourceType = String(formData.get("resourceType") || "human")
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"}/api/v1/api-keys`, {
+  const response = await fetch(`${API_BASE}/api/v1/api-keys`, {
     method: "POST",
     headers: await serverApiHeaders(true),
     body: JSON.stringify({ resourceType }),
@@ -233,7 +235,7 @@ async function revokeApiKeyAction(formData: FormData) {
   const keyId = String(formData.get("keyId") || "")
   const confirmed = formData.get("confirm") === "on"
   if (!keyId || !confirmed) redirect("/settings?error=Confirmation%20required")
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"}/api/v1/api-keys/${keyId}/revoke`, {
+  const response = await fetch(`${API_BASE}/api/v1/api-keys/${keyId}/revoke`, {
     method: "POST",
     headers: await serverApiHeaders(true),
     body: JSON.stringify({}),
