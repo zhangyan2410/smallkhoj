@@ -48,6 +48,24 @@ JIRA_EMAIL=<set outside repo>
 JIRA_API_TOKEN=<set outside repo>
 ```
 
+## Launch Worker
+
+After setting the env vars above, start the Feishu long-connection worker from `backend/`:
+
+```bash
+PYTHONPATH=. uv run python -m feishu_worker_cli
+```
+
+On success it prints one JSON line similar to:
+
+```json
+{"reason": "Feishu Channel SDK transport started.", "reasonCode": "FEISHU_CHANNEL_TRANSPORT_STARTED", "status": "started"}
+```
+
+The process stays running until interrupted. Stop it with Ctrl-C; the CLI will call the transport `disconnect()` hook before exiting.
+
+If startup config or connector validation fails, the CLI prints a JSON failure with `status="failed"` and exits non-zero. Typical causes are missing `FEISHU_WORKER_*` IDs, inactive connector rows, or missing app credentials.
+
 ## Secrets
 
 Do not pass these values to the bootstrap command and do not store them in connector config:

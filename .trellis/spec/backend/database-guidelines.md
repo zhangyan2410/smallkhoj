@@ -606,6 +606,63 @@ Manual DB rows -> copy connector IDs from psql history -> run worker with secret
 python -m integration_bootstrap_cli -> non-secret connector/route rows + env guidance -> secrets only in runtime env -> Feishu worker launch
 ```
 
+## Scenario: Feishu Worker Process CLI
+
+### 1. Scope / Trigger
+- Trigger: making the Feishu Channel SDK worker launchable as a long-running backend process from deployment/runtime env.
+- Use this after integration bootstrap has created connector/route rows and before adding process supervision, Docker Compose service definitions, or live Feishu smoke tests.
+
+### 2. Signatures
+- CLI module: `feishu_worker_cli`, run from `backend/` with `python -m feishu_worker_cli`.
+- CLI flags: `--pretty` only.
+- Process runner: `run_worker_process(worker_runner=run_feishu_channel_worker, wait=_wait_forever, emit=print, pretty=False)`.
+- Delegated worker: `services.feishu_channel_transport.run_feishu_channel_worker(db_factory=lambda: async_session())`.
+- Startup JSON fields: `status`, `reasonCode`, `reason`.
+
+### 3. Contracts
+- CLI must be a process wrapper only. It must not parse Feishu messages, resolve routes, call Jira REST, create TaskRuns, or send Feishu replies.
+- CLI must use existing settings/env loading through `config.Settings` and existing DB session wiring through `models.async_session`.
+- CLI startup success prints one structured JSON line and then keeps the process alive until interrupted.
+- CLI startup failure prints structured JSON and exits non-zero.
+- CLI shutdown must call `transport.disconnect()` when the worker returned a transport.
+- CLI must not expose secret flags such as `--feishu-app-secret`, `--jira-api-token`, or Feishu access token flags.
+- Tests must inject worker and wait callables so no real Feishu connection or infinite wait is required.
+
+### 4. Validation & Error Matrix
+- Worker outcome `status="started"` -> print JSON, wait, disconnect on shutdown, exit `0`.
+- Worker outcome not started -> print JSON, exit `2`.
+- Worker runner raises -> `FEISHU_WORKER_CLI_FAILED`, exit `1`.
+- Disconnect raises -> `FEISHU_WORKER_CLI_DISCONNECT_FAILED`, exit `1`.
+- Operator Ctrl-C after startup -> disconnect and exit `0`.
+- Secret-shaped CLI flag -> argparse rejection before any worker startup.
+
+### 5. Good/Base/Bad Cases
+- Good: deployment sets bootstrap IDs and secrets in env, then runs `python -m feishu_worker_cli`; the CLI starts the existing Channel SDK transport and waits.
+- Good: startup config failure is visible as a JSON line suitable for logs/process supervisors.
+- Base: SDK missing or connector disabled; delegated worker returns structured failure and CLI exits non-zero without retry loops.
+- Bad: duplicating `resolve_feishu_worker_config` or `load_feishu_worker_connectors` logic in the CLI.
+- Bad: adding `--app-secret` convenience flags and leaking secrets through shell history.
+- Bad: swallowing Ctrl-C without disconnecting the transport.
+
+### 6. Tests Required
+- Success prints JSON, waits, and disconnects.
+- Startup failure prints JSON and does not wait.
+- KeyboardInterrupt path disconnects and exits cleanly.
+- Disconnect failure reports structured JSON.
+- Parser rejects secret flags.
+- CLI `--help` loads without opening DB or Feishu network connections.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+python -m feishu_worker_cli --app-secret xxx -> CLI parses messages and creates TaskRuns
+```
+
+#### Correct
+```text
+env/.env secrets -> python -m feishu_worker_cli -> run_feishu_channel_worker -> existing worker/runtime/event-loop services
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger
