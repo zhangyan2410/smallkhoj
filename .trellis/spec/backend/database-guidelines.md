@@ -778,6 +778,62 @@ python3 scripts/lighthouse_host_probe.py --json
 # review warnings and suggested commands before any host mutation
 ```
 
+## Scenario: Initial Release Tencent Cloud CLI Discovery
+
+### 1. Scope / Trigger
+- Trigger: discovering Tencent Cloud Lighthouse instance metadata, region, public IP, OS, status, login key IDs, or firewall-adjacent information before SSH host probe and deployment.
+- Use this when console UI is blocked by login state or when repeatable evidence is preferred over manual console screenshots.
+
+### 2. Signatures
+- CLI binary: `tccli`.
+- Recommended local install path for this machine: `/Volumes/ORICO/smallkhoj-tools/tccli-venv/bin/tccli`.
+- Configuration command:
+  - `tccli configure --profile smallkhoj-release`
+- Read-only discovery commands:
+  - `tccli lighthouse DescribeRegions --profile smallkhoj-release`
+  - `tccli lighthouse DescribeInstances --profile smallkhoj-release --region <region> --Limit 20`
+- Optional network proxy:
+  - `--https-proxy http://127.0.0.1:7897`
+
+### 3. Contracts
+- Install `tccli` outside the repository; do not vendor it into project files.
+- Store Tencent Cloud `SecretId` and `SecretKey` only in the local `tccli` profile, environment variables, or CI secrets. Never commit credentials or inline them in tracked commands.
+- Use named profiles such as `smallkhoj-release` instead of relying on an ambiguous default profile during release work.
+- `DescribeInstances` is read-only and may be used before any SSH/server mutation.
+- `DescribeInstances` output is allowed release evidence after reviewing it for secrets. It includes fields such as `InstanceId`, `Zone`, `CPU`, `Memory`, `OsName`, `Platform`, `PrivateAddresses`, `PublicAddresses`, `InternetAccessible`, `LoginSettings.KeyIds`, `InstanceState`, `CreatedTime`, and `ExpiredTime`.
+- If network access requires VPN, use `--https-proxy http://127.0.0.1:7897` for `tccli` host calls. Docker build containers still use `host.docker.internal:7897`.
+
+### 4. Validation & Error Matrix
+- Missing `tccli` -> install it into an external tools directory such as `/Volumes/ORICO/smallkhoj-tools/tccli-venv`.
+- Missing credentials -> `tccli` cannot call Lighthouse APIs; configure a local profile or use explicit environment/CI secrets outside the repo.
+- Wrong region -> `DescribeInstances` returns no target instance; run `DescribeRegions` and try likely regions such as `ap-guangzhou`, `ap-shanghai`, `ap-beijing`, or `ap-hongkong`.
+- Browser console still at login page -> use CLI discovery once credentials exist, or have the operator complete login in the browser.
+- SSL/proxy certificate errors while installing `tccli` through the local proxy -> use pip `--trusted-host pypi.org --trusted-host files.pythonhosted.org` only for installing into the external venv.
+
+### 5. Good/Base/Bad Cases
+- Good: operator configures `tccli --profile smallkhoj-release`, runs `DescribeInstances`, captures public IP/OS/status, then starts SSH dry-run/host probe.
+- Good: `tccli lighthouse DescribeInstances --https-proxy http://127.0.0.1:7897` is used when direct network access is unreliable.
+- Base: no credentials are available; keep browser login tab open and wait for operator login or credential setup.
+- Bad: committing `SecretId`, `SecretKey`, or generated credential files.
+- Bad: treating browser login state as the only source of instance metadata when CLI evidence can be produced.
+
+### 6. Tests Required
+- No unit tests are required for external `tccli` installation itself.
+- Deployment docs must show no real credentials and must keep `SecretId`/`SecretKey` as local profile inputs only.
+- Manual evidence should include `tccli lighthouse DescribeInstances ...` output with sensitive values reviewed before sharing.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+tccli lighthouse DescribeInstances --secretId AKID... --secretKey ... > docs/server.json
+```
+
+#### Correct
+```text
+tccli configure --profile smallkhoj-release
+tccli lighthouse DescribeInstances --profile smallkhoj-release --region ap-guangzhou --Limit 20
+```
+
 ## Scenario: Initial Release Deployment Bundle CLI
 
 ### 1. Scope / Trigger

@@ -31,6 +31,51 @@ For Tencent Cloud mainland China servers, a public website on a custom domain no
 
 Feishu long connection and Jira REST do not require inbound traffic from Feishu to SmallKhoj. The public domain is mainly for users, daemon connect URLs, browser API calls, and operational validation.
 
+## Tencent Cloud CLI
+
+Prefer TencentCloud CLI (`tccli`) for read-only Lighthouse discovery once cloud credentials are available. The browser console is still useful for login and visual confirmation, but CLI output is easier to save as deployment evidence.
+
+Install the CLI outside the repo. On this machine, keep it on the ORICO disk:
+
+```bash
+python3 -m venv /Volumes/ORICO/smallkhoj-tools/tccli-venv
+env HTTP_PROXY=http://127.0.0.1:7897 HTTPS_PROXY=http://127.0.0.1:7897 \
+  /Volumes/ORICO/smallkhoj-tools/tccli-venv/bin/python -m pip install -U tccli \
+  --trusted-host pypi.org \
+  --trusted-host files.pythonhosted.org
+```
+
+Configure credentials in the local user profile, not in the repository:
+
+```bash
+/Volumes/ORICO/smallkhoj-tools/tccli-venv/bin/tccli configure --profile smallkhoj-release
+```
+
+The prompt asks for `SecretId`, `SecretKey`, default region, and output format. Use `json` output. Do not paste those values into tracked files or shell history as inline command arguments.
+
+Useful read-only discovery commands:
+
+```bash
+/Volumes/ORICO/smallkhoj-tools/tccli-venv/bin/tccli lighthouse DescribeRegions \
+  --profile smallkhoj-release
+
+/Volumes/ORICO/smallkhoj-tools/tccli-venv/bin/tccli lighthouse DescribeInstances \
+  --profile smallkhoj-release \
+  --region ap-guangzhou \
+  --Limit 20
+```
+
+`DescribeInstances` returns the instance ID, name, zone, CPU, memory, OS name, platform, private IP, public IP, internet bandwidth, login key IDs, status, created time, and expiration time. Save that output before mutating the server.
+
+If local network access needs the VPN proxy, pass it to individual calls instead of storing it in project files:
+
+```bash
+/Volumes/ORICO/smallkhoj-tools/tccli-venv/bin/tccli lighthouse DescribeInstances \
+  --profile smallkhoj-release \
+  --region ap-guangzhou \
+  --https-proxy http://127.0.0.1:7897
+```
+
 ## Images
 
 The production compose file uses prebuilt backend/frontend images so a 2-core/2GB server does not have to build Next.js or Python dependencies under memory pressure. Caddy is built from `deploy/caddy/` because it is a tiny image layer that bakes in the tracked reverse-proxy config and avoids fragile host file mounts.
