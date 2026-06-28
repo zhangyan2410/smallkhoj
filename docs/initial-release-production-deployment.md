@@ -249,8 +249,10 @@ Live-run foundation data captured on 2026-06-29:
 - The deployed database has server ID `3893c518-c8f8-43ba-af0d-54a7773bbb6d`.
 - The public API created validation channel `#initial-release-validation` with ID `d9d533f2-ccf7-450a-af7f-b27618c7faa9`.
 - The channel creator is human member `release-operator` with ID `d1a19ae7-e1f1-4245-ac51-84c60e12b7e9`.
-- On the currently deployed backend, do not create the release agent assignee through `POST /members/agents` until the local daemon is intentionally connected and ready to start a runtime. That API creates an `AgentWorkspace` and pushes a runtime start command to the daemon, which can trigger local CPU/fan load.
-- After deploying a backend that supports it, create release assignees with `autoStart=false` or `startRuntime=false` when you need to register the member/workspace before intentionally starting the runtime.
+- The backend image was rebuilt as `linux/amd64`, uploaded from `/Volumes/ORICO/smallkhoj-deploy/smallkhoj-backend-amd64-autostart.tar`, loaded on the Lighthouse host, and the backend service was force-recreated.
+- The deployed backend now supports creating release assignees with `autoStart=false` or `startRuntime=false` when you need to register the member/workspace before intentionally starting the runtime.
+- The release assignee `release-runtime-agent` was created with ID `b03d52dc-b863-4e0a-953b-9b0231f325bc`, workspace ID `35d0da28-0b64-4eb6-9359-767559664b18`, runtime `codex`, provider display name `krill`, runtime provider `8220f087-56d0-43e8-af3e-303ef2c2d845`, `runtimeDesiredStatus=stopped`, workspace `status=stopped`, and `pid=null`.
+- Local process inspection after creation found no `aaa-daemon`, `smallkhoj-daemon`, managed `claude`, or managed `codex` runtime process. `post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json` still passed with zero failures and zero warnings after backend restart and assignee creation.
 - Container-side bootstrap and live-run preflight CLIs must be executed through `uv run python -m ...` inside the backend container. Direct `python -m ...` does not load the image's Python dependencies.
 - Current no-network live-run preflight fails at `workerConfig` with `FEISHU_WORKER_CONFIG_MISSING_CONNECTOR_ID`, which is expected before integration bootstrap and runtime env are configured.
 
@@ -524,7 +526,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T backend \
   --server-id 3893c518-c8f8-43ba-af0d-54a7773bbb6d \
   --channel-id d9d533f2-ccf7-450a-af7f-b27618c7faa9 \
   --creator-id d1a19ae7-e1f1-4245-ac51-84c60e12b7e9 \
-  --assignee-id <agent_member_uuid> \
+  --assignee-id b03d52dc-b863-4e0a-953b-9b0231f325bc \
   --feishu-chat-id <oc_or_ou_chat_id> \
   --feishu-chat-type group \
   --feishu-app-id <cli_app_id> \
