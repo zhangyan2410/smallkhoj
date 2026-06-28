@@ -22,7 +22,8 @@
     "06-28-initial-release-integration-gateway-foundation",
     "06-28-initial-release-jira-rest-mvp",
     "06-28-initial-release-feishu-long-connection-mvp",
-    "06-28-initial-release-feishu-jira-taskrun-loop"
+    "06-28-initial-release-feishu-jira-taskrun-loop",
+    "06-28-06-28-initial-release-taskrun-writeback-hook"
   ],
   "parent": null,
   "relatedFiles": [],

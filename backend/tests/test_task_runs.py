@@ -849,6 +849,92 @@ async def test_agent_task_run_lifecycle_endpoint_updates_current_agent_run(monke
     assert response["run"]["runtimeSessionId"] == "provider-session-1"
 
 
+@pytest.mark.asyncio
+async def test_agent_task_run_lifecycle_endpoint_triggers_terminal_writeback_hook(monkeypatch):
+    run_id = uuid.uuid4()
+    task_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    member = SimpleNamespace(id=agent_id, display_name="worker", kind="agent")
+    server = SimpleNamespace(id=uuid.uuid4())
+    run = SimpleNamespace(
+        id=run_id,
+        task_id=task_id,
+        assignment_id=None,
+        agent_id=agent_id,
+        channel_id=uuid.uuid4(),
+        source_message_id=None,
+        thread_root_message_id=None,
+        parent_run_id=None,
+        attempt=1,
+        status="completed",
+        trigger_type="feishu_jira_analysis",
+        runtime_workspace_id=None,
+        computer_id=None,
+        daemon_id=None,
+        runtime="claude_code",
+        runtime_provider=None,
+        runtime_model="minimax",
+        prompt_profile="task.worker",
+        workspace_session_id="workspace-session",
+        runtime_session_id="provider-session-1",
+        context_session_id=f"task:{task_id}:role:worker:run:{run_id}",
+        cwd="/tmp/work",
+        context_scope="task",
+        context_summary={},
+        context_usage={},
+        token_usage={},
+        tool_usage_summary={},
+        output_message_id=None,
+        failure_code=None,
+        failure_reason=None,
+        started_at=None,
+        completed_at=None,
+        created_at=None,
+        updated_at=None,
+    )
+    hook_calls = []
+
+    async def fake_update_task_run_lifecycle(db_arg, **kwargs):
+        return run
+
+    async def fake_writeback_hook(db_arg, **kwargs):
+        hook_calls.append(kwargs)
+        return SimpleNamespace(
+            status="failed",
+            reason_code="TASK_RUN_WRITEBACK_NO_JIRA_CREDENTIALS",
+            reason="Jira credentials were not available for TaskRun write-back.",
+            mapping=None,
+        )
+
+    monkeypatch.setattr(agent_api, "update_task_run_lifecycle", fake_update_task_run_lifecycle, raising=False)
+    monkeypatch.setattr(agent_api, "handle_terminal_task_run_writeback", fake_writeback_hook, raising=False)
+    db = _FakeSession()
+
+    response = await agent_api.update_task_run_lifecycle_endpoint(
+        str(run_id),
+        SimpleNamespace(
+            status="completed",
+            runtimeSessionId="provider-session-1",
+            workspaceSessionId="workspace-session",
+            contextSessionId=None,
+            contextUsage=None,
+            tokenUsage=None,
+            toolUsageSummary=None,
+            outputMessageId=None,
+            failureCode=None,
+            failureReason=None,
+        ),
+        agent=(member, server),
+        db=db,
+    )
+
+    assert db.committed is True
+    assert response["ok"] is True
+    assert response["writeBack"]["status"] == "failed"
+    assert response["writeBack"]["reasonCode"] == "TASK_RUN_WRITEBACK_NO_JIRA_CREDENTIALS"
+    assert hook_calls[0]["task_run"] is run
+
+
 def test_serialize_task_run_uses_public_camel_case_contract():
     run_id = uuid.uuid4()
     task_id = uuid.uuid4()

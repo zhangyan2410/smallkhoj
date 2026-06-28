@@ -309,6 +309,67 @@ Feishu accepted command -> Jira lookup -> daemon command -> Jira comment
 Feishu accepted command -> Jira lookup -> Message/Task/TaskRun state -> daemon runtime later executes TaskRun -> release_loop write-back maps Jira comment
 ```
 
+## Scenario: TaskRun Terminal External Write-Back Hook
+
+### 1. Scope / Trigger
+- Trigger: wiring TaskRun terminal lifecycle updates to Feishu/Jira/external write-back.
+- Use this when a runtime reports `completed`, `failed`, or `cancelled` through the daemon-facing TaskRun lifecycle API.
+
+### 2. Signatures
+- Service module: `services.task_run_writeback`.
+- Hook operation: `handle_terminal_task_run_writeback(db, task_run, output_text=None, dependencies=None)`.
+- Router integration: `routers.agent_api.update_task_run_lifecycle_endpoint`.
+- Dependency object: `TaskRunWritebackDependencies(jira_http_client, jira_credentials_resolver)`.
+
+### 3. Contracts
+- Only terminal TaskRun statuses may trigger external write-back.
+- Local TaskRun lifecycle update remains authoritative. Provider write-back failures must not roll back or erase local TaskRun status/output evidence.
+- Use `external_mappings` for idempotency. A `task_run -> jira comment` mapping means the run has already been written back.
+- Discover Jira issue context through the linked `external_events` row and the task's `task -> jira issue` mapping.
+- Jira credentials must come from runtime injection or a secret resolver. Do not read or store API tokens in committed connector config.
+- Router code may call the hook, but provider-specific request construction belongs in service modules.
+- If `TaskRun.output_message_id` is present and no explicit output text is passed, load the output message content for the Jira comment.
+- The hook must not import daemon/runtime execution helpers or start provider work.
+
+### 4. Validation & Error Matrix
+- Non-terminal status -> `TASK_RUN_WRITEBACK_NON_TERMINAL`, no write-back query chain.
+- Existing Jira comment mapping -> `TASK_RUN_WRITEBACK_ALREADY_WRITTEN`.
+- Missing linked event/task/Jira issue mapping -> `TASK_RUN_WRITEBACK_NO_JIRA_ISSUE`.
+- Missing Jira connector -> `TASK_RUN_WRITEBACK_NO_JIRA_CONNECTOR`.
+- Missing Jira HTTP client -> `TASK_RUN_WRITEBACK_NO_JIRA_HTTP_CLIENT`.
+- Missing Jira credentials resolver or resolver result -> `TASK_RUN_WRITEBACK_NO_JIRA_CREDENTIALS`.
+- Jira append failure -> `TASK_RUN_WRITEBACK_JIRA_FAILED` and linked external event becomes `writeback_failed`.
+- Successful append -> `TASK_RUN_WRITEBACK_WRITTEN`, `task_run -> jira comment` mapping, and linked external event becomes `completed`.
+
+### 5. Good/Base/Bad Cases
+- Good: completed Feishu-originated Jira analysis run loads the output message content, appends one Jira comment, maps the comment, and marks the external event completed.
+- Good: repeated lifecycle reports for the same completed run see the existing comment mapping and skip without creating duplicate Jira comments.
+- Base: production secret wiring is not ready; hook returns a structured missing-credentials outcome while the TaskRun update still commits.
+- Bad: calling Jira directly from the lifecycle router.
+- Bad: using `Task.data` as the only Jira write-back marker.
+- Bad: making TaskRun completion fail because Jira is temporarily unavailable.
+
+### 6. Tests Required
+- Non-terminal skip.
+- Terminal success with fake Jira HTTP client.
+- Output message content is used when explicit output text is not passed.
+- Existing comment mapping skips duplicate write-back.
+- Missing credentials returns a structured skip.
+- Jira failure marks linked external event `writeback_failed`.
+- Lifecycle endpoint invokes the hook for terminal states and still commits when the hook reports failure.
+- Boundary test proving the hook service does not import daemon/runtime execution helpers.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+TaskRun lifecycle endpoint -> append Jira comment inline -> fail request on Jira outage
+```
+
+#### Correct
+```text
+TaskRun lifecycle endpoint -> update local TaskRun -> services.task_run_writeback handles provider side effect -> commit local state with writeBack outcome
+```
+
 ## Scenario: Computer Binding Columns On Members
 
 ### 1. Scope / Trigger

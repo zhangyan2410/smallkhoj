@@ -52,7 +52,13 @@ from services.memory_api import (
     write_memory_entry,
 )
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
-from services.task_runs import create_task_assignment_and_run, serialize_task_run, update_task_run_lifecycle
+from services.task_run_writeback import handle_terminal_task_run_writeback, serialize_task_run_writeback_outcome
+from services.task_runs import (
+    TERMINAL_TASK_RUN_STATUSES,
+    create_task_assignment_and_run,
+    serialize_task_run,
+    update_task_run_lifecycle,
+)
 from services.thread_summary import (
     SUMMARY_MAX_CHARS,
     serialize_thread_summary,
@@ -3997,9 +4003,16 @@ async def update_task_run_lifecycle_endpoint(
     if run is None:
         raise HTTPException(404, "TaskRun not found")
 
+    writeback_outcome = None
+    if run.status in TERMINAL_TASK_RUN_STATUSES:
+        writeback_outcome = await handle_terminal_task_run_writeback(db, task_run=run)
+
     await db.commit()
     await db.refresh(run)
-    return {"ok": True, "run": serialize_task_run(run)}
+    response = {"ok": True, "run": serialize_task_run(run)}
+    if writeback_outcome is not None:
+        response["writeBack"] = serialize_task_run_writeback_outcome(writeback_outcome)
+    return response
 
 
 @router.post("/heartbeat")
