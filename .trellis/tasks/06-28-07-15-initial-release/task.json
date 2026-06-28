@@ -49,7 +49,8 @@
     "06-28-initial-release-production-image-transfer-runner",
     "06-28-initial-release-image-platform-selection",
     "06-29-06-29-initial-release-production-env-validation",
-    "06-29-06-29-initial-release-lighthouse-resource-baseline"
+    "06-29-06-29-initial-release-lighthouse-resource-baseline",
+    "06-29-06-29-initial-release-worker-rollout-runner"
   ],
   "parent": null,
   "relatedFiles": [],

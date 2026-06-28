@@ -24,6 +24,7 @@ INCLUDED_FILES = (
     "scripts/initial_release_deploy_preflight.py",
     "scripts/lighthouse_host_probe.py",
     "scripts/post_deploy_smoke.py",
+    "scripts/release_worker_rollout.py",
     "scripts/remote_deploy_evidence.py",
     "scripts/update_prod_env_from_stdin.py",
     "scripts/validate_release_worker_env.py",
@@ -122,6 +123,12 @@ python3 scripts/validate_release_worker_env.py --json /path/outside/repo/release
 
 ```bash
 python3 scripts/update_prod_env_from_stdin.py --env-file .env.prod --json < /path/outside/repo/release-worker.env
+```
+
+For the guarded rollout path after `release-worker.env` is filled, prefer:
+
+```bash
+python3 scripts/release_worker_rollout.py --dry-run --json --host <server-ip> --identity-file ~/.ssh/<key> --env-file /path/outside/repo/release-worker.env --feishu-chat-id <chat-id>
 ```
 
 Pull and start the core stack:

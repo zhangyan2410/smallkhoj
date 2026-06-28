@@ -960,6 +960,64 @@ python3 scripts/remote_deploy_evidence.py \
   --output /tmp/smallkhoj-remote-deploy-evidence.json
 ```
 
+## Scenario: Initial Release Worker Rollout CLI
+
+### 1. Scope / Trigger
+- Trigger: applying a filled repo-external `release-worker.env` to the deployed initial-release host and validating Feishu/Jira worker readiness.
+- Use this after integration bootstrap has produced connector IDs and the operator has filled Feishu/Jira secrets outside the repository.
+
+### 2. Signatures
+- CLI module: `scripts/release_worker_rollout.py`.
+- Safe dry-run:
+  - `python3 scripts/release_worker_rollout.py --dry-run --json --host <server-ip> --identity-file <key> --env-file <release-worker.env> --feishu-chat-id <chat-id>`
+- Apply path:
+  - add `--apply`
+- Worker startup:
+  - add `--start-worker` only after live-run preflight succeeds.
+
+### 3. Contracts
+- The CLI must validate the local release-worker env file before remote mutation.
+- Env values must be piped to the remote updater over stdin, never embedded in SSH command arguments.
+- The CLI must restart only `backend` after env changes, then run `live_run_preflight_cli` inside the backend container.
+- `--start-worker` must require `--apply`; dry-run mode must never start the worker.
+- The worker start step must appear only behind the live-run preflight step in the command plan.
+- JSON/dry-run output may include file paths, labels, and commands, but not env file contents or `KEY=value` secret pairs.
+
+### 4. Validation & Error Matrix
+- Missing or placeholder release-worker env value -> validator fails and no remote mutation is executed.
+- SSH/env updater failure -> stop before backend restart.
+- Backend restart failure -> stop before live-run preflight.
+- Live-run preflight failure -> stop before worker startup.
+- `--start-worker` without `--apply` -> exit code `2`.
+
+### 5. Good/Base/Bad Cases
+- Good: run dry-run JSON, inspect labels/commands, then run `--apply`, then add `--start-worker` only after preflight is known ready.
+- Base: no external secrets yet; dry-run plan can still be inspected with the expected env-file path.
+- Bad: running `docker compose --profile feishu-worker up -d feishu-worker` before live-run preflight is ready.
+- Bad: passing Feishu/Jira secrets in command arguments or committing `release-worker.env`.
+
+### 6. Tests Required
+- Unit tests verify the command plan order and default omission of worker startup.
+- Unit tests verify `--start-worker` is explicit and incompatible with dry-run-only execution.
+- Unit tests verify dry-run JSON contains no env values or `KEY=value` secret pairs.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+ssh lighthouse 'cd deploy && FEISHU_WORKER_APP_SECRET=... docker compose --profile feishu-worker up -d feishu-worker'
+```
+
+#### Correct
+```text
+python3 scripts/release_worker_rollout.py \
+  --dry-run \
+  --json \
+  --host <server-ip> \
+  --identity-file ~/.ssh/<key> \
+  --env-file /Volumes/ORICO/smallkhoj-secrets/release-worker.env \
+  --feishu-chat-id <chat-id>
+```
+
 ## Scenario: Initial Release Production Env Template CLI
 
 ### 1. Scope / Trigger

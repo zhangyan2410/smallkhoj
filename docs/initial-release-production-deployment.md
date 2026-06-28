@@ -407,6 +407,42 @@ JIRA_API_TOKEN=<set-outside-repo>
 
 The validator refuses unknown or malformed keys, treats empty/placeholder required values as missing, and prints only key names plus readiness metadata. The updater creates `.env.prod.bak`, refuses unknown keys, and prints only key names with `<set>`, `<empty>`, or `<unchanged>` markers.
 
+After `release-worker.env` is filled, prefer the guarded rollout CLI instead of hand-running each SSH command. Start with a dry-run plan:
+
+```bash
+python3 scripts/release_worker_rollout.py \
+  --dry-run \
+  --json \
+  --host 124.222.40.40 \
+  --user ubuntu \
+  --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
+  --bundle-prefix smallkhoj-deploy \
+  --env-file /Volumes/ORICO/smallkhoj-secrets/release-worker.env \
+  --feishu-chat-id <chat-id> \
+  --feishu-chat-type group \
+  --command jira_analysis
+```
+
+When the plan is correct, apply the env update, restart only the backend, and run live-run preflight:
+
+```bash
+python3 scripts/release_worker_rollout.py \
+  --apply \
+  --json \
+  --host 124.222.40.40 \
+  --user ubuntu \
+  --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
+  --bundle-prefix smallkhoj-deploy \
+  --env-file /Volumes/ORICO/smallkhoj-secrets/release-worker.env \
+  --feishu-chat-id <chat-id> \
+  --feishu-chat-type group \
+  --command jira_analysis
+```
+
+Only add `--start-worker` after the same command has produced a successful live-run preflight. The CLI rejects `--start-worker` without `--apply`; worker startup is intentionally behind the preflight gate.
+
 External values to collect before running integration bootstrap:
 
 - `FEISHU_WORKER_APP_ID` and `FEISHU_WORKER_APP_SECRET`: in the Feishu Open Platform app detail page, use the app credentials section under credentials/basic information. Feishu's long-connection event client also requires the app ID and app secret.
