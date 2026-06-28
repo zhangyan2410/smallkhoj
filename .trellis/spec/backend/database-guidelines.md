@@ -487,6 +487,64 @@ Feishu SDK callback -> parse command -> Jira lookup -> create TaskRun -> send re
 Feishu SDK callback -> worker runtime dependency wrapper -> process_feishu_raw_event -> existing service boundaries
 ```
 
+## Scenario: Feishu Channel SDK Transport Boundary
+
+### 1. Scope / Trigger
+- Trigger: wiring the deployable Feishu/Lark Channel SDK long-connection callback into the worker runtime.
+- Use this after `services.feishu_worker_runtime` exists and before adding a process manager, FastAPI lifespan hook, or live Feishu smoke test.
+
+### 2. Signatures
+- Transport module: `services.feishu_channel_transport`.
+- Dependency: `lark-channel-sdk` with import path `lark_channel`.
+- Lazy channel factory: `create_feishu_channel(config)`.
+- SDK converter: `sdk_message_to_raw_event(message, config)`.
+- Transport class: `FeishuChannelSDKTransport(channel, config, connectors, db_factory, dependencies_factory)`.
+- Worker entrypoint: `run_feishu_channel_worker(db_factory, configured_settings=settings, channel_factory=create_feishu_channel, dependencies_factory=build_feishu_worker_dependencies)`.
+
+### 3. Contracts
+- SDK imports must stay lazy inside the channel factory so non-transport backend imports and tests do not require a live SDK import path.
+- The SDK adapter owns Channel construction, message callback registration, connect, and disconnect only.
+- SDK callback messages must be converted into the raw Feishu event shape accepted by `services.feishu_adapter.normalize_feishu_message`.
+- The converter should preserve event id, message id, chat id/type, sender open id, content text, mentions, thread/root/parent ids, and create time when available.
+- Transport callbacks must call `services.feishu_worker_runtime.handle_feishu_worker_raw_event` with close-owned dependencies.
+- Transport code must not parse Feishu commands, resolve routes, construct Jira REST requests, create TaskRuns, or build Feishu reply text.
+- Unit tests must use fake channel objects and must not open real Feishu network connections.
+- Worker entrypoint config/connector failures must return structured startup outcomes before channel creation or connection.
+
+### 4. Validation & Error Matrix
+- Missing SDK import -> `FEISHU_CHANNEL_TRANSPORT_SDK_MISSING`.
+- Runtime config failure -> `FEISHU_CHANNEL_TRANSPORT_CONFIG_FAILED`.
+- Connector resolution failure -> `FEISHU_CHANNEL_TRANSPORT_CONNECTOR_FAILED`.
+- Channel connect/creation failure -> `FEISHU_CHANNEL_TRANSPORT_START_FAILED`.
+- Successful channel start -> `FEISHU_CHANNEL_TRANSPORT_STARTED`.
+
+### 5. Good/Base/Bad Cases
+- Good: `lark_channel.FeishuChannel` receives a message and the adapter forwards exactly one raw event into the worker runtime.
+- Good: tests inject a fake channel whose `on("message", handler)` callback can be invoked without SDK credentials.
+- Base: deployment has missing connector ids; worker startup returns a structured config failure and never creates a channel.
+- Bad: importing `lark_channel` at module import time and breaking all backend tests when the optional transport dependency is unavailable.
+- Bad: SDK callback parses `分析 JIRA-123` or calls Jira/TaskRun services directly.
+- Bad: transport adapter hides connector/config errors behind a generic exception string that cannot be used for health checks.
+
+### 6. Tests Required
+- SDK message conversion feeds existing Feishu normalizer.
+- Transport registers a message handler and forwards raw events into worker runtime.
+- Connect/disconnect calls are delegated to the underlying channel object.
+- Channel factory lazy-import behavior is covered.
+- Worker entrypoint returns config/connector failures without connecting.
+- Boundary test proving no daemon/runtime or Jira/TaskRun business helpers are imported.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+FeishuChannel.on("message") -> parse command -> fetch Jira -> create TaskRun
+```
+
+#### Correct
+```text
+FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_raw_event -> existing raw event loop
+```
+
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop
 
 ### 1. Scope / Trigger

@@ -28,7 +28,8 @@
     "06-28-initial-release-feishu-outbound-replies",
     "06-28-initial-release-feishu-reply-orchestration",
     "06-28-initial-release-feishu-raw-event-loop",
-    "06-28-06-28-initial-release-feishu-worker-runtime"
+    "06-28-06-28-initial-release-feishu-worker-runtime",
+    "06-28-06-28-initial-release-feishu-channel-sdk-transport"
   ],
   "parent": null,
   "relatedFiles": [],
