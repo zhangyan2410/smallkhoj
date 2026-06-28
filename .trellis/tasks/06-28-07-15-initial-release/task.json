@@ -1,0 +1,28 @@
+{
+  "id": "07-15-initial-release",
+  "name": "07-15-initial-release",
+  "title": "Initial release real-value product loop",
+  "description": "Define the SmallKhoj initial release around one useful end-to-end workflow: Feishu/Jira integration, daemon/computer reliability, deployment/domain readiness, and real scenario bug bash.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-28",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "06-28-initial-release-integration-gateway-foundation"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

@@ -322,6 +322,156 @@ async def create_tables():
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_assignment ON task_runs(assignment_id)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_workspace ON task_runs(runtime_workspace_id)"))
         await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS external_connectors (
+                id UUID PRIMARY KEY,
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                provider VARCHAR(40) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'active',
+                config JSONB NOT NULL DEFAULT '{}'::jsonb,
+                secret_ref TEXT,
+                encrypted_config JSONB,
+                last_error_code VARCHAR(80),
+                last_error_reason TEXT,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT ck_external_connectors_status CHECK (status IN ('active', 'disabled', 'error'))
+            )
+        """))
+        await conn.execute(text("""
+            ALTER TABLE external_connectors
+            ADD COLUMN IF NOT EXISTS encrypted_config JSONB
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_external_connectors_server_provider
+            ON external_connectors(server_id, provider, status)
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS external_routes (
+                id UUID PRIMARY KEY,
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                connector_id UUID NOT NULL REFERENCES external_connectors(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'active',
+                source_selector JSONB NOT NULL DEFAULT '{}'::jsonb,
+                channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
+                task_template_id UUID REFERENCES task_run_templates(id) ON DELETE SET NULL,
+                default_assignee_id UUID REFERENCES members(id) ON DELETE SET NULL,
+                runtime_rule JSONB NOT NULL DEFAULT '{}'::jsonb,
+                writeback_policy JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT ck_external_routes_status CHECK (status IN ('active', 'disabled'))
+            )
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_external_routes_connector_status
+            ON external_routes(connector_id, status)
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_external_routes_channel ON external_routes(channel_id)"))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS external_sessions (
+                id UUID PRIMARY KEY,
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                connector_id UUID NOT NULL REFERENCES external_connectors(id) ON DELETE CASCADE,
+                provider VARCHAR(40) NOT NULL,
+                external_scope_type VARCHAR(40) NOT NULL,
+                external_scope_id TEXT NOT NULL,
+                channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
+                thread_root_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+                task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+                member_id UUID REFERENCES members(id) ON DELETE SET NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'active',
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT ck_external_sessions_scope_type CHECK (external_scope_type IN ('chat', 'thread', 'topic', 'issue', 'project')),
+                CONSTRAINT ck_external_sessions_status CHECK (status IN ('active', 'archived', 'disabled'))
+            )
+        """))
+        await conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_external_sessions_scope
+            ON external_sessions(connector_id, external_scope_type, external_scope_id)
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_external_sessions_local_task
+            ON external_sessions(server_id, task_id)
+            WHERE task_id IS NOT NULL
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS external_events (
+                id UUID PRIMARY KEY,
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                connector_id UUID NOT NULL REFERENCES external_connectors(id) ON DELETE CASCADE,
+                route_id UUID REFERENCES external_routes(id) ON DELETE SET NULL,
+                session_id UUID REFERENCES external_sessions(id) ON DELETE SET NULL,
+                provider VARCHAR(40) NOT NULL,
+                source_event_id TEXT,
+                source_message_id TEXT,
+                source_thread_id TEXT,
+                dedup_key TEXT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'received',
+                event_type VARCHAR(80) NOT NULL,
+                actor_external_id TEXT,
+                normalized JSONB NOT NULL DEFAULT '{}'::jsonb,
+                raw_ref TEXT,
+                channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
+                message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+                task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+                task_run_id UUID REFERENCES task_runs(id) ON DELETE SET NULL,
+                failure_code VARCHAR(80),
+                failure_reason TEXT,
+                received_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                processed_at TIMESTAMP WITH TIME ZONE,
+                completed_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT ck_external_events_status CHECK (status IN ('received', 'accepted', 'dropped', 'failed', 'completed', 'writeback_failed'))
+            )
+        """))
+        await conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_external_events_connector_dedup
+            ON external_events(connector_id, dedup_key)
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_external_events_server_created
+            ON external_events(server_id, created_at DESC)
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_external_events_status ON external_events(server_id, status)"))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_external_events_task_run
+            ON external_events(task_run_id)
+            WHERE task_run_id IS NOT NULL
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS external_mappings (
+                id UUID PRIMARY KEY,
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                connector_id UUID NOT NULL REFERENCES external_connectors(id) ON DELETE CASCADE,
+                provider VARCHAR(40) NOT NULL,
+                local_type VARCHAR(40) NOT NULL,
+                local_id UUID NOT NULL,
+                external_type VARCHAR(40) NOT NULL,
+                external_id TEXT NOT NULL,
+                external_url TEXT,
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+            )
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_external_mappings_local
+            ON external_mappings(server_id, local_type, local_id)
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_external_mappings_external
+            ON external_mappings(connector_id, external_type, external_id)
+        """))
+        await conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_external_mappings_pair
+            ON external_mappings(connector_id, local_type, local_id, external_type, external_id)
+        """))
+        await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS saved_items (
                 id UUID PRIMARY KEY,
                 server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,

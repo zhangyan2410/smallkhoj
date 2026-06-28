@@ -69,6 +69,63 @@ LIMIT 5;
 
 <!-- How to create and run migrations -->
 
+## Scenario: External Integration Gateway Foundation
+
+### 1. Scope / Trigger
+- Trigger: adding Feishu, Jira, or any external work-system adapter that needs to receive, route, deduplicate, audit, or write back external events.
+- Use this before implementing provider-specific adapters. The adapter should enter through the integration gateway foundation instead of writing ad hoc route/event/mapping tables.
+
+### 2. Signatures
+- Connector table: `external_connectors(server_id, provider, name, status, config, secret_ref, encrypted_config, last_error_code, last_error_reason)`.
+- Route table: `external_routes(connector_id, source_selector, channel_id, task_template_id, default_assignee_id, runtime_rule, writeback_policy, status)`.
+- Event table: `external_events(connector_id, provider, dedup_key, event_type, status, normalized, route_id, session_id, channel_id, message_id, task_id, task_run_id, failure_code, failure_reason)`.
+- Session table: `external_sessions(connector_id, external_scope_type, external_scope_id, channel_id, thread_root_message_id, task_id, member_id, status)`.
+- Mapping table: `external_mappings(connector_id, local_type, local_id, external_type, external_id, external_url)`.
+- Service module: `services.integration_gateway`.
+
+### 3. Contracts
+- External adapters may normalize input, claim/log events, resolve routes/sessions, link local records, and create mappings.
+- External adapters must not execute runtime/provider work directly. Runtime execution stays behind TaskRun and daemon/runtime services.
+- Deduplication is database-backed through `uq_external_events_connector_dedup` on `(connector_id, dedup_key)`.
+- External sessions are unique by `(connector_id, external_scope_type, external_scope_id)`.
+- Startup DDL in `backend/models/seed.py` must be updated in the same change as ORM declarations in `backend/models/slock.py`.
+- Connector secrets and credential-shaped payload keys must not leak through event `normalized` payloads or generic serializers.
+
+### 4. Validation & Error Matrix
+- Duplicate external event -> return the existing event as duplicate; do not create another task/channel/TaskRun.
+- Unknown route -> record `dropped` or `failed` with `EXTERNAL_ROUTE_NOT_FOUND` and a readable reason.
+- Disabled route -> return a disabled route outcome; do not create local work.
+- Invalid or sensitive payload field -> sanitize credential-shaped keys before storage/serialization.
+- Write-back failure -> keep the local TaskRun result and mark the external event `writeback_failed` with provider-readable failure details.
+
+### 5. Good/Base/Bad Cases
+- Good: Feishu long-connection message claims `external_events`, resolves an `external_routes` row, links channel/task/TaskRun ids, then later maps the Feishu reply/card id in `external_mappings`.
+- Good: Jira REST write-back maps `task_run -> jira comment` and records comment failure without deleting the local run output.
+- Base: a connector exists with no active routes; incoming events are auditable but do not create work.
+- Bad: a Feishu or Jira router creates tasks directly without an external event row and dedup key.
+- Bad: storing raw provider access tokens in `external_events.normalized`.
+- Bad: executing model/runtime work inside a provider adapter instead of linking to TaskRun state.
+
+### 6. Tests Required
+- Assert all five gateway tables exist in `Base.metadata`.
+- Assert startup DDL emits `CREATE TABLE IF NOT EXISTS` for all five tables and critical indexes.
+- Assert `claim_external_event` creates one event and duplicate claims return the existing event.
+- Assert route miss/disabled outcomes expose failure codes and reasons.
+- Assert session and mapping helpers are queryable from local and external sides.
+- Assert serializers redact connector secrets and credential-shaped config/payload keys.
+- Assert integration gateway service does not import daemon/runtime execution helpers.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+Feishu handler -> parse message -> create TaskRun -> call runtime/daemon directly -> reply
+```
+
+#### Correct
+```text
+Feishu handler -> claim external_event -> resolve external_route/session -> create/link SmallKhoj channel/task/TaskRun state -> existing TaskRun/daemon path executes -> external_mapping/write-back records outcome
+```
+
 ## Scenario: Computer Binding Columns On Members
 
 ### 1. Scope / Trigger
