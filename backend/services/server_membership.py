@@ -56,6 +56,72 @@ async def ensure_account_membership(
     return membership
 
 
+async def list_account_memberships(db: Any, *, account: Account) -> list[dict[str, Any]]:
+    result = await db.execute(
+        select(ServerMembership, Server, Member)
+        .join(Server, Server.id == ServerMembership.server_id)
+        .join(Member, Member.id == ServerMembership.member_id)
+        .where(
+            ServerMembership.account_id == account.id,
+            ServerMembership.status == "active",
+        )
+        .order_by(ServerMembership.created_at.asc())
+    )
+    memberships = []
+    for membership, server, member in result.all():
+        memberships.append(
+            {
+                "server": {
+                    "id": str(server.id),
+                    "name": server.name,
+                },
+                "member": {
+                    "id": str(member.id),
+                    "displayName": member.display_name,
+                    "kind": member.kind,
+                },
+                "role": membership.role,
+                "status": membership.status,
+                "isDefault": server.id == account.server_id,
+            }
+        )
+    return memberships
+
+
+async def create_server_for_account(
+    db: Any,
+    *,
+    account: Account,
+    name: str,
+) -> tuple[Server, Member, ServerMembership]:
+    server_name = (name or "").strip()
+    if not server_name:
+        raise HTTPException(400, "Missing Server name")
+
+    server = Server(id=uuid.uuid4(), name=server_name)
+    db.add(server)
+    await db.flush()
+
+    member = Member(
+        id=uuid.uuid4(),
+        server_id=server.id,
+        kind="human",
+        display_name=account.display_name or account.name,
+        status="online",
+    )
+    db.add(member)
+    await db.flush()
+
+    membership = await ensure_account_membership(
+        db,
+        account=account,
+        server=server,
+        member=member,
+        default_role="owner",
+    )
+    return server, member, membership
+
+
 def parse_server_id(raw: str | uuid.UUID | None) -> uuid.UUID | None:
     if raw is None or raw == "":
         return None
@@ -73,17 +139,20 @@ async def resolve_active_server_context(
     account: Account,
     requested_server_id: uuid.UUID | None = None,
 ) -> ActiveServerContext:
+    selected_server_id = requested_server_id or account.server_id
+    if not selected_server_id:
+        raise HTTPException(403, "Account has no active Server membership")
+
     query = (
         select(ServerMembership, Server, Member)
         .join(Server, Server.id == ServerMembership.server_id)
         .join(Member, Member.id == ServerMembership.member_id)
         .where(
             ServerMembership.account_id == account.id,
+            ServerMembership.server_id == selected_server_id,
             ServerMembership.status == "active",
         )
     )
-    if requested_server_id:
-        query = query.where(ServerMembership.server_id == requested_server_id)
 
     result = await db.execute(query)
     row = result.one_or_none() if hasattr(result, "one_or_none") else None
@@ -93,21 +162,6 @@ async def resolve_active_server_context(
 
     if requested_server_id:
         raise HTTPException(403, "Account is not a member of the selected Server")
-
-    fallback_result = await db.execute(
-        select(ServerMembership, Server, Member)
-        .join(Server, Server.id == ServerMembership.server_id)
-        .join(Member, Member.id == ServerMembership.member_id)
-        .where(
-            ServerMembership.account_id == account.id,
-            ServerMembership.server_id == account.server_id,
-            ServerMembership.status == "active",
-        )
-    )
-    fallback = fallback_result.one_or_none() if hasattr(fallback_result, "one_or_none") else None
-    if fallback:
-        membership, server, member = fallback
-        return ActiveServerContext(account=account, server=server, member=member, membership=membership)
 
     raise HTTPException(403, "Account has no active Server membership")
 

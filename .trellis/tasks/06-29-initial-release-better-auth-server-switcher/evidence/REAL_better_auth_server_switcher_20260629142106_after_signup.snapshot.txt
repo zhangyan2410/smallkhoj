@@ -1,0 +1,79 @@
+
+
+
+
+
+
+
+REAL_better_auth_server_switcher_20260629142106
+REAL_better_auth_server_switcher_20260629142106's Server
+[DISABLED] REAL_better_auth_server_switcher_20260629142106's ServerOwner
+
+[INPUT #base-ui-_R_dphinelb_ name=name type=text "New Server"]
+
+
+
+
+
+
+SmallKhoj
+SmallKhoj
+你的频道和私信中的最新动态。
+ChatTasks
+
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+
+
+[INPUT #base-ui-_R_kqinelb_ name=q type=text "搜索消息、文件、任务、成员…"]
+搜索
+
+SmallKhoj
+你好，REAL_better_auth_server_switcher_20260629142106 👋
+
+
+
+
+近期消息
+你的频道和私信中的最新动态。打开 
+
+
+暂无近期消息
+对话发生后消息会显示在这里。
+
+
+运行中的智能体0
+
+
+暂无运行中的智能体
+智能体启动后会显示在这里。
+
+
+
+待处理任务
+待办和进行中的工作项。全部任务 
+
+0 个待办0 个进行中
+
+暂无待处理任务
+创建或分配任务后会显示在这里。
+
+
+工作区
+
+频道0
+智能体0
+在线电脑0
+收藏项0 管理电脑 
+
+
+Quick Start
+Create a channel or start a DM without leaving the workbench.
+
+New Channel
+[INPUT #channel-name name=channelName type=text "channel-name"]
+
+Start DM with
+[SELECT #dm-peer name=peer]

@@ -25,7 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { API_BASE, apiGet, formatTime, type Computer, type Member } from "@/lib/control-plane"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
-import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 type Channel = {
   id: string
@@ -82,36 +82,38 @@ function channelPathSegment(name: string) {
   return encodeURIComponent(name.replace(/^#/, ""))
 }
 
-async function getChannels() {
-  return apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] })
+async function getChannels(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] }, sessionToken, activeServerId)
 }
 
-async function getMembers() {
-  return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] })
+async function getMembers(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }, sessionToken, activeServerId)
 }
 
-async function getTasks() {
-  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] })
+async function getTasks(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }, sessionToken, activeServerId)
 }
 
-async function getComputers() {
-  return apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] })
+async function getComputers(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] }, sessionToken, activeServerId)
 }
 
-async function getActivity() {
-  return apiGet<{ activity: ActivityItem[]; count: number }>("/api/v1/activity?limit=30", { activity: [], count: 0 })
+async function getActivity(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ activity: ActivityItem[]; count: number }>("/api/v1/activity?limit=30", { activity: [], count: 0 }, sessionToken, activeServerId)
 }
 
-async function getSavedItems(sessionToken?: string | null) {
-  return apiGet<{ saved: SavedItem[]; count: number }>("/api/v1/saved?limit=8", { saved: [], count: 0 }, sessionToken)
+async function getSavedItems(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ saved: SavedItem[]; count: number }>("/api/v1/saved?limit=8", { saved: [], count: 0 }, sessionToken, activeServerId)
 }
 
-async function getSearchResults(query?: string) {
+async function getSearchResults(query?: string, sessionToken?: string | null, activeServerId?: string | null) {
   const trimmed = (query || "").trim()
   if (!trimmed) return { results: [], count: 0 }
   return apiGet<{ results: SearchResult[]; count: number }>(
     `/api/v1/search?q=${encodeURIComponent(trimmed)}&limit=20`,
-    { results: [], count: 0 }
+    { results: [], count: 0 },
+    sessionToken,
+    activeServerId,
   )
 }
 
@@ -219,19 +221,20 @@ export default async function Home({
 }) {
   const session = await requireCurrentAccount()
   const sessionToken = await getSessionToken()
+  const activeServerId = await getActiveServerId()
   const resolvedSearchParams = (await searchParams) ?? {}
   const searchQuery = Array.isArray(resolvedSearchParams.q) ? resolvedSearchParams.q[0] : resolvedSearchParams.q
   const t = await getTranslations("home")
   const tCommon = await getTranslations("common")
 
   const [{ channels }, { members }, { tasks }, { computers }, { activity }, { saved }, { results: searchResults }] = await Promise.all([
-    getChannels(),
-    getMembers(),
-    getTasks(),
-    getComputers(),
-    getActivity(),
-    getSavedItems(sessionToken),
-    getSearchResults(searchQuery),
+    getChannels(sessionToken, activeServerId),
+    getMembers(sessionToken, activeServerId),
+    getTasks(sessionToken, activeServerId),
+    getComputers(sessionToken, activeServerId),
+    getActivity(sessionToken, activeServerId),
+    getSavedItems(sessionToken, activeServerId),
+    getSearchResults(searchQuery, sessionToken, activeServerId),
   ])
   const agents = members.filter((member) => member.kind === "agent")
   // Dashboard workbench: active agents (ACTIVE/THINKING/STARTING buckets only).

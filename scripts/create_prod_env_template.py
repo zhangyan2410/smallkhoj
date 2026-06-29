@@ -27,6 +27,11 @@ POSTGRES_DB=smallkhoj
 POSTGRES_PASSWORD=<set-outside-repo>
 BACKEND_CORS_ORIGINS=<public-origin>
 
+# Required browser auth values. BETTER_AUTH_URL should match the public frontend origin.
+BETTER_AUTH_SECRET=<set-outside-repo>
+BETTER_AUTH_URL=<public-origin>
+AUTH_BRIDGE_SECRET=<set-outside-repo>
+
 # Same-origin frontend defaults. Leave empty unless the browser must call another public host.
 NEXT_PUBLIC_API_BASE_URL=
 NEXT_PUBLIC_WS_BASE_URL=

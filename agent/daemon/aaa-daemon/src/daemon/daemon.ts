@@ -182,6 +182,11 @@ interface RuntimeRecord {
 
 type DaemonRuntimeImplementation = 'claude_code' | 'codex' | 'codex_cli';
 
+function workspacePathSegment(value: string | undefined, fallback: string): string {
+  const segment = (value || fallback).trim().replace(/[^A-Za-z0-9_.-]/g, '_');
+  return segment || fallback;
+}
+
 export class DaemonCore extends EventEmitter {
   private config: DaemonConfig;
   private credential: Credential | null = null;
@@ -740,7 +745,7 @@ export class DaemonCore extends EventEmitter {
     }
 
     const workspacePath = runtimeConfig.workspacePath
-      ?? this.defaultRuntimeWorkspacePath(agentId);
+      ?? this.defaultRuntimeWorkspacePath(agentId, runtimeConfig.workspaceId);
     const credential: Credential = {
       ...this.credential,
       agentId,
@@ -1275,12 +1280,14 @@ export class DaemonCore extends EventEmitter {
     this.proxy.unregister(runtime.proxyToken);
   }
 
-  private defaultRuntimeWorkspacePath(agentId: string): string {
+  private defaultRuntimeWorkspacePath(agentId: string, workspaceId?: string): string {
     const basePath = this.config.workspacePath ?? process.cwd();
     if (this.credential?.agentId === agentId && this.runtimes.size === 0) {
       return basePath;
     }
-    return join(basePath, '.slock-runtimes', agentId);
+    const serverSegment = workspacePathSegment(this.credential?.serverId, 'unknown-server');
+    const workspaceSegment = workspacePathSegment(workspaceId || agentId, 'unknown-workspace');
+    return join(basePath, '.slock-runtimes', serverSegment, workspaceSegment);
   }
 
   async handleControlCommand(command: DaemonControlCommand): Promise<void> {

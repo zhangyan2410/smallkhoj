@@ -45,7 +45,7 @@ import {
   type Computer,
   type RuntimeInfo,
 } from "@/lib/control-plane"
-import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
 
 type TranslationFn = (key: string, values?: Record<string, string | number>) => string
@@ -109,8 +109,8 @@ function makeComputersCopy(t: TranslationFn) {
 
 type ComputersCopy = ReturnType<typeof makeComputersCopy>
 
-async function getComputers() {
-  return apiGet<{ computers: Computer[]; count?: number }>("/api/v1/computers", { computers: [], count: 0 })
+async function getComputers(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ computers: Computer[]; count?: number }>("/api/v1/computers", { computers: [], count: 0 }, sessionToken, activeServerId)
 }
 
 function searchValue(value: string | string[] | undefined) {
@@ -664,7 +664,9 @@ export default async function ComputersPage({
   const copy = makeComputersCopy(t)
   const resolvedSearchParams = (await searchParams) ?? {}
   const cookieStore = await cookies()
-  const { computers } = await getComputers()
+  const sessionToken = await getSessionToken()
+  const activeServerId = await getActiveServerId()
+  const { computers } = await getComputers(sessionToken, activeServerId)
 
   const selectedComputerId = searchValue(resolvedSearchParams.computer)
   const selectedComputer = selectedComputerId

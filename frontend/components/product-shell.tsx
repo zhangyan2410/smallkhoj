@@ -16,6 +16,7 @@ import { getTranslations } from "next-intl/server"
 import type { AccountSession } from "@/lib/control-plane"
 import { cn } from "@/lib/utils"
 import { ProductShellBody, type ListPanelConfig } from "@/components/product-shell-body"
+import { ServerSwitcher } from "@/components/server-switcher"
 
 type NavKey = "search" | "chat" | "tasks" | "members" | "computers" | "control" | "activity" | "settings"
 
@@ -84,13 +85,17 @@ export async function ProductShell({
           aria-hidden
           className="sk-rail-bg pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
         />
-        <Link
-          href="/"
-          aria-label="Home"
-          className="sk-rail-logo relative mb-1 flex size-9 items-center justify-center rounded-none text-primary-foreground"
-        >
-          <Sparkles className="size-4" />
-        </Link>
+        {session?.account ? (
+          <ServerSwitcher session={session} />
+        ) : (
+          <Link
+            href="/"
+            aria-label="Home"
+            className="sk-rail-logo relative mb-1 flex size-9 items-center justify-center rounded-none text-primary-foreground"
+          >
+            <Sparkles className="size-4" />
+          </Link>
+        )}
         {railItems.map(({ key, href, labelKey, icon: Icon, accent }) => {
           const label = t(labelKey as never)
           return (
@@ -110,14 +115,6 @@ export async function ProductShell({
           )
         })}
         <div className="mt-auto flex flex-col items-center gap-1">
-          {session?.account && (
-            <span
-              title={session.account.displayName || session.account.name || "Account"}
-              className="sk-rail-icon relative flex size-9 items-center justify-center rounded-none text-xs font-semibold"
-            >
-              {(session.account.displayName || session.account.name || "?")[0].toUpperCase()}
-            </span>
-          )}
           <Link
             href="/settings"
             aria-label="Settings"

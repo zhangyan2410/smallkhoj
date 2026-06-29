@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/form"
 import { API_BASE, apiGet, type TaskRunTemplate } from "@/lib/control-plane"
-import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 type TemplateListResponse = {
   templates: TaskRunTemplate[]
@@ -288,7 +288,9 @@ function TemplateRow({ template }: { template: TaskRunTemplate }) {
 
 export default async function TaskRunTemplatesPage() {
   const session = await requireCurrentAccount()
-  const { templates } = await apiGet<TemplateListResponse>("/api/v1/task-run-templates", { templates: [] })
+  const sessionToken = await getSessionToken()
+  const activeServerId = await getActiveServerId()
+  const { templates } = await apiGet<TemplateListResponse>("/api/v1/task-run-templates", { templates: [] }, sessionToken, activeServerId)
   const activeCount = templates.filter((template) => template.status === "active").length
 
   return (

@@ -89,6 +89,8 @@ LIMIT 5;
 - Human public API routes must resolve the active Server from the current account membership, not `select(Server).limit(1)`.
 - `X-Server-Id` may select an active Server only when the current account has an active membership for that Server.
 - Owner/admin role is required for initial Computer/Agent administration paths.
+- Computer identity is currently Server-scoped. Daemon connect resolves or creates `Computer` by `server_id + machine_id`; the same physical `machine_id` under two Servers produces two `computers` rows.
+- Do not treat `machine_id` as a global physical-device identifier unless a product/architecture change introduces a global machine identity and per-Server binding layer.
 - Private and DM channels require `channel_members` membership for read/write visibility.
 - Startup DDL must create membership/invite tables and backfill existing accounts from `accounts.server_id` / `accounts.member_id`.
 
@@ -98,15 +100,18 @@ LIMIT 5;
 - Non-owner/admin creates Agent or Computer connect command -> `403`.
 - Private channel read/write by non-member -> `403`.
 - Agent creation with a Computer from another Server -> `404`.
+- Same daemon `machine_id` connecting with tickets from two different Servers -> two Server-local `Computer` rows, not one global row.
 - Existing account without a membership after deployment migration -> startup backfill should create one.
 
 ### 5. Good/Base/Bad Cases
 - Good: login creates or reuses an Account and ensures an active `server_memberships` row.
 - Good: channel message read/write resolves `context.server` and checks private channel membership before returning content.
 - Good: Agent creation verifies both owner/admin role and selected-Server Computer ownership.
+- Good: daemon connect reuses a Computer only inside the ConnectTicket's Server scope.
 - Base: compatibility fields continue to point at the primary Server/member until the UI fully supports switching.
 - Bad: `server = await _get_server(db)` in an authenticated human route.
 - Bad: accepting `X-Server-Id` without checking `server_memberships`.
+- Bad: using `machine_id` alone to decide that a Computer belongs to the active Server.
 
 ### 6. Tests Required
 - Metadata test for `server_memberships` and `server_invites`.

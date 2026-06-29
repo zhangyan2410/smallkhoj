@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = True
     backend_cors_origins: str = ""
+    auth_bridge_secret: str = ""
 
     database_url: str = "postgresql+asyncpg://smallkhoj:smallkhoj@localhost:5432/smallkhoj"
 

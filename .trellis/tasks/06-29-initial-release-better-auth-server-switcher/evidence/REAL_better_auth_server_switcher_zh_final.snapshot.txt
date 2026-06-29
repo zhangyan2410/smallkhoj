@@ -1,0 +1,74 @@
+
+
+
+R
+
+
+R
+
+REAL_better_auth_server_switcher_20260629142106
+账号
+
+当前 Server拥有者
+REAL_better_auth_server_switcher_20260629142106's Server
+[DISABLED] REAL_better_auth_server_switcher_20260629142106's Server拥有者REAL_better_auth_server_switcher_20260629142106 Lab拥有者创建 Server
+
+[INPUT #create-server-name name=name type=text "新 Server 名称"]
+
+
+
+
+
+
+
+SmallKhoj
+设置
+本地产品的 Server、账号、运行时默认值、API Key 和安全控制。
+
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+
+
+
+账号 / Server
+当前已认证的本地工作区上下文。
+
+
+账号
+REAL_better_auth_server_switcher_20260629142106
+
+Server
+REAL_better_auth_server_switcher_20260629142106's Server
+
+
+运行时默认值
+Provider 默认值会在运行时扩展任务中按 Server 作用域处理。
+
+
+[INPUT #base-ui-_R_2p6klrknelb_ type=text "claude_code" disabled]
+
+[INPUT #base-ui-_R_4p6klrknelb_ type=text "模型默认值" disabled]
+Provider 扩展前禁用
+
+
+API Key
+前缀、所有者、一次性密钥显示和吊销状态。
+
+类型
+[SELECT #api-key-type name=resourceType ="human"]
+创建 Key
+
+前缀类型所有者创建时间状态
+暂无 API Key。
+
+
+安全控制
+实验性开关需要明确的后端持久化支持。
+功能开关待规划破坏性操作需要确认
+
+
+管理链接
+次级界面保持可访问，不占用主工作台。
+API 文档控制面Daemon 接入

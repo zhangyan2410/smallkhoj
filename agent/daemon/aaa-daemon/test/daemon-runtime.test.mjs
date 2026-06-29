@@ -801,7 +801,7 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
 
 test('daemon handles backend start_runtime control command dynamically', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-control-runtime-'));
-  const runtimeWorkspace = join(root, 'dynamic-agent-workspace');
+  const runtimeWorkspace = join(root, '.slock-runtimes', 'server-control', 'workspace-dynamic');
   const marker = join(root, 'runtime-marker.json');
   const fakeClaude = join(root, 'fake-claude-control.mjs');
   const registerBodies = [];
@@ -824,7 +824,6 @@ test('daemon handles backend start_runtime control command dynamically', async (
                 runtime: 'claude_code',
                 runtimeCommand: process.execPath,
                 runtimeCommandArgs: [fakeClaude],
-                workspacePath: runtimeWorkspace,
               },
             },
           },
@@ -869,7 +868,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
     '--register-daemon',
   ], {
     cwd: resolve('.'),
-    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real', SLOCK_ALLOW_WRITES: '1' },
+    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real', SLOCK_SERVER_ID: 'server-control', SLOCK_ALLOW_WRITES: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });

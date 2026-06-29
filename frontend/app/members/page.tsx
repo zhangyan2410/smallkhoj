@@ -46,14 +46,14 @@ import {
 } from "@/lib/control-plane"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { detectedProviderOptions } from "@/lib/runtime-options"
-import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
-async function getMembers() {
-  return apiGet<{ members: Member[]; count?: number }>("/api/v1/members", { members: [], count: 0 })
+async function getMembers(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ members: Member[]; count?: number }>("/api/v1/members", { members: [], count: 0 }, sessionToken, activeServerId)
 }
 
-async function getComputers() {
-  return apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] })
+async function getComputers(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] }, sessionToken, activeServerId)
 }
 
 function profileName(member: Member) {
@@ -132,7 +132,7 @@ function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }
           <Link
             key={key}
             href={memberDetailHref(memberId, key)}
-            className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-t-md border-b-2 px-3 text-xs font-medium transition-colors ${
+            className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-none border-b-2 px-3 text-xs font-medium transition-colors ${
               isActive
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -691,8 +691,12 @@ export default async function MembersPage({
 }) {
   const session = await requireCurrentAccount()
   const resolvedSearchParams = (await searchParams) ?? {}
-  const { members } = await getMembers()
-  const { computers } = await getComputers()
+  const sessionToken = await getSessionToken()
+  const activeServerId = await getActiveServerId()
+  const [{ members }, { computers }] = await Promise.all([
+    getMembers(sessionToken, activeServerId),
+    getComputers(sessionToken, activeServerId),
+  ])
   const error = searchValue(resolvedSearchParams.error)
   const selectedMemberId = searchValue(resolvedSearchParams.member)
   const activeTab = (searchValue(resolvedSearchParams.tab) ?? "profile") as TabKey
