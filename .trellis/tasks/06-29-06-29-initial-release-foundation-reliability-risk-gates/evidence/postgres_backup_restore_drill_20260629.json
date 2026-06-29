@@ -1,0 +1,145 @@
+{
+  "backupFile": "/home/ubuntu/smallkhoj-deploy/backups/smallkhoj_backup_20260629024418.dump",
+  "dryRun": false,
+  "ready": true,
+  "restoreDatabase": "smallkhoj_restore_drill_foundation_20260629",
+  "steps": [
+    {
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod",
+        "-f",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/docker-compose.prod.yml",
+        "exec",
+        "-T",
+        "db",
+        "pg_dump",
+        "-U",
+        "smallkhoj",
+        "-d",
+        "smallkhoj",
+        "--format=custom",
+        "--no-owner",
+        "--no-privileges"
+      ],
+      "exitCode": 0,
+      "name": "backup",
+      "stderrTail": ""
+    },
+    {
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod",
+        "-f",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/docker-compose.prod.yml",
+        "exec",
+        "-T",
+        "db",
+        "dropdb",
+        "-U",
+        "smallkhoj",
+        "--if-exists",
+        "smallkhoj_restore_drill_foundation_20260629"
+      ],
+      "exitCode": 0,
+      "name": "drop-restore-db-before",
+      "stderrTail": "NOTICE:  database \"smallkhoj_restore_drill_foundation_20260629\" does not exist, skipping\n",
+      "stdoutTail": ""
+    },
+    {
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod",
+        "-f",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/docker-compose.prod.yml",
+        "exec",
+        "-T",
+        "db",
+        "createdb",
+        "-U",
+        "smallkhoj",
+        "smallkhoj_restore_drill_foundation_20260629"
+      ],
+      "exitCode": 0,
+      "name": "create-restore-db",
+      "stderrTail": "",
+      "stdoutTail": ""
+    },
+    {
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod",
+        "-f",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/docker-compose.prod.yml",
+        "exec",
+        "-T",
+        "db",
+        "pg_restore",
+        "-U",
+        "smallkhoj",
+        "-d",
+        "smallkhoj_restore_drill_foundation_20260629",
+        "--no-owner",
+        "--no-privileges"
+      ],
+      "exitCode": 0,
+      "name": "restore",
+      "stderrTail": "",
+      "stdoutTail": ""
+    },
+    {
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod",
+        "-f",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/docker-compose.prod.yml",
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-U",
+        "smallkhoj",
+        "-d",
+        "smallkhoj_restore_drill_foundation_20260629",
+        "-tAc",
+        "SELECT 1"
+      ],
+      "exitCode": 0,
+      "name": "verify-restore",
+      "stderrTail": "",
+      "stdoutTail": "1\n"
+    },
+    {
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod",
+        "-f",
+        "/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/docker-compose.prod.yml",
+        "exec",
+        "-T",
+        "db",
+        "dropdb",
+        "-U",
+        "smallkhoj",
+        "--if-exists",
+        "smallkhoj_restore_drill_foundation_20260629"
+      ],
+      "exitCode": 0,
+      "name": "drop-restore-db-after",
+      "stderrTail": "",
+      "stdoutTail": ""
+    }
+  ]
+}

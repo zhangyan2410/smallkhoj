@@ -615,6 +615,61 @@ def check_backup_restore_drill_plan(root: Path) -> FoundationCheck:
             priority="P0",
             details={"path": str(path)},
         )
+    evidence_dir = root / FOUNDATION_TASK / "evidence"
+    evidence_files = sorted(evidence_dir.glob("postgres_backup_restore_drill_*.json"), reverse=True)
+    for evidence_file in evidence_files:
+        try:
+            payload = json.loads(evidence_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            return failed(
+                "database.backupRestoreDrill",
+                "FOUNDATION_BACKUP_RESTORE_DRILL_EVIDENCE_INVALID",
+                "Database backup/restore drill evidence JSON could not be parsed.",
+                risk_id="FR-07",
+                priority="P0",
+                details={"path": str(evidence_file), "error": str(exc)},
+            )
+        steps = payload.get("steps") or []
+        failed_steps = [step.get("name") for step in steps if step.get("exitCode") != 0]
+        step_names = [step.get("name") for step in steps]
+        required = {"backup", "create-restore-db", "restore", "verify-restore", "drop-restore-db-after"}
+        missing = sorted(required - set(step_names))
+        verify = next((step for step in steps if step.get("name") == "verify-restore"), {})
+        verify_output = str(verify.get("stdoutTail") or "").strip()
+        if (
+            payload.get("ready") is True
+            and payload.get("dryRun") is False
+            and not failed_steps
+            and not missing
+            and verify_output.endswith("1")
+        ):
+            return passed(
+                "database.backupRestoreDrill",
+                "Database backup/restore drill executed successfully against a clean restore database.",
+                risk_id="FR-07",
+                priority="P0",
+                details={
+                    "evidence": str(evidence_file),
+                    "backupFile": payload.get("backupFile"),
+                    "restoreDatabase": payload.get("restoreDatabase"),
+                    "steps": step_names,
+                },
+            )
+        return warning(
+            "database.backupRestoreDrill",
+            "FOUNDATION_BACKUP_RESTORE_DRILL_EVIDENCE_NOT_READY",
+            "Database backup/restore drill evidence exists, but it does not prove a successful real restore.",
+            risk_id="FR-07",
+            priority="P0",
+            details={
+                "evidence": str(evidence_file),
+                "ready": payload.get("ready"),
+                "dryRun": payload.get("dryRun"),
+                "failedSteps": failed_steps,
+                "missingSteps": missing,
+                "verifyOutputTail": verify_output[-120:],
+            },
+        )
     try:
         result = db_drill.run_drill(
             root=root,

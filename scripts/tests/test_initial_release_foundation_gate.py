@@ -73,6 +73,20 @@ def make_foundation_repo(root: Path) -> None:
     """)
 
 
+def write_restore_evidence(root: Path, payload: dict) -> Path:
+    evidence_dir = (
+        root
+        / ".trellis"
+        / "tasks"
+        / "06-29-06-29-initial-release-foundation-reliability-risk-gates"
+        / "evidence"
+    )
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path = evidence_dir / "postgres_backup_restore_drill_20260629.json"
+    evidence_path.write_text(json.dumps(payload), encoding="utf-8")
+    return evidence_path
+
+
 class FoundationGateTests(unittest.TestCase):
     def test_foundation_gate_surfaces_p0_backup_warning_for_static_and_deployed_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
@@ -99,6 +113,76 @@ class FoundationGateTests(unittest.TestCase):
             self.assertEqual(by_name["database.backupRestoreDrill"].status, "warning")
             self.assertEqual(by_name["smoke.ws.daemonAuth"].risk_id, "FR-04")
             self.assertEqual(gate.exit_code_for(report, strict_warnings=False), 2)
+
+    def test_real_backup_restore_evidence_must_include_required_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            write_restore_evidence(
+                root,
+                {
+                    "ready": True,
+                    "dryRun": False,
+                    "restoreDatabase": "smallkhoj_restore_drill",
+                    "steps": [
+                        {
+                            "name": "verify-restore",
+                            "exitCode": 0,
+                            "stdoutTail": "1\n",
+                        }
+                    ],
+                },
+            )
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["database.backupRestoreDrill"].status, "warning")
+            self.assertEqual(by_name["database.backupRestoreDrill"].risk_id, "FR-07")
+            self.assertIn("missingSteps", by_name["database.backupRestoreDrill"].details)
+            self.assertFalse(report.ready)
+
+    def test_real_backup_restore_evidence_covers_fr07(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            evidence_path = write_restore_evidence(
+                root,
+                {
+                    "ready": True,
+                    "dryRun": False,
+                    "backupFile": "/backups/smallkhoj_backup.dump",
+                    "restoreDatabase": "smallkhoj_restore_drill",
+                    "steps": [
+                        {"name": "backup", "exitCode": 0, "stdoutTail": ""},
+                        {"name": "drop-restore-db-before", "exitCode": 0, "stdoutTail": ""},
+                        {"name": "create-restore-db", "exitCode": 0, "stdoutTail": ""},
+                        {"name": "restore", "exitCode": 0, "stdoutTail": ""},
+                        {"name": "verify-restore", "exitCode": 0, "stdoutTail": "1\n"},
+                        {"name": "drop-restore-db-after", "exitCode": 0, "stdoutTail": ""},
+                    ],
+                },
+            )
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["database.backupRestoreDrill"].status, "passed")
+            self.assertEqual(by_name["database.backupRestoreDrill"].risk_id, "FR-07")
+            self.assertEqual(Path(by_name["database.backupRestoreDrill"].details["evidence"]).resolve(), evidence_path.resolve())
+            self.assertNotIn("risk.FR-07.coverage", by_name)
 
     def test_missing_base_url_blocks_deployed_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

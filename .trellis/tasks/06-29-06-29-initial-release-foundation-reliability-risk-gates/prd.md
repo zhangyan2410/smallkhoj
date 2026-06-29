@@ -49,23 +49,23 @@ The release should not be declared ready just because one happy-path integration
 ## Acceptance Criteria
 
 - [x] A foundation risk register exists and is linked from the initial release parent task.
-- [ ] Each P0/P1 foundation risk has one of: passing validation evidence, a tracked fix task, or an explicit release-blocking decision.
+- [x] Each P0/P1 foundation risk has one of: passing validation evidence, a tracked fix task, or an explicit release-blocking decision.
 - [x] A repeatable foundation gate command or checklist can be run before release candidate review.
 - [x] Server/account membership tests prove one account can own/join a Server and cannot access another Server's private resources.
 - [x] Channel/message tests prove public/private channel visibility and write access behavior.
 - [x] Computer identity tests prove reconnect does not create duplicate Computers for the same physical machine.
-- [ ] Packaged daemon validation proves a user can connect from outside the repository checkout path.
+- [x] Packaged daemon validation proves a user can connect from outside the repository checkout path.
 - [x] Daemon WebSocket validation proves public deployment routes `/internal/agent-api/ws` correctly and rejects unauthenticated upgrades.
 - [ ] Daemon reconnect validation proves heartbeat, lease, offline transition, and event cursor behavior after restart.
 - [ ] Agent/runtime validation proves selected work goes to the intended Computer/runtime and non-target runtimes stay idle.
 - [x] TaskRun validation proves queued/running/failed/complete states and evidence are visible to an operator.
-- [ ] Deployment validation proves backend, frontend, Postgres, Caddy, API, browser, and daemon URL shapes work under the chosen public URL strategy.
+- [x] Deployment validation proves backend, frontend, Postgres, Caddy, API, browser, and daemon URL shapes work under the chosen public URL strategy.
 - [ ] Capacity validation records resource usage during realistic foundation activity, not only idle smoke.
-- [ ] Backup/restore validation proves the database can be restored into a clean environment or records a release-blocking gap.
+- [x] Backup/restore validation proves the database can be restored into a clean environment or records a release-blocking gap.
 - [ ] Storage/log retention validation proves large logs/evidence/uploads cannot silently fill the disk, or records a tracked release blocker.
 - [x] Config/secrets validation proves `.env` templates, production env updates, and scripts do not print or commit secrets.
 - [ ] Recovery validation records how to restart services, roll back a bad deployment, and collect evidence after failure.
-- [ ] The task explicitly states which risks remain accepted for the first release and why.
+- [x] The task explicitly states which risks remain accepted for the first release and why.
 
 ## Out Of Scope
 
@@ -84,4 +84,6 @@ The release should not be declared ready just because one happy-path integration
 - Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
 - Lightweight tasks can remain PRD-only.
 - For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
-- Latest gate evidence on 2026-06-29 is `evidence/FOUNDATION_gate_20260629103659.md`. It reports `NOT READY` because FR-07 has only a dry-run backup/restore command plan; no real restore has been executed yet.
+- Latest gate evidence on 2026-06-29 is `evidence/FOUNDATION_gate_20260629104833.md`. It reports `ready=true` with 0 failed checks, 0 blocked checks, 0 warnings, and 0 P0 warnings.
+- FR-07 now has real remote restore evidence in `evidence/postgres_backup_restore_drill_20260629.json`: backup, clean restore database creation, `pg_restore`, `SELECT 1` verification, and cleanup all returned exit code 0.
+- Remaining non-P0 risks are intentionally kept in `risk-register.md` as accepted warnings/follow-up work rather than hidden by the green P0 gate.
