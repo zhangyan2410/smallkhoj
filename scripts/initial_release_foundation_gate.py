@@ -251,6 +251,99 @@ def check_daemon_command_shape(root: Path) -> FoundationCheck:
     )
 
 
+def _check_file_contains(
+    *,
+    root: Path,
+    relative_path: str,
+    name: str,
+    required_markers: list[str],
+    reason: str,
+) -> FoundationCheck:
+    path = root / relative_path
+    if not path.is_file():
+        return failed(
+            name,
+            "FOUNDATION_SECRET_GUARDRAIL_FILE_MISSING",
+            f"Required config/secrets guardrail file is missing: {relative_path}.",
+            risk_id="FR-08",
+            priority="P0",
+            details={"path": str(path)},
+        )
+    content = path.read_text(encoding="utf-8")
+    missing = [marker for marker in required_markers if marker not in content]
+    if missing:
+        return failed(
+            name,
+            "FOUNDATION_SECRET_GUARDRAIL_MARKERS_MISSING",
+            f"Config/secrets guardrail file is missing required markers: {relative_path}.",
+            risk_id="FR-08",
+            priority="P0",
+            details={"path": str(path), "missingMarkers": missing},
+        )
+    return passed(
+        name,
+        reason,
+        risk_id="FR-08",
+        priority="P0",
+        details={"path": str(path)},
+    )
+
+
+def config_secret_guardrail_checks(root: Path) -> list[FoundationCheck]:
+    return [
+        _check_file_contains(
+            root=root,
+            relative_path=".gitignore",
+            name="secrets.gitignore",
+            required_markers=[
+                ".env",
+                ".env.*",
+                "*.pem",
+                "*.key",
+                ".mcp.json",
+                "tengxun-ssh-key*",
+            ],
+            reason="Repository ignore rules cover env files, private keys, MCP config, and Tencent SSH key names.",
+        ),
+        _check_file_contains(
+            root=root,
+            relative_path="scripts/create_prod_env_template.py",
+            name="secrets.envTemplate",
+            required_markers=[
+                "Do not commit",
+                "POSTGRES_PASSWORD=<set-outside-repo>",
+                "JIRA_API_TOKEN=<optional-set-outside-repo>",
+                "FEISHU_WORKER_APP_SECRET=<optional-set-outside-repo>",
+            ],
+            reason="Production env template uses placeholders instead of real secrets.",
+        ),
+        _check_file_contains(
+            root=root,
+            relative_path="scripts/update_prod_env_from_stdin.py",
+            name="secrets.envUpdater",
+            required_markers=[
+                "without printing values",
+                "sanitized_details",
+                "\"<set>\"",
+                "\"<empty>\"",
+                "\"<unchanged>\"",
+            ],
+            reason="Production env updater is designed to summarize keys without printing values.",
+        ),
+        _check_file_contains(
+            root=root,
+            relative_path="scripts/make_deployment_bundle.py",
+            name="secrets.bundleExclusion",
+            required_markers=[
+                "does not include `.env.prod`",
+                "Refusing to bundle env file",
+                "secrets",
+            ],
+            reason="Deployment bundle builder refuses env files and documents no-secret bundle behavior.",
+        ),
+    ]
+
+
 def _append_preflight_checks(
     checks: list[FoundationCheck],
     *,
@@ -307,6 +400,7 @@ def run_foundation_gate(
     checks: list[FoundationCheck] = [
         check_risk_register(resolved_root),
         check_daemon_command_shape(resolved_root),
+        *config_secret_guardrail_checks(resolved_root),
     ]
     _append_preflight_checks(checks, root=resolved_root, env_file=env_file, include_runtime=include_runtime)
     _append_smoke_checks(checks, base_url=base_url, allow_http=allow_http, timeout=timeout)

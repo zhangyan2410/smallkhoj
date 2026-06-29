@@ -10,6 +10,32 @@ from scripts.tests.test_post_deploy_smoke import FakeDeploymentServer
 
 def make_foundation_repo(root: Path) -> None:
     make_repo(root)
+    write(root / ".gitignore", """
+        .env
+        .env.*
+        *.pem
+        *.key
+        .mcp.json
+        tengxun-ssh-key*
+    """)
+    write(root / "scripts" / "create_prod_env_template.py", """
+        TEMPLATE = '''
+        # Fill this file on the deployment host. Do not commit it.
+        POSTGRES_PASSWORD=<set-outside-repo>
+        JIRA_API_TOKEN=<optional-set-outside-repo>
+        FEISHU_WORKER_APP_SECRET=<optional-set-outside-repo>
+        '''
+    """)
+    write(root / "scripts" / "update_prod_env_from_stdin.py", """
+        '''Update env without printing values.'''
+        def sanitized_details():
+            return {"added": "<set>", "empty": "<empty>", "unchanged": "<unchanged>"}
+    """)
+    write(root / "scripts" / "make_deployment_bundle.py", """
+        '''This bundle does not include `.env.prod` or secrets.'''
+        def validate_archive_path(relative_path: str):
+            raise ValueError("Refusing to bundle env file")
+    """)
     task_dir = root / ".trellis" / "tasks" / "06-29-06-29-initial-release-foundation-reliability-risk-gates"
     task_dir.mkdir(parents=True, exist_ok=True)
     write(task_dir / "risk-register.md", """
@@ -127,7 +153,29 @@ class FoundationGateTests(unittest.TestCase):
             self.assertEqual(by_name["risk.FR-03.coverage"].status, "blocked")
             self.assertEqual(by_name["risk.FR-05.coverage"].status, "blocked")
             self.assertEqual(by_name["risk.FR-07.coverage"].status, "blocked")
+            self.assertEqual(by_name["secrets.gitignore"].status, "passed")
+            self.assertNotIn("risk.FR-08.coverage", by_name)
             self.assertFalse(report.ready)
+
+    def test_missing_secret_guardrail_fails_fr08(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            write(root / ".gitignore", """
+                .env
+            """)
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["secrets.gitignore"].status, "failed")
+            self.assertEqual(by_name["secrets.gitignore"].risk_id, "FR-08")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 | FR-05 | P0 | TaskRun accepted but not executable/observable | Work item appears queued forever or fails without evidence | Local API-created TaskRun delivered to daemon/runtime; UI/API evidence visible | `06-25-taskrun-config-templates` / initial release parent | blocked |
 | FR-06 | P0 | Deployment only works from local dev assumptions | Public URL uses localhost API/WS, CORS fails, Caddy misses WS upgrade | `initial_release_foundation_gate.py` repo preflight + public smoke; evidence `evidence/FOUNDATION_gate_20260629095157.md` | production deployment tasks | pass |
 | FR-07 | P0 | No backup/restore confidence | Bad deploy or DB issue loses release data | Postgres backup and restore drill into clean DB/staging | missing child task | blocked |
-| FR-08 | P0 | Secrets/config leak or partial prod env | Real secrets printed, committed, or app starts with placeholders | env template validation + no-secret update script + git scan; runner currently requires an explicit env file before coverage counts | production env validation tasks | blocked |
+| FR-08 | P0 | Secrets/config leak or partial prod env | Real secrets printed, committed, or app starts with placeholders | `initial_release_foundation_gate.py` static no-secret guardrails; evidence `evidence/FOUNDATION_gate_20260629095636.md` | production env validation tasks | pass |
 | FR-09 | P1 | Server capacity hidden until live use | Idle smoke passes, but memory/disk/CPU fails during runtime/chat activity | resource snapshot after foundation activity | lighthouse resource baseline | warn |
 | FR-10 | P1 | Disk fills from logs/uploads/evidence/cache | App degrades or Postgres/Docker fails due to 40GB disk pressure | upload limits, retention docs, Docker cleanup, disk check | missing child task | not-started |
 | FR-11 | P1 | Daemon version skew | Old daemon connects but protocol behavior is incompatible | daemon version/minimum compatibility gate | daemon distribution task | not-started |
@@ -22,11 +22,11 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 
 ## Current Release Decision
 
-Not ready. First coherent gate run on 2026-06-29 produced 1 failed P0 risk and 4 blocked P0 risks.
+Not ready. Latest coherent gate run on 2026-06-29 produced 1 failed P0 risk and 3 blocked P0 risks.
 
 - Failed: FR-02.
-- Blocked / no executable gate wired yet: FR-03, FR-05, FR-07, FR-08.
-- Passing evidence exists for a narrow slice of FR-04 and FR-06.
+- Blocked / no executable gate wired yet: FR-03, FR-05, FR-07.
+- Passing evidence exists for FR-04, FR-06, and FR-08.
 - FR-01 is only partially covered by the risk-register existence check; real account/server access tests remain required.
 
 ## Minimum Recommended P0 Blockers
