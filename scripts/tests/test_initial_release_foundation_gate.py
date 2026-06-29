@@ -41,6 +41,10 @@ def make_foundation_repo(root: Path) -> None:
         ARTIFACT = "smallkhoj-daemon-v0.2.0-darwin-arm64.tar.gz"
         version = "0.2.0"
     """)
+    write(root / "backend" / "tests" / "test_daemon_control.py", """
+        def test_placeholder():
+            assert True
+    """)
     task_dir = root / ".trellis" / "tasks" / "06-29-06-29-initial-release-foundation-reliability-risk-gates"
     task_dir.mkdir(parents=True, exist_ok=True)
     write(task_dir / "risk-register.md", """
@@ -201,6 +205,44 @@ class FoundationGateTests(unittest.TestCase):
             self.assertEqual(by_name["daemon.commandShape"].status, "passed")
             self.assertEqual(by_name["daemon.distributionArtifact"].status, "blocked")
             self.assertEqual(by_name["daemon.distributionArtifact"].risk_id, "FR-02")
+
+    def test_backend_daemon_identity_tests_can_cover_fr03(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+
+            observed = {}
+
+            def fake_run(command, **kwargs):
+                observed["command"] = command
+                return type(
+                    "Completed",
+                    (),
+                    {
+                        "returncode": 0,
+                        "stdout": "7 passed",
+                        "stderr": "",
+                    },
+                )()
+
+            original_run = gate.subprocess.run
+            try:
+                gate.subprocess.run = fake_run
+                report = gate.run_foundation_gate(
+                    root=root,
+                    base_url=base_url,
+                    allow_http=True,
+                    timeout=2,
+                    include_backend_tests=True,
+                )
+            finally:
+                gate.subprocess.run = original_run
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["daemon.identityBackendTests"].status, "passed")
+            self.assertEqual(by_name["daemon.identityBackendTests"].risk_id, "FR-03")
+            self.assertNotIn("risk.FR-03.coverage", by_name)
+            self.assertIn("tests/test_daemon_control.py::test_daemon_connect_reuses_offline_same_name_computer_when_machine_id_changed", observed["command"])
 
 
 if __name__ == "__main__":

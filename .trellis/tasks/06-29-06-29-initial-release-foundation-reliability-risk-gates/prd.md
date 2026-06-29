@@ -53,7 +53,7 @@ The release should not be declared ready just because one happy-path integration
 - [x] A repeatable foundation gate command or checklist can be run before release candidate review.
 - [ ] Server/account membership tests prove one account can own/join a Server and cannot access another Server's private resources.
 - [ ] Channel/message tests prove public/private channel visibility and write access behavior.
-- [ ] Computer identity tests prove reconnect does not create duplicate Computers for the same physical machine.
+- [x] Computer identity tests prove reconnect does not create duplicate Computers for the same physical machine.
 - [ ] Packaged daemon validation proves a user can connect from outside the repository checkout path.
 - [ ] Daemon WebSocket validation proves public deployment routes `/internal/agent-api/ws` correctly and rejects unauthenticated upgrades.
 - [ ] Daemon reconnect validation proves heartbeat, lease, offline transition, and event cursor behavior after restart.

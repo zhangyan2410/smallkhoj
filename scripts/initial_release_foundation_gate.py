@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,15 @@ READY = "FOUNDATION_GATE_READY"
 
 FOUNDATION_TASK = ".trellis/tasks/06-29-06-29-initial-release-foundation-reliability-risk-gates"
 P0_RISKS = ("FR-01", "FR-02", "FR-03", "FR-04", "FR-05", "FR-06", "FR-07", "FR-08")
+FR03_BACKEND_TESTS = (
+    "tests/test_daemon_control.py::test_expired_daemon_lease_does_not_block_new_daemon",
+    "tests/test_daemon_control.py::test_active_daemon_lease_blocks_different_daemon",
+    "tests/test_daemon_control.py::test_daemon_shutdown_only_releases_matching_active_daemon",
+    "tests/test_daemon_control.py::test_daemon_ws_activity_does_not_extend_conflicting_active_lease",
+    "tests/test_daemon_control.py::test_daemon_ws_activity_can_take_over_expired_lease",
+    "tests/test_daemon_control.py::test_daemon_connect_reuses_offline_same_name_computer_when_machine_id_changed",
+    "tests/test_daemon_control.py::test_daemon_connect_rejects_active_same_name_computer_when_machine_id_changed",
+)
 
 
 @dataclass(frozen=True)
@@ -381,6 +391,76 @@ def config_secret_guardrail_checks(root: Path) -> list[FoundationCheck]:
     ]
 
 
+def backend_python(root: Path) -> Path | str:
+    venv_python = root / "backend" / ".venv" / "bin" / "python"
+    if venv_python.is_file():
+        return venv_python
+    return sys.executable
+
+
+def check_daemon_identity_backend_tests(root: Path, *, timeout: float) -> FoundationCheck:
+    backend_dir = root / "backend"
+    test_file = backend_dir / "tests" / "test_daemon_control.py"
+    if not test_file.is_file():
+        return failed(
+            "daemon.identityBackendTests",
+            "FOUNDATION_DAEMON_IDENTITY_TEST_FILE_MISSING",
+            "Daemon identity/reconnect backend test file is missing.",
+            risk_id="FR-03",
+            priority="P0",
+            details={"path": str(test_file)},
+        )
+    command = [
+        str(backend_python(root)),
+        "-m",
+        "pytest",
+        *FR03_BACKEND_TESTS,
+        "-q",
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=backend_dir,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return failed(
+            "daemon.identityBackendTests",
+            "FOUNDATION_DAEMON_IDENTITY_TESTS_UNRUNNABLE",
+            "Daemon identity/reconnect backend tests could not be run.",
+            risk_id="FR-03",
+            priority="P0",
+            details={"error": str(exc), "command": command},
+        )
+    output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
+    details = {
+        "command": command,
+        "exitCode": completed.returncode,
+        "tests": list(FR03_BACKEND_TESTS),
+    }
+    if output:
+        details["outputTail"] = output[-4000:]
+    if completed.returncode == 0:
+        return passed(
+            "daemon.identityBackendTests",
+            "Daemon identity, reconnect, lease, and active-conflict backend tests passed.",
+            risk_id="FR-03",
+            priority="P0",
+            details=details,
+        )
+    return failed(
+        "daemon.identityBackendTests",
+        "FOUNDATION_DAEMON_IDENTITY_TESTS_FAILED",
+        "Daemon identity/reconnect backend tests failed.",
+        risk_id="FR-03",
+        priority="P0",
+        details=details,
+    )
+
+
 def _append_preflight_checks(
     checks: list[FoundationCheck],
     *,
@@ -432,6 +512,7 @@ def run_foundation_gate(
     include_runtime: bool = False,
     timeout: float = 8.0,
     require_all_p0: bool = True,
+    include_backend_tests: bool = False,
 ) -> FoundationReport:
     resolved_root = root.resolve()
     checks: list[FoundationCheck] = [
@@ -440,6 +521,8 @@ def run_foundation_gate(
         check_daemon_distribution_artifact(resolved_root),
         *config_secret_guardrail_checks(resolved_root),
     ]
+    if include_backend_tests:
+        checks.append(check_daemon_identity_backend_tests(resolved_root, timeout=max(timeout, 30.0)))
     _append_preflight_checks(checks, root=resolved_root, env_file=env_file, include_runtime=include_runtime)
     _append_smoke_checks(checks, base_url=base_url, allow_http=allow_http, timeout=timeout)
     if require_all_p0:
@@ -548,6 +631,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", help="Public deployment base URL for post-deploy smoke checks.")
     parser.add_argument("--allow-http", action="store_true", help="Accept HTTP for IP-only or tunnel smoke tests.")
     parser.add_argument("--runtime", action="store_true", help="Inspect current host Docker, resources, and public port readiness.")
+    parser.add_argument(
+        "--skip-backend-tests",
+        action="store_true",
+        help="Skip backend foundation tests such as daemon identity/reconnect. Intended for fast local smoke only.",
+    )
     parser.add_argument("--timeout", type=float, default=8.0, help="Per-network-operation timeout in seconds.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     parser.add_argument("--strict-warnings", action="store_true", help="Return exit code 2 when warnings are present.")
@@ -571,6 +659,7 @@ def main(argv: list[str] | None = None) -> int:
         include_runtime=args.runtime,
         timeout=args.timeout,
         require_all_p0=not args.partial,
+        include_backend_tests=not args.skip_backend_tests,
     )
     if args.json:
         print(json.dumps(report_to_dict(report), ensure_ascii=False, indent=2, sort_keys=True))
