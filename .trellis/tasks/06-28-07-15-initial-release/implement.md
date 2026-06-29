@@ -2,6 +2,10 @@
 
 This outline is intentionally not a calendar schedule. It records the execution order and validation gates for the release scope.
 
+## Scope Update 2026-06-29
+
+Live Feishu/Jira validation is deferred because the target company Jira is self-hosted. This parent task closes on foundation/code-path readiness. The Feishu/Jira work streams below remain as implemented code-path and follow-up architecture, but real credentials, real self-hosted Jira compatibility, real Feishu long connection, and public HTTPS/domain validation move to the next release slice.
+
 ## Work Streams
 
 1. **Release scenario definition**
@@ -23,6 +27,7 @@ This outline is intentionally not a calendar schedule. It records the execution 
    - Implement create issue or append comment, whichever best fits the primary scenario.
    - Persist local-to-external mapping for task/run/message to Jira issue/comment.
    - Surface auth/config/write-back failures in event log and product UI.
+   - Current parent closure proves this with deterministic REST-shape and mapping tests, not live self-hosted Jira credentials.
 
 4. **Feishu long-connection MVP**
    - Configure Feishu app credentials outside source control; encrypt at rest when persisted.
@@ -33,6 +38,7 @@ This outline is intentionally not a calendar schedule. It records the execution 
    - Implement group filter: only @bot, reply-to-bot, or supported command shapes enter SmallKhoj.
    - Implement audit-only drop records for unbound users, unknown routes, non-addressed group messages, and duplicates.
    - Implement a basic Feishu reply path for accepted/running/result/failure.
+   - Current parent closure proves this with normalized/fake transport tests and worker/runtime boundaries, not a live Feishu long-connection session.
 
 5. **Feishu -> TaskRun -> Jira loop**
    - Parse the first supported Feishu command shape, such as `分析 JIRA-123`.
@@ -40,6 +46,7 @@ This outline is intentionally not a calendar schedule. It records the execution 
    - Create a SmallKhoj channel message, task, assignment, and TaskRun with a suitable template snapshot.
    - Route the TaskRun to the selected daemon/runtime using existing backend and daemon event delivery.
    - On TaskRun completion, append a Jira comment and reply to Feishu with a concise summary and links.
+   - Current parent closure proves this as a backend service code path. A deployed live external-system scenario is deferred.
 
 6. **Deployment and public access readiness**
    - Install/configure TencentCloud CLI locally if cloud-side automation is used; keep SecretId/SecretKey outside the repo.
@@ -112,10 +119,15 @@ This outline is intentionally not a calendar schedule. It records the execution 
 - Frontend verification uses `./twd` for the product-visible scenario states.
 - Runtime verification uses `./smallkhoj-trace` or equivalent trace/log evidence.
 - Deployment verification proves backend HTTP, frontend HTTP, browser-to-backend API calls, backend SSE/WebSocket, daemon WebSocket, Feishu long connection, and Jira REST paths work under the chosen deployment shape.
-- A release candidate is not ready until the primary scenario succeeds after a fresh daemon restart and against the deployed server.
+- For this parent task's downgraded scope, release readiness is foundation/code-path readiness: backend integration tests pass, the foundation gate is ready, and deferred live external validation is documented.
+- For the next live external integration slice, a release candidate is not ready until the primary scenario succeeds after a fresh daemon restart and against the deployed server.
 
 ## Candidate Follow-Up Tasks
 
+- Self-hosted Jira compatibility discovery and REST adapter validation against the user's company Jira.
+- Live Feishu long-connection worker setup with production app credentials.
+- Deployed Feishu -> SmallKhoj TaskRun -> self-hosted Jira/Feishu write-back scenario.
+- HTTPS/domain/tunnel/gateway validation after ICP and public-access decision.
 - Full integration settings UI.
 - Full MCP/skill visibility and controls.
 - Conversation minimap and message jump UI improvements.

@@ -8,6 +8,18 @@ This task is a release-scope wrapper, not a single implementation unit. It shoul
 
 The release should prefer existing SmallKhoj concepts and surfaces over new abstractions. New code should be added only where the primary loop cannot be expressed with current channel, task, daemon, runtime, or evidence models.
 
+### Scope Update 2026-06-29
+
+Live Feishu and Jira validation are moved to a follow-up release slice because the target Jira is self-hosted, so a Jira Cloud-only live run would not validate the real company environment. This parent closes on the foundation/code-path slice:
+
+- integration gateway model and deterministic adapter/orchestration code paths;
+- TaskRun/daemon execution boundary;
+- account/Server isolation and server switcher foundation;
+- deployment/control-plane readiness on Tencent Lighthouse;
+- foundation reliability gates.
+
+The design below remains the target architecture for the deferred live integration slice, but the live Feishu long-connection run, self-hosted Jira compatibility work, and HTTPS/domain validation are not blockers for closing this parent task.
+
 ## System Boundaries
 
 - **External integrations:** Feishu and Jira should be treated as adapters around the SmallKhoj task/channel/TaskRun model, not as separate product silos.
@@ -26,6 +38,8 @@ The release should prefer existing SmallKhoj concepts and surfaces over new abst
 6. The runtime executes the task and reports TaskRun lifecycle/evidence through existing agent API paths.
 7. SmallKhoj writes a short result/status back to Feishu and writes the durable work result to Jira when the scenario requires it.
 8. The frontend shows external source, runtime state, evidence, output, failure reason, and external write-back links.
+
+For this parent task, the loop is proven by service-level tests and foundation gates. A live deployed external-system run is deferred to the follow-up self-hosted Jira/Feishu slice.
 
 ## Integration Gateway Model
 

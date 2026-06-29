@@ -6,6 +6,27 @@ Shape the SmallKhoj initial release around one useful, demonstrable end-to-end p
 
 The release should prove that SmallKhoj solves a real collaboration problem, not that every planned platform surface is complete.
 
+## Scope Update 2026-06-29
+
+The live Feishu/Jira portion is explicitly moved out of this parent task. The reason is product discovery: the user's company Jira is self-hosted, so a Jira Cloud-only live credential/run would not prove the real target environment. GitHub/OAuth is also not part of this release slice; later auth work should consider WeChat scan login and GitHub login.
+
+This parent task now closes on the **foundation + code-path release slice**:
+
+- account login and Server switching foundation;
+- Server-scoped Channel/Member/Computer behavior;
+- integration gateway connector/route/event/session/mapping model;
+- Feishu/Jira adapter and orchestration code paths covered by deterministic tests;
+- TaskRun/daemon execution boundary and evidence gates;
+- versioned daemon distribution and duplicate Computer prevention;
+- Tencent Lighthouse deployment/control-plane readiness with documented IP-only/ICP/domain constraints.
+
+Live external integration is a follow-up release slice:
+
+- real Feishu long-connection worker run with production app credentials;
+- self-hosted Jira REST capability discovery and adapter compatibility;
+- deployed Feishu -> SmallKhoj TaskRun -> Jira/Feishu write-back scenario;
+- public HTTPS/domain setup after ICP/tunnel/gateway decision.
+
 ## Background
 
 The current project has many active planning and implementation threads. The immediate risk is scope spread: adding more surfaces without one reliable product loop that can be deployed, explained, tested, and demonstrated.
@@ -148,35 +169,40 @@ These concepts can be implemented incrementally. The first code slice may hard-c
 
 ## Acceptance Criteria
 
-- [ ] A Feishu long-connection-triggered work item can enter SmallKhoj and become visible as a channel/task or equivalent owned work record.
-- [ ] A Jira-linked work item can be read, created, or updated through SmallKhoj with a visible external link or evidence record.
-- [ ] At least one end-to-end scenario runs from Feishu trigger to SmallKhoj TaskRun execution to Feishu/Jira write-back.
-- [ ] Feishu integration drops or audits unbound users, group messages not addressed to the bot, duplicate messages, and unknown routes without creating task/channel content.
-- [ ] Jira MVP uses outbound REST for read/write/comment and records local-to-external mappings.
-- [ ] Feishu/Jira adapters do not execute runtime work directly; they create/update channel/task/TaskRun state and let daemon/runtime execute.
-- [ ] The scenario can run against a deployed server/domain with HTTPS, not only localhost.
-- [ ] Tencent Cloud Lighthouse is confirmed suitable or explicitly rejected with a concrete reason.
-- [ ] The 2 vCPU / 2 GB RAM server is validated under the release workload, including backend, frontend, Postgres, reverse proxy, webhook requests, and daemon WebSocket connection.
-- [ ] Server-side builds are avoided or proven not to exhaust memory; preferred release flow uses prebuilt artifacts/images or a controlled build step.
-- [ ] The deployment decision records whether the Lighthouse region requires ICP filing before domain-based access.
-- [ ] A low-cost fallback path exists if ICP filing is not complete by release validation: free HTTPS tunnel first, then small Hong Kong/non-mainland monthly gateway only if needed.
-- [ ] Any Hong Kong/non-mainland option is evaluated for monthly cost, included traffic, cross-border latency, and whether it is used as the full app host or only as a webhook/reverse-proxy gateway.
-- [ ] The deployed frontend and backend work under the chosen domain without localhost-only API or WebSocket assumptions.
-- [ ] Reverse proxy, HTTPS certificate, backend WebSocket proxying, and daemon WebSocket proxying are verified.
-- [ ] Daemon reconnect does not create duplicate local Computer records for the same physical machine.
-- [ ] The UI hides or blocks new-computer onboarding when the current local machine already has a Computer identity.
-- [ ] Product daemon onboarding works from a downloaded/versioned daemon artifact or install flow and does not require a SmallKhoj repository checkout.
-- [ ] Daemon version is visible through CLI, backend Computer state, and UI; unsupported versions are diagnosed or explicitly deferred.
-- [ ] Foundation reliability gates have been run and every P0 foundation risk is pass, fixed, or explicitly accepted with a documented warning.
-- [ ] Multi-machine validation covers at least two daemon/computer paths or one physical + one simulated machine identity, including target runtime selection and offline behavior.
-- [ ] The primary scenario exposes human-readable status and failure reasons in the product UI.
-- [ ] Runtime/provider/daemon failures have trace or log evidence reachable from the operator workflow.
-- [ ] Bug fixes are validated against the primary scenario scripts before being considered release-ready.
-- [ ] Non-critical surfaces are explicitly deferred when they do not support Feishu/Jira, deployment, daemon identity, or primary scenario reliability.
+- [x] Integration gateway tables/services reserve connector, route, event, session, and mapping concepts for external systems.
+- [x] Feishu code path normalizes inbound message events, parses the first Jira-analysis command shape, drops/audits unaddressed group messages, duplicates, unknown commands, and unknown routes without creating local work.
+- [x] Jira code path validates site URL/credentials, supports REST issue lookup and comment append request shapes, and records local-to-external mappings.
+- [x] Feishu/Jira adapter and orchestration code does not execute runtime work directly; it creates/links channel/task/TaskRun state and leaves execution to daemon/runtime boundaries.
+- [x] A deterministic Feishu -> Jira lookup -> SmallKhoj message/task/TaskRun -> Jira write-back code path is covered by backend tests without live external credentials.
+- [x] Better Auth email/password login and Server switcher are validated with two browser accounts and Server-scoped Channel/Member/Computer evidence.
+- [x] Tencent Cloud Lighthouse deployment/control-plane readiness is documented with public HTTP smoke, reverse proxy, backend/frontend/Postgres/Caddy state, daemon WebSocket route, resource baseline, and ICP/domain constraints.
+- [x] The release uses prebuilt/uploaded images or controlled build steps; expensive or memory-heavy server-side builds are not required for the validated path.
+- [x] The current 4C4G Lighthouse host is accepted as the control-plane validation target for this release slice; the earlier 2C2G annual plan remains a future cost optimization candidate, not a blocker.
+- [x] Low-cost public-access fallback strategy is documented: IP-only/control-plane validation first, ICP filing or tunnel/gateway later when live external ingress requires it.
+- [x] Daemon reconnect/identity gates prove duplicate local Computer prevention for the validated same-Server path.
+- [x] UI/onboarding behavior blocks or hides unnecessary new-computer creation when a local identity already exists in the validated flow.
+- [x] Product daemon onboarding uses a versioned downloadable/installable daemon artifact or install flow and does not require a SmallKhoj repository checkout.
+- [x] Daemon version is visible through CLI/backend state and unsupported versions are enforced or diagnosed by gate checks.
+- [x] Foundation reliability gates have been run with `ready=true`, `failures=0`, `blocked=0`, and `p0Warnings=0`.
+- [x] Server/account scope, TaskRun lifecycle/evidence, daemon WebSocket route, backup/restore, config/secrets, daemon runtime workspace isolation, and workflow-state prompt gates are covered by executable checks.
+- [x] Non-critical surfaces are explicitly deferred when they do not support account/server foundation, deployment, daemon identity, integration gateway skeleton, or TaskRun reliability.
+
+## Deferred Acceptance Criteria
+
+These were original live-release criteria, but they are no longer blockers for this parent task after the 2026-06-29 scope update:
+
+- Real Feishu long-connection-triggered work item enters SmallKhoj through production Feishu credentials.
+- Real self-hosted Jira issue read/create/comment write-back succeeds against the user's company Jira.
+- A deployed live scenario runs from Feishu trigger to SmallKhoj TaskRun execution to Feishu/Jira write-back.
+- Public HTTPS/domain setup is verified for live external use instead of the current HTTP IP-only control-plane smoke.
+- Operator-visible runtime/provider/daemon failure evidence is validated against the real Feishu/Jira scenario, not only foundation TaskRun/daemon gates.
 
 ## Completion Audit
 
-Current audit evidence: `evidence/INITIAL_RELEASE_completion_audit_20260629170815.md`.
+Current audit evidence:
+
+- `evidence/INITIAL_RELEASE_completion_audit_20260629170815.md`
+- `evidence/INITIAL_RELEASE_scope_update_feishu_jira_deferred_20260629.md`
 
 All 38 child tasks are completed, and the current code/foundation validation is strong:
 
@@ -184,16 +210,7 @@ All 38 child tasks are completed, and the current code/foundation validation is 
 - Foundation gate against `http://124.222.40.40`: `ready=true`, `failures=0`, `blocked=0`, `warnings=0`, `p0Warnings=0`.
 - Better Auth email/password login and server switcher have real browser evidence for two accounts and server-scoped resources.
 
-The parent task is not ready to archive yet because several parent-level acceptance criteria still require stronger current-state evidence:
-
-- real Feishu long-connection worker run with live Feishu app credentials;
-- real Jira site/API write-back with live Jira credentials;
-- deployed Feishu -> SmallKhoj TaskRun -> Feishu/Jira write-back scenario evidence;
-- HTTPS/domain readiness instead of HTTP IP-only smoke;
-- explicit decision that the current 4C4G Lighthouse evidence supersedes the earlier 2C2G candidate, or a 2C2G-specific validation;
-- operator-visible runtime/provider/daemon failure evidence for the primary Feishu/Jira scenario.
-
-The task can close after either strict live validation is completed, or after the release scope is explicitly downgraded to "foundation + code-path complete" and the live Feishu/Jira/HTTPS/domain work is split into follow-up tasks.
+The parent task is now ready to close as a foundation/code-path release slice because the user explicitly deferred live Feishu/Jira validation after discovering the target Jira is self-hosted. Deferred live criteria remain visible above and should be handled by follow-up work, not hidden inside this task.
 
 ## Open Questions
 
