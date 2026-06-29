@@ -721,13 +721,6 @@ export function ChannelClient({
     }
   }
 
-  async function addMemberToChannel(targetChannelId: string, memberId: string) {
-    await apiPost(`/api/v1/channels/${targetChannelId}/members`, channelMemberAddPayload(memberId), sessionToken)
-    if (targetChannelId === channelId) {
-      await refreshMembers()
-    }
-  }
-
   async function handleSend() {
     if (!input.trim()) return
     try {

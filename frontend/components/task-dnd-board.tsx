@@ -44,13 +44,16 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
     setStatusOverrides((prev) => ({ ...prev, [taskId]: newStatus }))
   }, [])
 
-  const filterRecord = {
-    view,
-    channel: filters.channel,
-    creator: filters.creator,
-    assignee: filters.assignee,
-    status: filters.status,
-  }
+  const filterRecord = useMemo(
+    () => ({
+      view,
+      channel: filters.channel,
+      creator: filters.creator,
+      assignee: filters.assignee,
+      status: filters.status,
+    }),
+    [filters.assignee, filters.channel, filters.creator, filters.status, view],
+  )
 
   // 点击看板卡片 -> 导航到 ?task=（打开详情 Dialog），单一真源是 URL
   const handleSelectTask = useCallback((task: Task) => {

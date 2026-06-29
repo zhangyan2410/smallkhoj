@@ -18,7 +18,7 @@ function memberHref(member: Member) {
  * 选中 agent 时，在列表项下方展开 start/stop/restart 控制（server action form）。
  * 跟随 section tone 着色：start=success 绿、stop=danger 红、restart=neutral。
  */
-function LifecycleControls({ member, tone }: { member: Member; tone: "green" | "yellow" | "mint" }) {
+function LifecycleControls({ member }: { member: Member }) {
   const workspaceId = member.workspaceId
   if (!workspaceId) return null
   const bucket = getStatusBucket(member.status)
@@ -107,7 +107,7 @@ export function MembersList({
           </div>
         </Link>
         {selected && member.kind === "agent" && member.workspaceId && (
-          <LifecycleControls member={member} tone={tone} />
+          <LifecycleControls member={member} />
         )}
       </div>
     )

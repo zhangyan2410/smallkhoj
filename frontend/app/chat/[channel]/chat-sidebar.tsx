@@ -1,15 +1,13 @@
 "use client"
 
-import { useState, useTransition } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Activity, Bot, Bookmark, Hash, MessageSquare, Plus } from "lucide-react"
+import { Activity, Bot, Bookmark, Hash } from "lucide-react"
 
 import { MemberAvatar } from "@/components/member-avatar"
 import { CreateAgentDialog } from "@/app/chat/[channel]/create-agent-dialog"
 import { CreateChannelDialog } from "@/app/chat/[channel]/create-channel-dialog"
 import { useChatData, type DmInfo } from "@/app/chat/chat-data-context"
-import { statusLabel } from "@/lib/control-plane"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { cn } from "@/lib/utils"
 
@@ -33,7 +31,6 @@ export function ChatSidebar() {
   const { channels, dms, allMembers, currentChannelName } = useChatData()
   const tChat = useTranslations("chat")
   const tNav = useTranslations("nav")
-  const [, startTransition] = useTransition()
 
   const activeAgents = allMembers.filter((m) => {
     if (m.kind !== "agent") return false

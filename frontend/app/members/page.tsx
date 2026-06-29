@@ -10,11 +10,8 @@ import {
   Cpu,
   HardDrive,
   MessageSquare,
-  Play,
   Puzzle,
-  RotateCcw,
   Shield,
-  Square,
   Trash2,
   User,
   UserRound,
@@ -29,7 +26,7 @@ import { MembersList } from "./members-list"
 import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, RuntimeChip, StatusPill, type CategoryTone } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -44,8 +41,6 @@ import {
   shortId,
   statusLabel,
 } from "@/lib/control-plane"
-import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
-import { detectedProviderOptions } from "@/lib/runtime-options"
 import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 async function getMembers(sessionToken?: string | null, activeServerId?: string | null) {
@@ -704,7 +699,6 @@ export default async function MembersPage({
   const humansList = members.filter((m) => m.kind === "human")
   const agentsList = members.filter((m) => m.kind === "agent")
   const boundAgents = agentsList.filter((m) => m.computerId).length
-  const providerOptions = detectedProviderOptions(computers)
   const t = await getTranslations("members")
 
   const selectedMember = selectedMemberId
