@@ -51,8 +51,8 @@ The release should not be declared ready just because one happy-path integration
 - [x] A foundation risk register exists and is linked from the initial release parent task.
 - [ ] Each P0/P1 foundation risk has one of: passing validation evidence, a tracked fix task, or an explicit release-blocking decision.
 - [x] A repeatable foundation gate command or checklist can be run before release candidate review.
-- [ ] Server/account membership tests prove one account can own/join a Server and cannot access another Server's private resources.
-- [ ] Channel/message tests prove public/private channel visibility and write access behavior.
+- [x] Server/account membership tests prove one account can own/join a Server and cannot access another Server's private resources.
+- [x] Channel/message tests prove public/private channel visibility and write access behavior.
 - [x] Computer identity tests prove reconnect does not create duplicate Computers for the same physical machine.
 - [ ] Packaged daemon validation proves a user can connect from outside the repository checkout path.
 - [x] Daemon WebSocket validation proves public deployment routes `/internal/agent-api/ws` correctly and rejects unauthenticated upgrades.
@@ -84,4 +84,4 @@ The release should not be declared ready just because one happy-path integration
 - Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
 - Lightweight tasks can remain PRD-only.
 - For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
-- Latest gate evidence on 2026-06-29 is `evidence/FOUNDATION_gate_20260629102544.md`. It reports `NOT READY` because FR-01 lacks dedicated Server/account/channel isolation proof and FR-07 has only a dry-run backup/restore command plan; no real restore has been executed yet.
+- Latest gate evidence on 2026-06-29 is `evidence/FOUNDATION_gate_20260629103659.md`. It reports `NOT READY` because FR-07 has only a dry-run backup/restore command plan; no real restore has been executed yet.

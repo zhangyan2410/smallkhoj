@@ -60,6 +60,15 @@ from services.public_events import (
     public_event_sse_frame,
     should_deliver_public_event,
 )
+from services.server_membership import (
+    ensure_account_membership,
+    ensure_channel_access,
+    ensure_server_scoped_computer,
+    is_channel_member,
+    parse_server_id,
+    require_admin_role,
+    resolve_active_server_context,
+)
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.task_run_templates import (
     create_template,
@@ -290,8 +299,19 @@ async def _account_from_token(db: AsyncSession, token: str | None) -> Account | 
 
 
 async def _current_account(db: AsyncSession, request: Request) -> Account | None:
-    token = request.headers.get("X-Account-Token") or request.cookies.get(SESSION_COOKIE_NAME)
+    headers = getattr(request, "headers", {}) or {}
+    cookies = getattr(request, "cookies", {}) or {}
+    token = headers.get("X-Account-Token") or cookies.get(SESSION_COOKIE_NAME)
     return await _account_from_token(db, token)
+
+
+async def _resolve_active_server_context(db: AsyncSession, request: Request):
+    account = await _current_account(db, request)
+    if not account:
+        raise HTTPException(401, "Login required for Server access")
+    headers = getattr(request, "headers", {}) or {}
+    requested_server_id = parse_server_id(headers.get("X-Server-Id"))
+    return await resolve_active_server_context(db, account=account, requested_server_id=requested_server_id)
 
 
 async def _bootstrap_account(
@@ -325,6 +345,13 @@ async def _bootstrap_account(
     member.status = "online"
     if display_name:
         account.display_name = display_name
+    await ensure_account_membership(
+        db,
+        account=account,
+        server=server,
+        member=member,
+        default_role="owner",
+    )
     token = f"sk_session_{secrets.token_urlsafe(32)}"
     account.session_token_hash = _hash_token(token)
     account.last_login_at = _utcnow_aware()
@@ -1113,16 +1140,22 @@ async def _record_activity(
 
 
 @router.get("/channels")
-async def list_channels(_auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Server).limit(1))
-    server = result.scalar_one_or_none()
-    if not server:
-        return {"channels": []}
-
+async def list_channels(
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     result = await db.execute(
         select(Channel).where(Channel.server_id == server.id, Channel.kind != "dm")
     )
     channels = result.scalars().all()
+    visible_channels = []
+    for channel in channels:
+        if channel.kind == "private" and not await is_channel_member(db, channel_id=channel.id, member_id=context.member.id):
+            continue
+        visible_channels.append(channel)
 
     return {
         "channels": [
@@ -1132,7 +1165,7 @@ async def list_channels(_auth: None = Depends(verify_public_api_key), db: AsyncS
                 "type": ch.kind,
                 "description": ch.description or "",
             }
-            for ch in channels
+            for ch in visible_channels
         ]
     }
 
@@ -1174,17 +1207,19 @@ async def stream_public_events(
 @router.get("/channels/{channel_name}/messages")
 async def get_channel_messages(
     channel_name: str,
+    request: Request,
     limit: int = Query(50),
     threadMode: str | None = Query(None),
+    _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
     name = channel_name.lstrip("#")
-    ch_result = await db.execute(
-        select(Channel).where(Channel.name == name)
-    )
-    ch = ch_result.scalar_one_or_none()
+    context = await _resolve_active_server_context(db, request)
+    ch = await _resolve_channel(db, context.server, name)
     if not ch:
         return {"messages": []}
+    member_in_channel = await is_channel_member(db, channel_id=ch.id, member_id=context.member.id)
+    ensure_channel_access(ch, context.member.id, is_channel_member=member_in_channel)
 
     q = select(Message).where(Message.channel_id == ch.id)
     if threadMode == "roots":
@@ -1242,6 +1277,7 @@ async def get_public_thread(
 async def create_channel_message(
     channel_name: str,
     request: Request,
+    _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
     body = await request.json()
@@ -1251,13 +1287,16 @@ async def create_channel_message(
         channel=channel_name,
     )
     trace.mark("backend.public_message.request_received")
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     content = body.get("content")
     if not content:
         raise HTTPException(400, "Missing content")
     with trace.time("backend.public_message.resolve"):
         channel = await _resolve_channel(db, server, channel_name)
-        sender = await _resolve_human_actor(db, server, request, body.get("sender"), role="message sender")
+        member_in_channel = await is_channel_member(db, channel_id=channel.id, member_id=context.member.id)
+        ensure_channel_access(channel, context.member.id, is_channel_member=member_in_channel)
+        sender = context.member if not body.get("sender") else await _resolve_human_actor(db, server, request, body.get("sender"), role="message sender")
         parent_id = None
         thread_target_short_id = None
         thread_ref = body.get("threadId") or body.get("parentId")
@@ -3397,7 +3436,9 @@ def _agent_auto_start_enabled(body: dict) -> bool:
 async def create_agent(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
     body = await request.json()
     name = body.get("name")
     if not name:
@@ -3420,8 +3461,7 @@ async def create_agent(
         select(Computer).where(Computer.id == computer_id, Computer.server_id == server.id)
     )
     computer = computer_result.scalar_one_or_none()
-    if not computer:
-        raise HTTPException(404, "Computer not found")
+    ensure_server_scoped_computer(computer, server_id=server.id)
 
     runtime = _normalize_runtime(body.get("runtime", "claude_code"))
     runtime_command = body.get("runtimeCommand")
@@ -3518,7 +3558,8 @@ async def create_agent(
 async def create_channel(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     name = body.get("name")
     if not name:
@@ -3535,7 +3576,7 @@ async def create_channel(
     if existing.scalar_one_or_none():
         raise HTTPException(409, f"Channel #{name} already exists")
 
-    creator = await _resolve_human_actor(db, server, request, body.get("creator"), role="channel creator")
+    creator = context.member if not body.get("creator") else await _resolve_human_actor(db, server, request, body.get("creator"), role="channel creator")
 
     channel = Channel(
         server_id=server.id,

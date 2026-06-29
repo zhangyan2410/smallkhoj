@@ -275,21 +275,21 @@ async def test_create_public_reminder_requires_explicit_agent(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_create_agent_rejects_unavailable_runtime_provider_before_creating_rows(monkeypatch):
-    server = SimpleNamespace(id=uuid.uuid4())
     computer = _computer(detected_runtimes=[{
         "type": "codex",
         "runtimeProvider": "krill",
         "status": "available",
     }])
+    server = SimpleNamespace(id=computer.server_id)
     db = _FakeSession(
         _ExecuteResult(scalar_one=None),
         _ExecuteResult(scalar_one=computer),
     )
 
-    async def fake_get_server(_db):
-        return server
+    async def fake_active_server_context(_db, _request):
+        return SimpleNamespace(server=server, member=SimpleNamespace(id=uuid.uuid4()), membership=SimpleNamespace(role="owner"))
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_active_server_context)
     request = _JsonRequest({
         "name": "bad-provider-probe",
         "computerId": str(computer.id),
@@ -307,12 +307,12 @@ async def test_create_agent_rejects_unavailable_runtime_provider_before_creating
 
 @pytest.mark.asyncio
 async def test_create_agent_can_register_without_starting_runtime(monkeypatch):
-    server = SimpleNamespace(id=uuid.uuid4())
     computer = _computer(detected_runtimes=[{
         "type": "codex",
         "runtimeProvider": "krill",
         "status": "available",
     }])
+    server = SimpleNamespace(id=computer.server_id)
     db = _FakeSession(
         _ExecuteResult(scalar_one=None),
         _ExecuteResult(scalar_one=computer),
@@ -320,8 +320,8 @@ async def test_create_agent_can_register_without_starting_runtime(monkeypatch):
     )
     pushed = []
 
-    async def fake_get_server(_db):
-        return server
+    async def fake_active_server_context(_db, _request):
+        return SimpleNamespace(server=server, member=SimpleNamespace(id=uuid.uuid4()), membership=SimpleNamespace(role="owner"))
 
     async def fake_resolve_human_actor(*_args, **_kwargs):
         return None
@@ -332,7 +332,7 @@ async def test_create_agent_can_register_without_starting_runtime(monkeypatch):
     async def fake_push(*args):
         pushed.append(args)
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_active_server_context)
     monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
     monkeypatch.setattr(public_api, "_record_activity", fake_record_activity)
     monkeypatch.setattr(public_api, "_push_committed_events", fake_record_activity)

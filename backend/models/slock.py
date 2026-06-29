@@ -60,6 +60,58 @@ class Account(Base):
     member = relationship("Member")
 
 
+class ServerMembership(Base):
+    __tablename__ = "server_memberships"
+    __table_args__ = (
+        UniqueConstraint("server_id", "account_id", name="uq_server_memberships_server_account"),
+        Index("idx_server_memberships_account", "account_id", "status"),
+        Index("idx_server_memberships_server", "server_id", "status"),
+        CheckConstraint("role IN ('owner', 'admin', 'member')", name="ck_server_memberships_role"),
+        CheckConstraint("status IN ('active', 'invited', 'disabled')", name="ck_server_memberships_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    account = relationship("Account")
+    member = relationship("Member")
+
+
+class ServerInvite(Base):
+    __tablename__ = "server_invites"
+    __table_args__ = (
+        Index("idx_server_invites_token_hash", "token_hash", unique=True),
+        Index("idx_server_invites_server", "server_id", "revoked_at", "expires_at"),
+        CheckConstraint("role IN ('admin', 'member')", name="ck_server_invites_role"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    invited_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_account_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    channel = relationship("Channel")
+    accepted_account = relationship("Account", foreign_keys=[accepted_account_id])
+    creator = relationship("Member", foreign_keys=[created_by])
+
+
 # ── Members ──────────────────────────────────────────────────
 
 class Member(Base):

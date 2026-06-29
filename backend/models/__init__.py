@@ -1,6 +1,6 @@
 from .base import Base, engine, async_session, get_db
 from .slock import (
-    Server, Account, Member, Computer, AgentWorkspace, Channel, ChannelMember, Message, ThreadSummary,
+    Server, Account, ServerMembership, ServerInvite, Member, Computer, AgentWorkspace, Channel, ChannelMember, Message, ThreadSummary,
     Task, TaskAssignment, TaskRun, TaskRunTemplate, MemoryEntry, MemoryProposal, ActivityLog, EventRecord,
     ExternalConnector, ExternalRoute, ExternalEvent, ExternalSession, ExternalMapping,
     FileEntry, SavedItem, MessageReaction, Reminder, ApiKey,
@@ -9,7 +9,7 @@ from .slock import (
 
 __all__ = [
     "Base", "engine", "async_session", "get_db",
-    "Server", "Account", "Member", "Computer", "AgentWorkspace", "Channel", "ChannelMember",
+    "Server", "Account", "ServerMembership", "ServerInvite", "Member", "Computer", "AgentWorkspace", "Channel", "ChannelMember",
     "Message", "ThreadSummary", "Task", "TaskAssignment", "TaskRun", "TaskRunTemplate", "MemoryEntry", "MemoryProposal", "ActivityLog", "EventRecord",
     "ExternalConnector", "ExternalRoute", "ExternalEvent", "ExternalSession", "ExternalMapping",
     "FileEntry", "MessageReaction",

@@ -79,6 +79,68 @@ async def create_tables():
         await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE"))
         await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_name ON accounts(name)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_accounts_member ON accounts(member_id)"))
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS server_memberships (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                role VARCHAR(20) NOT NULL DEFAULT 'member',
+                status VARCHAR(20) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT uq_server_memberships_server_account UNIQUE (server_id, account_id),
+                CONSTRAINT ck_server_memberships_role CHECK (role IN ('owner', 'admin', 'member')),
+                CONSTRAINT ck_server_memberships_status CHECK (status IN ('active', 'invited', 'disabled'))
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_server_memberships_account ON server_memberships(account_id, status)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_server_memberships_server ON server_memberships(server_id, status)"))
+        await conn.execute(text("""
+            INSERT INTO server_memberships (id, server_id, account_id, member_id, role, status, created_at, updated_at)
+            SELECT
+                gen_random_uuid(),
+                accounts.server_id,
+                accounts.id,
+                accounts.member_id,
+                CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM server_memberships existing
+                        WHERE existing.server_id = accounts.server_id
+                          AND existing.role IN ('owner', 'admin')
+                          AND existing.status = 'active'
+                    ) THEN 'owner'
+                    ELSE 'member'
+                END,
+                'active',
+                now(),
+                now()
+            FROM accounts
+            WHERE accounts.server_id IS NOT NULL
+              AND accounts.member_id IS NOT NULL
+            ON CONFLICT (server_id, account_id) DO NOTHING
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS server_invites (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                token_hash VARCHAR(64) NOT NULL,
+                role VARCHAR(20) NOT NULL DEFAULT 'member',
+                channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
+                invited_name VARCHAR(255),
+                expires_at TIMESTAMP WITH TIME ZONE,
+                revoked_at TIMESTAMP WITH TIME ZONE,
+                accepted_at TIMESTAMP WITH TIME ZONE,
+                accepted_account_id UUID REFERENCES accounts(id) ON DELETE SET NULL,
+                created_by UUID REFERENCES members(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT ck_server_invites_role CHECK (role IN ('admin', 'member'))
+            )
+        """))
+        await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_server_invites_token_hash ON server_invites(token_hash)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_server_invites_server ON server_invites(server_id, revoked_at, expires_at)"))
         await conn.execute(text(
             "ALTER TABLE channel_members "
             "ADD COLUMN IF NOT EXISTS last_read_seq BIGINT NOT NULL DEFAULT 0"

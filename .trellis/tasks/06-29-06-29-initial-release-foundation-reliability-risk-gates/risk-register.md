@@ -4,7 +4,7 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 
 | ID | Priority | Risk | Symptom | Gate / Evidence | Related Task | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| FR-01 | P0 | Account/Server scope is not real | User sees or mutates another Server's channels, Computers, Agents, tasks, or integrations | `initial_release_foundation_gate.py` `server.accountScopeBackendTests` now warns until `backend/tests/test_server_account_membership.py` proves membership, active Server, private channel, Computer, and Agent scoping | `06-29-06-29-initial-release-server-account-membership-foundation` | warn |
+| FR-01 | P0 | Account/Server scope is not real | User sees or mutates another Server's channels, Computers, Agents, tasks, or integrations | `initial_release_foundation_gate.py` `server.accountScopeBackendTests`; evidence `evidence/FOUNDATION_gate_20260629103659.md` | `06-29-06-29-initial-release-server-account-membership-foundation` | pass |
 | FR-02 | P0 | Product daemon command depends on source checkout | External user cannot connect a Computer without `/Users/code/project/smallkhoj` | `initial_release_foundation_gate.py` `daemon.commandShape` + `daemon.distributionArtifact`; evidence `evidence/FOUNDATION_gate_20260629100145.md` | `06-29-06-29-initial-release-daemon-distribution-versioning` | pass |
 | FR-03 | P0 | Duplicate Computer identity | Same physical machine creates multiple Computers or connect fails with stale offline record | `initial_release_foundation_gate.py` `daemon.identityBackendTests`; evidence `evidence/FOUNDATION_gate_20260629100629.md` | `06-28-initial-release-daemon-single-local-computer-identity` | pass |
 | FR-04 | P0 | Daemon WebSocket production route broken | Computer connects but cannot receive control events | `initial_release_foundation_gate.py` `smoke.ws.daemonAuth`; evidence `evidence/FOUNDATION_gate_20260629095157.md` | `06-28-initial-release-daemon-websocket-deploy-smoke` | pass |
@@ -22,11 +22,10 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 
 ## Current Release Decision
 
-Not ready. Latest coherent gate run on 2026-06-29 produced 0 failed checks, 0 blocked checks, and 2 P0 warnings. The runner treats any P0 warning as `NOT READY` and exits with code 2.
+Not ready. Latest coherent gate run on 2026-06-29 produced 0 failed checks, 0 blocked checks, and 1 P0 warning. The runner treats any P0 warning as `NOT READY` and exits with code 2.
 
-- P0 warning: FR-01 is tracked by a dedicated gate, but `backend/tests/test_server_account_membership.py` does not yet exist, so account/server/channel isolation remains unproven.
 - P0 warning: FR-07 has a no-secret backup/restore drill plan, but no restore has been executed against a clean database or staging environment.
-- Passing evidence exists for FR-02, FR-03, FR-04, FR-05, FR-06, and FR-08.
+- Passing evidence exists for FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, and FR-08.
 
 ## Minimum Recommended P0 Blockers
 

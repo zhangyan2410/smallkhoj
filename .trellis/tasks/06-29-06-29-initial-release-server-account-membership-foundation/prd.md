@@ -31,13 +31,13 @@ This is now a release-critical foundation because Feishu/Jira integrations shoul
 
 ## Acceptance Criteria
 
-- [ ] Existing deployed data remains under the current Server and current account after migration.
+- [x] Existing deployed data remains under the current Server and current account after migration.
 - [ ] A logged-in account can see its Server membership and active Server.
 - [ ] A new account can join an existing Server through an invite/join token without creating a new Server.
 - [ ] A Server owner/admin can create a Computer connect command for that Server.
 - [ ] A Server owner/admin can create an Agent in that Server and optionally bind it to a Server Computer.
 - [ ] A Server member can enter a Server channel and send/read messages scoped to that Server.
-- [ ] Private channel membership prevents non-members from reading or posting to that channel.
+- [x] Private channel membership prevents non-members from reading or posting to that channel.
 - [ ] Public APIs no longer rely on `_get_server()` selecting the first/default Server for authenticated human operations when an active Server is available.
 - [ ] Daemon connect/register keeps using the Server from its connect ticket or machine token and does not cross Server boundaries.
 - [ ] Frontend login/onboarding shows the Server context clearly enough that users understand whether they are creating a Server or joining one.
@@ -65,3 +65,4 @@ Capacity conclusion for this task:
 - Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
 - Lightweight tasks can remain PRD-only.
 - For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
+- Backend foundation progress on 2026-06-29: `backend/tests/test_server_account_membership.py` covers membership metadata, seed backfill, active Server rejection for non-members, private channel rejection, cross-Server Computer scoping, and static migration of key human public routes away from `_get_server()`. Frontend onboarding/server switcher and invite-join UX remain open.

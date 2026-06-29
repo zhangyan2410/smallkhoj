@@ -69,6 +69,64 @@ LIMIT 5;
 
 <!-- How to create and run migrations -->
 
+## Scenario: Server Account Membership Foundation
+
+### 1. Scope / Trigger
+- Trigger: adding or changing human account, Server/workspace, channel privacy, Computer onboarding, or Agent creation flows.
+- Use this whenever a public human API route needs to read or mutate Server-owned data.
+
+### 2. Signatures
+- Tables:
+  - `server_memberships(server_id, account_id, member_id, role, status)`.
+  - `server_invites(server_id, token_hash, role, channel_id, expires_at, revoked_at, accepted_at, accepted_account_id)`.
+- Service module: `services.server_membership`.
+- Active Server resolver: `resolve_active_server_context(db, account, requested_server_id=None)`.
+- Public API wrapper: `routers.public_api._resolve_active_server_context(db, request)`.
+
+### 3. Contracts
+- `Server` is the product-level team/workspace boundary. Do not introduce another workspace abstraction for the same scope.
+- Existing `Account.server_id` and `Account.member_id` remain as compatibility mirrors; new authorization must use `server_memberships`.
+- Human public API routes must resolve the active Server from the current account membership, not `select(Server).limit(1)`.
+- `X-Server-Id` may select an active Server only when the current account has an active membership for that Server.
+- Owner/admin role is required for initial Computer/Agent administration paths.
+- Private and DM channels require `channel_members` membership for read/write visibility.
+- Startup DDL must create membership/invite tables and backfill existing accounts from `accounts.server_id` / `accounts.member_id`.
+
+### 4. Validation & Error Matrix
+- Account selects a Server without active membership -> `403`.
+- Missing session for human Server route -> `401`.
+- Non-owner/admin creates Agent or Computer connect command -> `403`.
+- Private channel read/write by non-member -> `403`.
+- Agent creation with a Computer from another Server -> `404`.
+- Existing account without a membership after deployment migration -> startup backfill should create one.
+
+### 5. Good/Base/Bad Cases
+- Good: login creates or reuses an Account and ensures an active `server_memberships` row.
+- Good: channel message read/write resolves `context.server` and checks private channel membership before returning content.
+- Good: Agent creation verifies both owner/admin role and selected-Server Computer ownership.
+- Base: compatibility fields continue to point at the primary Server/member until the UI fully supports switching.
+- Bad: `server = await _get_server(db)` in an authenticated human route.
+- Bad: accepting `X-Server-Id` without checking `server_memberships`.
+
+### 6. Tests Required
+- Metadata test for `server_memberships` and `server_invites`.
+- Seed DDL/backfill test for existing `accounts.server_id` and `accounts.member_id`.
+- Active Server resolver rejects non-member Server selection.
+- Private channel access rejects non-members.
+- Computer/Agent scoping rejects cross-Server Computer binding.
+- Static or route-level test proving migrated human routes call active Server resolution instead of `_get_server()`.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+human route -> _get_server() -> first Server -> query channels/messages/computers
+```
+
+#### Correct
+```text
+human route -> current account token -> server_memberships -> active Server context -> scoped query
+```
+
 ## Scenario: External Integration Gateway Foundation
 
 ### 1. Scope / Trigger
