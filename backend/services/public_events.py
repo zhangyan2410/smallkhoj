@@ -299,6 +299,7 @@ def _event_scope(record: EventRecord) -> dict[str, Any]:
 def event_record_to_public_event(record: EventRecord) -> dict[str, Any]:
     payload = dict(record.payload or {})
     event_type = _public_event_type(record.event_type)
+    payload.setdefault("serverId", str(record.server_id))
     if record.message_id:
         payload["messageId"] = str(record.message_id)
     if record.task_id:
@@ -311,6 +312,7 @@ def event_record_to_public_event(record: EventRecord) -> dict[str, Any]:
     return {
         "id": str(record.id),
         "type": event_type,
+        "serverId": str(record.server_id),
         "scope": {k: v for k, v in _event_scope(record).items() if v is not None},
         "seq": int(record.seq or 0),
         "epoch": public_event_hub.epoch,

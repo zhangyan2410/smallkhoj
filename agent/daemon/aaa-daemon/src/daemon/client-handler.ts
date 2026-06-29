@@ -20,6 +20,7 @@ import {
 import type { JSONRPCMessage } from '../protocol/jsonrpc.js';
 import { DaemonMethods } from '../protocol/methods.js';
 import type { DaemonCore } from './daemon.js';
+import { DAEMON_VERSION } from '../version.js';
 
 export class ClientHandler extends EventEmitter {
   private daemon: DaemonCore;
@@ -70,7 +71,7 @@ export class ClientHandler extends EventEmitter {
       case DaemonMethods.Hello:
         return buildResponse(id, {
           name: 'aaa-daemon',
-          version: '0.2.0',
+          version: DAEMON_VERSION,
           agentId: this.daemon.getConfig().agentId,
           proxyPort: this.daemon.getProxy().getPort(),
         });

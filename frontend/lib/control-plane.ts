@@ -1,6 +1,11 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
+import { resolveApiBase } from "./runtime-url"
+
+export const BROWSER_API_BASE = resolveApiBase(process.env, "browser")
+export const SERVER_API_BASE = resolveApiBase(process.env, "server")
+export const API_BASE = typeof window === "undefined" ? SERVER_API_BASE : BROWSER_API_BASE
 export const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
 export const SESSION_COOKIE_NAME = "smallkhoj_session"
+export const ACTIVE_SERVER_COOKIE_NAME = "smallkhoj_active_server"
 
 export type RuntimeInfo = string | {
   type?: string
@@ -57,21 +62,47 @@ export type AccountSession = {
     name: string
   }
   member: Member
+  memberships?: AccountServerMembership[]
   sessionToken?: string
 }
 
-function browserSessionToken() {
+export type AccountServerMembership = {
+  server: {
+    id: string
+    name: string
+  }
+  member: {
+    id: string
+    displayName: string
+    kind: string
+  }
+  role: "owner" | "admin" | "member" | string
+  status: "active" | string
+  isDefault: boolean
+}
+
+function browserCookieValue(name: string) {
   if (typeof document === "undefined") return null
   const match = document.cookie
     .split("; ")
-    .find((item) => item.startsWith(`${SESSION_COOKIE_NAME}=`))
+    .find((item) => item.startsWith(`${name}=`))
   return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : null
 }
 
-export function apiHeaders(sessionToken?: string | null, contentType?: boolean) {
+function browserSessionToken() {
+  return browserCookieValue(SESSION_COOKIE_NAME)
+}
+
+export function browserActiveServerId() {
+  return browserCookieValue(ACTIVE_SERVER_COOKIE_NAME)
+}
+
+export function apiHeaders(sessionToken?: string | null, contentType?: boolean, activeServerId?: string | null) {
   const token = sessionToken ?? browserSessionToken()
+  const serverId = activeServerId ?? browserActiveServerId()
   const headers: Record<string, string> = { "X-Public-Key": PUBLIC_KEY }
   if (contentType) headers["Content-Type"] = "application/json"
+  if (serverId) headers["X-Server-Id"] = serverId
   if (token) headers["X-Account-Token"] = token
   return headers
 }
@@ -198,11 +229,11 @@ function apiErrorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
-export async function apiGet<T>(path: string, fallback: T, sessionToken?: string | null): Promise<T> {
+export async function apiGet<T>(path: string, fallback: T, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       cache: "no-store",
-      headers: apiHeaders(sessionToken),
+      headers: apiHeaders(sessionToken, false, activeServerId),
     })
     if (!response.ok) return fallback
     return response.json()
@@ -211,10 +242,10 @@ export async function apiGet<T>(path: string, fallback: T, sessionToken?: string
   }
 }
 
-export async function apiPost<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null): Promise<T> {
+export async function apiPost<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: apiHeaders(sessionToken, true),
+    headers: apiHeaders(sessionToken, true, activeServerId),
     body: JSON.stringify(body),
   })
   if (!response.ok) {
@@ -224,10 +255,10 @@ export async function apiPost<T>(path: string, body: Record<string, unknown>, se
   return response.json()
 }
 
-export async function apiPut<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null): Promise<T> {
+export async function apiPut<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "PUT",
-    headers: apiHeaders(sessionToken, true),
+    headers: apiHeaders(sessionToken, true, activeServerId),
     body: JSON.stringify(body),
   })
   if (!response.ok) {
@@ -237,10 +268,10 @@ export async function apiPut<T>(path: string, body: Record<string, unknown>, ses
   return response.json()
 }
 
-export async function apiDelete<T>(path: string, sessionToken?: string | null): Promise<T> {
+export async function apiDelete<T>(path: string, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "DELETE",
-    headers: apiHeaders(sessionToken),
+    headers: apiHeaders(sessionToken, false, activeServerId),
   })
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
@@ -249,10 +280,10 @@ export async function apiDelete<T>(path: string, sessionToken?: string | null): 
   return response.json()
 }
 
-export async function apiPatch<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null): Promise<T> {
+export async function apiPatch<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "PATCH",
-    headers: apiHeaders(sessionToken, true),
+    headers: apiHeaders(sessionToken, true, activeServerId),
     body: JSON.stringify(body),
   })
   if (!response.ok) {

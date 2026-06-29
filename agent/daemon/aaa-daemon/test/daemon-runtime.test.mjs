@@ -6,6 +6,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import {
+  daemonRuntimeWorkspacePath,
+  defaultDaemonWorkspaceRoot,
+} from '../dist/daemon/daemon.js';
+import {
   detectRuntimeProviders,
   detectedRuntimesForInventory,
   parseManualRuntimeProviders,
@@ -66,6 +70,48 @@ function waitForExit(child, timeoutMs = 5_000) {
     });
   });
 }
+
+test('daemon default workspace root is stable and configurable', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-workspace-root-'));
+  try {
+    assert.equal(
+      defaultDaemonWorkspaceRoot({ SMALLKHOJ_DAEMON_WORKSPACE_ROOT: join(root, 'explicit') }),
+      join(root, 'explicit'),
+    );
+    assert.equal(
+      defaultDaemonWorkspaceRoot({ SMALLKHOJ_DAEMON_HOME: join(root, 'daemon-home') }),
+      join(root, 'daemon-home', 'workspaces'),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('daemon runtime workspace path isolates different computers on the same server', () => {
+  const root = join(tmpdir(), 'smallkhoj-daemon-workspaces');
+  const first = daemonRuntimeWorkspacePath(root, {
+    serverId: 'server-a',
+    computerId: 'computer-one',
+    workspaceId: 'workspace-shared',
+  });
+  const second = daemonRuntimeWorkspacePath(root, {
+    serverId: 'server-a',
+    computerId: 'computer-two',
+    workspaceId: 'workspace-shared',
+  });
+
+  assert.equal(first, join(root, '.slock-runtimes', 'server-a', 'computer-one', 'workspace-shared'));
+  assert.equal(second, join(root, '.slock-runtimes', 'server-a', 'computer-two', 'workspace-shared'));
+  assert.notEqual(first, second);
+  assert.equal(
+    daemonRuntimeWorkspacePath(root, {
+      serverId: 'server-a',
+      machineId: 'machine-fallback',
+      agentId: 'agent-only',
+    }),
+    join(root, '.slock-runtimes', 'server-a', 'machine-fallback', 'agent-only'),
+  );
+});
 
 function writeFakeClaudeScript(path, marker, includeSend = true) {
   writeFileSync(path, `
@@ -801,7 +847,7 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
 
 test('daemon handles backend start_runtime control command dynamically', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-control-runtime-'));
-  const runtimeWorkspace = join(root, 'dynamic-agent-workspace');
+  const runtimeWorkspace = join(root, '.slock-runtimes', 'server-control', 'computer-control', 'workspace-dynamic');
   const marker = join(root, 'runtime-marker.json');
   const fakeClaude = join(root, 'fake-claude-control.mjs');
   const registerBodies = [];
@@ -824,7 +870,6 @@ test('daemon handles backend start_runtime control command dynamically', async (
                 runtime: 'claude_code',
                 runtimeCommand: process.execPath,
                 runtimeCommandArgs: [fakeClaude],
-                workspacePath: runtimeWorkspace,
               },
             },
           },
@@ -869,7 +914,13 @@ test('daemon handles backend start_runtime control command dynamically', async (
     '--register-daemon',
   ], {
     cwd: resolve('.'),
-    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real', SLOCK_ALLOW_WRITES: '1' },
+    env: {
+      ...process.env,
+      SLOCK_AGENT_TOKEN: 'sk_machine_real',
+      SLOCK_SERVER_ID: 'server-control',
+      SLOCK_COMPUTER_ID: 'computer-control',
+      SLOCK_ALLOW_WRITES: '1',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -1107,6 +1158,207 @@ test('daemon foreground process stays alive after machine connect without runtim
     await waitForExit(daemon);
     await upstream.close();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('smallkhoj-daemon packaged CLI connect starts daemon with one-time ticket', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'smallkhoj-daemon-cli-connect-'));
+  const registerBodies = [];
+  const connectToken = 'sk_connect_cli';
+  const machineToken = 'sk_machine_cli';
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/connect') {
+      assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
+      const payload = JSON.parse(body);
+      assert.equal(payload.daemonVersion, '0.2.0');
+      res.end(JSON.stringify({
+        connected: true,
+        daemonId: 'daemon-cli-connect',
+        machineToken,
+        computer: { serverId: 'server-cli-connect' },
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/register' || url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      registerBodies.push(JSON.parse(body));
+      assert.equal(req.headers.authorization, `Bearer ${machineToken}`);
+      res.end(JSON.stringify({ ok: true, controlCommands: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'connect',
+    '--token', connectToken,
+    '--server', upstream.url,
+    '--ws', 'none',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'smallkhoj-daemon.pid'),
+    '--workspace', root,
+  ], {
+    cwd: resolve('.'),
+    env: {
+      ...process.env,
+      AAA_DAEMON_MACHINE_ID_FILE: join(root, 'machine-id'),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => registerBodies.length > 0 || daemon.exitCode !== null);
+    if (registerBodies.length === 0) {
+      assert.fail(`packaged CLI connect exited before daemon registration\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+    }
+    const firstRegister = registerBodies[0];
+    assert.equal(firstRegister.daemonVersion, '0.2.0');
+    assert.equal(firstRegister.workspaces.length, 0);
+    assert.equal(daemon.exitCode, null, `daemon exited early\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('smallkhoj-daemon connect uses a computer-scoped default runtime workspace', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'smallkhoj-daemon-computer-workspace-'));
+  const workspaceRoot = join(root, 'workspace-root');
+  const fakeClaude = join(root, 'fake-claude-computer-workspace.mjs');
+  const marker = join(root, 'runtime-marker.json');
+  const connectToken = 'sk_connect_computer_workspace';
+  const machineToken = 'sk_machine_computer_workspace';
+  const serverId = 'server-connect-workspace';
+  const computerId = 'computer-connect-workspace';
+  const workspaceId = 'workspace-connect-runtime';
+  const runtimeWorkspace = daemonRuntimeWorkspacePath(workspaceRoot, {
+    serverId,
+    computerId,
+    workspaceId,
+  });
+  const registerBodies = [];
+  let issuedStart = false;
+  let connectedMachineId = null;
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/connect') {
+      assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
+      const payload = JSON.parse(body);
+      assert.equal(typeof payload.machineId, 'string');
+      assert.notEqual(payload.machineId.trim(), '');
+      connectedMachineId = payload.machineId;
+      res.end(JSON.stringify({
+        connected: true,
+        daemonId: 'daemon-computer-workspace',
+        machineToken,
+        computer: { id: computerId, serverId, machineId: payload.machineId },
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/register' || url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      registerBodies.push(JSON.parse(body));
+      assert.equal(req.headers.authorization, `Bearer ${machineToken}`);
+      const controlCommands = issuedStart
+        ? []
+        : [
+            {
+              type: 'control',
+              command: {
+                type: 'start_runtime',
+                agentId: 'agent-connect-runtime',
+                workspaceId,
+                config: {
+                  runtime: 'claude_code',
+                  runtimeCommand: process.execPath,
+                  runtimeCommandArgs: [fakeClaude],
+                },
+              },
+            },
+          ];
+      issuedStart = true;
+      res.end(JSON.stringify({ ok: true, registered: true, controlCommands }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/server') {
+      res.end(JSON.stringify({ id: serverId, channels: [{ name: 'general' }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeFakeClaudeScript(fakeClaude, marker);
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'connect',
+    '--token', connectToken,
+    '--server', upstream.url,
+    '--ws', 'none',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'smallkhoj-daemon.pid'),
+  ], {
+    cwd: resolve('.'),
+    env: {
+      ...process.env,
+      AAA_DAEMON_MACHINE_ID_FILE: join(root, 'machine-id'),
+      SMALLKHOJ_DAEMON_WORKSPACE_ROOT: workspaceRoot,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => existsSync(marker), 15_000);
+    const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
+    assert.equal(connectedMachineId, readFileSync(join(root, 'machine-id'), 'utf-8').trim());
+    assert.equal(runtime.currentWorkspacePath, runtimeWorkspace);
+    assert.equal(runtime.slockHome, join(runtimeWorkspace, '.slock'));
+    assert.equal(runtime.pathHead, join(runtimeWorkspace, '.slock'));
+
+    await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.workspaceId === workspaceId && workspace.status === 'running')));
+    const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.workspaceId === workspaceId && workspace.status === 'running'));
+    const workspace = runtimeHeartbeat.workspaces.find(item => item.workspaceId === workspaceId);
+    assert.equal(workspace.cwd, runtimeWorkspace);
+  } catch (err) {
+    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
 

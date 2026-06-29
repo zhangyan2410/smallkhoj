@@ -9,11 +9,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Panel } from "@/components/ui/panel"
+import { deriveDaemonInstallCommand } from "@/lib/daemon-install"
 
 type CredentialResponse = {
   name: string
   command: string
   expiresAt: string
+  daemonInstall?: {
+    installCommand: string
+  } | null
 }
 
 export function ConnectComputerForm({
@@ -29,6 +33,7 @@ export function ConnectComputerForm({
 }) {
   const router = useRouter()
   const t = useTranslations("computers")
+  const installCommand = credential?.daemonInstall?.installCommand ?? deriveDaemonInstallCommand(credential?.command)
 
   useEffect(() => {
     if (!credential) return
@@ -69,6 +74,17 @@ export function ConnectComputerForm({
               <div className="text-xs font-medium uppercase text-muted-foreground">{t("pendingConnection")}</div>
               <div className="text-xs text-muted-foreground">{t("waitingFor", { name: credential.name })}</div>
             </div>
+            {installCommand && (
+              <>
+                <div className="text-xs font-medium uppercase text-muted-foreground">{t("installCommand")}</div>
+                <code
+                  data-testid="daemon-install-command"
+                  className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
+                >
+                  {installCommand}
+                </code>
+              </>
+            )}
             <div className="text-xs font-medium uppercase text-muted-foreground">{t("connectionCommand")}</div>
             <code
               data-testid="connection-command"

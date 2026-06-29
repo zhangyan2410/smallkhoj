@@ -1,4 +1,5 @@
 import { API_BASE } from "./control-plane"
+import { joinUrlPath } from "./runtime-url"
 
 export type EventScope = {
   kind: "channel" | "dm" | "task" | "workspace" | "member" | "computer" | "server" | string
@@ -144,7 +145,10 @@ export function connectRealtimeEvents({
 }) {
   let stopped = false
   const stop = () => { stopped = true }
-  const url = new URL(`${API_BASE}/api/v1/events/stream`)
+  const url = new URL(
+    joinUrlPath(API_BASE, "/api/v1/events/stream"),
+    typeof window === "undefined" ? undefined : window.location.origin,
+  )
   if (scope?.kind) url.searchParams.set("scopeKind", scope.kind)
   if (scope?.id) url.searchParams.set("scopeId", scope.id)
 

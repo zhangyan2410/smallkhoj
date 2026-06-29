@@ -1,0 +1,32 @@
+{
+  "id": "initial-release-jira-rest-mvp",
+  "name": "initial-release-jira-rest-mvp",
+  "title": "Initial release Jira REST MVP",
+  "description": "Implement the first Jira outbound REST slice for the 7-15 release: read Jira issues, append TaskRun/evidence comments, and persist local-to-Jira mappings through the integration gateway foundation.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "backend",
+  "package": "backend",
+  "priority": "P0",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-28",
+  "completedAt": "2026-06-28",
+  "branch": "codex/initial-release-jira-rest-mvp",
+  "base_branch": "codex/initial-release-integration-gateway-foundation",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "06-28-07-15-initial-release",
+  "relatedFiles": [
+    "backend/services/integration_gateway.py",
+    "backend/models/slock.py",
+    "backend/models/seed.py",
+    "backend/tests/test_integration_gateway.py",
+    "backend/services/task_runs.py"
+  ],
+  "notes": "Depends on 06-28-initial-release-integration-gateway-foundation / commit e3a1a65. Jira webhook ingestion is out of scope; this child proves outbound REST issue lookup and comment write-back.",
+  "meta": {}
+}

@@ -33,7 +33,7 @@ import {
   type Member,
   type RuntimeInfo,
 } from "@/lib/control-plane"
-import { requireCurrentAccount } from "@/lib/server-auth"
+import { getActiveServerId, getSessionToken, requireCurrentAccount } from "@/lib/server-auth"
 import { cn } from "@/lib/utils"
 
 type TaskRun = {
@@ -137,12 +137,12 @@ type Gate = {
   detail: string
 }
 
-async function getIntegrationData() {
+async function getIntegrationData(sessionToken?: string | null, activeServerId?: string | null) {
   const [tasksData, computersData, membersData, activityData] = await Promise.all([
-    apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }),
-    apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] }),
-    apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }),
-    apiGet<{ activity: ActivityItem[]; count?: number }>("/api/v1/activity?limit=40", { activity: [] }),
+    apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }, sessionToken, activeServerId),
+    apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] }, sessionToken, activeServerId),
+    apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }, sessionToken, activeServerId),
+    apiGet<{ activity: ActivityItem[]; count?: number }>("/api/v1/activity?limit=40", { activity: [] }, sessionToken, activeServerId),
   ])
 
   return {
@@ -620,7 +620,9 @@ function CompactActivity({ items }: { items: ActivityItem[] }) {
 
 export default async function IntegrationControlPage() {
   const session = await requireCurrentAccount()
-  const { tasks, computers, members, activity } = await getIntegrationData()
+  const sessionToken = await getSessionToken()
+  const activeServerId = await getActiveServerId()
+  const { tasks, computers, members, activity } = await getIntegrationData(sessionToken, activeServerId)
   const runs = tasks
     .flatMap((task) => (task.runs || []).map((run) => ({ ...run, task })))
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())

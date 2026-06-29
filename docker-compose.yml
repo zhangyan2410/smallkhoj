@@ -18,6 +18,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://smallkhoj:smallkhoj@db:5432/smallkhoj
+      AUTH_BRIDGE_SECRET: ${AUTH_BRIDGE_SECRET:-sk_auth_bridge_local_dev_secret_min_32_chars}
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_API_BASE: ${LLM_API_BASE:-https://api.openai.com/v1}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
@@ -28,6 +29,13 @@ services:
     build: ./frontend
     ports:
       - "3000:3000"
+    environment:
+      INTERNAL_API_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-sk_public_local}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-sk_better_auth_local_dev_secret_min_32_chars}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      BETTER_AUTH_DATABASE_URL: ${BETTER_AUTH_DATABASE_URL:-postgresql://smallkhoj:smallkhoj@db:5432/smallkhoj}
+      AUTH_BRIDGE_SECRET: ${AUTH_BRIDGE_SECRET:-sk_auth_bridge_local_dev_secret_min_32_chars}
     depends_on:
       - backend
 

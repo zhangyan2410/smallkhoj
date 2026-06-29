@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import {
@@ -32,9 +32,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Panel } from "@/components/ui/panel"
 import { ConnectComputerForm } from "./connect-computer-form"
-import { buildComputerReconnectUrl } from "@/lib/computer-navigation"
+import { buildComputerReconnectUrl, shouldShowConnectComputerForm } from "@/lib/computer-navigation"
+import { deriveDaemonInstallCommand } from "@/lib/daemon-install"
 import {
   apiGet,
+  API_BASE,
   dotClass,
   formatTime,
   runtimeLabel,
@@ -44,11 +46,17 @@ import {
   type Computer,
   type RuntimeInfo,
 } from "@/lib/control-plane"
-import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
+import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
 
 type TranslationFn = (key: string, values?: Record<string, string | number>) => string
+
+type DaemonInstallMetadata = {
+  commandName: string
+  downloadBaseUrl: string
+  installScriptUrl?: string
+  installCommand: string
+}
 
 function makeComputersCopy(t: TranslationFn) {
   return {
@@ -74,6 +82,7 @@ function makeComputersCopy(t: TranslationFn) {
     lifecycleHelp: t("lifecycleHelp"),
     offlineHelp: t("offlineHelp"),
     reconnectCommand: t("reconnectCommand"),
+    installCommand: t("installCommand"),
     useOn: (name: string) => t("useOn", { name }),
     computerName: t("computerName"),
     expires: t("expires"),
@@ -109,8 +118,8 @@ function makeComputersCopy(t: TranslationFn) {
 
 type ComputersCopy = ReturnType<typeof makeComputersCopy>
 
-async function getComputers() {
-  return apiGet<{ computers: Computer[]; count?: number }>("/api/v1/computers", { computers: [], count: 0 })
+async function getComputers(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ computers: Computer[]; count?: number }>("/api/v1/computers", { computers: [], count: 0 }, sessionToken, activeServerId)
 }
 
 function searchValue(value: string | string[] | undefined) {
@@ -126,6 +135,7 @@ function parseCredentialCookie(value?: string) {
       expiresAt?: unknown
       mode?: unknown
       computerId?: unknown
+      daemonInstall?: unknown
     }
     if (typeof data.name !== "string" || typeof data.command !== "string" || typeof data.expiresAt !== "string") {
       return null
@@ -136,9 +146,33 @@ function parseCredentialCookie(value?: string) {
       expiresAt: data.expiresAt,
       mode: data.mode === "reconnect" ? "reconnect" : "create",
       computerId: typeof data.computerId === "string" ? data.computerId : null,
+      daemonInstall: parseDaemonInstallMetadata(data.daemonInstall),
     }
   } catch {
     return null
+  }
+}
+
+function parseDaemonInstallMetadata(value: unknown): DaemonInstallMetadata | null {
+  if (!value || typeof value !== "object") return null
+  const data = value as {
+    commandName?: unknown
+    downloadBaseUrl?: unknown
+    installScriptUrl?: unknown
+    installCommand?: unknown
+  }
+  if (
+    typeof data.commandName !== "string" ||
+    typeof data.downloadBaseUrl !== "string" ||
+    typeof data.installCommand !== "string"
+  ) {
+    return null
+  }
+  return {
+    commandName: data.commandName,
+    downloadBaseUrl: data.downloadBaseUrl,
+    installScriptUrl: typeof data.installScriptUrl === "string" ? data.installScriptUrl : undefined,
+    installCommand: data.installCommand,
   }
 }
 
@@ -146,10 +180,11 @@ async function createComputerConnectCommandAction(formData: FormData) {
   "use server"
 
   const name = String(formData.get("name") || "").trim() || "unregistered-computer"
+  const publicServerUrl = resolvePublicApiBaseFromHeaders(process.env, await headers())
   const response = await fetch(`${API_BASE}/api/v1/computers/connect-command`, {
     method: "POST",
     headers: await serverApiHeaders(true),
-    body: JSON.stringify({ name, serverUrl: API_BASE }),
+    body: JSON.stringify({ name, serverUrl: publicServerUrl }),
   })
 
   if (!response.ok) {
@@ -164,6 +199,7 @@ async function createComputerConnectCommandAction(formData: FormData) {
     name,
     command: data.command,
     expiresAt: data.expiresAt,
+    daemonInstall: parseDaemonInstallMetadata(data.daemonInstall),
     mode: "create",
   }), {
     httpOnly: true,
@@ -181,10 +217,11 @@ async function createComputerReconnectCommandAction(formData: FormData) {
   const computerId = String(formData.get("computerId") || "").trim()
   if (!computerId) redirect("/computers?error=Missing%20computer")
 
+  const publicServerUrl = resolvePublicApiBaseFromHeaders(process.env, await headers())
   const response = await fetch(`${API_BASE}/api/v1/computers/${computerId}/reconnect-command`, {
     method: "POST",
     headers: await serverApiHeaders(true),
-    body: JSON.stringify({ serverUrl: API_BASE }),
+    body: JSON.stringify({ serverUrl: publicServerUrl }),
   })
 
   if (!response.ok) {
@@ -199,6 +236,7 @@ async function createComputerReconnectCommandAction(formData: FormData) {
     name: data.name,
     command: data.command,
     expiresAt: data.expiresAt,
+    daemonInstall: parseDaemonInstallMetadata(data.daemonInstall),
     mode: "reconnect",
     computerId: data.computerId,
   }), {
@@ -337,6 +375,7 @@ function ComputerDetail({
   reconnectComputerId?: string | null
   copy: ComputersCopy
 }) {
+  const reconnectInstallCommand = reconnectCredential?.daemonInstall?.installCommand ?? deriveDaemonInstallCommand(reconnectCredential?.command)
   const runningWorkspaces = computer.agentWorkspaces.filter((w) => w.status === "running").length
   const deleteBlockingWorkspaces = computer.agentWorkspaces.filter((w) =>
     ["running", "active", "idle", "busy", "starting", "restarting"].includes(w.status)
@@ -423,6 +462,17 @@ function ComputerDetail({
                 <div className="text-sm font-medium text-foreground">{copy.reconnectCommand}</div>
                 <div className="text-xs text-muted-foreground">{copy.useOn(computer.name)}</div>
               </div>
+              {reconnectInstallCommand && (
+                <>
+                  <div className="text-xs font-medium uppercase text-muted-foreground">{copy.installCommand}</div>
+                  <code
+                    data-testid="daemon-reconnect-install-command"
+                    className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
+                  >
+                    {reconnectInstallCommand}
+                  </code>
+                </>
+              )}
               <code
                 data-testid="reconnect-command"
                 className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
@@ -662,12 +712,14 @@ export default async function ComputersPage({
   const copy = makeComputersCopy(t)
   const resolvedSearchParams = (await searchParams) ?? {}
   const cookieStore = await cookies()
-  const { computers } = await getComputers()
+  const sessionToken = await getSessionToken()
+  const activeServerId = await getActiveServerId()
+  const { computers } = await getComputers(sessionToken, activeServerId)
 
   const selectedComputerId = searchValue(resolvedSearchParams.computer)
   const selectedComputer = selectedComputerId
     ? computers.find((c) => c.id === selectedComputerId || c.id.startsWith(selectedComputerId))
-    : null
+    : computers[0] ?? null
 
   const pendingCookie = searchValue(resolvedSearchParams.created) || searchValue(resolvedSearchParams.reconnect)
     ? parseCredentialCookie(cookieStore.get("smallkhoj_last_computer_connect_command")?.value)
@@ -679,8 +731,11 @@ export default async function ComputersPage({
     ? computers.find((c) => c.name === pendingCredential.name && (c.status === "online" || c.status === "active"))
     : null
   const credential = connectedComputer ? null : pendingCredential
+  const showConnectComputerForm = shouldShowConnectComputerForm({
+    computerCount: computers.length,
+    hasPendingCredential: Boolean(credential),
+  })
   const error = searchValue(resolvedSearchParams.error)
-  const workspaceCount = computers.reduce((total, c) => total + c.agentWorkspaces.length, 0)
   const runningWorkspaces = computers.reduce(
     (total, c) => total + c.agentWorkspaces.filter((w) => w.status === "running").length,
     0,
@@ -767,12 +822,14 @@ export default async function ComputersPage({
           </span>
         </div>
 
-        <ConnectComputerForm
-          action={createComputerConnectCommandAction}
-          credential={credential}
-          connectedComputerName={connectedComputer?.name}
-          error={error}
-        />
+        {showConnectComputerForm && (
+          <ConnectComputerForm
+            action={createComputerConnectCommandAction}
+            credential={credential}
+            connectedComputerName={connectedComputer?.name}
+            error={error}
+          />
+        )}
 
         {selectedComputer ? (
           <ComputerDetail

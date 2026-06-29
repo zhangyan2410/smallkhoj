@@ -60,6 +60,58 @@ class Account(Base):
     member = relationship("Member")
 
 
+class ServerMembership(Base):
+    __tablename__ = "server_memberships"
+    __table_args__ = (
+        UniqueConstraint("server_id", "account_id", name="uq_server_memberships_server_account"),
+        Index("idx_server_memberships_account", "account_id", "status"),
+        Index("idx_server_memberships_server", "server_id", "status"),
+        CheckConstraint("role IN ('owner', 'admin', 'member')", name="ck_server_memberships_role"),
+        CheckConstraint("status IN ('active', 'invited', 'disabled')", name="ck_server_memberships_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    account = relationship("Account")
+    member = relationship("Member")
+
+
+class ServerInvite(Base):
+    __tablename__ = "server_invites"
+    __table_args__ = (
+        Index("idx_server_invites_token_hash", "token_hash", unique=True),
+        Index("idx_server_invites_server", "server_id", "revoked_at", "expires_at"),
+        CheckConstraint("role IN ('admin', 'member')", name="ck_server_invites_role"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    invited_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_account_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    channel = relationship("Channel")
+    accepted_account = relationship("Account", foreign_keys=[accepted_account_id])
+    creator = relationship("Member", foreign_keys=[created_by])
+
+
 # ── Members ──────────────────────────────────────────────────
 
 class Member(Base):
@@ -291,7 +343,7 @@ class TaskAssignment(Base):
         Index("idx_task_assignments_assignee", "assignee_id", "status"),
         CheckConstraint("assignee_type IN ('member', 'agent')", name="ck_task_assignments_assignee_type"),
         CheckConstraint(
-            "assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created')",
+            "assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created', 'external_feishu')",
             name="ck_task_assignments_mode",
         ),
         CheckConstraint("status IN ('active', 'completed', 'cancelled')", name="ck_task_assignments_status"),
@@ -592,6 +644,180 @@ class EventRecord(Base):
     channel = relationship("Channel")
     task = relationship("Task")
     message = relationship("Message")
+
+
+# ── External Integrations ────────────────────────────────────
+
+class ExternalConnector(Base):
+    __tablename__ = "external_connectors"
+    __table_args__ = (
+        Index("idx_external_connectors_server_provider", "server_id", "provider", "status"),
+        CheckConstraint("status IN ('active', 'disabled', 'error')", name="ck_external_connectors_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    secret_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    last_error_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    routes = relationship("ExternalRoute", back_populates="connector", lazy="selectin")
+    events = relationship("ExternalEvent", back_populates="connector", lazy="selectin")
+
+
+class ExternalRoute(Base):
+    __tablename__ = "external_routes"
+    __table_args__ = (
+        Index("idx_external_routes_connector_status", "connector_id", "status"),
+        Index("idx_external_routes_channel", "channel_id"),
+        CheckConstraint("status IN ('active', 'disabled')", name="ck_external_routes_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    connector_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("external_connectors.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    source_selector: Mapped[dict] = mapped_column(JSONB, default=dict)
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    task_template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("task_run_templates.id", ondelete="SET NULL"), nullable=True)
+    default_assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    runtime_rule: Mapped[dict] = mapped_column(JSONB, default=dict)
+    writeback_policy: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    connector = relationship("ExternalConnector", back_populates="routes")
+    channel = relationship("Channel")
+    task_template = relationship("TaskRunTemplate")
+    default_assignee = relationship("Member")
+
+
+class ExternalSession(Base):
+    __tablename__ = "external_sessions"
+    __table_args__ = (
+        Index("uq_external_sessions_scope", "connector_id", "external_scope_type", "external_scope_id", unique=True),
+        Index("idx_external_sessions_local_task", "server_id", "task_id", postgresql_where=text("task_id IS NOT NULL")),
+        CheckConstraint(
+            "external_scope_type IN ('chat', 'thread', 'topic', 'issue', 'project')",
+            name="ck_external_sessions_scope_type",
+        ),
+        CheckConstraint("status IN ('active', 'archived', 'disabled')", name="ck_external_sessions_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    connector_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("external_connectors.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    external_scope_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    external_scope_id: Mapped[str] = mapped_column(Text, nullable=False)
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    thread_root_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    member_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    connector = relationship("ExternalConnector")
+    channel = relationship("Channel")
+    thread_root_message = relationship("Message", foreign_keys=[thread_root_message_id])
+    task = relationship("Task")
+    member = relationship("Member")
+
+
+class ExternalEvent(Base):
+    __tablename__ = "external_events"
+    __table_args__ = (
+        Index("uq_external_events_connector_dedup", "connector_id", "dedup_key", unique=True),
+        Index("idx_external_events_server_created", "server_id", text("created_at DESC")),
+        Index("idx_external_events_status", "server_id", "status"),
+        Index("idx_external_events_task_run", "task_run_id", postgresql_where=text("task_run_id IS NOT NULL")),
+        CheckConstraint(
+            "status IN ('received', 'accepted', 'dropped', 'failed', 'completed', 'writeback_failed')",
+            name="ck_external_events_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    connector_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("external_connectors.id", ondelete="CASCADE"), nullable=False)
+    route_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("external_routes.id", ondelete="SET NULL"), nullable=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("external_sessions.id", ondelete="SET NULL"), nullable=True)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_event_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_message_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_thread_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dedup_key: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="received")
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    actor_external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    normalized: Mapped[dict] = mapped_column(JSONB, default=dict)
+    raw_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    task_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    connector = relationship("ExternalConnector", back_populates="events")
+    route = relationship("ExternalRoute")
+    session = relationship("ExternalSession")
+    channel = relationship("Channel")
+    message = relationship("Message")
+    task = relationship("Task")
+    task_run = relationship("TaskRun")
+
+
+class ExternalMapping(Base):
+    __tablename__ = "external_mappings"
+    __table_args__ = (
+        Index("idx_external_mappings_local", "server_id", "local_type", "local_id"),
+        Index("idx_external_mappings_external", "connector_id", "external_type", "external_id"),
+        Index(
+            "uq_external_mappings_pair",
+            "connector_id",
+            "local_type",
+            "local_id",
+            "external_type",
+            "external_id",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    connector_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("external_connectors.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    local_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    local_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    external_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    external_id: Mapped[str] = mapped_column(Text, nullable=False)
+    external_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    connector = relationship("ExternalConnector")
 
 
 # ── Files / Attachments ──────────────────────────────────────

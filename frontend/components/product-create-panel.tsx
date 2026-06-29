@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { API_BASE, PUBLIC_KEY, runtimeLabel, type Channel, type Computer, type Member } from "@/lib/control-plane"
+import { resolvePublicApiBase } from "@/lib/runtime-url"
 
 type SubmitState = {
   error?: string
@@ -53,7 +54,7 @@ export function ComputerConnectForm({ compact = false }: { compact?: boolean }) 
       const data = await postJson("/api/v1/computers/connect-command", {
         name: fieldValue(form, "name") || "New computer",
         os: fieldValue(form, "os") || "unknown",
-        serverUrl: fieldValue(form, "serverUrl") || API_BASE,
+        serverUrl: fieldValue(form, "serverUrl") || resolvePublicApiBase(),
       })
       setState({ command: data.command, token: data.machineToken })
       router.refresh()
@@ -78,7 +79,6 @@ export function ComputerConnectForm({ compact = false }: { compact?: boolean }) 
         <form onSubmit={onSubmit} className="grid gap-2 sm:grid-cols-[1fr_0.7fr_auto]">
           <Input name="name" placeholder="computer name" />
           <Input name="os" placeholder="macOS / Windows" />
-          <input type="hidden" name="serverUrl" value={API_BASE} />
           <Button disabled={pending} type="submit">
             <Plus className="size-4" />
             Create

@@ -15,6 +15,7 @@ from services.public_events import (
 )
 from services.reminder_scheduler import start_reminder_scheduler, stop_reminder_scheduler
 from services.thread_summary import start_thread_summary_scheduler, stop_thread_summary_scheduler
+from services.cors_config import build_cors_origins
 
 
 @asynccontextmanager
@@ -44,10 +45,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS：开发时允许前端 localhost:3000 和 daemon proxy
+# CORS：开发默认允许 localhost，并可追加显式生产域名。
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=build_cors_origins(settings.backend_cors_origins),
     allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):[0-9]+$",
     allow_credentials=True,
     allow_methods=["*"],

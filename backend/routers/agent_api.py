@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
 from models import (
     get_db, ActivityLog, AgentWorkspace, ApiKey, Channel, ChannelMember, Computer,
     ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction,
@@ -51,8 +52,24 @@ from services.memory_api import (
     write_task_memory_summary,
     write_memory_entry,
 )
+from services.integration_runtime import (
+    build_feishu_reply_dependencies,
+    build_task_run_writeback_dependencies,
+    close_feishu_reply_dependencies,
+    close_task_run_writeback_dependencies,
+)
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
-from services.task_runs import create_task_assignment_and_run, serialize_task_run, update_task_run_lifecycle
+from services.feishu_reply_orchestration import (
+    send_task_run_feishu_terminal_reply,
+    serialize_feishu_reply_orchestration_outcome,
+)
+from services.task_run_writeback import handle_terminal_task_run_writeback, serialize_task_run_writeback_outcome
+from services.task_runs import (
+    TERMINAL_TASK_RUN_STATUSES,
+    create_task_assignment_and_run,
+    serialize_task_run,
+    update_task_run_lifecycle,
+)
 from services.thread_summary import (
     SUMMARY_MAX_CHARS,
     serialize_thread_summary,
@@ -134,6 +151,7 @@ class DaemonRegisterRequest(BaseModel):
 
 class DaemonHeartbeatRequest(BaseModel):
     daemonId: str | None = None
+    daemonVersion: str | None = None
     status: str = "online"
     detectedRuntimes: list | None = None
     workspaces: list[DaemonWorkspacePayload] = []
@@ -160,6 +178,42 @@ def _utcnow() -> datetime:
 
 def _utcnow_aware() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _parse_version_tuple(value: str | None) -> tuple[int, ...] | None:
+    if not value:
+        return None
+    raw = value.strip()
+    if raw.startswith("v"):
+        raw = raw[1:]
+    parsed: list[int] = []
+    for part in raw.split("."):
+        match = re.match(r"^(\d+)", part)
+        if not match:
+            return None
+        parsed.append(int(match.group(1)))
+    return tuple(parsed)
+
+
+def _version_less_than(version: str, minimum: str) -> bool:
+    parsed = _parse_version_tuple(version)
+    parsed_minimum = _parse_version_tuple(minimum)
+    if parsed is None or parsed_minimum is None:
+        return True
+    width = max(len(parsed), len(parsed_minimum))
+    return parsed + (0,) * (width - len(parsed)) < parsed_minimum + (0,) * (width - len(parsed_minimum))
+
+
+def _require_supported_daemon_version(version: str | None) -> None:
+    minimum = settings.minimum_daemon_version.strip()
+    if not minimum:
+        return
+    if not version or _version_less_than(version, minimum):
+        current = version or "unknown"
+        raise HTTPException(
+            426,
+            f"Unsupported daemon version {current}; minimum supported daemon version is {minimum}",
+        )
 
 
 def _now_for(value: datetime) -> datetime:
@@ -1371,6 +1425,8 @@ async def connect_daemon(
     if not server:
         raise HTTPException(401, "Server not found")
 
+    _require_supported_daemon_version(body.daemonVersion)
+
     machine_id = body.machineId.strip()
     if not machine_id:
         raise HTTPException(400, "Missing machineId")
@@ -1387,7 +1443,10 @@ async def connect_daemon(
     )
     name_owner = name_result.scalar_one_or_none()
     if name_owner and (computer is None or name_owner.id != computer.id):
-        raise HTTPException(409, f"Computer name {requested_name} already exists")
+        if computer is None:
+            computer = name_owner
+        else:
+            raise HTTPException(409, f"Computer name {requested_name} already exists")
 
     if computer and _lease_active(computer, now):
         raise HTTPException(409, "Computer already has an active daemon")
@@ -1405,6 +1464,7 @@ async def connect_daemon(
         db.add(computer)
         await db.flush()
     else:
+        computer.machine_id = machine_id
         computer.name = requested_name
         computer.os = body.os or computer.os
         computer.daemon_version = body.daemonVersion or computer.daemon_version
@@ -1451,6 +1511,7 @@ async def register_daemon(
     db: AsyncSession = Depends(get_db),
 ):
     computer, server, api_key = machine
+    _require_supported_daemon_version(body.daemonVersion)
     now = _utcnow_aware()
     if _daemon_lease_conflicts(computer, body.daemonId, now):
         raise HTTPException(409, "Computer is leased by another daemon")
@@ -1527,6 +1588,7 @@ async def daemon_heartbeat(
     db: AsyncSession = Depends(get_db),
 ):
     computer, server, _api_key = machine
+    _require_supported_daemon_version(body.daemonVersion)
     now = _utcnow_aware()
     if _daemon_lease_conflicts(computer, body.daemonId, now):
         raise HTTPException(409, "Computer is leased by another daemon")
@@ -3997,9 +4059,37 @@ async def update_task_run_lifecycle_endpoint(
     if run is None:
         raise HTTPException(404, "TaskRun not found")
 
+    writeback_outcome = None
+    feishu_reply_outcome = None
+    if run.status in TERMINAL_TASK_RUN_STATUSES:
+        writeback_dependencies = build_task_run_writeback_dependencies()
+        try:
+            writeback_outcome = await handle_terminal_task_run_writeback(
+                db,
+                task_run=run,
+                dependencies=writeback_dependencies,
+            )
+        finally:
+            await close_task_run_writeback_dependencies(writeback_dependencies)
+        feishu_reply_dependencies = build_feishu_reply_dependencies()
+        try:
+            feishu_reply_outcome = await send_task_run_feishu_terminal_reply(
+                db,
+                task_run=run,
+                http_client=feishu_reply_dependencies.http_client,
+                config=feishu_reply_dependencies.config,
+            )
+        finally:
+            await close_feishu_reply_dependencies(feishu_reply_dependencies)
+
     await db.commit()
     await db.refresh(run)
-    return {"ok": True, "run": serialize_task_run(run)}
+    response = {"ok": True, "run": serialize_task_run(run)}
+    if writeback_outcome is not None:
+        response["writeBack"] = serialize_task_run_writeback_outcome(writeback_outcome)
+    if feishu_reply_outcome is not None:
+        response["feishuReply"] = serialize_feishu_reply_orchestration_outcome(feishu_reply_outcome)
+    return response
 
 
 @router.post("/heartbeat")

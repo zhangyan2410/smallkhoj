@@ -20,10 +20,11 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
 from models import (
     get_db, Account, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
     Computer, ConnectTicket, Member, Message, MessageReaction, EventRecord, FileEntry, Reminder, SavedItem,
-    Server, Task, TaskRun, TaskRunTemplate, ThreadSummary,
+    Server, ServerMembership, Task, TaskRun, TaskRunTemplate, ThreadSummary,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
 from services.daemon_control import (
@@ -60,6 +61,17 @@ from services.public_events import (
     public_event_sse_frame,
     should_deliver_public_event,
 )
+from services.server_membership import (
+    create_server_for_account,
+    ensure_account_membership,
+    ensure_channel_access,
+    ensure_server_scoped_computer,
+    is_channel_member,
+    list_account_memberships,
+    parse_server_id,
+    require_admin_role,
+    resolve_active_server_context,
+)
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.task_run_templates import (
     create_template,
@@ -81,8 +93,8 @@ router = APIRouter(prefix="/api/v1", tags=["public"])
 logger = logging.getLogger(__name__)
 
 PUBLIC_API_KEY = "sk_public_local"
-DEFAULT_LOCAL_DAEMON_DIR = Path(__file__).resolve().parents[2] / "agent" / "daemon" / "aaa-daemon"
-DEFAULT_DAEMON_LAUNCHER = Path(__file__).resolve().parents[2] / "smallkhoj-daemon"
+DAEMON_CLI_COMMAND = "smallkhoj-daemon"
+DAEMON_DOWNLOAD_PATH = "/downloads/smallkhoj-daemon"
 CONNECT_TICKET_TTL_SECONDS = 300
 DEFAULT_SERVER_ID = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
 DEFAULT_SERVER_NAME = "Slock Server"
@@ -102,6 +114,7 @@ DANGEROUS_MIME_TYPES = {
     "text/javascript",
 }
 ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+AUTH_BRIDGE_SECRET_HEADER = "X-Auth-Bridge-Secret"
 TASK_NUMBER_RETRY_LIMIT = 5
 DELETE_BLOCKING_WORKSPACE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"busy", "starting", "restarting"}
 STALE_STARTING_WORKSPACE_GRACE = timedelta(minutes=5)
@@ -140,16 +153,11 @@ async def _push_committed_events(db: AsyncSession, *, server_id: uuid.UUID) -> i
     return await push_latest_events_for_server(db, server_id=server_id)
 
 
-def _computer_connection_command(
-    token: str,
-    server_url: str,
-    daemon_dir: Path = DEFAULT_LOCAL_DAEMON_DIR,
-) -> str:
-    """Command shown in the UI for connecting this repo's local daemon."""
-    del daemon_dir
+def _computer_connection_command(token: str, server_url: str) -> str:
+    """Command shown in the UI for reconnecting an installed daemon."""
     return " ".join(
         [
-            shlex.quote(str(DEFAULT_DAEMON_LAUNCHER)),
+            shlex.quote(DAEMON_CLI_COMMAND),
             "start",
             "--machine-token",
             shlex.quote(token),
@@ -159,12 +167,32 @@ def _computer_connection_command(
     )
 
 
-def _computer_connect_command(connect_token: str, server_url: str, daemon_dir: Path = DEFAULT_LOCAL_DAEMON_DIR) -> str:
-    """Command shown in the UI for connecting a daemon with a one-time ticket."""
-    del daemon_dir
+def _daemon_download_base_url(server_url: str) -> str:
+    configured = settings.daemon_download_base_url.strip()
+    if configured:
+        return configured.rstrip("/")
+    return f"{server_url.rstrip('/')}{DAEMON_DOWNLOAD_PATH}"
+
+
+def _daemon_install_metadata(server_url: str) -> dict[str, str]:
+    download_base_url = _daemon_download_base_url(server_url)
+    install_script_url = f"{download_base_url}/install.sh"
+    return {
+        "commandName": DAEMON_CLI_COMMAND,
+        "downloadBaseUrl": download_base_url,
+        "installScriptUrl": install_script_url,
+        "installCommand": (
+            f"curl -fsSL {shlex.quote(install_script_url)} "
+            f"| SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL={shlex.quote(download_base_url)} bash"
+        ),
+    }
+
+
+def _computer_connect_command(connect_token: str, server_url: str) -> str:
+    """Command shown in the UI for connecting an installed daemon with a one-time ticket."""
     return " ".join(
         [
-            shlex.quote(str(DEFAULT_DAEMON_LAUNCHER)),
+            shlex.quote(DAEMON_CLI_COMMAND),
             "connect",
             "--token",
             shlex.quote(connect_token),
@@ -289,6 +317,37 @@ def _normalize_account_name(raw_name: str | None) -> str:
     return name
 
 
+def _better_auth_account_name(external_user_id: str) -> str:
+    user_id = (external_user_id or "").strip()
+    if not user_id:
+        raise HTTPException(400, "Missing Better Auth user id")
+    return f"ba_{hashlib.sha256(user_id.encode('utf-8')).hexdigest()[:24]}"
+
+
+def _better_auth_display_name(*, email: str | None, display_name: str | None, account_name: str) -> str:
+    candidate = (display_name or "").strip().lstrip("@")
+    if not candidate and email and "@" in email:
+        candidate = email.split("@", 1)[0].strip().lstrip("@")
+    if not candidate:
+        candidate = account_name
+    return candidate[:80]
+
+
+def _better_auth_personal_server_name(visible_name: str) -> str:
+    return f"{visible_name}的服务器"
+
+
+def _verify_auth_bridge_secret(request: Request) -> None:
+    configured_secret = getattr(settings, "auth_bridge_secret", "") or ""
+    provided_secret = (getattr(request, "headers", {}) or {}).get(AUTH_BRIDGE_SECRET_HEADER)
+    if not configured_secret:
+        if getattr(settings, "debug", False):
+            return
+        raise HTTPException(503, "Auth bridge secret is not configured")
+    if not provided_secret or not hmac.compare_digest(provided_secret, configured_secret):
+        raise HTTPException(401, "Invalid auth bridge secret")
+
+
 async def _account_from_token(db: AsyncSession, token: str | None) -> Account | None:
     if not token:
         return None
@@ -297,8 +356,19 @@ async def _account_from_token(db: AsyncSession, token: str | None) -> Account | 
 
 
 async def _current_account(db: AsyncSession, request: Request) -> Account | None:
-    token = request.headers.get("X-Account-Token") or request.cookies.get(SESSION_COOKIE_NAME)
+    headers = getattr(request, "headers", {}) or {}
+    cookies = getattr(request, "cookies", {}) or {}
+    token = headers.get("X-Account-Token") or cookies.get(SESSION_COOKIE_NAME)
     return await _account_from_token(db, token)
+
+
+async def _resolve_active_server_context(db: AsyncSession, request: Request):
+    account = await _current_account(db, request)
+    if not account:
+        raise HTTPException(401, "Login required for Server access")
+    headers = getattr(request, "headers", {}) or {}
+    requested_server_id = parse_server_id(headers.get("X-Server-Id"))
+    return await resolve_active_server_context(db, account=account, requested_server_id=requested_server_id)
 
 
 async def _bootstrap_account(
@@ -332,6 +402,80 @@ async def _bootstrap_account(
     member.status = "online"
     if display_name:
         account.display_name = display_name
+    await ensure_account_membership(
+        db,
+        account=account,
+        server=server,
+        member=member,
+        default_role="owner",
+    )
+    token = f"sk_session_{secrets.token_urlsafe(32)}"
+    account.session_token_hash = _hash_token(token)
+    account.last_login_at = _utcnow_aware()
+    await db.flush()
+    return account, server, member, token
+
+
+async def _bootstrap_better_auth_account(
+    db: AsyncSession,
+    *,
+    external_user_id: str,
+    email: str | None = None,
+    display_name: str | None = None,
+) -> tuple[Account, Server, Member, str]:
+    account_name = _better_auth_account_name(external_user_id)
+    visible_name = _better_auth_display_name(email=email, display_name=display_name, account_name=account_name)
+
+    result = await db.execute(select(Account).where(Account.name == account_name))
+    account = result.scalar_one_or_none()
+    server = None
+    member = None
+
+    if account:
+        server_result = await db.execute(select(Server).where(Server.id == account.server_id))
+        server = server_result.scalar_one_or_none()
+        member_result = await db.execute(select(Member).where(Member.id == account.member_id))
+        member = member_result.scalar_one_or_none()
+
+    if not account or not server or not member:
+        server = Server(id=uuid.uuid4(), name=_better_auth_personal_server_name(visible_name))
+        db.add(server)
+        await db.flush()
+
+        member = Member(
+            id=uuid.uuid4(),
+            server_id=server.id,
+            kind="human",
+            display_name=visible_name,
+            status="online",
+        )
+        db.add(member)
+        await db.flush()
+
+        if account:
+            account.server_id = server.id
+            account.member_id = member.id
+        else:
+            account = Account(
+                name=account_name,
+                display_name=visible_name,
+                server_id=server.id,
+                member_id=member.id,
+            )
+            db.add(account)
+            await db.flush()
+
+    member.status = "online"
+    account.display_name = visible_name
+    membership = await ensure_account_membership(
+        db,
+        account=account,
+        server=server,
+        member=member,
+        default_role="owner",
+    )
+    if membership.role != "owner":
+        membership.role = "owner"
     token = f"sk_session_{secrets.token_urlsafe(32)}"
     account.session_token_hash = _hash_token(token)
     account.last_login_at = _utcnow_aware()
@@ -352,6 +496,19 @@ async def _resolve_human_actor(
         return await _ensure_human_member(db, server, explicit_name)
     account = await _current_account(db, request)
     if account:
+        membership_result = await db.execute(
+            select(ServerMembership, Member)
+            .join(Member, Member.id == ServerMembership.member_id)
+            .where(
+                ServerMembership.account_id == account.id,
+                ServerMembership.server_id == server.id,
+                ServerMembership.status == "active",
+            )
+        )
+        membership_row = membership_result.one_or_none()
+        if membership_row:
+            _membership, member = membership_row
+            return member
         member_result = await db.execute(
             select(Member).where(Member.id == account.member_id, Member.server_id == server.id)
         )
@@ -389,6 +546,7 @@ async def _serialize_account(db: AsyncSession, account: Account, server: Server,
             "name": server.name,
         },
         "member": await serialize_member(db, member),
+        "memberships": await list_account_memberships(db, account=account),
     }
 
 
@@ -516,16 +674,41 @@ async def login_account(request: Request, _auth: None = Depends(verify_public_ap
 
 @router.get("/auth/me")
 async def current_account(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    context = await _resolve_active_server_context(db, request)
+    return await _serialize_account(db, context.account, context.server, context.member)
+
+
+@router.post("/auth/better-auth/bridge")
+async def bridge_better_auth_session(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    _verify_auth_bridge_secret(request)
+    body = await request.json()
+    account, server, member, token = await _bootstrap_better_auth_account(
+        db,
+        external_user_id=body.get("userId"),
+        email=body.get("email"),
+        display_name=body.get("name") or body.get("displayName"),
+    )
+    await db.commit()
+    payload = await _serialize_account(db, account, server, member)
+    payload["sessionToken"] = token
+    return payload
+
+
+@router.post("/servers")
+async def create_server(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     account = await _current_account(db, request)
     if not account:
-        raise HTTPException(401, "Not logged in")
-    server_result = await db.execute(select(Server).where(Server.id == account.server_id))
-    server = server_result.scalar_one_or_none()
-    member_result = await db.execute(select(Member).where(Member.id == account.member_id))
-    member = member_result.scalar_one_or_none()
-    if not server or not member:
-        raise HTTPException(401, "Account is not linked to a server member")
-    return await _serialize_account(db, account, server, member)
+        raise HTTPException(401, "Login required for Server creation")
+    body = await request.json()
+    server, member, _membership = await create_server_for_account(
+        db,
+        account=account,
+        name=body.get("name"),
+    )
+    await db.commit()
+    payload = await _serialize_account(db, account, server, member)
+    payload["created"] = True
+    return payload
 
 
 @router.post("/auth/logout")
@@ -543,10 +726,8 @@ async def list_api_keys(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
-    account = await _current_account(db, request)
-    if not account or account.server_id != server.id:
-        raise HTTPException(401, "Login required for API key management")
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     result = await db.execute(
         select(ApiKey)
         .where(ApiKey.server_id == server.id)
@@ -562,10 +743,8 @@ async def create_api_key(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
-    account = await _current_account(db, request)
-    if not account or account.server_id != server.id:
-        raise HTTPException(401, "Login required for API key management")
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     resource_type = str(body.get("resourceType") or "human").strip().lower()
     if resource_type not in {"human", "admin"}:
@@ -576,7 +755,7 @@ async def create_api_key(
         key_prefix=token[:20],
         token_hash=_hash_token(token),
         resource_type=resource_type,
-        resource_id=account.member_id,
+        resource_id=context.member.id,
         server_id=server.id,
     )
     db.add(api_key)
@@ -596,10 +775,8 @@ async def revoke_api_key(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
-    account = await _current_account(db, request)
-    if not account or account.server_id != server.id:
-        raise HTTPException(401, "Login required for API key management")
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     try:
         parsed_key_id = uuid.UUID(key_id)
     except ValueError:
@@ -1120,16 +1297,22 @@ async def _record_activity(
 
 
 @router.get("/channels")
-async def list_channels(_auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Server).limit(1))
-    server = result.scalar_one_or_none()
-    if not server:
-        return {"channels": []}
-
+async def list_channels(
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     result = await db.execute(
         select(Channel).where(Channel.server_id == server.id, Channel.kind != "dm")
     )
     channels = result.scalars().all()
+    visible_channels = []
+    for channel in channels:
+        if channel.kind == "private" and not await is_channel_member(db, channel_id=channel.id, member_id=context.member.id):
+            continue
+        visible_channels.append(channel)
 
     return {
         "channels": [
@@ -1139,7 +1322,7 @@ async def list_channels(_auth: None = Depends(verify_public_api_key), db: AsyncS
                 "type": ch.kind,
                 "description": ch.description or "",
             }
-            for ch in channels
+            for ch in visible_channels
         ]
     }
 
@@ -1151,7 +1334,10 @@ async def stream_public_events(
     scopeId: str | None = Query(None),
     heartbeatSeconds: float = Query(15.0),
     _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
 ):
+    context = await _resolve_active_server_context(db, request)
+    server_id = str(context.server.id)
     heartbeat = min(max(heartbeatSeconds, 1.0), 120.0)
 
     async def event_stream():
@@ -1162,6 +1348,9 @@ async def stream_public_events(
                     event = await asyncio.wait_for(queue.get(), timeout=heartbeat)
                 except asyncio.TimeoutError:
                     yield public_event_heartbeat_frame()
+                    continue
+                payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+                if str(event.get("serverId") or payload.get("serverId") or "") != server_id:
                     continue
                 if not should_deliver_public_event(event, scope_kind=scopeKind, scope_id=scopeId):
                     continue
@@ -1181,17 +1370,19 @@ async def stream_public_events(
 @router.get("/channels/{channel_name}/messages")
 async def get_channel_messages(
     channel_name: str,
+    request: Request,
     limit: int = Query(50),
     threadMode: str | None = Query(None),
+    _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
     name = channel_name.lstrip("#")
-    ch_result = await db.execute(
-        select(Channel).where(Channel.name == name)
-    )
-    ch = ch_result.scalar_one_or_none()
+    context = await _resolve_active_server_context(db, request)
+    ch = await _resolve_channel(db, context.server, name)
     if not ch:
         return {"messages": []}
+    member_in_channel = await is_channel_member(db, channel_id=ch.id, member_id=context.member.id)
+    ensure_channel_access(ch, context.member.id, is_channel_member=member_in_channel)
 
     q = select(Message).where(Message.channel_id == ch.id)
     if threadMode == "roots":
@@ -1209,13 +1400,20 @@ async def get_channel_messages(
 @router.get("/threads/{thread_id}")
 async def get_public_thread(
     thread_id: str,
+    request: Request,
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     root = await resolve_thread_root(db, server.id, thread_id)
     if not root:
         raise HTTPException(404, "Thread root not found")
+    channel_result = await db.execute(select(Channel).where(Channel.id == root.channel_id))
+    channel = channel_result.scalar_one_or_none()
+    if channel:
+        member_in_channel = await is_channel_member(db, channel_id=channel.id, member_id=context.member.id)
+        ensure_channel_access(channel, context.member.id, is_channel_member=member_in_channel)
     replies_result = await db.execute(
         select(Message).where(Message.parent_id == root.id).order_by(Message.seq)
     )
@@ -1249,6 +1447,7 @@ async def get_public_thread(
 async def create_channel_message(
     channel_name: str,
     request: Request,
+    _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
     body = await request.json()
@@ -1258,13 +1457,16 @@ async def create_channel_message(
         channel=channel_name,
     )
     trace.mark("backend.public_message.request_received")
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     content = body.get("content")
     if not content:
         raise HTTPException(400, "Missing content")
     with trace.time("backend.public_message.resolve"):
         channel = await _resolve_channel(db, server, channel_name)
-        sender = await _resolve_human_actor(db, server, request, body.get("sender"), role="message sender")
+        member_in_channel = await is_channel_member(db, channel_id=channel.id, member_id=context.member.id)
+        ensure_channel_access(channel, context.member.id, is_channel_member=member_in_channel)
+        sender = context.member if not body.get("sender") else await _resolve_human_actor(db, server, request, body.get("sender"), role="message sender")
         parent_id = None
         thread_target_short_id = None
         thread_ref = body.get("threadId") or body.get("parentId")
@@ -1367,7 +1569,8 @@ async def add_public_message_reaction(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     reaction_text = (body.get("reaction") or body.get("emoji") or "").strip()
     if not reaction_text:
@@ -1420,7 +1623,8 @@ async def remove_public_message_reaction(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     reaction_text = (body.get("reaction") or body.get("emoji") or "").strip()
     if not reaction_text:
@@ -1567,10 +1771,9 @@ async def list_saved_items(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
-    account = await _current_account(db, request)
-    if not account or account.server_id != server.id:
-        raise HTTPException(401, "Login required")
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
+    account = context.account
     requested_limit = max(1, min(limit, 50))
     result = await db.execute(
         select(SavedItem)
@@ -1591,10 +1794,9 @@ async def create_saved_item(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
-    account = await _current_account(db, request)
-    if not account or account.server_id != server.id:
-        raise HTTPException(401, "Login required")
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
+    account = context.account
     body = await request.json()
     item_type = str(body.get("itemType") or body.get("type") or "").strip().lower()
     if item_type not in {"message", "task", "file"}:
@@ -1607,6 +1809,7 @@ async def create_saved_item(
     await _saved_item_context(db, server, item_type, item_id)
     existing_result = await db.execute(
         select(SavedItem).where(
+            SavedItem.server_id == server.id,
             SavedItem.account_id == account.id,
             SavedItem.item_type == item_type,
             SavedItem.item_id == item_id,
@@ -1619,7 +1822,7 @@ async def create_saved_item(
     item = SavedItem(
         server_id=server.id,
         account_id=account.id,
-        member_id=account.member_id,
+        member_id=context.member.id,
         item_type=item_type,
         item_id=item_id,
     )
@@ -1637,10 +1840,9 @@ async def delete_saved_item(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
-    account = await _current_account(db, request)
-    if not account or account.server_id != server.id:
-        raise HTTPException(401, "Login required")
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
+    account = context.account
     try:
         parsed_id = uuid.UUID(saved_id)
     except ValueError:
@@ -1668,10 +1870,9 @@ async def delete_saved_item_by_target(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
-    account = await _current_account(db, request)
-    if not account or account.server_id != server.id:
-        raise HTTPException(401, "Login required")
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
+    account = context.account
     normalized_type = item_type.strip().lower()
     if normalized_type not in {"message", "task", "file"}:
         raise HTTPException(400, "Unsupported saved item type")
@@ -1696,8 +1897,14 @@ async def delete_saved_item_by_target(
 
 
 @router.get("/tasks")
-async def list_tasks(_auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Task).order_by(Task.task_number))
+async def list_tasks(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    context = await _resolve_active_server_context(db, request)
+    result = await db.execute(
+        select(Task)
+        .join(Channel, Channel.id == Task.channel_id)
+        .where(Channel.server_id == context.server.id)
+        .order_by(Task.task_number)
+    )
     tasks = result.scalars().all()
 
     task_list = [await _serialize_task(db, task) for task in tasks]
@@ -1707,9 +1914,11 @@ async def list_tasks(_auth: None = Depends(verify_public_api_key), db: AsyncSess
 
 @router.get("/task-run-templates")
 async def list_task_run_templates(
+    request: Request,
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
+    await _resolve_active_server_context(db, request)
     result = await db.execute(
         select(TaskRunTemplate).order_by(TaskRunTemplate.status, TaskRunTemplate.name)
     )
@@ -1723,6 +1932,7 @@ async def create_task_run_template(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
+    await _resolve_active_server_context(db, request)
     try:
         body = await request.json()
     except json.JSONDecodeError:
@@ -1747,6 +1957,7 @@ async def update_task_run_template(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
+    await _resolve_active_server_context(db, request)
     template = await get_template_by_ref(db, template_ref)
     if template is None:
         raise HTTPException(404, "TaskRun template not found")
@@ -1770,9 +1981,11 @@ async def update_task_run_template(
 @router.post("/task-run-templates/{template_ref}/disable")
 async def disable_task_run_template(
     template_ref: str,
+    request: Request,
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
+    await _resolve_active_server_context(db, request)
     template = await get_template_by_ref(db, template_ref)
     if template is None:
         raise HTTPException(404, "TaskRun template not found")
@@ -1820,7 +2033,8 @@ async def create_task_assignment(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     try:
         body = await request.json()
     except json.JSONDecodeError:
@@ -1890,8 +2104,9 @@ async def create_task_assignment(
 
 
 @router.get("/tasks/{task_id}")
-async def get_task(task_id: str, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    server = await _get_server(db)
+async def get_task(task_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     try:
         parsed_task_id = uuid.UUID(task_id)
     except ValueError:
@@ -1922,7 +2137,8 @@ async def list_scoped_memory(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     viewer = await _resolve_memory_viewer(db, server, request)
     context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
     entries = await list_memory_entries(db, server, context)
@@ -1938,7 +2154,8 @@ async def read_scoped_memory_path(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     viewer = await _resolve_memory_viewer(db, server, request)
     context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
     entry = await get_memory_entry(db, server, context, path)
@@ -1953,7 +2170,8 @@ async def search_scoped_memory(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     viewer = await _resolve_memory_viewer(db, server, request)
     context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
@@ -1970,7 +2188,8 @@ async def write_scoped_memory_path(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     viewer = await _resolve_memory_viewer(db, server, request)
     _ensure_memory_actor_matches_viewer(body, viewer)
@@ -1991,7 +2210,8 @@ async def propose_scoped_memory(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     viewer = await _resolve_memory_viewer(db, server, request)
     _ensure_memory_actor_matches_viewer(body, viewer)
@@ -2013,7 +2233,8 @@ async def list_scoped_memory_proposals(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     viewer = await _resolve_memory_viewer(db, server, request)
     context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
     proposals = await list_memory_proposals(db, server, context, status=status)
@@ -2027,7 +2248,8 @@ async def accept_memory_proposal(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     viewer = await _resolve_memory_viewer(db, server, request)
     _ensure_memory_actor_matches_viewer(body, viewer)
@@ -2056,7 +2278,8 @@ async def reject_memory_proposal(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     viewer = await _resolve_memory_viewer(db, server, request)
     _ensure_memory_actor_matches_viewer(body, viewer)
@@ -2082,7 +2305,8 @@ async def delete_scoped_memory_path(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     viewer = await _resolve_memory_viewer(db, server, request)
     context = await resolve_memory_scope(db, server, scope_type, scope_id, viewer=viewer)
     entry = await delete_memory_entry(db, server, context, path, author=viewer)
@@ -2099,7 +2323,8 @@ async def list_channel_memory_alias(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     viewer = await _resolve_memory_viewer(db, server, request)
     context = await resolve_memory_scope(db, server, "channel", channel_name, viewer=viewer)
     entries = await list_memory_entries(db, server, context)
@@ -2113,7 +2338,8 @@ async def list_task_memory_alias(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     viewer = await _resolve_memory_viewer(db, server, request)
     context = await resolve_memory_scope(db, server, "task", task_id, viewer=viewer)
     entries = await list_memory_entries(db, server, context)
@@ -2148,7 +2374,8 @@ async def request_task_memory_result(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     task = await _resolve_task_by_id_or_number(db, server, task_id)
     actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="task memory requester")
@@ -2171,7 +2398,9 @@ async def request_task_memory_result(
 
 @router.post("/tasks")
 async def create_task(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
+    selected_server_id = server.id
     try:
         body = await request.json()
     except json.JSONDecodeError:
@@ -2180,7 +2409,7 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
     if not title:
         raise HTTPException(400, "Missing title")
     channel = await _resolve_channel(db, server, body.get("channel") or "#all")
-    creator = await _resolve_human_actor(db, server, request, body.get("creator"), role="task creator")
+    creator = await _resolve_human_actor(db, server, request, body.get("creator"), role="task creator") if body.get("creator") else context.member
     assignee = await _resolve_member(db, server, body.get("assignee"))
     channel_id = channel.id
     channel_target = f"#{channel.name}" if channel.kind == "public" else channel.name
@@ -2249,7 +2478,8 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
         raise HTTPException(500, "Task creation failed")
 
     if rolled_back:
-        server = await _get_server(db)
+        server_result = await db.execute(select(Server).where(Server.id == selected_server_id))
+        server = server_result.scalar_one()
         channel_result = await db.execute(select(Channel).where(Channel.id == channel_id))
         channel = channel_result.scalar_one()
         creator_result = await db.execute(select(Member).where(Member.id == creator_id))
@@ -2307,7 +2537,8 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
 
 @router.patch("/tasks/{task_id}")
 async def update_task(task_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     task = await _resolve_task_by_id_or_number(db, server, task_id)
     previous_status = task.status
@@ -2364,12 +2595,9 @@ async def update_task(task_id: str, request: Request, _auth: None = Depends(veri
 
 
 @router.get("/computers")
-async def list_computers(_auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Server).limit(1))
-    server = result.scalar_one_or_none()
-    if not server:
-        return {"computers": []}
-
+async def list_computers(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     result = await db.execute(select(Computer).where(Computer.server_id == server.id))
     computers = result.scalars().all()
     return {
@@ -2385,7 +2613,9 @@ async def delete_computer(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
     try:
         parsed_computer_id = uuid.UUID(computer_id)
     except ValueError:
@@ -2448,16 +2678,16 @@ async def delete_computer(
 
 @router.get("/activity")
 async def list_activity(
+    request: Request,
     agent_id: str | None = Query(None, alias="agentId"),
     task_id: str | None = Query(None, alias="taskId"),
     limit: int = Query(50),
     compact: bool = Query(False),
+    _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Server).limit(1))
-    server = result.scalar_one_or_none()
-    if not server:
-        return {"activity": [], "count": 0}
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
 
     requested_limit = max(1, min(limit, 100))
     query_limit = min(max(requested_limit * 20, 250), 500) if compact else requested_limit
@@ -2488,14 +2718,14 @@ async def list_activity(
 
 @router.get("/search")
 async def global_search(
+    request: Request,
     q: str = Query(..., min_length=1),
     limit: int = Query(20),
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
-    if not server:
-        return {"results": [], "count": 0}
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
 
     requested_limit = max(1, min(limit, 50))
     safe_term = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -2621,14 +2851,14 @@ async def global_search(
 
 @router.get("/files")
 async def list_files(
+    request: Request,
     channel_id: str | None = Query(None, alias="channelId"),
     limit: int = Query(50),
+    _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Server).limit(1))
-    server = result.scalar_one_or_none()
-    if not server:
-        return {"files": [], "count": 0}
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
 
     q = select(FileEntry).where(FileEntry.server_id == server.id)
     if channel_id:
@@ -2653,9 +2883,8 @@ async def upload_file(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
-    if not server:
-        raise HTTPException(500, "Server not initialized")
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
 
     try:
         parsed_channel_id = uuid.UUID(channel_id)
@@ -2744,7 +2973,8 @@ async def preview_attachment(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     await _resolve_human_actor(db, server, request, None, role="attachment viewer")
     entry = await _get_public_attachment(db, server, attachment_id)
     path = _safe_attachment_path(entry)
@@ -2758,7 +2988,8 @@ async def download_public_attachment(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     await _resolve_human_actor(db, server, request, None, role="attachment viewer")
     entry = await _get_public_attachment(db, server, attachment_id)
     path = _safe_attachment_path(entry)
@@ -2767,14 +2998,14 @@ async def download_public_attachment(
 
 @router.get("/reminders")
 async def list_reminders(
+    request: Request,
     status: str | None = Query(None),
     limit: int = Query(50),
+    _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Server).limit(1))
-    server = result.scalar_one_or_none()
-    if not server:
-        return {"reminders": [], "count": 0}
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
 
     q = select(Reminder).where(Reminder.server_id == server.id)
     if status:
@@ -2789,11 +3020,9 @@ async def list_reminders(
 
 
 @router.get("/members")
-async def list_members(_auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Server).limit(1))
-    server = result.scalar_one_or_none()
-    if not server:
-        return {"members": []}
+async def list_members(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
 
     result = await db.execute(select(Member).where(Member.server_id == server.id))
     members = result.scalars().all()
@@ -2867,7 +3096,8 @@ def _channel_member_ids_from_body(body: dict) -> list[uuid.UUID]:
 
 @router.patch("/members/{member_id}")
 async def update_member(member_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     member = await _resolve_member(db, server, member_id)
     if not member:
         raise HTTPException(404, "Member not found")
@@ -2902,7 +3132,9 @@ async def delete_member(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
     member = await _resolve_member(db, server, member_id)
     if not member:
         raise HTTPException(404, "Member not found")
@@ -2974,7 +3206,8 @@ async def delete_member(
 
 @router.post("/reminders")
 async def create_public_reminder(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     title = body.get("title")
     if not title:
@@ -3027,7 +3260,8 @@ async def create_public_reminder(request: Request, _auth: None = Depends(verify_
 
 @router.patch("/reminders/{reminder_id}")
 async def update_public_reminder(reminder_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     try:
         parsed_id = uuid.UUID(reminder_id)
     except ValueError:
@@ -3068,7 +3302,9 @@ async def update_public_reminder(reminder_id: str, request: Request, _auth: None
 async def generate_computer_connect_command(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
-    server = await _ensure_server(db)
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
     body = await request.json()
     name = str(body.get("name") or "").strip()
     if not name:
@@ -3088,6 +3324,7 @@ async def generate_computer_connect_command(
     return {
         "connectToken": token,
         "command": _computer_connect_command(token, server_url),
+        "daemonInstall": _daemon_install_metadata(server_url),
         "expiresAt": expires_at.isoformat(),
     }
 
@@ -3099,7 +3336,9 @@ async def generate_computer_reconnect_command(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
     try:
         parsed_computer_id = uuid.UUID(computer_id)
     except ValueError:
@@ -3128,6 +3367,7 @@ async def generate_computer_reconnect_command(
         "computerId": str(computer.id),
         "name": computer.name,
         "command": _computer_connect_command(token, server_url),
+        "daemonInstall": _daemon_install_metadata(server_url),
         "expiresAt": expires_at.isoformat(),
     }
 
@@ -3139,7 +3379,9 @@ async def control_workspace_lifecycle(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
     try:
         parsed_workspace_id = uuid.UUID(workspace_id)
     except ValueError:
@@ -3259,10 +3501,13 @@ async def control_workspace_lifecycle(
 @router.delete("/workspaces/{workspace_id}")
 async def delete_workspace(
     workspace_id: str,
+    request: Request,
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
     try:
         parsed_workspace_id = uuid.UUID(workspace_id)
     except ValueError:
@@ -3318,7 +3563,9 @@ async def delete_workspace(
 async def generate_computer_credential(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
-    server = await _ensure_server(db)
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
     body = await request.json()
     name = body.get("name", "unregistered-computer")
     existing = (await db.execute(
@@ -3391,11 +3638,22 @@ def _public_runtime(value: str | None) -> str:
     return _normalize_runtime(value)
 
 
+def _agent_auto_start_enabled(body: dict) -> bool:
+    value = body.get("autoStart", body.get("startRuntime", True))
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(value)
+
+
 @router.post("/members/agents")
 async def create_agent(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
     body = await request.json()
     name = body.get("name")
     if not name:
@@ -3418,8 +3676,7 @@ async def create_agent(
         select(Computer).where(Computer.id == computer_id, Computer.server_id == server.id)
     )
     computer = computer_result.scalar_one_or_none()
-    if not computer:
-        raise HTTPException(404, "Computer not found")
+    ensure_server_scoped_computer(computer, server_id=server.id)
 
     runtime = _normalize_runtime(body.get("runtime", "claude_code"))
     runtime_command = body.get("runtimeCommand")
@@ -3434,6 +3691,9 @@ async def create_agent(
         provider_name = None
     if not runtime_provider_available_for(runtime, runtime_provider, computer):
         raise HTTPException(400, runtime_provider_unavailable_message_for(runtime, runtime_provider))
+    auto_start = _agent_auto_start_enabled(body)
+    desired_status = "running" if auto_start else "stopped"
+    workspace_status = PENDING_RUNTIME_START_STATUS if auto_start else "stopped"
 
     agent = Member(
         server_id=server.id,
@@ -3447,7 +3707,7 @@ async def create_agent(
             "backend": body.get("backend"),
             "runtimeProvider": runtime_provider,
             "provider": provider_name,
-            "runtimeDesiredStatus": "running",
+            "runtimeDesiredStatus": desired_status,
         },
     )
     db.add(agent)
@@ -3459,7 +3719,7 @@ async def create_agent(
         runtime=runtime,
         runtime_command=runtime_command,
         runtime_model=runtime_model,
-        status=PENDING_RUNTIME_START_STATUS,
+        status=workspace_status,
         cwd=body.get("cwd"),
     )
     db.add(workspace)
@@ -3497,7 +3757,8 @@ async def create_agent(
     except Exception:
         logger.exception("member.created event emit failed for agent=%s", agent.id)
 
-    await daemon_control_hub.push(computer.id, runtime_start_command(workspace, agent))
+    if auto_start:
+        await daemon_control_hub.push(computer.id, runtime_start_command(workspace, agent))
     return {
         "created": True,
         "member": await serialize_member(db, agent),
@@ -3512,7 +3773,8 @@ async def create_agent(
 async def create_channel(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     name = body.get("name")
     if not name:
@@ -3529,7 +3791,7 @@ async def create_channel(
     if existing.scalar_one_or_none():
         raise HTTPException(409, f"Channel #{name} already exists")
 
-    creator = await _resolve_human_actor(db, server, request, body.get("creator"), role="channel creator")
+    creator = context.member if not body.get("creator") else await _resolve_human_actor(db, server, request, body.get("creator"), role="channel creator")
 
     channel = Channel(
         server_id=server.id,
@@ -3575,7 +3837,8 @@ async def delete_channel(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     try:
         parsed_channel_id = uuid.UUID(channel_id)
     except ValueError:
@@ -3628,7 +3891,8 @@ async def add_channel_member(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     try:
         parsed_channel_id = uuid.UUID(channel_id)
     except ValueError:
@@ -3689,10 +3953,12 @@ async def add_channel_member(
 async def remove_channel_member(
     channel_id: str,
     member_id: str,
+    request: Request,
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     try:
         parsed_channel_id = uuid.UUID(channel_id)
         parsed_member_id = uuid.UUID(member_id)
@@ -3726,10 +3992,12 @@ async def remove_channel_member(
 @router.get("/channels/{channel_id}/members")
 async def list_channel_members(
     channel_id: str,
+    request: Request,
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     try:
         parsed_channel_id = uuid.UUID(channel_id)
     except ValueError:
@@ -3773,7 +4041,8 @@ async def list_dms(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     viewer = await _resolve_human_actor(db, server, request, sender, role="DM viewer")
     result = await db.execute(
         select(Channel)
@@ -3796,7 +4065,8 @@ async def list_dms(
 async def create_or_get_dm(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
-    server = await _get_server(db)
+    context = await _resolve_active_server_context(db, request)
+    server = context.server
     body = await request.json()
     peer_name = body.get("peer")
     if not peer_name:

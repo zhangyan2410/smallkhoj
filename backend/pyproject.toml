@@ -11,6 +11,7 @@ dependencies = [
     "httpx>=0.28.0",
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.9",
+    "lark-channel-sdk>=1.1.0",
     "openai>=1.0.0",
 ]
 

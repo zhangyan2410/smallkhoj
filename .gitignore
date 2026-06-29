@@ -57,6 +57,13 @@ graphify-out/
 # MCP config (may contain secrets like API keys)
 .mcp.json
 
+# Local private keys and cloud credentials
+*.pem
+*.key
+*-ssh-key
+*-ssh-key.*
+tengxun-ssh-key*
+
 # Local agent runtime/config state
 .agent/
 .cat-cafe/

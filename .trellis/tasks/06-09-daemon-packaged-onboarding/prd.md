@@ -4,6 +4,12 @@
 
 Replace repo-path daemon commands with a product-grade packaged daemon onboarding flow.
 
+## 2026-06-29 Reassessment
+
+This task's original acceptance was too weak for release. The root-level `smallkhoj-daemon` wrapper hides the internal daemon path, but it still assumes a developer repository checkout and builds from `agent/daemon/aaa-daemon`. That is not a real downloadable, versioned product daemon.
+
+The release-grade follow-up is tracked in `.trellis/tasks/06-29-06-29-initial-release-daemon-distribution-versioning/`.
+
 ## Requirements
 
 * Define install/start command UX for macOS first.

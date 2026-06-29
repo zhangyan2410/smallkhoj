@@ -121,6 +121,7 @@ async def test_startup_seed_emits_task_assignment_and_run_table_ddl(monkeypatch)
     assert "CREATE INDEX IF NOT EXISTS idx_task_runs_task" in statements
     assert "CREATE INDEX IF NOT EXISTS idx_task_assignments_assignee" in statements
     assert "ALTER TABLE task_assignments DROP CONSTRAINT IF EXISTS ck_task_assignments_role" in statements
+    assert "external_feishu" in statements
 
 
 def test_task_run_tables_are_declared_with_runtime_context_columns():
@@ -175,6 +176,10 @@ def test_task_run_tables_are_declared_with_runtime_context_columns():
         "failure_code",
         "output_message_id",
     } <= set(run_table.c.keys())
+    assignment_mode_constraint = next(
+        constraint for constraint in assignment_table.constraints if constraint.name == "ck_task_assignments_mode"
+    )
+    assert "external_feishu" in str(assignment_mode_constraint.sqltext)
 
 
 @pytest.mark.asyncio
@@ -847,6 +852,129 @@ async def test_agent_task_run_lifecycle_endpoint_updates_current_agent_run(monke
     assert calls[0]["context_usage"]["occupancyRatio"] == 0.33
     assert response["run"]["id"] == str(run_id)
     assert response["run"]["runtimeSessionId"] == "provider-session-1"
+
+
+@pytest.mark.asyncio
+async def test_agent_task_run_lifecycle_endpoint_triggers_terminal_writeback_hook(monkeypatch):
+    run_id = uuid.uuid4()
+    task_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    member = SimpleNamespace(id=agent_id, display_name="worker", kind="agent")
+    server = SimpleNamespace(id=uuid.uuid4())
+    run = SimpleNamespace(
+        id=run_id,
+        task_id=task_id,
+        assignment_id=None,
+        agent_id=agent_id,
+        channel_id=uuid.uuid4(),
+        source_message_id=None,
+        thread_root_message_id=None,
+        parent_run_id=None,
+        attempt=1,
+        status="completed",
+        trigger_type="feishu_jira_analysis",
+        runtime_workspace_id=None,
+        computer_id=None,
+        daemon_id=None,
+        runtime="claude_code",
+        runtime_provider=None,
+        runtime_model="minimax",
+        prompt_profile="task.worker",
+        workspace_session_id="workspace-session",
+        runtime_session_id="provider-session-1",
+        context_session_id=f"task:{task_id}:role:worker:run:{run_id}",
+        cwd="/tmp/work",
+        context_scope="task",
+        context_summary={},
+        context_usage={},
+        token_usage={},
+        tool_usage_summary={},
+        output_message_id=None,
+        failure_code=None,
+        failure_reason=None,
+        started_at=None,
+        completed_at=None,
+        created_at=None,
+        updated_at=None,
+    )
+    hook_calls = []
+    class _Client:
+        def __init__(self):
+            self.closed = False
+
+        async def aclose(self):
+            self.closed = True
+
+    jira_client = _Client()
+    feishu_client = _Client()
+    dependencies = SimpleNamespace(name="jira-runtime-deps", jira_http_client=jira_client)
+    feishu_dependencies = SimpleNamespace(
+        name="feishu-runtime-deps",
+        http_client=feishu_client,
+        config=SimpleNamespace(base_url="https://open.feishu.cn", access_token="tenant-token"),
+    )
+
+    async def fake_update_task_run_lifecycle(db_arg, **kwargs):
+        return run
+
+    async def fake_writeback_hook(db_arg, **kwargs):
+        hook_calls.append(kwargs)
+        return SimpleNamespace(
+            status="failed",
+            reason_code="TASK_RUN_WRITEBACK_NO_JIRA_CREDENTIALS",
+            reason="Jira credentials were not available for TaskRun write-back.",
+            mapping=None,
+        )
+
+    feishu_calls = []
+
+    async def fake_feishu_reply(db_arg, **kwargs):
+        feishu_calls.append(kwargs)
+        return SimpleNamespace(
+            status="sent",
+            reason_code="FEISHU_REPLY_SENT",
+            reason="Feishu terminal TaskRun reply was sent.",
+            mapping=None,
+        )
+
+    monkeypatch.setattr(agent_api, "update_task_run_lifecycle", fake_update_task_run_lifecycle, raising=False)
+    monkeypatch.setattr(agent_api, "handle_terminal_task_run_writeback", fake_writeback_hook, raising=False)
+    monkeypatch.setattr(agent_api, "build_task_run_writeback_dependencies", lambda: dependencies, raising=False)
+    monkeypatch.setattr(agent_api, "send_task_run_feishu_terminal_reply", fake_feishu_reply, raising=False)
+    monkeypatch.setattr(agent_api, "build_feishu_reply_dependencies", lambda: feishu_dependencies, raising=False)
+    db = _FakeSession()
+
+    response = await agent_api.update_task_run_lifecycle_endpoint(
+        str(run_id),
+        SimpleNamespace(
+            status="completed",
+            runtimeSessionId="provider-session-1",
+            workspaceSessionId="workspace-session",
+            contextSessionId=None,
+            contextUsage=None,
+            tokenUsage=None,
+            toolUsageSummary=None,
+            outputMessageId=None,
+            failureCode=None,
+            failureReason=None,
+        ),
+        agent=(member, server),
+        db=db,
+    )
+
+    assert db.committed is True
+    assert response["ok"] is True
+    assert response["writeBack"]["status"] == "failed"
+    assert response["writeBack"]["reasonCode"] == "TASK_RUN_WRITEBACK_NO_JIRA_CREDENTIALS"
+    assert response["feishuReply"]["status"] == "sent"
+    assert response["feishuReply"]["reasonCode"] == "FEISHU_REPLY_SENT"
+    assert hook_calls[0]["task_run"] is run
+    assert hook_calls[0]["dependencies"] is dependencies
+    assert feishu_calls[0]["task_run"] is run
+    assert feishu_calls[0]["http_client"] is feishu_client
+    assert feishu_calls[0]["config"] is feishu_dependencies.config
+    assert jira_client.closed is True
+    assert feishu_client.closed is True
 
 
 def test_serialize_task_run_uses_public_camel_case_contract():

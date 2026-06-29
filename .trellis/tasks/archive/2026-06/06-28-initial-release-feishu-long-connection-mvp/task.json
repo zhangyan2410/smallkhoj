@@ -1,0 +1,31 @@
+{
+  "id": "initial-release-feishu-long-connection-mvp",
+  "name": "initial-release-feishu-long-connection-mvp",
+  "title": "Initial release Feishu long connection MVP",
+  "description": "Implement the backend Feishu long-connection entry boundary for the first release: normalize message events, filter bot-addressed commands, claim external events, resolve routes, and parse @SmallKhoj 分析 JIRA-123 without executing runtime work directly.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "backend",
+  "package": "backend",
+  "priority": "P0",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-28",
+  "completedAt": "2026-06-28",
+  "branch": "codex/initial-release-feishu-long-connection-mvp",
+  "base_branch": "codex/initial-release-feishu-long-connection-mvp",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "06-28-07-15-initial-release",
+  "relatedFiles": [
+    "backend/services/integration_gateway.py",
+    "backend/services/jira_rest.py",
+    "backend/services/task_runs.py",
+    "/Users/code/project/multica/server/internal/integrations/lark/"
+  ],
+  "notes": "Depends on integration gateway commit e3a1a65 and Jira REST commit 8591b10. This child implements the Feishu adapter/dispatcher boundary and first command parser; wiring a production lark-oapi worker may be a follow-up if dependency/runtime setup requires it.",
+  "meta": {}
+}

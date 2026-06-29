@@ -638,6 +638,8 @@ export interface EventEnvelope {
 export interface Credential {
   agentId: string;
   serverId: string;
+  computerId?: string;
+  machineId?: string;
   token: string;
   serverUrl: string;
   /** WebSocket endpoint for real-time events */

@@ -25,13 +25,12 @@ import { Input } from "@/components/ui/input"
 import { FieldLabel, Select, Textarea } from "@/components/ui/form"
 import { TaskListPanel } from "@/components/task-list-panel"
 import { TaskFormDialogs } from "@/components/task-form-dialogs"
-import { apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
-import { requireCurrentAccount, serverApiHeaders, getSessionToken } from "@/lib/server-auth"
+import { API_BASE, apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
+import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 import { TaskDndBoard } from "@/components/task-dnd-board"
 import { TaskDetailDialog } from "@/components/task-detail-dialog"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
 const TASK_STATUS_OPTIONS = TASK_STATUSES.map((status) => `${status}|${statusLabel(status)}`)
 const MEMORY_OUTPUT_DIRECTIONS = ["final_summary", "evidence", "artifacts", "next_steps", "channel_memory"]
@@ -194,28 +193,28 @@ type ActivityItem = {
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
-async function getTasks(sessionToken?: string | null) {
-  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }, sessionToken)
+async function getTasks(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }, sessionToken, activeServerId)
 }
 
-async function getChannels(sessionToken?: string | null) {
-  return apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] }, sessionToken)
+async function getChannels(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] }, sessionToken, activeServerId)
 }
 
-async function getMembers(sessionToken?: string | null) {
-  return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }, sessionToken)
+async function getMembers(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }, sessionToken, activeServerId)
 }
 
-async function getTaskRunTemplates(sessionToken?: string | null) {
-  return apiGet<{ templates: TaskRunTemplate[] }>("/api/v1/task-run-templates", { templates: [] }, sessionToken)
+async function getTaskRunTemplates(sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ templates: TaskRunTemplate[] }>("/api/v1/task-run-templates", { templates: [] }, sessionToken, activeServerId)
 }
 
-async function getTaskActivity(taskId: string, sessionToken?: string | null) {
-  return apiGet<{ activity: ActivityItem[] }>(`/api/v1/activity?taskId=${encodeURIComponent(taskId)}&limit=20`, { activity: [] }, sessionToken)
+async function getTaskActivity(taskId: string, sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ activity: ActivityItem[] }>(`/api/v1/activity?taskId=${encodeURIComponent(taskId)}&limit=20`, { activity: [] }, sessionToken, activeServerId)
 }
 
-async function getTaskMemory(taskId: string, sessionToken?: string | null) {
-  return apiGet<{ entries: MemoryEntry[] }>(`/api/v1/tasks/${encodeURIComponent(taskId)}/memory`, { entries: [] }, sessionToken)
+async function getTaskMemory(taskId: string, sessionToken?: string | null, activeServerId?: string | null) {
+  return apiGet<{ entries: MemoryEntry[] }>(`/api/v1/tasks/${encodeURIComponent(taskId)}/memory`, { entries: [] }, sessionToken, activeServerId)
 }
 
 async function writeTask(path: string, body: Record<string, unknown>, method = "POST") {
@@ -654,6 +653,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   const t = await getTranslations("tasks")
   const copy = makeTasksCopy(t)
   const sessionToken = await getSessionToken()
+  const activeServerId = await getActiveServerId()
   const params = await searchParams
   const view = firstParam(params.view, "board") === "list" ? "list" : "board"
   const filters = {
@@ -665,10 +665,10 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   }
   const selectedTaskId = firstParam(params.task)
   const [{ tasks }, { channels }, { members }, { templates }] = await Promise.all([
-    getTasks(sessionToken),
-    getChannels(sessionToken),
-    getMembers(sessionToken),
-    getTaskRunTemplates(sessionToken),
+    getTasks(sessionToken, activeServerId),
+    getChannels(sessionToken, activeServerId),
+    getMembers(sessionToken, activeServerId),
+    getTaskRunTemplates(sessionToken, activeServerId),
   ])
   const agents = members.filter((member) => member.kind === "agent")
   const activeTemplates = templates.filter((template) => template.status === "active")
@@ -679,8 +679,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   let memoryEntries: MemoryEntry[] = []
   if (selectedTask?.id) {
     const [result, memoryResult] = await Promise.all([
-      getTaskActivity(selectedTask.id, sessionToken),
-      getTaskMemory(selectedTask.id, sessionToken),
+      getTaskActivity(selectedTask.id, sessionToken, activeServerId),
+      getTaskMemory(selectedTask.id, sessionToken, activeServerId),
     ])
     activity = result.activity
     memoryEntries = memoryResult.entries

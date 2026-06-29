@@ -220,6 +220,44 @@ Run e2e against `http://127.0.0.1:3000` with no `allowedDevOrigins`, then debug 
 ##### Correct
 Use `http://localhost:3000` for local browser e2e, or configure `allowedDevOrigins: ['127.0.0.1']` and restart the dev server.
 
+### Scenario: Production Standalone Frontend Image
+
+#### 1. Scope / Trigger
+- Trigger: changing `frontend/Dockerfile`, `frontend/next.config.mjs`, production compose, deployment runbooks, or frontend build output.
+
+#### 2. Signatures
+- `frontend/next.config.mjs`: `output: "standalone"`
+- `frontend/Dockerfile`: copies `/app/.next/standalone` into the runner image and starts `server.js`.
+
+#### 3. Contracts
+- `bun run build` must create `.next/standalone/server.js` before the Docker runner stage copies build artifacts.
+- Same-origin `/api` rewrites and next-intl plugin wrapping must remain active when standalone output is enabled.
+- The 2 vCPU / 2 GB release host should pull a prebuilt frontend image; it should not be the default place where Next.js dependencies and production build run.
+
+#### 4. Validation & Error Matrix
+- `.next/standalone/server.js` missing after build -> `next.config.mjs` lost `output: "standalone"` or Next build config changed.
+- Docker build fails at `COPY --from=builder /app/.next/standalone ./` -> standalone output contract is broken.
+- Container starts but `/login` does not return HTTP 200 -> runner command or copied artifact layout is broken.
+
+#### 5. Good/Base/Bad Cases
+- Good: config test asserts `nextConfig.output === "standalone"`, `bun run build` creates `.next/standalone/server.js`, Docker build succeeds, and a smoke container serves `/login`.
+- Base: local build passes but Docker build is skipped only because Docker daemon is unavailable; record the skipped gate explicitly.
+- Bad: accepting `next build` alone as production image proof when the Dockerfile depends on `.next/standalone`.
+
+#### 6. Tests Required
+- `bunx tsx --test test/next-production-config.test.ts test/runtime-url.test.ts`
+- `bun run build`
+- `test -f .next/standalone/server.js`
+- `docker build -t smallkhoj-frontend:standalone-smoke ./frontend` when Docker is available.
+- Optional container smoke: run the built image and check `GET /login`.
+
+#### 7. Wrong vs Correct
+##### Wrong
+Remove or omit `output: "standalone"` because `next build` still succeeds locally.
+
+##### Correct
+Keep standalone output enabled because the production Docker runner stage copies `.next/standalone` and starts its `server.js`.
+
 ### Mutation Smoke Tests
 
 For forms that write to backend APIs, include at least one project WebDriver browser smoke test using the `project-webdriver-cli` skill and `./twd` that:
