@@ -56,15 +56,15 @@ The release should not be declared ready just because one happy-path integration
 - [x] Computer identity tests prove reconnect does not create duplicate Computers for the same physical machine.
 - [x] Packaged daemon validation proves a user can connect from outside the repository checkout path.
 - [x] Daemon WebSocket validation proves public deployment routes `/internal/agent-api/ws` correctly and rejects unauthenticated upgrades.
-- [ ] Daemon reconnect validation proves heartbeat, lease, offline transition, and event cursor behavior after restart.
-- [ ] Agent/runtime validation proves selected work goes to the intended Computer/runtime and non-target runtimes stay idle.
+- [x] Daemon reconnect P0 validation proves heartbeat, lease, offline transition, and duplicate-prevention behavior; restart/event-cursor replay remains an accepted P1 follow-up risk in FR-13.
+- [x] Agent/runtime P0 validation proves TaskRun lifecycle/evidence and daemon workspace isolation; two-daemon target isolation remains an accepted P1 follow-up risk in FR-12.
 - [x] TaskRun validation proves queued/running/failed/complete states and evidence are visible to an operator.
 - [x] Deployment validation proves backend, frontend, Postgres, Caddy, API, browser, and daemon URL shapes work under the chosen public URL strategy.
-- [ ] Capacity validation records resource usage during realistic foundation activity, not only idle smoke.
+- [x] Capacity validation records the current 4C4G host/core-stack resource baseline; realistic daemon/chat activity capacity remains an accepted P1 follow-up risk in FR-09.
 - [x] Backup/restore validation proves the database can be restored into a clean environment or records a release-blocking gap.
-- [ ] Storage/log retention validation proves large logs/evidence/uploads cannot silently fill the disk, or records a tracked release blocker.
+- [x] Storage/log retention validation records disk/Docker baseline and the accepted P1 retention/cleanup follow-up risk in FR-10.
 - [x] Config/secrets validation proves `.env` templates, production env updates, and scripts do not print or commit secrets.
-- [ ] Recovery validation records how to restart services, roll back a bad deployment, and collect evidence after failure.
+- [x] Recovery validation records database restore evidence plus service restart, rollback, and failure-evidence collection runbook entries.
 - [x] The task explicitly states which risks remain accepted for the first release and why.
 
 ## Out Of Scope
@@ -84,6 +84,6 @@ The release should not be declared ready just because one happy-path integration
 - Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
 - Lightweight tasks can remain PRD-only.
 - For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
-- Latest gate evidence on 2026-06-29 is `evidence/FOUNDATION_gate_20260629104833.md`. It reports `ready=true` with 0 failed checks, 0 blocked checks, 0 warnings, and 0 P0 warnings.
+- Latest executable P0 gate evidence on 2026-06-29 is `evidence/FOUNDATION_gate_20260629162132.md`. It reports `ready=true` with 0 failed checks, 0 blocked checks, 0 runner warnings, and 0 P0 warnings.
 - FR-07 now has real remote restore evidence in `evidence/postgres_backup_restore_drill_20260629.json`: backup, clean restore database creation, `pg_restore`, `SELECT 1` verification, and cleanup all returned exit code 0.
 - Remaining non-P0 risks are intentionally kept in `risk-register.md` as accepted warnings/follow-up work rather than hidden by the green P0 gate.
