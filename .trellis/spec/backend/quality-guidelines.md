@@ -69,6 +69,7 @@ Questions to answer:
 - `--strict-warnings` additionally makes non-P0 warnings produce a warning exit code.
 - `--partial` is only for developing checks and must not be used as release-candidate evidence.
 - Scripts must not print secret values. Env paths, key names, and `<set>`/`<empty>` summaries are allowed.
+- Risk-register existence is tracking evidence only. It must not be used as the passing gate for a product P0 risk such as account/server/channel isolation.
 
 ### 4. Validation & Error Matrix
 - Missing P0 executable coverage -> `blocked`, exit code `3`.
@@ -83,11 +84,13 @@ Questions to answer:
 - Base: a P1 capacity warning can remain a warning when the initial release explicitly accepts the limitation.
 - Bad: returning `ready=true` when FR-07 has only dry-run evidence.
 - Bad: using `--partial` output as release-candidate evidence.
+- Bad: marking FR-01 passed because the risk register mentions FR-01.
 
 ### 6. Tests Required
 - Unit test that P0 warnings increment `p0Warnings`, make `ready=false`, and return exit code `2`.
 - Unit test that JSON output omits secret values.
 - Unit test for each new gate mapping to the intended `riskId` and priority.
+- Unit test that tracking/meta checks do not accidentally satisfy product P0 coverage.
 - Task evidence must record the command, target environment, exit code, summary, and any non-pass release decision.
 
 ### 7. Wrong vs Correct

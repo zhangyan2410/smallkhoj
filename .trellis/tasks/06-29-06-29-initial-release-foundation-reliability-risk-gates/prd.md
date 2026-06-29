@@ -84,4 +84,4 @@ The release should not be declared ready just because one happy-path integration
 - Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
 - Lightweight tasks can remain PRD-only.
 - For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
-- Latest gate evidence on 2026-06-29 is `evidence/FOUNDATION_gate_20260629101847.md`. It reports `NOT READY` because FR-07 has only a dry-run backup/restore command plan; no real restore has been executed yet.
+- Latest gate evidence on 2026-06-29 is `evidence/FOUNDATION_gate_20260629102544.md`. It reports `NOT READY` because FR-01 lacks dedicated Server/account/channel isolation proof and FR-07 has only a dry-run backup/restore command plan; no real restore has been executed yet.

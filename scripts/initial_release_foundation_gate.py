@@ -49,6 +49,7 @@ FR05_BACKEND_TESTS = (
     "tests/test_task_runs.py::test_serialize_completed_task_run_classifies_missing_evidence",
     "tests/test_task_runs.py::test_serialize_running_task_run_surfaces_pending_result_staleness",
 )
+FR01_TEST_FILE = "tests/test_server_account_membership.py"
 
 
 @dataclass(frozen=True)
@@ -205,8 +206,8 @@ def check_risk_register(root: Path) -> FoundationCheck:
             "foundation.riskRegister",
             "FOUNDATION_RISK_REGISTER_MISSING",
             "Foundation risk register is missing.",
-            risk_id="FR-01",
-            priority="P0",
+            risk_id="FOUNDATION",
+            priority="P2",
             details={"path": str(path)},
         )
     content = path.read_text(encoding="utf-8")
@@ -216,15 +217,15 @@ def check_risk_register(root: Path) -> FoundationCheck:
             "foundation.riskRegister",
             "FOUNDATION_RISK_REGISTER_INCOMPLETE",
             "Foundation risk register is missing required P0 risks.",
-            risk_id="FR-01",
-            priority="P0",
+            risk_id="FOUNDATION",
+            priority="P2",
             details={"missing": missing},
         )
     return passed(
         "foundation.riskRegister",
         "Foundation risk register exists and includes required P0 risks.",
-        risk_id="FR-01",
-        priority="P0",
+        risk_id="FOUNDATION",
+        priority="P2",
         details={"path": str(path), "p0Risks": list(P0_RISKS)},
     )
 
@@ -537,6 +538,72 @@ def check_taskrun_lifecycle_backend_tests(root: Path, *, timeout: float) -> Foun
     )
 
 
+def check_server_account_scope_backend_tests(root: Path, *, timeout: float) -> FoundationCheck:
+    backend_dir = root / "backend"
+    test_file = backend_dir / FR01_TEST_FILE
+    if not test_file.is_file():
+        return warning(
+            "server.accountScopeBackendTests",
+            "FOUNDATION_SERVER_ACCOUNT_SCOPE_TESTS_MISSING",
+            "Server/account/channel isolation is tracked but does not yet have dedicated backend proof.",
+            risk_id="FR-01",
+            priority="P0",
+            details={
+                "expectedTestFile": str(test_file),
+                "requiredEvidence": [
+                    "account owns or joins a Server through membership",
+                    "active Server is validated against account membership",
+                    "private channel read/write rejects non-members",
+                    "Computer and Agent creation are scoped to the selected Server",
+                ],
+                "relatedTask": "06-29-06-29-initial-release-server-account-membership-foundation",
+            },
+        )
+    command = [str(backend_python(root)), "-m", "pytest", FR01_TEST_FILE, "-q"]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=backend_dir,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return failed(
+            "server.accountScopeBackendTests",
+            "FOUNDATION_SERVER_ACCOUNT_SCOPE_TESTS_UNRUNNABLE",
+            "Server/account/channel isolation backend tests could not be run.",
+            risk_id="FR-01",
+            priority="P0",
+            details={"error": str(exc), "command": command},
+        )
+    output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
+    details = {
+        "command": command,
+        "exitCode": completed.returncode,
+        "testFile": FR01_TEST_FILE,
+    }
+    if output:
+        details["outputTail"] = output[-4000:]
+    if completed.returncode == 0:
+        return passed(
+            "server.accountScopeBackendTests",
+            "Server/account membership and channel isolation backend tests passed.",
+            risk_id="FR-01",
+            priority="P0",
+            details=details,
+        )
+    return failed(
+        "server.accountScopeBackendTests",
+        "FOUNDATION_SERVER_ACCOUNT_SCOPE_TESTS_FAILED",
+        "Server/account/channel isolation backend tests failed.",
+        risk_id="FR-01",
+        priority="P0",
+        details=details,
+    )
+
+
 def check_backup_restore_drill_plan(root: Path) -> FoundationCheck:
     path = root / "scripts" / "postgres_backup_restore_drill.py"
     if not path.is_file():
@@ -656,6 +723,7 @@ def run_foundation_gate(
         check_backup_restore_drill_plan(resolved_root),
     ]
     if include_backend_tests:
+        checks.append(check_server_account_scope_backend_tests(resolved_root, timeout=max(timeout, 30.0)))
         checks.append(check_daemon_identity_backend_tests(resolved_root, timeout=max(timeout, 30.0)))
         checks.append(check_taskrun_lifecycle_backend_tests(resolved_root, timeout=max(timeout, 30.0)))
     _append_preflight_checks(checks, root=resolved_root, env_file=env_file, include_runtime=include_runtime)

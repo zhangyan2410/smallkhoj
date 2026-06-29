@@ -93,6 +93,7 @@ class FoundationGateTests(unittest.TestCase):
             self.assertFalse(report.ready)
             by_name = {check.name: check for check in report.checks}
             self.assertEqual(by_name["foundation.riskRegister"].status, "passed")
+            self.assertEqual(by_name["foundation.riskRegister"].risk_id, "FOUNDATION")
             self.assertEqual(by_name["daemon.commandShape"].status, "passed")
             self.assertEqual(by_name["daemon.distributionArtifact"].status, "passed")
             self.assertEqual(by_name["database.backupRestoreDrill"].status, "warning")
@@ -172,6 +173,7 @@ class FoundationGateTests(unittest.TestCase):
             report = gate.run_foundation_gate(root=root, base_url=base_url, allow_http=True, timeout=2)
 
             by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["risk.FR-01.coverage"].status, "blocked")
             self.assertEqual(by_name["risk.FR-03.coverage"].status, "blocked")
             self.assertEqual(by_name["risk.FR-05.coverage"].status, "blocked")
             self.assertEqual(by_name["database.backupRestoreDrill"].status, "warning")
@@ -236,6 +238,84 @@ class FoundationGateTests(unittest.TestCase):
             by_name = {check.name: check for check in report.checks}
             self.assertEqual(by_name["database.backupRestoreDrill"].status, "blocked")
             self.assertEqual(by_name["database.backupRestoreDrill"].risk_id, "FR-07")
+
+    def test_missing_server_account_scope_tests_warn_fr01(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+
+            def fake_run(command, **kwargs):
+                return type(
+                    "Completed",
+                    (),
+                    {
+                        "returncode": 0,
+                        "stdout": "target tests passed",
+                        "stderr": "",
+                    },
+                )()
+
+            original_run = gate.subprocess.run
+            try:
+                gate.subprocess.run = fake_run
+                report = gate.run_foundation_gate(
+                    root=root,
+                    base_url=base_url,
+                    allow_http=True,
+                    timeout=2,
+                    include_backend_tests=True,
+                )
+            finally:
+                gate.subprocess.run = original_run
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["server.accountScopeBackendTests"].status, "warning")
+            self.assertEqual(by_name["server.accountScopeBackendTests"].risk_id, "FR-01")
+            self.assertNotIn("risk.FR-01.coverage", by_name)
+            self.assertFalse(report.ready)
+            self.assertEqual(gate.exit_code_for(report, strict_warnings=False), 2)
+
+    def test_server_account_scope_tests_can_cover_fr01(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            write(root / "backend" / "tests" / "test_server_account_membership.py", """
+                def test_placeholder():
+                    assert True
+            """)
+
+            observed = {"commands": []}
+
+            def fake_run(command, **kwargs):
+                observed["commands"].append(command)
+                return type(
+                    "Completed",
+                    (),
+                    {
+                        "returncode": 0,
+                        "stdout": "1 passed",
+                        "stderr": "",
+                    },
+                )()
+
+            original_run = gate.subprocess.run
+            try:
+                gate.subprocess.run = fake_run
+                report = gate.run_foundation_gate(
+                    root=root,
+                    base_url=base_url,
+                    allow_http=True,
+                    timeout=2,
+                    include_backend_tests=True,
+                )
+            finally:
+                gate.subprocess.run = original_run
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["server.accountScopeBackendTests"].status, "passed")
+            self.assertEqual(by_name["server.accountScopeBackendTests"].risk_id, "FR-01")
+            self.assertNotIn("risk.FR-01.coverage", by_name)
+            self.assertTrue(any("tests/test_server_account_membership.py" in command for command in observed["commands"]))
 
     def test_backend_daemon_identity_tests_can_cover_fr03(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
