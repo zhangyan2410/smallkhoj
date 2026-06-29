@@ -58,7 +58,7 @@ The release should not be declared ready just because one happy-path integration
 - [ ] Daemon WebSocket validation proves public deployment routes `/internal/agent-api/ws` correctly and rejects unauthenticated upgrades.
 - [ ] Daemon reconnect validation proves heartbeat, lease, offline transition, and event cursor behavior after restart.
 - [ ] Agent/runtime validation proves selected work goes to the intended Computer/runtime and non-target runtimes stay idle.
-- [ ] TaskRun validation proves queued/running/failed/complete states and evidence are visible to an operator.
+- [x] TaskRun validation proves queued/running/failed/complete states and evidence are visible to an operator.
 - [ ] Deployment validation proves backend, frontend, Postgres, Caddy, API, browser, and daemon URL shapes work under the chosen public URL strategy.
 - [ ] Capacity validation records resource usage during realistic foundation activity, not only idle smoke.
 - [ ] Backup/restore validation proves the database can be restored into a clean environment or records a release-blocking gap.

@@ -40,6 +40,14 @@ FR03_BACKEND_TESTS = (
     "tests/test_daemon_control.py::test_daemon_connect_reuses_offline_same_name_computer_when_machine_id_changed",
     "tests/test_daemon_control.py::test_daemon_connect_rejects_active_same_name_computer_when_machine_id_changed",
 )
+FR05_BACKEND_TESTS = (
+    "tests/test_task_runs.py::test_agent_assignment_creates_queued_task_run_with_independent_context_session",
+    "tests/test_task_runs.py::test_update_task_run_lifecycle_marks_running_with_context_usage",
+    "tests/test_task_runs.py::test_update_task_run_lifecycle_marks_completed_with_token_and_output_evidence",
+    "tests/test_task_runs.py::test_serialize_task_run_uses_public_camel_case_contract",
+    "tests/test_task_runs.py::test_serialize_completed_task_run_classifies_missing_evidence",
+    "tests/test_task_runs.py::test_serialize_running_task_run_surfaces_pending_result_staleness",
+)
 
 
 @dataclass(frozen=True)
@@ -461,6 +469,69 @@ def check_daemon_identity_backend_tests(root: Path, *, timeout: float) -> Founda
     )
 
 
+def check_taskrun_lifecycle_backend_tests(root: Path, *, timeout: float) -> FoundationCheck:
+    backend_dir = root / "backend"
+    test_file = backend_dir / "tests" / "test_task_runs.py"
+    if not test_file.is_file():
+        return failed(
+            "taskrun.lifecycleBackendTests",
+            "FOUNDATION_TASKRUN_TEST_FILE_MISSING",
+            "TaskRun lifecycle/evidence backend test file is missing.",
+            risk_id="FR-05",
+            priority="P0",
+            details={"path": str(test_file)},
+        )
+    command = [
+        str(backend_python(root)),
+        "-m",
+        "pytest",
+        *FR05_BACKEND_TESTS,
+        "-q",
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=backend_dir,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return failed(
+            "taskrun.lifecycleBackendTests",
+            "FOUNDATION_TASKRUN_TESTS_UNRUNNABLE",
+            "TaskRun lifecycle/evidence backend tests could not be run.",
+            risk_id="FR-05",
+            priority="P0",
+            details={"error": str(exc), "command": command},
+        )
+    output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
+    details = {
+        "command": command,
+        "exitCode": completed.returncode,
+        "tests": list(FR05_BACKEND_TESTS),
+    }
+    if output:
+        details["outputTail"] = output[-4000:]
+    if completed.returncode == 0:
+        return passed(
+            "taskrun.lifecycleBackendTests",
+            "TaskRun creation, lifecycle status, and evidence serialization backend tests passed.",
+            risk_id="FR-05",
+            priority="P0",
+            details=details,
+        )
+    return failed(
+        "taskrun.lifecycleBackendTests",
+        "FOUNDATION_TASKRUN_TESTS_FAILED",
+        "TaskRun lifecycle/evidence backend tests failed.",
+        risk_id="FR-05",
+        priority="P0",
+        details=details,
+    )
+
+
 def _append_preflight_checks(
     checks: list[FoundationCheck],
     *,
@@ -523,6 +594,7 @@ def run_foundation_gate(
     ]
     if include_backend_tests:
         checks.append(check_daemon_identity_backend_tests(resolved_root, timeout=max(timeout, 30.0)))
+        checks.append(check_taskrun_lifecycle_backend_tests(resolved_root, timeout=max(timeout, 30.0)))
     _append_preflight_checks(checks, root=resolved_root, env_file=env_file, include_runtime=include_runtime)
     _append_smoke_checks(checks, base_url=base_url, allow_http=allow_http, timeout=timeout)
     if require_all_p0:

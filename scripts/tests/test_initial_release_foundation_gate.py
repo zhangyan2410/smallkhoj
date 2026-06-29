@@ -45,6 +45,10 @@ def make_foundation_repo(root: Path) -> None:
         def test_placeholder():
             assert True
     """)
+    write(root / "backend" / "tests" / "test_task_runs.py", """
+        def test_placeholder():
+            assert True
+    """)
     task_dir = root / ".trellis" / "tasks" / "06-29-06-29-initial-release-foundation-reliability-risk-gates"
     task_dir.mkdir(parents=True, exist_ok=True)
     write(task_dir / "risk-register.md", """
@@ -211,10 +215,10 @@ class FoundationGateTests(unittest.TestCase):
             root = Path(tmp)
             make_foundation_repo(root)
 
-            observed = {}
+            observed = {"commands": []}
 
             def fake_run(command, **kwargs):
-                observed["command"] = command
+                observed["commands"].append(command)
                 return type(
                     "Completed",
                     (),
@@ -242,7 +246,49 @@ class FoundationGateTests(unittest.TestCase):
             self.assertEqual(by_name["daemon.identityBackendTests"].status, "passed")
             self.assertEqual(by_name["daemon.identityBackendTests"].risk_id, "FR-03")
             self.assertNotIn("risk.FR-03.coverage", by_name)
-            self.assertIn("tests/test_daemon_control.py::test_daemon_connect_reuses_offline_same_name_computer_when_machine_id_changed", observed["command"])
+            self.assertTrue(
+                any(
+                    "tests/test_daemon_control.py::test_daemon_connect_reuses_offline_same_name_computer_when_machine_id_changed" in command
+                    for command in observed["commands"]
+                )
+            )
+
+    def test_backend_taskrun_tests_can_cover_fr05(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            commands = []
+
+            def fake_run(command, **kwargs):
+                commands.append(command)
+                return type(
+                    "Completed",
+                    (),
+                    {
+                        "returncode": 0,
+                        "stdout": "tests passed",
+                        "stderr": "",
+                    },
+                )()
+
+            original_run = gate.subprocess.run
+            try:
+                gate.subprocess.run = fake_run
+                report = gate.run_foundation_gate(
+                    root=root,
+                    base_url=base_url,
+                    allow_http=True,
+                    timeout=2,
+                    include_backend_tests=True,
+                )
+            finally:
+                gate.subprocess.run = original_run
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["taskrun.lifecycleBackendTests"].status, "passed")
+            self.assertEqual(by_name["taskrun.lifecycleBackendTests"].risk_id, "FR-05")
+            self.assertNotIn("risk.FR-05.coverage", by_name)
+            self.assertTrue(any("tests/test_task_runs.py::test_serialize_completed_task_run_classifies_missing_evidence" in command for command in commands))
 
 
 if __name__ == "__main__":

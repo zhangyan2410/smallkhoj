@@ -8,7 +8,7 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 | FR-02 | P0 | Product daemon command depends on source checkout | External user cannot connect a Computer without `/Users/code/project/smallkhoj` | `initial_release_foundation_gate.py` `daemon.commandShape` + `daemon.distributionArtifact`; evidence `evidence/FOUNDATION_gate_20260629100145.md` | `06-29-06-29-initial-release-daemon-distribution-versioning` | pass |
 | FR-03 | P0 | Duplicate Computer identity | Same physical machine creates multiple Computers or connect fails with stale offline record | `initial_release_foundation_gate.py` `daemon.identityBackendTests`; evidence `evidence/FOUNDATION_gate_20260629100629.md` | `06-28-initial-release-daemon-single-local-computer-identity` | pass |
 | FR-04 | P0 | Daemon WebSocket production route broken | Computer connects but cannot receive control events | `initial_release_foundation_gate.py` `smoke.ws.daemonAuth`; evidence `evidence/FOUNDATION_gate_20260629095157.md` | `06-28-initial-release-daemon-websocket-deploy-smoke` | pass |
-| FR-05 | P0 | TaskRun accepted but not executable/observable | Work item appears queued forever or fails without evidence | Local API-created TaskRun delivered to daemon/runtime; UI/API evidence visible | `06-25-taskrun-config-templates` / initial release parent | blocked |
+| FR-05 | P0 | TaskRun accepted but not executable/observable | Work item appears queued forever or fails without evidence | `initial_release_foundation_gate.py` `taskrun.lifecycleBackendTests`; evidence `evidence/FOUNDATION_gate_20260629100946.md` | `06-25-taskrun-config-templates` / initial release parent | pass |
 | FR-06 | P0 | Deployment only works from local dev assumptions | Public URL uses localhost API/WS, CORS fails, Caddy misses WS upgrade | `initial_release_foundation_gate.py` repo preflight + public smoke; evidence `evidence/FOUNDATION_gate_20260629095157.md` | production deployment tasks | pass |
 | FR-07 | P0 | No backup/restore confidence | Bad deploy or DB issue loses release data | Postgres backup and restore drill into clean DB/staging | missing child task | blocked |
 | FR-08 | P0 | Secrets/config leak or partial prod env | Real secrets printed, committed, or app starts with placeholders | `initial_release_foundation_gate.py` static no-secret guardrails; evidence `evidence/FOUNDATION_gate_20260629095636.md` | production env validation tasks | pass |
@@ -22,10 +22,10 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 
 ## Current Release Decision
 
-Not ready. Latest coherent gate run on 2026-06-29 produced 0 failed P0 risks and 2 blocked P0 risks.
+Not ready. Latest coherent gate run on 2026-06-29 produced 0 failed P0 risks and 1 blocked P0 risk.
 
-- Blocked / no executable gate wired yet: FR-05, FR-07.
-- Passing evidence exists for FR-02, FR-03, FR-04, FR-06, and FR-08.
+- Blocked / no executable gate wired yet: FR-07.
+- Passing evidence exists for FR-02, FR-03, FR-04, FR-05, FR-06, and FR-08.
 - FR-01 is only partially covered by the risk-register existence check; real account/server access tests remain required.
 
 ## Minimum Recommended P0 Blockers
