@@ -35,25 +35,28 @@ This is release-critical because the current generated command can only work on 
 ## Acceptance Criteria
 
 - [x] `/computers` or equivalent onboarding UI no longer displays an absolute development-path daemon command.
-- [ ] A fresh machine without a SmallKhoj repository checkout can install or download the daemon and run the generated connect command.
-- [ ] The daemon can report `smallkhoj-daemon --version`, and that version matches the release artifact metadata.
-- [ ] Backend Computer records and UI show the connected daemon version from the packaged daemon.
-- [ ] Backend connect/register/heartbeat has a minimum-version or compatibility check, or the task explicitly records why it is deferred.
-- [ ] Reconnect command uses the installed packaged daemon and the selected Server URL.
-- [ ] Connect commands still expose only one-time connect tickets, not durable machine tokens.
+- [x] A fresh machine without a SmallKhoj repository checkout can install or download the daemon and run the generated connect command.
+- [x] The daemon can report `smallkhoj-daemon --version`, and that version matches the release artifact metadata.
+- [x] Backend Computer records and UI show the connected daemon version from the packaged daemon.
+- [x] Backend connect/register/heartbeat has a minimum-version or compatibility check, or the task explicitly records why it is deferred.
+- [x] Reconnect command uses the installed packaged daemon and the selected Server URL.
+- [x] Connect commands still expose only one-time connect tickets, not durable machine tokens.
 - [x] Artifact generation is covered by a repeatable script or CI-ready command.
 - [x] macOS arm64 artifact is produced or the task records a concrete blocker.
-- [ ] Release docs include install, connect, reconnect, upgrade, rollback, and troubleshooting instructions.
-- [ ] Real validation covers install/connect from outside the repository checkout path.
-- [ ] Existing developer workflow remains available for local development, but it is not the product-facing command in production.
+- [x] Release docs include install, connect, reconnect, upgrade, rollback, and troubleshooting instructions.
+- [x] Real validation covers install/connect from outside the repository checkout path.
+- [x] Default daemon runtime workspaces are separated by Server and Computer identity, not by the shell cwd used to run `connect`.
+- [x] Existing developer workflow remains available for local development, but it is not the product-facing command in production.
 
 ## Current Evidence
 
-- `backend/routers/public_api.py` currently builds connect/start commands from `DEFAULT_DAEMON_LAUNCHER = Path(__file__).resolve().parents[2] / "smallkhoj-daemon"`.
-- The root `smallkhoj-daemon` wrapper derives `DAEMON_DIR="$ROOT_DIR/agent/daemon/aaa-daemon"`, so it assumes a repository checkout.
-- The wrapper runs `npm install` and `npm run build` when the daemon build is missing, and also attempts a build on every run. That is acceptable for development but not for a downloaded user daemon.
-- `agent/daemon/aaa-daemon/package.json` has `version: 0.2.0`, while the wrapper help prints `smallkhoj-daemon 0.1.0`. Version ownership is currently split.
-- The older `.trellis/tasks/06-09-daemon-packaged-onboarding/` task treated the root wrapper as packaged onboarding. That is no longer enough for the initial release.
+- `backend/routers/public_api.py` generates installed-CLI commands: `smallkhoj-daemon connect --token ... --server ...`.
+- `backend/routers/public_api.py` returns `daemonInstall.installCommand` and `downloadBaseUrl`, deriving `/downloads/smallkhoj-daemon` from the public Server URL or `DAEMON_DOWNLOAD_BASE_URL`.
+- `scripts/build_daemon_distribution.py` produces `smallkhoj-daemon-v<version>-<platform>.tar.gz`, `.sha256`, `.manifest.json`, and `install.sh`.
+- `agent/daemon/aaa-daemon/src/version.ts` reads the daemon version from package metadata; CLI `--version`, connect/register/heartbeat, MCP bridge, and daemon hello use that shared value.
+- `backend/routers/agent_api.py` enforces `MINIMUM_DAEMON_VERSION` on connect/register/heartbeat and returns `426` for unsupported daemon versions before state mutation.
+- `agent/daemon/aaa-daemon/src/daemon/daemon.ts` defaults packaged daemon workspace files to `~/.smallkhoj/daemon/workspaces` and derives dynamic runtime cwd as `.slock-runtimes/<serverId>/<computerId-or-machineId>/<workspaceId>`.
+- Real validation evidence lives in `evidence/daemon-distribution-validation.md`; browser screenshot evidence is `evidence/daemon-install-command-ui.png`.
 
 ## Notes
 

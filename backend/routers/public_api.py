@@ -94,6 +94,7 @@ logger = logging.getLogger(__name__)
 
 PUBLIC_API_KEY = "sk_public_local"
 DAEMON_CLI_COMMAND = "smallkhoj-daemon"
+DAEMON_DOWNLOAD_PATH = "/downloads/smallkhoj-daemon"
 CONNECT_TICKET_TTL_SECONDS = 300
 DEFAULT_SERVER_ID = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
 DEFAULT_SERVER_NAME = "Slock Server"
@@ -164,6 +165,27 @@ def _computer_connection_command(token: str, server_url: str) -> str:
             shlex.quote(server_url),
         ]
     )
+
+
+def _daemon_download_base_url(server_url: str) -> str:
+    configured = settings.daemon_download_base_url.strip()
+    if configured:
+        return configured.rstrip("/")
+    return f"{server_url.rstrip('/')}{DAEMON_DOWNLOAD_PATH}"
+
+
+def _daemon_install_metadata(server_url: str) -> dict[str, str]:
+    download_base_url = _daemon_download_base_url(server_url)
+    install_script_url = f"{download_base_url}/install.sh"
+    return {
+        "commandName": DAEMON_CLI_COMMAND,
+        "downloadBaseUrl": download_base_url,
+        "installScriptUrl": install_script_url,
+        "installCommand": (
+            f"curl -fsSL {shlex.quote(install_script_url)} "
+            f"| SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL={shlex.quote(download_base_url)} bash"
+        ),
+    }
 
 
 def _computer_connect_command(connect_token: str, server_url: str) -> str:
@@ -3302,6 +3324,7 @@ async def generate_computer_connect_command(
     return {
         "connectToken": token,
         "command": _computer_connect_command(token, server_url),
+        "daemonInstall": _daemon_install_metadata(server_url),
         "expiresAt": expires_at.isoformat(),
     }
 
@@ -3344,6 +3367,7 @@ async def generate_computer_reconnect_command(
         "computerId": str(computer.id),
         "name": computer.name,
         "command": _computer_connect_command(token, server_url),
+        "daemonInstall": _daemon_install_metadata(server_url),
         "expiresAt": expires_at.isoformat(),
     }
 

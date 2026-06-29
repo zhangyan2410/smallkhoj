@@ -578,6 +578,77 @@ curl -I https://smallkhoj.example.com/docs
 curl https://smallkhoj.example.com/openapi.json
 ```
 
+## Daemon Distribution
+
+Build a versioned daemon artifact from the release checkout:
+
+```bash
+python3 scripts/build_daemon_distribution.py \
+  --output-dir ./release-artifacts/smallkhoj-daemon \
+  --platform darwin-arm64 \
+  --json
+```
+
+Upload every generated file in `release-artifacts/smallkhoj-daemon/` to the same public base path, for example:
+
+```text
+https://smallkhoj.example.com/downloads/smallkhoj-daemon/
+```
+
+The directory must contain:
+
+```text
+install.sh
+smallkhoj-daemon-v<version>-darwin-arm64.tar.gz
+smallkhoj-daemon-v<version>-darwin-arm64.tar.gz.sha256
+smallkhoj-daemon-v<version>-darwin-arm64.tar.gz.manifest.json
+```
+
+Set backend deployment variables so generated onboarding metadata is public-domain aware:
+
+```bash
+MINIMUM_DAEMON_VERSION=0.2.0
+DAEMON_DOWNLOAD_BASE_URL=https://smallkhoj.example.com/downloads/smallkhoj-daemon
+```
+
+Install on a Mac mini or other supported macOS arm64 machine without a repository checkout:
+
+```bash
+curl -fsSL https://smallkhoj.example.com/downloads/smallkhoj-daemon/install.sh \
+  | SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL=https://smallkhoj.example.com/downloads/smallkhoj-daemon bash
+
+export PATH="$HOME/.smallkhoj/bin:$PATH"
+smallkhoj-daemon --version
+```
+
+Connect with a one-time ticket from the product UI/API:
+
+```bash
+smallkhoj-daemon connect --token <connect-token> --server https://smallkhoj.example.com
+```
+
+When `--workspace` is omitted, the installed daemon stores managed runtime workspaces under `~/.smallkhoj/daemon/workspaces/.slock-runtimes/<serverId>/<computerId-or-machineId>/<workspaceId>`. Use `SMALLKHOJ_DAEMON_WORKSPACE_ROOT` only when intentionally placing those runtime files on another disk.
+
+Reconnect uses the same installed CLI and a fresh one-time reconnect ticket:
+
+```bash
+smallkhoj-daemon connect --token <reconnect-token> --server https://smallkhoj.example.com
+```
+
+Upgrade by uploading a newly built versioned artifact and rerunning the install command. The installer replaces the `~/.smallkhoj/bin/smallkhoj-daemon` launcher to point at the new version under `~/.smallkhoj/daemon/versions/`. Restart any running daemon after upgrade so register/heartbeat reports the new version.
+
+Rollback by republishing or retaining the previous artifact directory, rerunning its `install.sh`, then restarting the daemon. Keep at least the previous known-good daemon artifact and checksum until the release is accepted.
+
+Troubleshooting:
+
+- `SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL is required`: run the install command exactly as shown above or export that variable before `bash install.sh`.
+- checksum verification fails: re-upload the `.tar.gz` and `.sha256`/manifest from the same build output; do not mix files from different builds.
+- `smallkhoj-daemon: command not found`: add `~/.smallkhoj/bin` to `PATH` or run `~/.smallkhoj/bin/smallkhoj-daemon`.
+- connect returns `426 Unsupported daemon version`: install the current artifact or lower `MINIMUM_DAEMON_VERSION` only as an explicit release rollback decision.
+- connect returns `409 Computer already has an active daemon`: stop the existing daemon or wait for its backend lease to expire before reconnecting.
+- two connected Computers appear on the same host: verify their heartbeat workspace `cwd` values differ by the `<computerId-or-machineId>` path segment before starting live runtimes.
+- WebSocket fails after connect: verify Caddy routes `/internal/*` and run `python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --json`.
+
 Then validate daemon URL shape with the public server URL:
 
 ```bash

@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DAEMON_DIR="$ROOT_DIR/agent/daemon/aaa-daemon"
+DAEMON_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DAEMON_DIR/package.json" 2>/dev/null | head -n 1)"
+DAEMON_VERSION="${DAEMON_VERSION:-0.0.0-dev}"
 SERVER_URL="http://localhost:8000"
 CONNECT_TOKEN=""
 MACHINE_TOKEN=""
@@ -57,8 +59,8 @@ guard_existing_daemon() {
 }
 
 usage() {
-  cat <<'USAGE'
-smallkhoj-daemon 0.1.0
+  cat <<USAGE
+smallkhoj-daemon ${DAEMON_VERSION}
 
 Usage:
   smallkhoj-daemon connect --token sk_connect_... [--server http://localhost:8000]
@@ -71,7 +73,7 @@ USAGE
 }
 
 if [[ "${1:-}" == "--version" || "${1:-}" == "version" ]]; then
-  echo "smallkhoj-daemon 0.1.0"
+  echo "$DAEMON_VERSION"
   exit 0
 fi
 

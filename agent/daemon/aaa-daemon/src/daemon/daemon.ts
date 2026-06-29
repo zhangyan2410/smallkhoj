@@ -38,6 +38,7 @@ import {
   resolveRuntimeProviderLaunch,
   type RuntimeProviderInventory,
 } from '../runtime/runtime-provider.js';
+import { DAEMON_VERSION } from '../version.js';
 
 interface LogEntry {
   timestamp: string;
@@ -182,9 +183,32 @@ interface RuntimeRecord {
 
 type DaemonRuntimeImplementation = 'claude_code' | 'codex' | 'codex_cli';
 
-function workspacePathSegment(value: string | undefined, fallback: string): string {
+export function workspacePathSegment(value: string | undefined, fallback: string): string {
   const segment = (value || fallback).trim().replace(/[^A-Za-z0-9_.-]/g, '_');
   return segment || fallback;
+}
+
+export function defaultDaemonWorkspaceRoot(env: NodeJS.ProcessEnv = process.env): string {
+  const explicitRoot = env.SMALLKHOJ_DAEMON_WORKSPACE_ROOT?.trim();
+  if (explicitRoot) return explicitRoot;
+  const daemonHome = env.SMALLKHOJ_DAEMON_HOME?.trim() || join(homedir(), '.smallkhoj', 'daemon');
+  return join(daemonHome, 'workspaces');
+}
+
+export function daemonRuntimeWorkspacePath(
+  basePath: string,
+  options: {
+    serverId?: string;
+    computerId?: string;
+    machineId?: string;
+    workspaceId?: string;
+    agentId?: string;
+  },
+): string {
+  const serverSegment = workspacePathSegment(options.serverId, 'unknown-server');
+  const computerSegment = workspacePathSegment(options.computerId || options.machineId, 'unknown-computer');
+  const workspaceSegment = workspacePathSegment(options.workspaceId || options.agentId, 'unknown-workspace');
+  return join(basePath, '.slock-runtimes', serverSegment, computerSegment, workspaceSegment);
 }
 
 export class DaemonCore extends EventEmitter {
@@ -452,8 +476,8 @@ export class DaemonCore extends EventEmitter {
       return;
     }
 
-    console.log('[Daemon] Starting aaa-daemon v0.2.0...');
-    this.log('Starting aaa-daemon v0.2.0', 'info');
+    console.log(`[Daemon] Starting aaa-daemon v${DAEMON_VERSION}...`);
+    this.log(`Starting aaa-daemon v${DAEMON_VERSION}`, 'info');
     this.stopping = false;
 
     // 1. Load credential
@@ -616,6 +640,8 @@ export class DaemonCore extends EventEmitter {
         return {
           agentId: data.agent_id || data.agentId || this.config.agentId,
           serverId: data.server_id || data.serverId || 'unknown',
+          computerId: data.computer_id || data.computerId,
+          machineId: data.machine_id || data.machineId,
           token: data.token || data.apiKey || '',
           serverUrl: data.server_url || data.serverUrl || this.config.serverUrl,
           wsUrl: data.ws_url || data.wsUrl || this.config.wsUrl,
@@ -629,6 +655,8 @@ export class DaemonCore extends EventEmitter {
     return {
       agentId: this.config.agentId || process.env.SLOCK_AGENT_ID || 'prototype-agent',
       serverId: process.env.SLOCK_SERVER_ID || 'prototype',
+      computerId: process.env.SLOCK_COMPUTER_ID,
+      machineId: process.env.SLOCK_MACHINE_ID,
       token: process.env.SLOCK_AGENT_TOKEN || process.env.ANTHROPIC_AUTH_TOKEN || 'prototype-token',
       serverUrl: this.config.serverUrl,
       wsUrl: this.config.wsUrl,
@@ -672,7 +700,7 @@ export class DaemonCore extends EventEmitter {
         machineId,
         name: hostname(),
         os: `${platform()} ${release()} ${arch()}`,
-        daemonVersion: '0.2.0',
+        daemonVersion: DAEMON_VERSION,
         status: 'online',
         detectedRuntimes: detectedRuntimesForInventory(this.config, this.runtimeProviderInventory),
       }),
@@ -684,7 +712,7 @@ export class DaemonCore extends EventEmitter {
     const data = await response.json() as {
       daemonId?: string;
       machineToken?: string;
-      computer?: { serverId?: string };
+      computer?: { id?: string; serverId?: string; machineId?: string };
     };
     if (!data.machineToken) {
       throw new Error('Daemon connect did not return a machine token');
@@ -693,6 +721,8 @@ export class DaemonCore extends EventEmitter {
     return {
       agentId: this.config.agentId || process.env.SLOCK_AGENT_ID || '',
       serverId: data.computer?.serverId || process.env.SLOCK_SERVER_ID || 'unknown',
+      computerId: data.computer?.id,
+      machineId: data.computer?.machineId || machineId,
       token: data.machineToken,
       serverUrl,
       wsUrl: this.config.wsUrl,
@@ -1281,13 +1311,17 @@ export class DaemonCore extends EventEmitter {
   }
 
   private defaultRuntimeWorkspacePath(agentId: string, workspaceId?: string): string {
-    const basePath = this.config.workspacePath ?? process.cwd();
+    const basePath = this.config.workspacePath ?? defaultDaemonWorkspaceRoot();
     if (this.credential?.agentId === agentId && this.runtimes.size === 0) {
       return basePath;
     }
-    const serverSegment = workspacePathSegment(this.credential?.serverId, 'unknown-server');
-    const workspaceSegment = workspacePathSegment(workspaceId || agentId, 'unknown-workspace');
-    return join(basePath, '.slock-runtimes', serverSegment, workspaceSegment);
+    return daemonRuntimeWorkspacePath(basePath, {
+      serverId: this.credential?.serverId,
+      computerId: this.credential?.computerId || process.env.SLOCK_COMPUTER_ID,
+      machineId: this.credential?.machineId || this.machineId || process.env.SLOCK_MACHINE_ID,
+      workspaceId,
+      agentId,
+    });
   }
 
   async handleControlCommand(command: DaemonControlCommand): Promise<void> {
@@ -1455,7 +1489,7 @@ export class DaemonCore extends EventEmitter {
       daemonId: this.daemonId,
       name: process.env.SLOCK_CONNECT_TOKEN ? undefined : hostname(),
       os: `${platform()} ${release()} ${arch()}`,
-      daemonVersion: '0.2.0',
+      daemonVersion: DAEMON_VERSION,
       status: 'online',
       detectedRuntimes: detectedRuntimesForInventory(this.config, this.runtimeProviderInventory),
       workspaces,

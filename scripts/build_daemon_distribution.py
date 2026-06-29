@@ -30,6 +30,7 @@ class DaemonDistribution:
     checksum_file: Path
     sha256: str
     manifest: Path
+    install_script: Path
 
 
 def normalize_machine(machine: str) -> str:
@@ -151,6 +152,68 @@ def create_archive(staging_dir: Path, output_dir: Path, *, version: str, target_
     return artifact
 
 
+def write_install_script(
+    output_dir: Path,
+    *,
+    artifact_name: str,
+    root_name: str,
+    version: str,
+    target_platform: str,
+    sha256: str,
+) -> Path:
+    install_script = output_dir / "install.sh"
+    install_script.write_text(
+        "\n".join([
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            "",
+            f'ARTIFACT_NAME="{artifact_name}"',
+            f'ARTIFACT_ROOT="{root_name}"',
+            f'DAEMON_VERSION="{version}"',
+            f'DAEMON_PLATFORM="{target_platform}"',
+            f'ARTIFACT_SHA256="{sha256}"',
+            'BASE_URL="${SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL:-}"',
+            'INSTALL_HOME="${SMALLKHOJ_DAEMON_HOME:-${HOME}/.smallkhoj/daemon}"',
+            'BIN_DIR="${SMALLKHOJ_DAEMON_BIN_DIR:-${HOME}/.smallkhoj/bin}"',
+            "",
+            'if [[ -z "$BASE_URL" ]]; then',
+            '  echo "SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL is required, e.g. https://server/downloads/smallkhoj-daemon" >&2',
+            "  exit 2",
+            "fi",
+            "",
+            'TMP_DIR="$(mktemp -d)"',
+            'trap \'rm -rf "$TMP_DIR"\' EXIT',
+            'ARCHIVE_PATH="${TMP_DIR}/${ARTIFACT_NAME}"',
+            "",
+            'curl -fsSL "${BASE_URL%/}/${ARTIFACT_NAME}" -o "$ARCHIVE_PATH"',
+            'if command -v shasum >/dev/null 2>&1; then',
+            '  printf "%s  %s\\n" "$ARTIFACT_SHA256" "$ARCHIVE_PATH" | shasum -a 256 -c - >/dev/null',
+            "else",
+            '  printf "%s  %s\\n" "$ARTIFACT_SHA256" "$ARCHIVE_PATH" | sha256sum -c - >/dev/null',
+            "fi",
+            "",
+            'tar -xzf "$ARCHIVE_PATH" -C "$TMP_DIR"',
+            'VERSION_DIR="${INSTALL_HOME}/versions/v${DAEMON_VERSION}-${DAEMON_PLATFORM}"',
+            'rm -rf "$VERSION_DIR"',
+            'mkdir -p "$VERSION_DIR" "$BIN_DIR"',
+            'cp -R "${TMP_DIR}/${ARTIFACT_ROOT}/." "$VERSION_DIR/"',
+            'cat > "${BIN_DIR}/smallkhoj-daemon" <<EOF',
+            '#!/usr/bin/env bash',
+            'exec "${VERSION_DIR}/smallkhoj-daemon" "\\$@"',
+            'EOF',
+            'chmod +x "${VERSION_DIR}/smallkhoj-daemon"',
+            'chmod +x "${BIN_DIR}/smallkhoj-daemon"',
+            "",
+            'echo "Installed smallkhoj-daemon ${DAEMON_VERSION} (${DAEMON_PLATFORM}) to ${VERSION_DIR}"',
+            'echo "Add ${BIN_DIR} to PATH if smallkhoj-daemon is not found."',
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    install_script.chmod(0o755)
+    return install_script
+
+
 def build_distribution(
     *,
     root: Path,
@@ -187,6 +250,14 @@ def build_distribution(
     digest = sha256_file(artifact)
     checksum = artifact.with_suffix(artifact.suffix + ".sha256")
     checksum.write_text(f"{digest}  {artifact.name}\n", encoding="utf-8")
+    install_script = write_install_script(
+        output_dir.resolve(),
+        artifact_name=artifact.name,
+        root_name=artifact.name.removesuffix(".tar.gz"),
+        version=version,
+        target_platform=platform_value,
+        sha256=digest,
+    )
     manifest = artifact.with_suffix(artifact.suffix + ".manifest.json")
     manifest.write_text(
         json.dumps(
@@ -197,6 +268,7 @@ def build_distribution(
                 "artifact": str(artifact),
                 "sha256": digest,
                 "checksumFile": str(checksum),
+                "installScript": str(install_script),
             },
             ensure_ascii=False,
             indent=2,
@@ -212,6 +284,7 @@ def build_distribution(
         checksum_file=checksum,
         sha256=digest,
         manifest=manifest,
+        install_script=install_script,
     )
 
 
@@ -223,6 +296,7 @@ def report_to_dict(result: DaemonDistribution) -> dict[str, Any]:
         "checksumFile": str(result.checksum_file),
         "sha256": result.sha256,
         "manifest": str(result.manifest),
+        "installScript": str(result.install_script),
     }
 
 

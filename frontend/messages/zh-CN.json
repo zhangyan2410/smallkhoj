@@ -172,6 +172,7 @@
     "generateConnect": "生成连接命令",
     "pendingConnection": "等待连接",
     "waitingFor": "等待 {name}",
+    "installCommand": "安装命令",
     "connectionCommand": "连接命令",
     "expires": "过期时间",
     "connected": "{name} 已连接。",

@@ -51,7 +51,14 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertEqual(result.artifact.name, "smallkhoj-daemon-v0.2.0-darwin-arm64.tar.gz")
             self.assertTrue(result.checksum_file.is_file())
             self.assertTrue(result.manifest.is_file())
+            self.assertTrue(result.install_script.is_file())
             self.assertIn(result.sha256, result.checksum_file.read_text(encoding="utf-8"))
+            install_script = result.install_script.read_text(encoding="utf-8")
+            self.assertIn("SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL", install_script)
+            self.assertIn("smallkhoj-daemon-v0.2.0-darwin-arm64.tar.gz", install_script)
+            self.assertIn(result.sha256, install_script)
+            self.assertIn('exec "${VERSION_DIR}/smallkhoj-daemon" "\\$@"', install_script)
+            self.assertNotIn("ln -sfn", install_script)
 
             with tarfile.open(result.artifact, "r:gz") as tar:
                 names = set(tar.getnames())

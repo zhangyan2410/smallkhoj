@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     debug: bool = True
     backend_cors_origins: str = ""
     auth_bridge_secret: str = ""
+    minimum_daemon_version: str = "0.2.0"
+    daemon_download_base_url: str = ""
 
     database_url: str = "postgresql+asyncpg://smallkhoj:smallkhoj@localhost:5432/smallkhoj"
 

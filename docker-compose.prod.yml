@@ -23,6 +23,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-smallkhoj}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD outside repo}@db:5432/${POSTGRES_DB:-smallkhoj}
       AUTH_BRIDGE_SECRET: ${AUTH_BRIDGE_SECRET:?set AUTH_BRIDGE_SECRET outside repo}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-}
+      MINIMUM_DAEMON_VERSION: ${MINIMUM_DAEMON_VERSION:-0.2.0}
+      DAEMON_DOWNLOAD_BASE_URL: ${DAEMON_DOWNLOAD_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_API_BASE: ${LLM_API_BASE:-https://api.openai.com/v1}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}

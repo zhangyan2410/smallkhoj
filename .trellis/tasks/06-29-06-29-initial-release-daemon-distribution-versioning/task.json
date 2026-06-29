@@ -3,7 +3,7 @@
   "name": "06-29-initial-release-daemon-distribution-versioning",
   "title": "Initial release daemon distribution and versioning",
   "description": "Replace development-path daemon connect commands with a product-grade downloadable, versioned daemon distribution and install/connect/upgrade flow.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

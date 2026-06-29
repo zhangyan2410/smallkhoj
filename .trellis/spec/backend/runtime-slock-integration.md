@@ -158,7 +158,7 @@ Future environment support must validate:
   - Creating an agent member may register its `AgentWorkspace` without immediately starting a runtime when the API request explicitly sets `autoStart:false` or `startRuntime:false`. In that case, store `runtimeDesiredStatus:"stopped"`, keep the workspace `status:"stopped"`, and do not push a `start_runtime` command to the daemon. The default remains autostart for existing callers.
   - each runtime has its own proxy registration, generated `.slock` wrapper directory, token file, workspace path, captured session id, restart timer, stall watchdog, and lifecycle status.
   - dynamic `start_runtime` commands may arrive through `/daemon/register`, `/daemon/heartbeat`, polling `/events`, or `/ws`; all transports must dispatch the same parsed command object.
-  - dynamic runtime workspaces must be isolated. If a command omits `workspacePath`, use a per-Server and per-workspace path under the daemon workspace: `<daemon workspace>/.slock-runtimes/<serverId>/<workspaceId>`. If the backend does not provide `workspaceId`, fall back to the agent id for the final path segment. Never share the daemon root `.slock` wrapper between dynamic agents from different Servers.
+  - dynamic runtime workspaces must be isolated. If a command omits `workspacePath`, use a per-Server, per-Computer, and per-workspace path under the daemon workspace root: `<daemon workspace root>/.slock-runtimes/<serverId>/<computerId-or-machineId>/<workspaceId>`. If the backend does not provide `workspaceId`, fall back to the agent id for the final path segment. Never share the daemon root `.slock` wrapper between dynamic agents from different Servers or different Computers.
   - heartbeat/register workspace payloads for active runtimes use `status:"running"` and include `workspaceId`, `runtime`, `runtimeCommand`, `runtimeModel`, `sessionId`, `cwd`, and `pid` when known.
   - On daemon register/heartbeat, the `workspaces` array is the authoritative list of runtimes currently managed by that daemon process. Any workspace on the same computer that was previously `running`, `active`, or `idle` but is missing from the payload must be treated as stale and re-armed as `pending_start` so the next control response can send `start_runtime` again.
 - Daemon and legacy agent heartbeat endpoints update current-state fields such as `computers.last_heartbeat_at`, `computers.status`, `agent_workspaces.status`, `agent_workspaces.session_id`, and `agent_workspaces.pid`, but must not create high-volume `ActivityLog(kind="workspace_heartbeat")`, heartbeat-like `ActivityLog(kind="custom")`, or `EventRecord(event_type="workspace.heartbeat")` rows. Registration/update events remain valid when a workspace is first registered or explicitly updated. Heartbeat/activity telemetry must never be delivered to runtime as work.
@@ -319,7 +319,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
   - `contextWindow` may arrive through provider-specific `modelUsage.{model}.contextWindow`; prefer non-`total` model entries before aggregate `total`.
 - Daemon launch / lease preflight:
   - daemon WebSocket URLs must include `daemonId`; backend WS activity/acks may renew a computer lease only when the daemon id matches the active lease or the previous lease is expired.
-  - managed daemon starts must resolve the intended project workspace explicitly. A daemon launched from `agent/daemon/aaa-daemon` without `--workspace` can create a misleading package-directory workspace and must be treated as a launch/preflight failure for packaged flows.
+  - packaged daemon starts that omit `--workspace` use the stable default daemon workspace root `~/.smallkhoj/daemon/workspaces` or `SMALLKHOJ_DAEMON_WORKSPACE_ROOT` / `SMALLKHOJ_DAEMON_HOME/workspaces`. Development or custom starts may pass `--workspace`, but runtime paths under that root must still include server and computer segments.
   - runtime warmup must call the generated project wrapper path such as `{workspace}/.slock/slock server info`, not a global `slock` binary on `PATH`.
 - Lifecycle:
   - busy means a child process is running.
@@ -747,18 +747,19 @@ SLOCKMSG
 - `POST /api/v1/computers/connect-command` response:
   - `connectToken: string` with `sk_connect_` prefix
   - `command: string`
+  - `daemonInstall.installCommand: string`
+  - `daemonInstall.downloadBaseUrl: string`
   - `expiresAt: iso datetime`
   - Must not include `computerId`, `apiKey`, or any `sk_machine_...` token.
 - The command must contain:
-  - `cd <absolute repo path>/agent/daemon/aaa-daemon`
-  - `SLOCK_CONNECT_TOKEN=sk_connect_...`
-  - `node dist/cmd/main.js start --foreground`
-  - `--runtime none`
+  - `smallkhoj-daemon connect`
+  - `--token sk_connect_...`
   - `--server ...`
-  - `--ws auto`
-  - `--proxy-port 0`
-  - `--register-daemon`
-  - It must not include `--agent-id` by default and must not reference `@slock-ai/daemon`.
+  - It must not include `--agent-id`, `--register-daemon`, or `--runtime` by default and must not reference `@slock-ai/daemon`.
+- Product-facing connect/reconnect commands must not contain absolute repository checkout paths such as `/Users/code/project/smallkhoj` or `agent/daemon/aaa-daemon`.
+- `daemonInstall.installCommand` must be domain-aware. In production it should point at `https://<public-host>/downloads/smallkhoj-daemon/install.sh` or the configured `DAEMON_DOWNLOAD_BASE_URL`, never an internal Docker hostname or developer localhost URL.
+- The packaged daemon CLI must support `smallkhoj-daemon --version`; the version comes from `agent/daemon/aaa-daemon/package.json` package metadata and is the value reported in connect/register/heartbeat payloads.
+- Backend compatibility checks use `MINIMUM_DAEMON_VERSION`; daemon connect/register/heartbeat with a version below the configured minimum returns `426 Unsupported daemon version` before mutating computer state or consuming a connect ticket.
 - Connect ticket storage:
   - `connect_tickets.token_hash` stores SHA-256 of the full connect token.
   - `connect_tickets.key_prefix` stores `token[:20]` for lookup.
@@ -784,6 +785,8 @@ SLOCKMSG
   - First startup creates a UUID `machineId` under `~/.slock/aaa-daemon/machine-id` unless `AAA_DAEMON_MACHINE_ID_FILE` or `SLOCK_MACHINE_ID_FILE` overrides it.
   - `SLOCK_CONNECT_TOKEN` is used only for `/daemon/connect`.
   - The returned `machineToken` is kept in memory and used for `/daemon/register`, `/daemon/heartbeat`, and agent-facing calls after a user-created agent exists.
+  - The daemon credential should retain the connected `computer.id` and `machineId` from the `/daemon/connect` response when available. Default dynamic runtime cwd generation uses `serverId`, then `computerId` if present, then `machineId` as the computer segment. This keeps two Computer rows on the same physical host from sharing runtime wrapper/token/session files.
+  - Without `--workspace`, product CLI runs use `~/.smallkhoj/daemon/workspaces` as the daemon workspace root. `SMALLKHOJ_DAEMON_WORKSPACE_ROOT` overrides the root directly; `SMALLKHOJ_DAEMON_HOME` changes the parent and appends `workspaces`.
   - Heartbeat interval is 15 seconds; backend lease window is 90 seconds.
   - No `agentId` means no workspace registration and no inbox polling.
   - Product-facing wrappers such as `smallkhoj-daemon` may keep a server-scoped pid lock for diagnostics, but must not automatically terminate an existing daemon before proving their own token is valid. If the same-server lock points at a live process, the wrapper must fail fast with a clear message; stale locks may be removed.
@@ -843,12 +846,15 @@ SLOCKMSG
   - Same-name active computer with a changed `machineId` returns `409` and does not consume the connect ticket.
   - Same online `machineId` returns `409`.
   - Duplicate computer/member names return `409`.
-  - Expired or reused connect tokens return `401`/`409`.
+- Expired or reused connect tokens return `401`/`409`.
+- Daemon version below `MINIMUM_DAEMON_VERSION` returns `426` and does not consume the connect ticket.
 - Daemon tests:
   - `machineId` is generated once and persists across restarts.
   - `--proxy-port 0` starts on an available port.
   - No `--agent-id` means no workspace payload.
   - Heartbeat renews the lease.
+  - packaged `smallkhoj-daemon connect --token ... --server ...` works from outside the repository checkout.
+  - packaged `smallkhoj-daemon --version` matches artifact manifest/package metadata.
   - `smallkhoj-daemon` uses server-scoped locks only as a guard: different server URLs can run together, same-server startup exits without killing the existing daemon, and connect/start modes `exec` the foreground daemon process.
 - Browser E2E:
   - Generated command includes `SLOCK_CONNECT_TOKEN` and excludes `sk_machine_`.
@@ -869,7 +875,7 @@ npx @slock-ai/daemon@latest --server-url http://localhost:8000 --api-key sk_mach
 #### Correct
 
 ```bash
-cd /path/to/smallkhoj/agent/daemon/aaa-daemon && SLOCK_CONNECT_TOKEN=sk_connect_... node dist/cmd/main.js start --foreground --runtime none --server http://localhost:8000 --ws auto --proxy-port 0 --register-daemon
+smallkhoj-daemon connect --token sk_connect_... --server http://localhost:8000
 ```
 
 #### Wrong

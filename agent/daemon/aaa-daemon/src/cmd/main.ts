@@ -12,11 +12,12 @@
  */
 
 import { Command } from 'commander';
-import { DaemonCore } from '../daemon/daemon.js';
+import { DaemonCore, defaultDaemonWorkspaceRoot } from '../daemon/daemon.js';
 import { attach, isDaemonRunning, startDaemon } from '../attach/attach.js';
 import type { DaemonConfig } from '../types.js';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync } from 'fs';
 import { runReadOnlySmoke } from './smoke.js';
+import { DAEMON_VERSION } from '../version.js';
 
 const program = new Command();
 
@@ -40,10 +41,104 @@ function parseRuntimeOption(value: string): DaemonConfig['runtime'] | undefined 
   throw new Error(`Unsupported runtime: ${value}`);
 }
 
+type StartOptions = {
+  foreground?: boolean;
+  config?: string;
+  proxyPort: string;
+  server: string;
+  ws: string;
+  agentId?: string;
+  importSlockRuntime?: string;
+  pidFile: string;
+  logFile?: string;
+  workspace?: string;
+  runtime: string;
+  runtimeCommand?: string;
+  runtimeCommandArg: string[];
+  runtimeModel?: string;
+  runtimeProvider?: string;
+  runtimeResumeSessionId?: string;
+  runtimeRestartOnCrash?: boolean;
+  runtimeStallTimeoutMs?: string;
+  runtimeWarmupTimeoutMs?: string;
+  registerDaemon?: boolean;
+  mcp?: boolean;
+  verbose?: boolean;
+  machineToken?: string;
+  connectToken?: string;
+};
+
+async function runStart(options: StartOptions): Promise<void> {
+  const foreground = options.foreground || Boolean(options.machineToken || options.connectToken);
+
+  // Daemonization: if not foreground, re-spawn as a detached child.
+  if (!foreground) {
+    const { spawn } = await import('child_process');
+    const filteredArgs = process.argv.slice(3).filter((arg) => arg !== '--foreground');
+    const child = spawn(process.execPath, [process.argv[1], 'start', '--foreground', ...filteredArgs], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+    console.log(`[Daemon] Started in background (PID: ${child.pid})`);
+    process.exit(0);
+  }
+
+  if (options.mcp) {
+    process.env.AAA_DAEMON_MCP = '1';
+  }
+  if (options.connectToken) {
+    process.env.SLOCK_CONNECT_TOKEN = options.connectToken;
+    process.env.SLOCK_ALLOW_WRITES = process.env.SLOCK_ALLOW_WRITES || '1';
+  }
+  if (options.machineToken) {
+    process.env.SLOCK_AGENT_TOKEN = options.machineToken;
+    process.env.SLOCK_ALLOW_WRITES = process.env.SLOCK_ALLOW_WRITES || '1';
+  }
+
+  const wsUrl = options.ws === 'auto'
+    ? deriveBackendWebSocketUrl(options.server)
+    : options.ws;
+
+  const config: DaemonConfig = {
+    agentId: options.agentId || process.env.SLOCK_AGENT_ID || '',
+    serverUrl: options.server,
+    wsUrl,
+    credentialPath: options.config || process.env.SLOCK_AGENT_CREDENTIAL || './credential.json',
+    proxyPort: parseInt(options.proxyPort, 10),
+    logLevel: options.verbose ? 'debug' : 'info',
+    pidFile: options.pidFile,
+    importSlockRuntime: options.importSlockRuntime,
+    logFile: options.logFile,
+    workspacePath: options.workspace || defaultDaemonWorkspaceRoot(),
+    runtime: parseRuntimeOption(options.runtime),
+    runtimeCommand: options.runtimeCommand,
+    runtimeCommandArgs: options.runtimeCommandArg.length > 0 ? options.runtimeCommandArg : undefined,
+    runtimeModel: options.runtimeModel,
+    runtimeProvider: options.runtimeProvider,
+    runtimeResumeSessionId: options.runtimeResumeSessionId,
+    runtimeRestartOnCrash: options.runtimeRestartOnCrash === true,
+    runtimeStallTimeoutMs: options.runtimeStallTimeoutMs ? parseInt(options.runtimeStallTimeoutMs, 10) : undefined,
+    runtimeWarmupTimeoutMs: options.runtimeWarmupTimeoutMs ? parseInt(options.runtimeWarmupTimeoutMs, 10) : undefined,
+    daemonRegister: options.registerDaemon === true,
+  };
+
+  const daemon = new DaemonCore(config);
+
+  try {
+    await daemon.start();
+    console.log('[Daemon] Running. Press Ctrl+C to stop.');
+    await new Promise(() => {});
+  } catch (err) {
+    console.error('[Daemon] Failed to start:', (err as Error).message);
+    process.exit(1);
+  }
+}
+
 program
-  .name('aaa-daemon')
-  .description('Minimal Slock Agent Daemon — based on opencan-daemon architecture')
-  .version('0.2.0');
+  .name('smallkhoj-daemon')
+  .description('SmallKhoj Agent Daemon')
+  .version(DAEMON_VERSION);
 
 // ── start ────────────────────────────────────────────────────
 
@@ -59,7 +154,7 @@ program
   .option('--import-slock-runtime <path>', 'Import an existing Slock .slock runtime directory')
   .option('--pid-file <path>', 'PID file path', './aaa-daemon.pid')
   .option('--log-file <path>', 'Log file path')
-  .option('--workspace <path>', 'Workspace path for managed runtime files', process.cwd())
+  .option('--workspace <path>', 'Workspace root for managed runtime files (default: ~/.smallkhoj/daemon/workspaces)')
   .option('--runtime <runtime>', 'Runtime driver to start (none|claude|codex|codex_cli)', 'none')
   .option('--runtime-command <command>', 'Runtime executable command')
   .option('--runtime-command-arg <arg>', 'Runtime executable argument (repeatable)', collect, [])
@@ -70,73 +165,30 @@ program
   .option('--runtime-stall-timeout-ms <ms>', 'Busy runtime inactivity timeout before stall recovery')
   .option('--runtime-warmup-timeout-ms <ms>', 'Startup warmup timeout before degrading runtime to ready')
   .option('--register-daemon', 'Register daemon computer/workspace lifecycle with the backend')
+  .option('--machine-token <token>', 'Machine token returned by a previous daemon connect')
   .option('--mcp', 'Enable MCP stdio bridge')
   .option('-v, --verbose', 'Verbose logging')
-  .action(async (options) => {
-    // Daemonization: if not --foreground, re-spawn as a detached child
-    if (!options.foreground) {
-      const { spawn } = await import('child_process');
+  .action(async (options: StartOptions) => runStart(options));
 
-      // Re-spawn with --foreground flag
-      const args = [...process.argv.slice(2).filter((a) => a !== 'daemon' && !a.startsWith('start')), 'start', '--foreground'];
-      // Replace non-foreground args
-      const filteredArgs = process.argv.slice(3).filter((a) => a !== '--foreground');
-      const child = spawn(process.execPath, [process.argv[1], 'start', '--foreground', ...filteredArgs], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-      console.log(`[Daemon] Started in background (PID: ${child.pid})`);
-      process.exit(0);
-    }
-
-    // Foreground mode
-    if (options.mcp) {
-      process.env.AAA_DAEMON_MCP = '1';
-    }
-
-    const wsUrl = options.ws === 'auto'
-      ? deriveBackendWebSocketUrl(options.server)
-      : options.ws;
-
-    const config: DaemonConfig = {
-      agentId: options.agentId || process.env.SLOCK_AGENT_ID || '',
-      serverUrl: options.server,
-      wsUrl,
-      credentialPath: options.config || process.env.SLOCK_AGENT_CREDENTIAL || './credential.json',
-      proxyPort: parseInt(options.proxyPort, 10),
-      logLevel: options.verbose ? 'debug' : 'info',
-      pidFile: options.pidFile,
-      importSlockRuntime: options.importSlockRuntime,
-      logFile: options.logFile,
-      workspacePath: options.workspace,
-      runtime: parseRuntimeOption(options.runtime),
-      runtimeCommand: options.runtimeCommand,
-      runtimeCommandArgs: options.runtimeCommandArg.length > 0 ? options.runtimeCommandArg : undefined,
-      runtimeModel: options.runtimeModel,
-      runtimeProvider: options.runtimeProvider,
-      runtimeResumeSessionId: options.runtimeResumeSessionId,
-      runtimeRestartOnCrash: options.runtimeRestartOnCrash === true,
-      runtimeStallTimeoutMs: options.runtimeStallTimeoutMs ? parseInt(options.runtimeStallTimeoutMs, 10) : undefined,
-      runtimeWarmupTimeoutMs: options.runtimeWarmupTimeoutMs ? parseInt(options.runtimeWarmupTimeoutMs, 10) : undefined,
-      daemonRegister: options.registerDaemon === true,
-    };
-
-    const daemon = new DaemonCore(config);
-
-    try {
-      await daemon.start();
-
-      // Keep process alive
-      console.log('[Daemon] Running. Press Ctrl+C to stop.');
-
-      // Idle handling: wait forever (signals handle shutdown)
-      await new Promise(() => {}); // never resolves
-    } catch (err) {
-      console.error('[Daemon] Failed to start:', (err as Error).message);
-      process.exit(1);
-    }
-  });
+program
+  .command('connect')
+  .description('Connect this computer to a SmallKhoj server with a one-time ticket')
+  .requiredOption('--token <token>', 'One-time sk_connect_ ticket')
+  .option('-s, --server <url>', 'SmallKhoj server URL', 'http://localhost:8000')
+  .option('-w, --ws <url>', 'WebSocket URL (auto|none|ws://...)', 'auto')
+  .option('-p, --proxy-port <port>', 'HTTP proxy port', '0')
+  .option('--pid-file <path>', 'PID file path', './aaa-daemon.pid')
+  .option('--log-file <path>', 'Log file path')
+  .option('--workspace <path>', 'Workspace root for managed runtime files (default: ~/.smallkhoj/daemon/workspaces)')
+  .option('-v, --verbose', 'Verbose logging')
+  .action(async (options) => runStart({
+    ...options,
+    connectToken: options.token,
+    foreground: true,
+    runtime: 'none',
+    runtimeCommandArg: [],
+    registerDaemon: true,
+  }));
 
 // ── attach ───────────────────────────────────────────────────
 

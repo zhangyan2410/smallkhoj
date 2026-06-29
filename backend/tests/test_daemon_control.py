@@ -260,10 +260,10 @@ def test_runtime_control_command_reuses_start_config_for_restart():
 
 @pytest.mark.asyncio
 async def test_create_public_reminder_requires_explicit_agent(monkeypatch):
-    async def fake_get_server(_db):
-        return SimpleNamespace(id=uuid.uuid4())
+    async def fake_resolve_active_server_context(_db, _request):
+        return SimpleNamespace(server=SimpleNamespace(id=uuid.uuid4()))
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_resolve_active_server_context)
     request = _JsonRequest({"title": "Follow up", "delaySeconds": 60})
 
     with pytest.raises(HTTPException) as exc:
@@ -744,6 +744,41 @@ async def test_daemon_connect_reuses_offline_same_name_computer_when_machine_id_
 
 
 @pytest.mark.asyncio
+async def test_daemon_connect_rejects_version_below_minimum(monkeypatch):
+    token = "sk_connect_old_daemon"
+    server = SimpleNamespace(id=uuid.uuid4())
+    ticket = _connect_ticket(token, server_id=server.id)
+    db = _FakeSession(
+        _ExecuteResult(scalar_rows=[ticket]),
+        _ExecuteResult(scalar_one=server),
+    )
+    monkeypatch.setattr(agent_api.settings, "minimum_daemon_version", "0.2.0")
+
+    with pytest.raises(HTTPException) as exc:
+        await agent_api.connect_daemon(
+            agent_api.DaemonConnectRequest(
+                daemonId="daemon-old",
+                machineId="old-daemon-machine",
+                name="Mac-mini.local",
+                os="darwin",
+                daemonVersion="0.1.9",
+            ),
+            authorization=f"Bearer {token}",
+            db=db,
+        )
+
+    assert exc.value.status_code == 426
+    assert "minimum supported daemon version is 0.2.0" in exc.value.detail
+    assert ticket.consumed_at is None
+
+
+def test_daemon_heartbeat_accepts_version_field_for_compatibility_checks():
+    body = agent_api.DaemonHeartbeatRequest(daemonVersion="0.2.0")
+
+    assert body.daemonVersion == "0.2.0"
+
+
+@pytest.mark.asyncio
 async def test_daemon_connect_rejects_active_same_name_computer_when_machine_id_changed():
     token = "sk_connect_active_same_name"
     server = SimpleNamespace(id=uuid.uuid4())
@@ -769,6 +804,7 @@ async def test_daemon_connect_rejects_active_same_name_computer_when_machine_id_
                 daemonId="daemon-new",
                 machineId="new-local-machine-id",
                 name="Mac-mini.local",
+                daemonVersion="0.2.0",
             ),
             authorization=f"Bearer {token}",
             db=db,
@@ -836,6 +872,7 @@ async def test_daemon_heartbeat_does_not_record_existing_workspace_activity(monk
 
     body = agent_api.DaemonHeartbeatRequest(
         daemonId="daemon-a",
+        daemonVersion="0.2.0",
         status="online",
         workspaces=[agent_api.DaemonWorkspacePayload(workspaceId=str(workspace_id), agentId=str(agent_id))],
     )
@@ -880,6 +917,7 @@ async def test_daemon_heartbeat_records_computer_status_event_on_status_change(m
 
     body = agent_api.DaemonHeartbeatRequest(
         daemonId="daemon-a",
+        daemonVersion="0.2.0",
         status="online",
         workspaces=[],
     )

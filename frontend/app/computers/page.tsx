@@ -33,6 +33,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Panel } from "@/components/ui/panel"
 import { ConnectComputerForm } from "./connect-computer-form"
 import { buildComputerReconnectUrl, shouldShowConnectComputerForm } from "@/lib/computer-navigation"
+import { deriveDaemonInstallCommand } from "@/lib/daemon-install"
 import {
   apiGet,
   API_BASE,
@@ -49,6 +50,13 @@ import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHea
 import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
 
 type TranslationFn = (key: string, values?: Record<string, string | number>) => string
+
+type DaemonInstallMetadata = {
+  commandName: string
+  downloadBaseUrl: string
+  installScriptUrl?: string
+  installCommand: string
+}
 
 function makeComputersCopy(t: TranslationFn) {
   return {
@@ -74,6 +82,7 @@ function makeComputersCopy(t: TranslationFn) {
     lifecycleHelp: t("lifecycleHelp"),
     offlineHelp: t("offlineHelp"),
     reconnectCommand: t("reconnectCommand"),
+    installCommand: t("installCommand"),
     useOn: (name: string) => t("useOn", { name }),
     computerName: t("computerName"),
     expires: t("expires"),
@@ -126,6 +135,7 @@ function parseCredentialCookie(value?: string) {
       expiresAt?: unknown
       mode?: unknown
       computerId?: unknown
+      daemonInstall?: unknown
     }
     if (typeof data.name !== "string" || typeof data.command !== "string" || typeof data.expiresAt !== "string") {
       return null
@@ -136,9 +146,33 @@ function parseCredentialCookie(value?: string) {
       expiresAt: data.expiresAt,
       mode: data.mode === "reconnect" ? "reconnect" : "create",
       computerId: typeof data.computerId === "string" ? data.computerId : null,
+      daemonInstall: parseDaemonInstallMetadata(data.daemonInstall),
     }
   } catch {
     return null
+  }
+}
+
+function parseDaemonInstallMetadata(value: unknown): DaemonInstallMetadata | null {
+  if (!value || typeof value !== "object") return null
+  const data = value as {
+    commandName?: unknown
+    downloadBaseUrl?: unknown
+    installScriptUrl?: unknown
+    installCommand?: unknown
+  }
+  if (
+    typeof data.commandName !== "string" ||
+    typeof data.downloadBaseUrl !== "string" ||
+    typeof data.installCommand !== "string"
+  ) {
+    return null
+  }
+  return {
+    commandName: data.commandName,
+    downloadBaseUrl: data.downloadBaseUrl,
+    installScriptUrl: typeof data.installScriptUrl === "string" ? data.installScriptUrl : undefined,
+    installCommand: data.installCommand,
   }
 }
 
@@ -165,6 +199,7 @@ async function createComputerConnectCommandAction(formData: FormData) {
     name,
     command: data.command,
     expiresAt: data.expiresAt,
+    daemonInstall: parseDaemonInstallMetadata(data.daemonInstall),
     mode: "create",
   }), {
     httpOnly: true,
@@ -201,6 +236,7 @@ async function createComputerReconnectCommandAction(formData: FormData) {
     name: data.name,
     command: data.command,
     expiresAt: data.expiresAt,
+    daemonInstall: parseDaemonInstallMetadata(data.daemonInstall),
     mode: "reconnect",
     computerId: data.computerId,
   }), {
@@ -339,6 +375,7 @@ function ComputerDetail({
   reconnectComputerId?: string | null
   copy: ComputersCopy
 }) {
+  const reconnectInstallCommand = reconnectCredential?.daemonInstall?.installCommand ?? deriveDaemonInstallCommand(reconnectCredential?.command)
   const runningWorkspaces = computer.agentWorkspaces.filter((w) => w.status === "running").length
   const deleteBlockingWorkspaces = computer.agentWorkspaces.filter((w) =>
     ["running", "active", "idle", "busy", "starting", "restarting"].includes(w.status)
@@ -425,6 +462,17 @@ function ComputerDetail({
                 <div className="text-sm font-medium text-foreground">{copy.reconnectCommand}</div>
                 <div className="text-xs text-muted-foreground">{copy.useOn(computer.name)}</div>
               </div>
+              {reconnectInstallCommand && (
+                <>
+                  <div className="text-xs font-medium uppercase text-muted-foreground">{copy.installCommand}</div>
+                  <code
+                    data-testid="daemon-reconnect-install-command"
+                    className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
+                  >
+                    {reconnectInstallCommand}
+                  </code>
+                </>
+              )}
               <code
                 data-testid="reconnect-command"
                 className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"

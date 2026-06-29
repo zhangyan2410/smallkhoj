@@ -172,6 +172,7 @@
     "generateConnect": "Generate Connect Command",
     "pendingConnection": "Pending Connection",
     "waitingFor": "Waiting for {name}",
+    "installCommand": "Install Command",
     "connectionCommand": "Connection Command",
     "expires": "Expires",
     "connected": "{name} connected.",

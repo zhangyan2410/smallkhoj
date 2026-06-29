@@ -10,6 +10,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { fileURLToPath } from 'url';
 import { z } from 'zod';
+import { DAEMON_VERSION } from './version.js';
 
 export interface ChatBridgeOptions {
   agentId?: string;
@@ -41,7 +42,7 @@ export function parseChatBridgeArgs(args: string[]): ChatBridgeOptions {
 export function createChatBridgeServer(_options: ChatBridgeOptions = {}): McpServer {
   const server = new McpServer({
     name: 'aaa-daemon-chat-bridge',
-    version: '0.2.0',
+    version: DAEMON_VERSION,
   });
 
   server.registerTool(

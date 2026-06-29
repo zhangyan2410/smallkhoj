@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
 from models import (
     get_db, ActivityLog, AgentWorkspace, ApiKey, Channel, ChannelMember, Computer,
     ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction,
@@ -150,6 +151,7 @@ class DaemonRegisterRequest(BaseModel):
 
 class DaemonHeartbeatRequest(BaseModel):
     daemonId: str | None = None
+    daemonVersion: str | None = None
     status: str = "online"
     detectedRuntimes: list | None = None
     workspaces: list[DaemonWorkspacePayload] = []
@@ -176,6 +178,42 @@ def _utcnow() -> datetime:
 
 def _utcnow_aware() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _parse_version_tuple(value: str | None) -> tuple[int, ...] | None:
+    if not value:
+        return None
+    raw = value.strip()
+    if raw.startswith("v"):
+        raw = raw[1:]
+    parsed: list[int] = []
+    for part in raw.split("."):
+        match = re.match(r"^(\d+)", part)
+        if not match:
+            return None
+        parsed.append(int(match.group(1)))
+    return tuple(parsed)
+
+
+def _version_less_than(version: str, minimum: str) -> bool:
+    parsed = _parse_version_tuple(version)
+    parsed_minimum = _parse_version_tuple(minimum)
+    if parsed is None or parsed_minimum is None:
+        return True
+    width = max(len(parsed), len(parsed_minimum))
+    return parsed + (0,) * (width - len(parsed)) < parsed_minimum + (0,) * (width - len(parsed_minimum))
+
+
+def _require_supported_daemon_version(version: str | None) -> None:
+    minimum = settings.minimum_daemon_version.strip()
+    if not minimum:
+        return
+    if not version or _version_less_than(version, minimum):
+        current = version or "unknown"
+        raise HTTPException(
+            426,
+            f"Unsupported daemon version {current}; minimum supported daemon version is {minimum}",
+        )
 
 
 def _now_for(value: datetime) -> datetime:
@@ -1387,6 +1425,8 @@ async def connect_daemon(
     if not server:
         raise HTTPException(401, "Server not found")
 
+    _require_supported_daemon_version(body.daemonVersion)
+
     machine_id = body.machineId.strip()
     if not machine_id:
         raise HTTPException(400, "Missing machineId")
@@ -1471,6 +1511,7 @@ async def register_daemon(
     db: AsyncSession = Depends(get_db),
 ):
     computer, server, api_key = machine
+    _require_supported_daemon_version(body.daemonVersion)
     now = _utcnow_aware()
     if _daemon_lease_conflicts(computer, body.daemonId, now):
         raise HTTPException(409, "Computer is leased by another daemon")
@@ -1547,6 +1588,7 @@ async def daemon_heartbeat(
     db: AsyncSession = Depends(get_db),
 ):
     computer, server, _api_key = machine
+    _require_supported_daemon_version(body.daemonVersion)
     now = _utcnow_aware()
     if _daemon_lease_conflicts(computer, body.daemonId, now):
         raise HTTPException(409, "Computer is leased by another daemon")
