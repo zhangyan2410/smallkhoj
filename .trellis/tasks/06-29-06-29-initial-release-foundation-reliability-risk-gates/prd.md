@@ -48,9 +48,9 @@ The release should not be declared ready just because one happy-path integration
 
 ## Acceptance Criteria
 
-- [ ] A foundation risk register exists and is linked from the initial release parent task.
+- [x] A foundation risk register exists and is linked from the initial release parent task.
 - [ ] Each P0/P1 foundation risk has one of: passing validation evidence, a tracked fix task, or an explicit release-blocking decision.
-- [ ] A repeatable foundation gate command or checklist can be run before release candidate review.
+- [x] A repeatable foundation gate command or checklist can be run before release candidate review.
 - [ ] Server/account membership tests prove one account can own/join a Server and cannot access another Server's private resources.
 - [ ] Channel/message tests prove public/private channel visibility and write access behavior.
 - [ ] Computer identity tests prove reconnect does not create duplicate Computers for the same physical machine.

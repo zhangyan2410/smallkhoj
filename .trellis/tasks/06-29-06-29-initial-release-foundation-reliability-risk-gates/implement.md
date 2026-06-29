@@ -50,6 +50,17 @@ rtk python3 scripts/initial_release_foundation_gate.py \
 
 The runner should not require Feishu/Jira secrets.
 
+Initial runner added:
+
+```bash
+rtk python3 scripts/initial_release_foundation_gate.py \
+  --base-url http://124.222.40.40 \
+  --allow-http \
+  --json
+```
+
+The runner currently composes deployment preflight, public smoke, risk-register coverage, and daemon command-shape detection. By default it blocks any P0 risk that has no executable gate wired yet. Use `--partial` only while developing an individual check.
+
 ## Phase 5: Evidence and release review
 
 1. Run the foundation gates locally.
@@ -65,4 +76,3 @@ The runner should not require Feishu/Jira secrets.
 - `rtk python3 scripts/post_deploy_smoke.py --base-url <url> --json`
 - `rtk python3 scripts/initial_release_deploy_preflight.py ...`
 - `rtk python3 scripts/remote_deploy_evidence.py ...`
-

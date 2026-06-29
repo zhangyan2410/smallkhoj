@@ -3,7 +3,7 @@
   "name": "06-29-initial-release-foundation-reliability-risk-gates",
   "title": "Initial release foundation reliability and risk gates",
   "description": "Define the non-Feishu/Jira foundation plan and validation gates that prove SmallKhoj's server, daemon, runtime, channel, deployment, capacity, and recovery layers are usable before the initial release.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
