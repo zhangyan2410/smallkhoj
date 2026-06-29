@@ -46,6 +46,12 @@ def make_foundation_repo(root: Path) -> None:
             return "pg_dump pg_restore SELECT 1"
     """)
     write(root / "backend" / "tests" / "test_daemon_control.py", """
+        def test_daemon_connect_rejects_version_below_minimum():
+            assert "426"
+
+        def test_daemon_heartbeat_accepts_version_field_for_compatibility_checks():
+            assert "daemonVersion"
+
         def test_placeholder():
             assert True
     """)
@@ -71,6 +77,62 @@ def make_foundation_repo(root: Path) -> None:
         def _computer_connect_command(connect_token: str, server_url: str) -> str:
             return "smallkhoj-daemon connect --token " + connect_token + " --server " + server_url
     """)
+    write(root / "backend" / "routers" / "agent_api.py", """
+        def _require_supported_daemon_version(version):
+            minimum = settings.minimum_daemon_version
+            raise HTTPException(426, "Unsupported daemon version")
+
+        async def connect_daemon(body):
+            _require_supported_daemon_version(body.daemonVersion)
+
+        async def register_daemon(body):
+            _require_supported_daemon_version(body.daemonVersion)
+
+        async def daemon_heartbeat(body):
+            _require_supported_daemon_version(body.daemonVersion)
+    """)
+    write(root / "agent" / "daemon" / "aaa-daemon" / "src" / "daemon" / "daemon.ts", """
+        export function defaultDaemonWorkspaceRoot(env = process.env) {
+          const explicitRoot = env.SMALLKHOJ_DAEMON_WORKSPACE_ROOT;
+          return explicitRoot || join(homedir(), '.smallkhoj', 'daemon', 'workspaces');
+        }
+        export function daemonRuntimeWorkspacePath(basePath, options) {
+          const serverSegment = options.serverId;
+          const computerSegment = options.computerId || options.machineId;
+          const workspaceSegment = options.workspaceId || options.agentId;
+          return join(basePath, '.slock-runtimes', serverSegment, computerSegment, workspaceSegment);
+        }
+    """)
+    write(root / "agent" / "daemon" / "aaa-daemon" / "test" / "daemon-runtime.test.mjs", """
+        test('daemon default workspace root is stable and configurable', () => {});
+        test('daemon runtime workspace path isolates different computers on the same server', () => {});
+        assert.notEqual(first, second);
+    """)
+    write(root / ".codex" / "hooks" / "inject-workflow-state.py", '''
+        """UserPromptSubmit hook that emits <workflow-state> from workflow.md."""
+        WORKFLOW_BLOCK_RE = r"\\[workflow-state:([A-Za-z0-9_-]+)\\]"
+
+        def parse_workflow_blocks(root):
+            workflow = root / ".trellis" / "workflow.md"
+            return workflow.read_text()
+
+        def _read_trellis_config(root):
+            return {"codex": {"dispatch_mode": "inline"}}
+
+        def _build_compact_current_state(trellis_dir, hook_input, spec_index_paths):
+            return "compact"
+
+        def _build_workflow_state():
+            return "<workflow-state>\\nFlow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit\\n</workflow-state>"
+
+        HOOK_EVENT = "UserPromptSubmit"
+    ''')
+    write(root / ".trellis" / "workflow.md", """
+        [workflow-state:in_progress-inline]
+        Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
+        Do not dispatch implement/check sub-agents in inline mode.
+        [/workflow-state:in_progress-inline]
+    """)
 
 
 def write_restore_evidence(root: Path, payload: dict) -> Path:
@@ -85,6 +147,21 @@ def write_restore_evidence(root: Path, payload: dict) -> Path:
     evidence_path = evidence_dir / "postgres_backup_restore_drill_20260629.json"
     evidence_path.write_text(json.dumps(payload), encoding="utf-8")
     return evidence_path
+
+
+def archive_foundation_task(root: Path) -> Path:
+    task_dir = root / ".trellis" / "tasks" / "06-29-06-29-initial-release-foundation-reliability-risk-gates"
+    archive_dir = (
+        root
+        / ".trellis"
+        / "tasks"
+        / "archive"
+        / "2026-06"
+        / "06-29-06-29-initial-release-foundation-reliability-risk-gates"
+    )
+    archive_dir.parent.mkdir(parents=True, exist_ok=True)
+    task_dir.rename(archive_dir)
+    return archive_dir
 
 
 class FoundationGateTests(unittest.TestCase):
@@ -184,6 +261,43 @@ class FoundationGateTests(unittest.TestCase):
             self.assertEqual(Path(by_name["database.backupRestoreDrill"].details["evidence"]).resolve(), evidence_path.resolve())
             self.assertNotIn("risk.FR-07.coverage", by_name)
 
+    def test_archived_foundation_task_evidence_is_used(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            evidence_path = write_restore_evidence(
+                root,
+                {
+                    "ready": True,
+                    "dryRun": False,
+                    "backupFile": "/backups/smallkhoj_backup.dump",
+                    "restoreDatabase": "smallkhoj_restore_drill",
+                    "steps": [
+                        {"name": "backup", "exitCode": 0, "stdoutTail": ""},
+                        {"name": "drop-restore-db-before", "exitCode": 0, "stdoutTail": ""},
+                        {"name": "create-restore-db", "exitCode": 0, "stdoutTail": ""},
+                        {"name": "restore", "exitCode": 0, "stdoutTail": ""},
+                        {"name": "verify-restore", "exitCode": 0, "stdoutTail": "1\n"},
+                        {"name": "drop-restore-db-after", "exitCode": 0, "stdoutTail": ""},
+                    ],
+                },
+            )
+            archived_task = archive_foundation_task(root)
+            archived_evidence = archived_task / "evidence" / evidence_path.name
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["foundation.riskRegister"].status, "passed")
+            self.assertEqual(by_name["database.backupRestoreDrill"].status, "passed")
+            self.assertEqual(Path(by_name["database.backupRestoreDrill"].details["evidence"]).resolve(), archived_evidence.resolve())
+
     def test_missing_base_url_blocks_deployed_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -258,8 +372,9 @@ class FoundationGateTests(unittest.TestCase):
 
             by_name = {check.name: check for check in report.checks}
             self.assertEqual(by_name["risk.FR-01.coverage"].status, "blocked")
-            self.assertEqual(by_name["risk.FR-03.coverage"].status, "blocked")
             self.assertEqual(by_name["risk.FR-05.coverage"].status, "blocked")
+            self.assertEqual(by_name["daemon.runtimeWorkspaceContract"].risk_id, "FR-03")
+            self.assertNotIn("risk.FR-03.coverage", by_name)
             self.assertEqual(by_name["database.backupRestoreDrill"].status, "warning")
             self.assertEqual(by_name["secrets.gitignore"].status, "passed")
             self.assertNotIn("risk.FR-08.coverage", by_name)
@@ -304,6 +419,128 @@ class FoundationGateTests(unittest.TestCase):
             self.assertEqual(by_name["daemon.commandShape"].status, "passed")
             self.assertEqual(by_name["daemon.distributionArtifact"].status, "blocked")
             self.assertEqual(by_name["daemon.distributionArtifact"].risk_id, "FR-02")
+
+    def test_daemon_runtime_workspace_contract_can_cover_fr03(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["daemon.runtimeWorkspaceContract"].status, "passed")
+            self.assertEqual(by_name["daemon.runtimeWorkspaceContract"].risk_id, "FR-03")
+
+    def test_daemon_runtime_workspace_contract_fails_when_computer_segment_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            write(root / "agent" / "daemon" / "aaa-daemon" / "src" / "daemon" / "daemon.ts", """
+                export function defaultDaemonWorkspaceRoot(env = process.env) {
+                  return env.SMALLKHOJ_DAEMON_WORKSPACE_ROOT;
+                }
+                export function daemonRuntimeWorkspacePath(basePath, options) {
+                  return join(basePath, '.slock-runtimes', options.serverId, options.workspaceId);
+                }
+            """)
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["daemon.runtimeWorkspaceContract"].status, "failed")
+            self.assertEqual(by_name["daemon.runtimeWorkspaceContract"].risk_id, "FR-03")
+            self.assertIn("computerId", by_name["daemon.runtimeWorkspaceContract"].details["missingMarkers"])
+
+    def test_daemon_minimum_version_contract_can_cover_fr11(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["daemon.minimumVersionContract"].status, "passed")
+            self.assertEqual(by_name["daemon.minimumVersionContract"].risk_id, "FR-11")
+
+    def test_daemon_minimum_version_contract_fails_without_426_rejection_test(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            write(root / "backend" / "tests" / "test_daemon_control.py", """
+                def test_placeholder():
+                    assert True
+            """)
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["daemon.minimumVersionContract"].status, "failed")
+            self.assertEqual(by_name["daemon.minimumVersionContract"].risk_id, "FR-11")
+            self.assertIn("test_daemon_connect_rejects_version_below_minimum", by_name["daemon.minimumVersionContract"].details["missingMarkers"])
+
+    def test_prompt_workflow_state_contract_passes_for_compact_workflow_hook(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["prompt.workflowStateContract"].status, "passed")
+            self.assertEqual(by_name["prompt.workflowStateContract"].risk_id, "PROMPT")
+
+    def test_prompt_workflow_state_contract_fails_without_inline_workflow_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            write(root / ".trellis" / "workflow.md", """
+                [workflow-state:in_progress-inline]
+                Flow: edit -> commit
+                [/workflow-state:in_progress-inline]
+            """)
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["prompt.workflowStateContract"].status, "failed")
+            self.assertEqual(by_name["prompt.workflowStateContract"].risk_id, "PROMPT")
+            self.assertIn("trellis-before-dev", by_name["prompt.workflowStateContract"].details["missingMarkers"])
 
     def test_missing_backup_restore_drill_script_blocks_fr07(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:

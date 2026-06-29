@@ -18,12 +18,12 @@ Supplement the initial-release foundation gate for daemon distribution/runtime w
 
 ## Acceptance Criteria
 
-- [ ] A new foundation gate check covers daemon runtime workspace isolation: default daemon workspace root exists in source, runtime path includes `<serverId>/<computerId-or-machineId>/<workspaceId>`, and tests cover different Computers producing different runtime directories.
-- [ ] A new foundation gate check covers daemon minimum-version enforcement: backend source exposes `MINIMUM_DAEMON_VERSION` / `settings.minimum_daemon_version`, connect/register/heartbeat enforcement, and tests cover old-version rejection with `426`.
-- [ ] A new foundation gate check covers system prompt workflow-state injection: `.codex/hooks/inject-workflow-state.py` exists, reads `.trellis/workflow.md`, emits `<workflow-state>`, respects Codex inline dispatch mode, and does not embed broad/full workflow text on each prompt.
-- [ ] Foundation gate unit tests cover pass and failure cases for the new daemon/prompt checks.
-- [ ] The supplemented foundation gate runs against the current worktree with `ready=true`, `failures=0`, `blocked=0`, and `p0Warnings=0`.
-- [ ] The task records evidence for the rerun gate and archives cleanly.
+- [x] A new foundation gate check covers daemon runtime workspace isolation: default daemon workspace root exists in source, runtime path includes `<serverId>/<computerId-or-machineId>/<workspaceId>`, and tests cover different Computers producing different runtime directories.
+- [x] A new foundation gate check covers daemon minimum-version enforcement: backend source exposes `MINIMUM_DAEMON_VERSION` / `settings.minimum_daemon_version`, connect/register/heartbeat enforcement, and tests cover old-version rejection with `426`.
+- [x] A new foundation gate check covers system prompt workflow-state injection: `.codex/hooks/inject-workflow-state.py` exists, reads `.trellis/workflow.md`, emits `<workflow-state>`, respects Codex inline dispatch mode, and does not embed broad/full workflow text on each prompt.
+- [x] Foundation gate unit tests cover pass and failure cases for the new daemon/prompt checks.
+- [x] The supplemented foundation gate runs against the current worktree with `ready=true`, `failures=0`, `blocked=0`, and `p0Warnings=0`.
+- [x] The task records evidence for the rerun gate and archives cleanly.
 
 ## Notes
 

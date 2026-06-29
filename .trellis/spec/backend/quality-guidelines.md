@@ -70,6 +70,7 @@ Questions to answer:
 - `--partial` is only for developing checks and must not be used as release-candidate evidence.
 - Scripts must not print secret values. Env paths, key names, and `<set>`/`<empty>` summaries are allowed.
 - Risk-register existence is tracking evidence only. It must not be used as the passing gate for a product P0 risk such as account/server/channel isolation.
+- Gates that consume Trellis task evidence must search both the active task path and archived task paths under `.trellis/tasks/archive/<year-month>/`. Completed evidence must not become invisible after `task.py archive`.
 
 ### 4. Validation & Error Matrix
 - Missing P0 executable coverage -> `blocked`, exit code `3`.
@@ -77,20 +78,24 @@ Questions to answer:
 - P0 warning with no failures/blocked checks -> `warning`, `ready=false`, exit code `2`.
 - Non-P0 warning with `--strict-warnings` -> exit code `2`.
 - Non-P0 warning without `--strict-warnings` -> `ready=true` only if there are no failures, blocked checks, or P0 warnings.
+- Evidence exists only in an archived Trellis task -> inspect that evidence normally; do not fall back to a dry-run warning or missing-risk failure.
 
 ### 5. Good/Base/Bad Cases
 - Good: a deployed smoke check passes and FR-04 records a concrete WebSocket auth rejection result.
+- Good: an archived foundation task's `risk-register.md` and `evidence/postgres_backup_restore_drill_*.json` remain valid inputs for the current gate.
 - Good: a dry-run backup/restore plan records command shape but returns a P0 warning until a real restore executes.
 - Base: a P1 capacity warning can remain a warning when the initial release explicitly accepts the limitation.
 - Bad: returning `ready=true` when FR-07 has only dry-run evidence.
 - Bad: using `--partial` output as release-candidate evidence.
 - Bad: marking FR-01 passed because the risk register mentions FR-01.
+- Bad: hard-coding only `.trellis/tasks/<task>/...` for evidence that survives task archival.
 
 ### 6. Tests Required
 - Unit test that P0 warnings increment `p0Warnings`, make `ready=false`, and return exit code `2`.
 - Unit test that JSON output omits secret values.
 - Unit test for each new gate mapping to the intended `riskId` and priority.
 - Unit test that tracking/meta checks do not accidentally satisfy product P0 coverage.
+- Regression test that archived task evidence is found after the active task directory is moved to `.trellis/tasks/archive/<year-month>/`.
 - Task evidence must record the command, target environment, exit code, summary, and any non-pass release decision.
 
 ### 7. Wrong vs Correct
@@ -102,4 +107,14 @@ Questions to answer:
 #### Correct
 ```text
 0 failed + 0 blocked + 1 P0 warning -> ready=false, exit code 2
+```
+
+#### Wrong
+```text
+Read only .trellis/tasks/06-29-.../risk-register.md; after archive, report FOUNDATION_RISK_REGISTER_MISSING.
+```
+
+#### Correct
+```text
+Search .trellis/tasks/06-29-... first, then .trellis/tasks/archive/*/06-29-... before deciding evidence is missing.
 ```

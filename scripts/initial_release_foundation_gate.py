@@ -30,7 +30,8 @@ STATUS_FAILED = preflight.STATUS_FAILED
 STATUS_BLOCKED = "blocked"
 READY = "FOUNDATION_GATE_READY"
 
-FOUNDATION_TASK = ".trellis/tasks/06-29-06-29-initial-release-foundation-reliability-risk-gates"
+FOUNDATION_TASK_NAME = "06-29-06-29-initial-release-foundation-reliability-risk-gates"
+FOUNDATION_TASK = f".trellis/tasks/{FOUNDATION_TASK_NAME}"
 P0_RISKS = ("FR-01", "FR-02", "FR-03", "FR-04", "FR-05", "FR-06", "FR-07", "FR-08")
 FR03_BACKEND_TESTS = (
     "tests/test_daemon_control.py::test_expired_daemon_lease_does_not_block_new_daemon",
@@ -199,16 +200,30 @@ def _from_check_result(prefix: str, check: preflight.CheckResult, *, risk_id: st
     )
 
 
+def _foundation_task_dirs(root: Path) -> list[Path]:
+    active = root / FOUNDATION_TASK
+    dirs: list[Path] = []
+    if active.is_dir():
+        dirs.append(active)
+    archive_root = root / ".trellis" / "tasks" / "archive"
+    if archive_root.is_dir():
+        dirs.extend(sorted(archive_root.glob(f"*/{FOUNDATION_TASK_NAME}"), reverse=True))
+    return dirs
+
+
 def check_risk_register(root: Path) -> FoundationCheck:
-    path = root / FOUNDATION_TASK / "risk-register.md"
-    if not path.is_file():
+    inspected = [task_dir / "risk-register.md" for task_dir in _foundation_task_dirs(root)]
+    if not inspected:
+        inspected = [root / FOUNDATION_TASK / "risk-register.md"]
+    path = next((candidate for candidate in inspected if candidate.is_file()), None)
+    if path is None:
         return failed(
             "foundation.riskRegister",
             "FOUNDATION_RISK_REGISTER_MISSING",
             "Foundation risk register is missing.",
             risk_id="FOUNDATION",
             priority="P2",
-            details={"path": str(path)},
+            details={"searchedPaths": [str(candidate) for candidate in inspected]},
         )
     content = path.read_text(encoding="utf-8")
     missing = [risk_id for risk_id in P0_RISKS if risk_id not in content]
@@ -309,6 +324,188 @@ def check_daemon_distribution_artifact(root: Path) -> FoundationCheck:
         risk_id="FR-02",
         priority="P0",
         details={"paths": [str(path) for path in existing], "expectedMarkers": list(marker_needles)},
+    )
+
+
+def _missing_markers(content: str, required_markers: list[str | tuple[str, ...]]) -> list[str]:
+    missing: list[str] = []
+    for marker in required_markers:
+        if isinstance(marker, tuple):
+            if not any(option in content for option in marker):
+                missing.append(marker[0])
+        elif marker not in content:
+            missing.append(marker)
+    return missing
+
+
+def _read_contract_file(path: Path, *, name: str, risk_id: str, priority: str) -> tuple[str | None, FoundationCheck | None]:
+    if not path.is_file():
+        return None, failed(
+            name,
+            "FOUNDATION_CONTRACT_FILE_MISSING",
+            "Required foundation contract file is missing.",
+            risk_id=risk_id,
+            priority=priority,
+            details={"path": str(path)},
+        )
+    return path.read_text(encoding="utf-8"), None
+
+
+def check_daemon_runtime_workspace_contract(root: Path) -> FoundationCheck:
+    name = "daemon.runtimeWorkspaceContract"
+    source_path = root / "agent" / "daemon" / "aaa-daemon" / "src" / "daemon" / "daemon.ts"
+    test_path = root / "agent" / "daemon" / "aaa-daemon" / "test" / "daemon-runtime.test.mjs"
+    source, source_error = _read_contract_file(source_path, name=name, risk_id="FR-03", priority="P0")
+    if source_error:
+        return source_error
+    tests, test_error = _read_contract_file(test_path, name=name, risk_id="FR-03", priority="P0")
+    if test_error:
+        return test_error
+
+    required_source_markers: list[str | tuple[str, ...]] = [
+        "defaultDaemonWorkspaceRoot",
+        "SMALLKHOJ_DAEMON_WORKSPACE_ROOT",
+        "daemonRuntimeWorkspacePath",
+        ".slock-runtimes",
+        "serverId",
+        "computerId",
+        "machineId",
+        "workspaceId",
+    ]
+    required_test_markers: list[str | tuple[str, ...]] = [
+        "daemon default workspace root is stable and configurable",
+        "daemon runtime workspace path isolates different computers on the same server",
+        "assert.notEqual",
+    ]
+    missing = [
+        *_missing_markers(source or "", required_source_markers),
+        *_missing_markers(tests or "", required_test_markers),
+    ]
+    if missing:
+        return failed(
+            name,
+            "FOUNDATION_DAEMON_RUNTIME_WORKSPACE_CONTRACT_INCOMPLETE",
+            "Daemon runtime workspace isolation contract is missing required source or test markers.",
+            risk_id="FR-03",
+            priority="P0",
+            details={
+                "sourcePath": str(source_path),
+                "testPath": str(test_path),
+                "missingMarkers": missing,
+            },
+        )
+    return passed(
+        name,
+        "Daemon runtime workspace root and per-server/per-computer/per-workspace isolation contract is covered.",
+        risk_id="FR-03",
+        priority="P0",
+        details={"sourcePath": str(source_path), "testPath": str(test_path)},
+    )
+
+
+def check_daemon_minimum_version_contract(root: Path) -> FoundationCheck:
+    name = "daemon.minimumVersionContract"
+    source_path = root / "backend" / "routers" / "agent_api.py"
+    test_path = root / "backend" / "tests" / "test_daemon_control.py"
+    source, source_error = _read_contract_file(source_path, name=name, risk_id="FR-11", priority="P1")
+    if source_error:
+        return source_error
+    tests, test_error = _read_contract_file(test_path, name=name, risk_id="FR-11", priority="P1")
+    if test_error:
+        return test_error
+
+    required_source_markers: list[str | tuple[str, ...]] = [
+        ("settings.minimum_daemon_version", "MINIMUM_DAEMON_VERSION"),
+        "_require_supported_daemon_version",
+        "426",
+        "connect_daemon",
+        "register_daemon",
+        "daemon_heartbeat",
+        "_require_supported_daemon_version(body.daemonVersion)",
+    ]
+    required_test_markers: list[str | tuple[str, ...]] = [
+        "test_daemon_connect_rejects_version_below_minimum",
+        "test_daemon_heartbeat_accepts_version_field_for_compatibility_checks",
+        ("status_code == 426", '"426"', "'426'"),
+    ]
+    missing = [
+        *_missing_markers(source or "", required_source_markers),
+        *_missing_markers(tests or "", required_test_markers),
+    ]
+    if missing:
+        return failed(
+            name,
+            "FOUNDATION_DAEMON_MINIMUM_VERSION_CONTRACT_INCOMPLETE",
+            "Daemon minimum-version enforcement is missing required source or test markers.",
+            risk_id="FR-11",
+            priority="P1",
+            details={
+                "sourcePath": str(source_path),
+                "testPath": str(test_path),
+                "missingMarkers": missing,
+            },
+        )
+    return passed(
+        name,
+        "Daemon connect/register/heartbeat minimum-version enforcement and 426 rejection coverage exist.",
+        risk_id="FR-11",
+        priority="P1",
+        details={"sourcePath": str(source_path), "testPath": str(test_path)},
+    )
+
+
+def check_prompt_workflow_state_contract(root: Path) -> FoundationCheck:
+    name = "prompt.workflowStateContract"
+    hook_path = root / ".codex" / "hooks" / "inject-workflow-state.py"
+    workflow_path = root / ".trellis" / "workflow.md"
+    hook, hook_error = _read_contract_file(hook_path, name=name, risk_id="PROMPT", priority="P1")
+    if hook_error:
+        return hook_error
+    workflow, workflow_error = _read_contract_file(workflow_path, name=name, risk_id="PROMPT", priority="P1")
+    if workflow_error:
+        return workflow_error
+
+    required_hook_markers: list[str | tuple[str, ...]] = [
+        "<workflow-state>",
+        "workflow.md",
+        ("codex.dispatch_mode", '"dispatch_mode"'),
+        "inline",
+        "UserPromptSubmit",
+        ("_TAG_RE", "WORKFLOW_BLOCK_RE"),
+        ("load_breadcrumbs", "parse_workflow_blocks"),
+        ("build_breadcrumb", "_build_workflow_state"),
+        ("_codex_mode_banner", "_build_compact_current_state"),
+    ]
+    required_workflow_markers: list[str | tuple[str, ...]] = [
+        "[workflow-state:in_progress-inline]",
+        "trellis-before-dev",
+        "trellis-check",
+        "trellis-update-spec",
+        "Do not dispatch implement/check sub-agents in inline mode",
+    ]
+    missing = [
+        *_missing_markers(hook or "", required_hook_markers),
+        *_missing_markers(workflow or "", required_workflow_markers),
+    ]
+    if missing:
+        return failed(
+            name,
+            "FOUNDATION_WORKFLOW_STATE_CONTRACT_INCOMPLETE",
+            "Trellis/Codex workflow-state prompt hook is missing required bounded inline workflow markers.",
+            risk_id="PROMPT",
+            priority="P1",
+            details={
+                "hookPath": str(hook_path),
+                "workflowPath": str(workflow_path),
+                "missingMarkers": missing,
+            },
+        )
+    return passed(
+        name,
+        "Trellis/Codex workflow-state hook reads workflow.md and preserves compact inline-mode guidance.",
+        risk_id="PROMPT",
+        priority="P1",
+        details={"hookPath": str(hook_path), "workflowPath": str(workflow_path)},
     )
 
 
@@ -615,8 +812,14 @@ def check_backup_restore_drill_plan(root: Path) -> FoundationCheck:
             priority="P0",
             details={"path": str(path)},
         )
-    evidence_dir = root / FOUNDATION_TASK / "evidence"
-    evidence_files = sorted(evidence_dir.glob("postgres_backup_restore_drill_*.json"), reverse=True)
+    evidence_files = sorted(
+        (
+            evidence_file
+            for task_dir in _foundation_task_dirs(root)
+            for evidence_file in (task_dir / "evidence").glob("postgres_backup_restore_drill_*.json")
+        ),
+        reverse=True,
+    )
     for evidence_file in evidence_files:
         try:
             payload = json.loads(evidence_file.read_text(encoding="utf-8"))
@@ -774,6 +977,9 @@ def run_foundation_gate(
         check_risk_register(resolved_root),
         check_daemon_command_shape(resolved_root),
         check_daemon_distribution_artifact(resolved_root),
+        check_daemon_runtime_workspace_contract(resolved_root),
+        check_daemon_minimum_version_contract(resolved_root),
+        check_prompt_workflow_state_contract(resolved_root),
         *config_secret_guardrail_checks(resolved_root),
         check_backup_restore_drill_plan(resolved_root),
     ]
