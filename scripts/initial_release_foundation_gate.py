@@ -251,6 +251,43 @@ def check_daemon_command_shape(root: Path) -> FoundationCheck:
     )
 
 
+def check_daemon_distribution_artifact(root: Path) -> FoundationCheck:
+    candidates = [
+        root / "scripts" / "build_daemon_distribution.py",
+        root / "scripts" / "package_daemon.py",
+        root / "scripts" / "build-daemon-distribution.sh",
+    ]
+    existing = [path for path in candidates if path.is_file()]
+    if not existing:
+        return blocked(
+            "daemon.distributionArtifact",
+            "FOUNDATION_DAEMON_DISTRIBUTION_GATE_MISSING",
+            "No versioned daemon distribution artifact builder is wired yet.",
+            risk_id="FR-02",
+            priority="P0",
+            details={"expectedOneOf": [str(path) for path in candidates]},
+        )
+    marker_needles = ("smallkhoj-daemon", "version", "darwin", "arm64")
+    for path in existing:
+        content = path.read_text(encoding="utf-8")
+        if all(marker in content for marker in marker_needles):
+            return passed(
+                "daemon.distributionArtifact",
+                "Versioned daemon distribution artifact builder exists for the first supported platform.",
+                risk_id="FR-02",
+                priority="P0",
+                details={"path": str(path)},
+            )
+    return warning(
+        "daemon.distributionArtifact",
+        "FOUNDATION_DAEMON_DISTRIBUTION_SHAPE_UNKNOWN",
+        "Daemon distribution builder exists, but expected version/platform markers were not recognized.",
+        risk_id="FR-02",
+        priority="P0",
+        details={"paths": [str(path) for path in existing], "expectedMarkers": list(marker_needles)},
+    )
+
+
 def _check_file_contains(
     *,
     root: Path,
@@ -400,6 +437,7 @@ def run_foundation_gate(
     checks: list[FoundationCheck] = [
         check_risk_register(resolved_root),
         check_daemon_command_shape(resolved_root),
+        check_daemon_distribution_artifact(resolved_root),
         *config_secret_guardrail_checks(resolved_root),
     ]
     _append_preflight_checks(checks, root=resolved_root, env_file=env_file, include_runtime=include_runtime)

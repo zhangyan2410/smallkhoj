@@ -5,7 +5,7 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 | ID | Priority | Risk | Symptom | Gate / Evidence | Related Task | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | FR-01 | P0 | Account/Server scope is not real | User sees or mutates another Server's channels, Computers, Agents, tasks, or integrations | Membership + active-Server tests; private channel access tests; `foundation.riskRegister` currently only proves tracking coverage | `06-29-06-29-initial-release-server-account-membership-foundation` | warn |
-| FR-02 | P0 | Product daemon command depends on source checkout | External user cannot connect a Computer without `/Users/code/project/smallkhoj` | `initial_release_foundation_gate.py` `daemon.commandShape`; evidence `evidence/FOUNDATION_gate_20260629095157.md` | `06-29-06-29-initial-release-daemon-distribution-versioning` | fail |
+| FR-02 | P0 | Product daemon command depends on source checkout | External user cannot connect a Computer without `/Users/code/project/smallkhoj` | `initial_release_foundation_gate.py` `daemon.commandShape` + `daemon.distributionArtifact`; evidence `evidence/FOUNDATION_gate_20260629100145.md` | `06-29-06-29-initial-release-daemon-distribution-versioning` | pass |
 | FR-03 | P0 | Duplicate Computer identity | Same physical machine creates multiple Computers or connect fails with stale offline record | Reconnect/offline/lease test on deployed backend | `06-28-initial-release-daemon-single-local-computer-identity` | warn |
 | FR-04 | P0 | Daemon WebSocket production route broken | Computer connects but cannot receive control events | `initial_release_foundation_gate.py` `smoke.ws.daemonAuth`; evidence `evidence/FOUNDATION_gate_20260629095157.md` | `06-28-initial-release-daemon-websocket-deploy-smoke` | pass |
 | FR-05 | P0 | TaskRun accepted but not executable/observable | Work item appears queued forever or fails without evidence | Local API-created TaskRun delivered to daemon/runtime; UI/API evidence visible | `06-25-taskrun-config-templates` / initial release parent | blocked |
@@ -22,11 +22,10 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 
 ## Current Release Decision
 
-Not ready. Latest coherent gate run on 2026-06-29 produced 1 failed P0 risk and 3 blocked P0 risks.
+Not ready. Latest coherent gate run on 2026-06-29 produced 0 failed P0 risks and 3 blocked P0 risks.
 
-- Failed: FR-02.
 - Blocked / no executable gate wired yet: FR-03, FR-05, FR-07.
-- Passing evidence exists for FR-04, FR-06, and FR-08.
+- Passing evidence exists for FR-02, FR-04, FR-06, and FR-08.
 - FR-01 is only partially covered by the risk-register existence check; real account/server access tests remain required.
 
 ## Minimum Recommended P0 Blockers

@@ -81,8 +81,7 @@ router = APIRouter(prefix="/api/v1", tags=["public"])
 logger = logging.getLogger(__name__)
 
 PUBLIC_API_KEY = "sk_public_local"
-DEFAULT_LOCAL_DAEMON_DIR = Path(__file__).resolve().parents[2] / "agent" / "daemon" / "aaa-daemon"
-DEFAULT_DAEMON_LAUNCHER = Path(__file__).resolve().parents[2] / "smallkhoj-daemon"
+DAEMON_CLI_COMMAND = "smallkhoj-daemon"
 CONNECT_TICKET_TTL_SECONDS = 300
 DEFAULT_SERVER_ID = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
 DEFAULT_SERVER_NAME = "Slock Server"
@@ -140,16 +139,11 @@ async def _push_committed_events(db: AsyncSession, *, server_id: uuid.UUID) -> i
     return await push_latest_events_for_server(db, server_id=server_id)
 
 
-def _computer_connection_command(
-    token: str,
-    server_url: str,
-    daemon_dir: Path = DEFAULT_LOCAL_DAEMON_DIR,
-) -> str:
-    """Command shown in the UI for connecting this repo's local daemon."""
-    del daemon_dir
+def _computer_connection_command(token: str, server_url: str) -> str:
+    """Command shown in the UI for reconnecting an installed daemon."""
     return " ".join(
         [
-            shlex.quote(str(DEFAULT_DAEMON_LAUNCHER)),
+            shlex.quote(DAEMON_CLI_COMMAND),
             "start",
             "--machine-token",
             shlex.quote(token),
@@ -159,12 +153,11 @@ def _computer_connection_command(
     )
 
 
-def _computer_connect_command(connect_token: str, server_url: str, daemon_dir: Path = DEFAULT_LOCAL_DAEMON_DIR) -> str:
-    """Command shown in the UI for connecting a daemon with a one-time ticket."""
-    del daemon_dir
+def _computer_connect_command(connect_token: str, server_url: str) -> str:
+    """Command shown in the UI for connecting an installed daemon with a one-time ticket."""
     return " ".join(
         [
-            shlex.quote(str(DEFAULT_DAEMON_LAUNCHER)),
+            shlex.quote(DAEMON_CLI_COMMAND),
             "connect",
             "--token",
             shlex.quote(connect_token),

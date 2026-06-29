@@ -34,15 +34,15 @@ This is release-critical because the current generated command can only work on 
 
 ## Acceptance Criteria
 
-- [ ] `/computers` or equivalent onboarding UI no longer displays an absolute development-path daemon command.
+- [x] `/computers` or equivalent onboarding UI no longer displays an absolute development-path daemon command.
 - [ ] A fresh machine without a SmallKhoj repository checkout can install or download the daemon and run the generated connect command.
 - [ ] The daemon can report `smallkhoj-daemon --version`, and that version matches the release artifact metadata.
 - [ ] Backend Computer records and UI show the connected daemon version from the packaged daemon.
 - [ ] Backend connect/register/heartbeat has a minimum-version or compatibility check, or the task explicitly records why it is deferred.
 - [ ] Reconnect command uses the installed packaged daemon and the selected Server URL.
 - [ ] Connect commands still expose only one-time connect tickets, not durable machine tokens.
-- [ ] Artifact generation is covered by a repeatable script or CI-ready command.
-- [ ] macOS arm64 artifact is produced or the task records a concrete blocker.
+- [x] Artifact generation is covered by a repeatable script or CI-ready command.
+- [x] macOS arm64 artifact is produced or the task records a concrete blocker.
 - [ ] Release docs include install, connect, reconnect, upgrade, rollback, and troubleshooting instructions.
 - [ ] Real validation covers install/connect from outside the repository checkout path.
 - [ ] Existing developer workflow remains available for local development, but it is not the product-facing command in production.

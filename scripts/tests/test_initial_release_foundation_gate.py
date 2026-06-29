@@ -36,6 +36,11 @@ def make_foundation_repo(root: Path) -> None:
         def validate_archive_path(relative_path: str):
             raise ValueError("Refusing to bundle env file")
     """)
+    write(root / "scripts" / "build_daemon_distribution.py", """
+        PLATFORM = "darwin-arm64"
+        ARTIFACT = "smallkhoj-daemon-v0.2.0-darwin-arm64.tar.gz"
+        version = "0.2.0"
+    """)
     task_dir = root / ".trellis" / "tasks" / "06-29-06-29-initial-release-foundation-reliability-risk-gates"
     task_dir.mkdir(parents=True, exist_ok=True)
     write(task_dir / "risk-register.md", """
@@ -76,6 +81,7 @@ class FoundationGateTests(unittest.TestCase):
             by_name = {check.name: check for check in report.checks}
             self.assertEqual(by_name["foundation.riskRegister"].status, "passed")
             self.assertEqual(by_name["daemon.commandShape"].status, "passed")
+            self.assertEqual(by_name["daemon.distributionArtifact"].status, "passed")
             self.assertEqual(by_name["smoke.ws.daemonAuth"].risk_id, "FR-04")
 
     def test_missing_base_url_blocks_deployed_gates(self) -> None:
@@ -176,6 +182,25 @@ class FoundationGateTests(unittest.TestCase):
             by_name = {check.name: check for check in report.checks}
             self.assertEqual(by_name["secrets.gitignore"].status, "failed")
             self.assertEqual(by_name["secrets.gitignore"].risk_id, "FR-08")
+
+    def test_missing_daemon_distribution_builder_blocks_fr02(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            (root / "scripts" / "build_daemon_distribution.py").unlink()
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["daemon.commandShape"].status, "passed")
+            self.assertEqual(by_name["daemon.distributionArtifact"].status, "blocked")
+            self.assertEqual(by_name["daemon.distributionArtifact"].risk_id, "FR-02")
 
 
 if __name__ == "__main__":
