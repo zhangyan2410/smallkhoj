@@ -174,6 +174,27 @@ These concepts can be implemented incrementally. The first code slice may hard-c
 - [ ] Bug fixes are validated against the primary scenario scripts before being considered release-ready.
 - [ ] Non-critical surfaces are explicitly deferred when they do not support Feishu/Jira, deployment, daemon identity, or primary scenario reliability.
 
+## Completion Audit
+
+Current audit evidence: `evidence/INITIAL_RELEASE_completion_audit_20260629170815.md`.
+
+All 38 child tasks are completed, and the current code/foundation validation is strong:
+
+- Feishu/Jira/gateway/release-loop backend test slice: `98 passed`.
+- Foundation gate against `http://124.222.40.40`: `ready=true`, `failures=0`, `blocked=0`, `warnings=0`, `p0Warnings=0`.
+- Better Auth email/password login and server switcher have real browser evidence for two accounts and server-scoped resources.
+
+The parent task is not ready to archive yet because several parent-level acceptance criteria still require stronger current-state evidence:
+
+- real Feishu long-connection worker run with live Feishu app credentials;
+- real Jira site/API write-back with live Jira credentials;
+- deployed Feishu -> SmallKhoj TaskRun -> Feishu/Jira write-back scenario evidence;
+- HTTPS/domain readiness instead of HTTP IP-only smoke;
+- explicit decision that the current 4C4G Lighthouse evidence supersedes the earlier 2C2G candidate, or a 2C2G-specific validation;
+- operator-visible runtime/provider/daemon failure evidence for the primary Feishu/Jira scenario.
+
+The task can close after either strict live validation is completed, or after the release scope is explicitly downgraded to "foundation + code-path complete" and the live Feishu/Jira/HTTPS/domain work is split into follow-up tasks.
+
 ## Open Questions
 
 - Which external system should be the first complete path: Feishu-first, Jira-first, or one combined scenario using both? Recommended answer: Feishu-first for entry and notification, Jira as the first durable work-record write-back.
