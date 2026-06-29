@@ -33,15 +33,15 @@ The validation agents were created with `autoStart: false`, so no runtime worksp
 Daemon default workspace behavior has been tightened for this scenario:
 
 ```text
-<daemon --workspace>/.slock-runtimes/<serverId>/<workspaceId>
+<daemon workspace root>/.slock-runtimes/<serverId>/<computerId-or-machineId>/<workspaceId>
 ```
 
-For these two test rows, a real runtime launch without an explicit backend `workspacePath` would resolve to:
+For these two test rows, a real runtime launch without an explicit backend `workspacePath` would resolve to paths shaped like:
 
 | Server | Agent | Workspace ID | Default Runtime Directory |
 |---|---|---|---|
-| 青禾的服务器 | 青禾助手 | `e52c4b8f-5579-49c4-b65d-7eb766f60666` | `<daemon --workspace>/.slock-runtimes/5443f6d5-2ea9-4a83-a381-3fb8b38a0329/e52c4b8f-5579-49c4-b65d-7eb766f60666` |
-| 竹影的服务器 | 竹影助手 | `a8d3c4b0-900d-43ff-871b-bc81e49a7541` | `<daemon --workspace>/.slock-runtimes/93b0ab8c-b761-4dbc-8fb4-308ad4a0a77e/a8d3c4b0-900d-43ff-871b-bc81e49a7541` |
+| 青禾的服务器 | 青禾助手 | `e52c4b8f-5579-49c4-b65d-7eb766f60666` | `<daemon workspace root>/.slock-runtimes/5443f6d5-2ea9-4a83-a381-3fb8b38a0329/f4862db1-a1ea-45e1-a734-6ecc90f23df2/e52c4b8f-5579-49c4-b65d-7eb766f60666` |
+| 竹影的服务器 | 竹影助手 | `a8d3c4b0-900d-43ff-871b-bc81e49a7541` | `<daemon workspace root>/.slock-runtimes/93b0ab8c-b761-4dbc-8fb4-308ad4a0a77e/3c65b3a1-46bc-46d1-a97d-1396d5fcb076/a8d3c4b0-900d-43ff-871b-bc81e49a7541` |
 
 This ensures the two Server-local Computer rows do not share runtime wrapper files, `MEMORY.md`, or provider working state when a real daemon later launches runtimes from the same machine.
 

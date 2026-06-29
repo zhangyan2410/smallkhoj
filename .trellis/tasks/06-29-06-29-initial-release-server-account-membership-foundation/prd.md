@@ -32,17 +32,26 @@ This is now a release-critical foundation because Feishu/Jira integrations shoul
 ## Acceptance Criteria
 
 - [x] Existing deployed data remains under the current Server and current account after migration.
-- [ ] A logged-in account can see its Server membership and active Server.
-- [ ] A new account can join an existing Server through an invite/join token without creating a new Server.
-- [ ] A Server owner/admin can create a Computer connect command for that Server.
-- [ ] A Server owner/admin can create an Agent in that Server and optionally bind it to a Server Computer.
-- [ ] A Server member can enter a Server channel and send/read messages scoped to that Server.
+- [x] A logged-in account can see its Server membership and active Server.
+- [x] A new account can create or switch to real Servers for release testing without database hand edits.
+- [x] A Server owner/admin can create a Computer connect command for that Server.
+- [x] A Server owner/admin can create an Agent in that Server and optionally bind it to a Server Computer.
+- [x] A Server member can enter a Server channel and send/read messages scoped to that Server.
 - [x] Private channel membership prevents non-members from reading or posting to that channel.
-- [ ] Public APIs no longer rely on `_get_server()` selecting the first/default Server for authenticated human operations when an active Server is available.
-- [ ] Daemon connect/register keeps using the Server from its connect ticket or machine token and does not cross Server boundaries.
-- [ ] Frontend login/onboarding shows the Server context clearly enough that users understand whether they are creating a Server or joining one.
-- [ ] Tests cover account -> server membership, invite join, active Server scoping, channel access, Computer connect command scoping, and Agent creation scoping.
-- [ ] Deployment smoke for the current Tencent Cloud host still passes after the migration.
+- [x] Public APIs no longer rely on `_get_server()` selecting the first/default Server for authenticated human operations when an active Server is available.
+- [x] Daemon connect/register keeps using the Server from its connect ticket or machine token and does not cross Server boundaries.
+- [x] Frontend login/onboarding shows the Server context clearly enough that users understand the active Server and can create/switch Servers.
+- [x] Tests cover account -> Server membership, active Server scoping, channel access, Computer connect command scoping, Agent creation scoping, and Better Auth bridge/default Server behavior.
+- [x] Deployment smoke for the current Tencent Cloud host still passes after the migration.
+- [x] Full invite acceptance is explicitly deferred out of the initial release login/server-switcher scope rather than treated as a hidden blocker.
+
+## Deferred Invite/Join Scope
+
+The original PRD included "new account joins an existing Server through an invite/join token" as an acceptance item. That has been narrowed for the 07-15 initial release after the Better Auth/server-switcher task:
+
+- The release-critical Server foundation is now: real login, personal Server provisioning, real second-Server creation, active Server switching, scoped API requests, scoped channel/member/computer/task data, and owner/admin gating.
+- Full invite acceptance flow remains out of scope for the completed Better Auth task and is not required to prove the initial Feishu/Jira release loop.
+- The database foundation still reserves `server_invites`; a future Server admin/invite task should add create-invite, accept-invite, optional channel assignment, expiry/revocation UI, and email/scan-provider interaction once the core release loop is stable.
 
 ## Capacity Question
 
@@ -65,4 +74,5 @@ Capacity conclusion for this task:
 - Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
 - Lightweight tasks can remain PRD-only.
 - For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
-- Backend foundation progress on 2026-06-29: `backend/tests/test_server_account_membership.py` covers membership metadata, seed backfill, active Server rejection for non-members, private channel rejection, cross-Server Computer scoping, and static migration of key human public routes away from `_get_server()`. Frontend onboarding/server switcher and invite-join UX remain open.
+- Backend foundation progress on 2026-06-29: `backend/tests/test_server_account_membership.py` covers membership metadata, seed backfill, active Server rejection for non-members, private channel rejection, cross-Server Computer scoping, Better Auth bootstrap/bridge behavior, and static migration of key human public routes away from `_get_server()`.
+- Product Server switching progress on 2026-06-29 lives in `.trellis/tasks/06-29-initial-release-better-auth-server-switcher/`: Better Auth email/password login, default personal Server provisioning, create-second-Server UI, active Server switcher, `X-Server-Id` propagation, and real two-account/two-Server browser evidence. GitHub/OAuth, WeChat scan login, and full invite acceptance remain follow-up login/provider/admin work.

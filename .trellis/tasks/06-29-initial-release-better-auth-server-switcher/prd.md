@@ -125,7 +125,7 @@ This task intentionally makes multi-Server state reachable through the product. 
 - Each Server has its own channel, Computer, and agent with short Chinese names for visual comparison.
 - The same visible Computer name and `machineId` were used in both Servers. Current behavior is Server-scoped Computer identity: one `Computer` row per Server per machine.
 - The validation agents were intentionally created with `autoStart: false`; runtime launch was not part of this drill.
-- Runtime workspace defaults were tightened after validation: daemon-generated runtime directories are now scoped by `<serverId>/<workspaceId>` under the daemon workspace when the backend does not provide an explicit `workspacePath`.
+- Runtime workspace defaults were tightened after validation: daemon-generated runtime directories are now scoped by `<serverId>/<computerId-or-machineId>/<workspaceId>` under the daemon workspace when the backend does not provide an explicit `workspacePath`.
 
 ## Open Questions
 
