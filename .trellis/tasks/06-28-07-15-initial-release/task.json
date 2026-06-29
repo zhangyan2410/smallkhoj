@@ -55,7 +55,8 @@
     "06-29-06-29-initial-release-server-account-membership-foundation",
     "06-29-06-29-initial-release-daemon-distribution-versioning",
     "06-29-06-29-initial-release-foundation-reliability-risk-gates",
-    "06-29-initial-release-better-auth-server-switcher"
+    "06-29-initial-release-better-auth-server-switcher",
+    "06-29-initial-release-daemon-prompt-gate-refresh"
   ],
   "parent": null,
   "relatedFiles": [],
