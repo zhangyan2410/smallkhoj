@@ -41,6 +41,10 @@ def make_foundation_repo(root: Path) -> None:
         ARTIFACT = "smallkhoj-daemon-v0.2.0-darwin-arm64.tar.gz"
         version = "0.2.0"
     """)
+    write(root / "scripts" / "postgres_backup_restore_drill.py", """
+        def placeholder():
+            return "pg_dump pg_restore SELECT 1"
+    """)
     write(root / "backend" / "tests" / "test_daemon_control.py", """
         def test_placeholder():
             assert True
@@ -70,7 +74,7 @@ def make_foundation_repo(root: Path) -> None:
 
 
 class FoundationGateTests(unittest.TestCase):
-    def test_foundation_gate_passes_static_and_deployed_smoke_for_ready_repo(self) -> None:
+    def test_foundation_gate_surfaces_p0_backup_warning_for_static_and_deployed_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
             root = Path(tmp)
             make_foundation_repo(root)
@@ -85,12 +89,15 @@ class FoundationGateTests(unittest.TestCase):
 
             self.assertEqual(report.failures, 0)
             self.assertEqual(report.blocked, 0)
-            self.assertTrue(report.ready)
+            self.assertEqual(report.p0_warnings, 1)
+            self.assertFalse(report.ready)
             by_name = {check.name: check for check in report.checks}
             self.assertEqual(by_name["foundation.riskRegister"].status, "passed")
             self.assertEqual(by_name["daemon.commandShape"].status, "passed")
             self.assertEqual(by_name["daemon.distributionArtifact"].status, "passed")
+            self.assertEqual(by_name["database.backupRestoreDrill"].status, "warning")
             self.assertEqual(by_name["smoke.ws.daemonAuth"].risk_id, "FR-04")
+            self.assertEqual(gate.exit_code_for(report, strict_warnings=False), 2)
 
     def test_missing_base_url_blocks_deployed_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -153,6 +160,7 @@ class FoundationGateTests(unittest.TestCase):
             payload = json.loads(gate.to_json(report))
 
             self.assertIn("risks", payload)
+            self.assertGreaterEqual(payload["p0Warnings"], 1)
             self.assertIn("FR-08", payload["risks"])
             self.assertNotIn("super-secret-password", gate.to_json(report))
 
@@ -166,9 +174,10 @@ class FoundationGateTests(unittest.TestCase):
             by_name = {check.name: check for check in report.checks}
             self.assertEqual(by_name["risk.FR-03.coverage"].status, "blocked")
             self.assertEqual(by_name["risk.FR-05.coverage"].status, "blocked")
-            self.assertEqual(by_name["risk.FR-07.coverage"].status, "blocked")
+            self.assertEqual(by_name["database.backupRestoreDrill"].status, "warning")
             self.assertEqual(by_name["secrets.gitignore"].status, "passed")
             self.assertNotIn("risk.FR-08.coverage", by_name)
+            self.assertNotIn("risk.FR-07.coverage", by_name)
             self.assertFalse(report.ready)
 
     def test_missing_secret_guardrail_fails_fr08(self) -> None:
@@ -209,6 +218,24 @@ class FoundationGateTests(unittest.TestCase):
             self.assertEqual(by_name["daemon.commandShape"].status, "passed")
             self.assertEqual(by_name["daemon.distributionArtifact"].status, "blocked")
             self.assertEqual(by_name["daemon.distributionArtifact"].risk_id, "FR-02")
+
+    def test_missing_backup_restore_drill_script_blocks_fr07(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:
+            root = Path(tmp)
+            make_foundation_repo(root)
+            (root / "scripts" / "postgres_backup_restore_drill.py").unlink()
+
+            report = gate.run_foundation_gate(
+                root=root,
+                base_url=base_url,
+                allow_http=True,
+                timeout=2,
+                require_all_p0=False,
+            )
+
+            by_name = {check.name: check for check in report.checks}
+            self.assertEqual(by_name["database.backupRestoreDrill"].status, "blocked")
+            self.assertEqual(by_name["database.backupRestoreDrill"].risk_id, "FR-07")
 
     def test_backend_daemon_identity_tests_can_cover_fr03(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, FakeDeploymentServer() as base_url:

@@ -21,6 +21,7 @@ if __package__ in {None, ""}:
 
 from scripts import initial_release_deploy_preflight as preflight  # noqa: E402
 from scripts import post_deploy_smoke as smoke  # noqa: E402
+from scripts import postgres_backup_restore_drill as db_drill  # noqa: E402
 
 
 STATUS_PASSED = preflight.STATUS_PASSED
@@ -74,12 +75,16 @@ class FoundationReport:
         return sum(1 for check in self.checks if check.status == STATUS_WARNING)
 
     @property
+    def p0_warnings(self) -> int:
+        return sum(1 for check in self.checks if check.status == STATUS_WARNING and check.priority == "P0")
+
+    @property
     def blocked(self) -> int:
         return sum(1 for check in self.checks if check.status == STATUS_BLOCKED)
 
     @property
     def ready(self) -> bool:
-        return self.failures == 0 and self.blocked == 0
+        return self.failures == 0 and self.blocked == 0 and self.p0_warnings == 0
 
 
 def passed(
@@ -532,6 +537,63 @@ def check_taskrun_lifecycle_backend_tests(root: Path, *, timeout: float) -> Foun
     )
 
 
+def check_backup_restore_drill_plan(root: Path) -> FoundationCheck:
+    path = root / "scripts" / "postgres_backup_restore_drill.py"
+    if not path.is_file():
+        return blocked(
+            "database.backupRestoreDrill",
+            "FOUNDATION_BACKUP_RESTORE_DRILL_SCRIPT_MISSING",
+            "No executable database backup/restore drill script is available.",
+            risk_id="FR-07",
+            priority="P0",
+            details={"path": str(path)},
+        )
+    try:
+        result = db_drill.run_drill(
+            root=root,
+            env_file=Path(".env.prod"),
+            compose_file=Path("docker-compose.prod.yml"),
+            backup_dir=Path("backups"),
+            restore_database="smallkhoj_restore_drill_foundation",
+            dry_run=True,
+        )
+    except Exception as exc:
+        return failed(
+            "database.backupRestoreDrill",
+            "FOUNDATION_BACKUP_RESTORE_DRILL_PLAN_FAILED",
+            "Database backup/restore drill plan could not be generated.",
+            risk_id="FR-07",
+            priority="P0",
+            details={"error": str(exc)},
+        )
+    step_names = [step["name"] for step in result.steps]
+    required = {"backup", "create-restore-db", "restore", "verify-restore", "drop-restore-db-after"}
+    missing = sorted(required - set(step_names))
+    if missing:
+        return failed(
+            "database.backupRestoreDrill",
+            "FOUNDATION_BACKUP_RESTORE_DRILL_PLAN_INCOMPLETE",
+            "Database backup/restore drill plan is missing required steps.",
+            risk_id="FR-07",
+            priority="P0",
+            details={"missing": missing, "steps": step_names},
+        )
+    return warning(
+        "database.backupRestoreDrill",
+        "FOUNDATION_BACKUP_RESTORE_DRILL_NOT_EXECUTED",
+        "Database backup/restore drill script and no-secret command plan exist, but the restore has not been executed in this gate run.",
+        risk_id="FR-07",
+        priority="P0",
+        details={
+            "script": str(path),
+            "dryRun": True,
+            "backupFile": str(result.backup_file),
+            "restoreDatabase": result.restore_database,
+            "steps": step_names,
+        },
+    )
+
+
 def _append_preflight_checks(
     checks: list[FoundationCheck],
     *,
@@ -591,6 +653,7 @@ def run_foundation_gate(
         check_daemon_command_shape(resolved_root),
         check_daemon_distribution_artifact(resolved_root),
         *config_secret_guardrail_checks(resolved_root),
+        check_backup_restore_drill_plan(resolved_root),
     ]
     if include_backend_tests:
         checks.append(check_daemon_identity_backend_tests(resolved_root, timeout=max(timeout, 30.0)))
@@ -658,6 +721,7 @@ def report_to_dict(report: FoundationReport) -> dict[str, Any]:
         "ready": report.ready,
         "failures": report.failures,
         "warnings": report.warnings,
+        "p0Warnings": report.p0_warnings,
         "blocked": report.blocked,
         "risks": risk_summary(report),
         "checks": checks,
@@ -673,6 +737,8 @@ def exit_code_for(report: FoundationReport, *, strict_warnings: bool) -> int:
         return 1
     if report.blocked:
         return 3
+    if report.p0_warnings:
+        return 2
     if strict_warnings and report.warnings:
         return 2
     return 0
@@ -682,7 +748,8 @@ def print_human(report: FoundationReport) -> None:
     status = "READY" if report.ready else "NOT READY"
     print(
         "Initial release foundation gate: "
-        f"{status} ({report.failures} failed, {report.blocked} blocked, {report.warnings} warnings)"
+        f"{status} ({report.failures} failed, {report.blocked} blocked, "
+        f"{report.warnings} warnings, {report.p0_warnings} P0 warnings)"
     )
     for check in report.checks:
         marker = {

@@ -10,7 +10,7 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 | FR-04 | P0 | Daemon WebSocket production route broken | Computer connects but cannot receive control events | `initial_release_foundation_gate.py` `smoke.ws.daemonAuth`; evidence `evidence/FOUNDATION_gate_20260629095157.md` | `06-28-initial-release-daemon-websocket-deploy-smoke` | pass |
 | FR-05 | P0 | TaskRun accepted but not executable/observable | Work item appears queued forever or fails without evidence | `initial_release_foundation_gate.py` `taskrun.lifecycleBackendTests`; evidence `evidence/FOUNDATION_gate_20260629100946.md` | `06-25-taskrun-config-templates` / initial release parent | pass |
 | FR-06 | P0 | Deployment only works from local dev assumptions | Public URL uses localhost API/WS, CORS fails, Caddy misses WS upgrade | `initial_release_foundation_gate.py` repo preflight + public smoke; evidence `evidence/FOUNDATION_gate_20260629095157.md` | production deployment tasks | pass |
-| FR-07 | P0 | No backup/restore confidence | Bad deploy or DB issue loses release data | Postgres backup and restore drill into clean DB/staging | missing child task | blocked |
+| FR-07 | P0 | No backup/restore confidence | Bad deploy or DB issue loses release data | `postgres_backup_restore_drill.py` dry-run command plan exists; latest gate evidence `evidence/FOUNDATION_gate_20260629101847.md`; real restore execution still required | production recovery / deployment operations | warn |
 | FR-08 | P0 | Secrets/config leak or partial prod env | Real secrets printed, committed, or app starts with placeholders | `initial_release_foundation_gate.py` static no-secret guardrails; evidence `evidence/FOUNDATION_gate_20260629095636.md` | production env validation tasks | pass |
 | FR-09 | P1 | Server capacity hidden until live use | Idle smoke passes, but memory/disk/CPU fails during runtime/chat activity | resource snapshot after foundation activity | lighthouse resource baseline | warn |
 | FR-10 | P1 | Disk fills from logs/uploads/evidence/cache | App degrades or Postgres/Docker fails due to 40GB disk pressure | upload limits, retention docs, Docker cleanup, disk check | missing child task | not-started |
@@ -22,12 +22,12 @@ Status values: `not-started`, `pass`, `warn`, `fail`, `blocked`.
 
 ## Current Release Decision
 
-Not ready. Latest coherent gate run on 2026-06-29 produced 0 failed P0 risks and 1 blocked P0 risk.
+Not ready. Latest coherent gate run on 2026-06-29 produced 0 failed checks, 0 blocked checks, and 1 P0 warning. The runner now treats any P0 warning as `NOT READY` and exits with code 2.
 
-- Blocked / no executable gate wired yet: FR-07.
+- P0 warning: FR-07 has a no-secret backup/restore drill plan, but no restore has been executed against a clean database or staging environment.
 - Passing evidence exists for FR-02, FR-03, FR-04, FR-05, FR-06, and FR-08.
 - FR-01 is only partially covered by the risk-register existence check; real account/server access tests remain required.
 
 ## Minimum Recommended P0 Blockers
 
-The initial release should block on FR-01 through FR-08 unless the user explicitly accepts a narrower release definition.
+The initial release should block on FR-01 through FR-08 unless the user explicitly accepts a narrower release definition. No P0 warning is currently accepted as release-ready.

@@ -59,7 +59,7 @@ rtk python3 scripts/initial_release_foundation_gate.py \
   --json
 ```
 
-The runner currently composes deployment preflight, public smoke, risk-register coverage, and daemon command-shape detection. By default it blocks any P0 risk that has no executable gate wired yet. Use `--partial` only while developing an individual check.
+The runner currently composes deployment preflight, public smoke, risk-register coverage, daemon command-shape detection, daemon identity backend tests, TaskRun lifecycle backend tests, config/secrets guardrails, daemon distribution artifact detection, and a backup/restore drill plan. By default it blocks any P0 risk that has no executable gate wired yet and treats P0 warnings as `NOT READY`. Use `--partial` only while developing an individual check.
 
 ## Phase 5: Evidence and release review
 

@@ -55,7 +55,7 @@ The release should not be declared ready just because one happy-path integration
 - [ ] Channel/message tests prove public/private channel visibility and write access behavior.
 - [x] Computer identity tests prove reconnect does not create duplicate Computers for the same physical machine.
 - [ ] Packaged daemon validation proves a user can connect from outside the repository checkout path.
-- [ ] Daemon WebSocket validation proves public deployment routes `/internal/agent-api/ws` correctly and rejects unauthenticated upgrades.
+- [x] Daemon WebSocket validation proves public deployment routes `/internal/agent-api/ws` correctly and rejects unauthenticated upgrades.
 - [ ] Daemon reconnect validation proves heartbeat, lease, offline transition, and event cursor behavior after restart.
 - [ ] Agent/runtime validation proves selected work goes to the intended Computer/runtime and non-target runtimes stay idle.
 - [x] TaskRun validation proves queued/running/failed/complete states and evidence are visible to an operator.
@@ -63,7 +63,7 @@ The release should not be declared ready just because one happy-path integration
 - [ ] Capacity validation records resource usage during realistic foundation activity, not only idle smoke.
 - [ ] Backup/restore validation proves the database can be restored into a clean environment or records a release-blocking gap.
 - [ ] Storage/log retention validation proves large logs/evidence/uploads cannot silently fill the disk, or records a tracked release blocker.
-- [ ] Config/secrets validation proves `.env` templates, production env updates, and scripts do not print or commit secrets.
+- [x] Config/secrets validation proves `.env` templates, production env updates, and scripts do not print or commit secrets.
 - [ ] Recovery validation records how to restart services, roll back a bad deployment, and collect evidence after failure.
 - [ ] The task explicitly states which risks remain accepted for the first release and why.
 
@@ -84,3 +84,4 @@ The release should not be declared ready just because one happy-path integration
 - Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
 - Lightweight tasks can remain PRD-only.
 - For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
+- Latest gate evidence on 2026-06-29 is `evidence/FOUNDATION_gate_20260629101847.md`. It reports `NOT READY` because FR-07 has only a dry-run backup/restore command plan; no real restore has been executed yet.
