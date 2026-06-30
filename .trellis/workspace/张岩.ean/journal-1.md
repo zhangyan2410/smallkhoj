@@ -281,3 +281,36 @@ Upgraded Trellis project flow to 0.6.5, enabled Codex workflow breadcrumbs, codi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: Server invite join and onboarding hardening
+
+**Date**: 2026-06-30
+**Task**: Server invite join and onboarding hardening
+**Branch**: `main`
+
+### Summary
+
+Implemented and validated server invite join flow, one-line daemon onboarding, deployment/runtime guardrails, frontend auth/server switching polish, and archived the completed invite task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7c2d2cb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
