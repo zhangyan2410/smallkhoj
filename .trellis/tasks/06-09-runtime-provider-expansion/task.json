@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "06-30-windows-runtime-launch-conversation-validation"
+  ],
   "parent": "06-09-product-maturity-gap-decomposition",
   "relatedFiles": [],
   "notes": "",

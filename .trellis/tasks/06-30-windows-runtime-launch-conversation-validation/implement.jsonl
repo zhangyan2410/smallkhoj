@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "runtime provider, daemon startup, Slock CLI, Windows runtime integration contracts"}
+{"file": ".trellis/tasks/archive/2026-06/06-30-daemon-runtime-provider-productization/prd.md", "reason": "source requirements and bug evidence for the productized runtime detection change"}
+{"file": ".trellis/tasks/archive/2026-06/06-30-daemon-runtime-provider-productization/design.md", "reason": "technical design and boundaries for command/provider detection"}
+{"file": ".trellis/tasks/archive/2026-06/06-30-daemon-runtime-provider-productization/implement.md", "reason": "implementation and validation notes from the merged work"}
+{"file": ".trellis/tasks/06-09-runtime-provider-expansion/prd.md", "reason": "parent runtime provider expansion acceptance context"}
