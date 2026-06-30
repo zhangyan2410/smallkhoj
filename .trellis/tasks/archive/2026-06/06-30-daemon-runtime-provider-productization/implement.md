@@ -34,7 +34,7 @@
    - no `/Users/lee/.local/bin/ccs-claude`;
    - no `.claude/cc-switch.ps1` implicit fallback;
    - no `ccs-claude` launch dependency in product path.
-3. [ ] Commit and push when green.
+3. [x] Commit and push when green.
 
 ## Notes
 
