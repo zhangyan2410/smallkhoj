@@ -24,6 +24,13 @@ zy-think/.obsidian/
 toremove/
 release-artifacts/
 
+# Trellis evidence screenshots are local validation artifacts; keep text notes, ignore image blobs.
+.trellis/tasks/**/evidence/*.png
+.trellis/tasks/**/evidence/*.jpg
+.trellis/tasks/**/evidence/*.jpeg
+.trellis/tasks/**/evidence/*.gif
+.trellis/tasks/**/evidence/*.webp
+
 # Dev server runtime
 .dev-pids/
 .dev-logs/
