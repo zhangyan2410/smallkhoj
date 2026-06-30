@@ -14,6 +14,7 @@ export interface LocalRuntimeProvider {
 
 export interface RuntimeProviderInventory {
   ccsClaudeCommand?: string;
+  claudeCommand?: string;
   codexCommand?: string;
   providers: LocalRuntimeProvider[];
 }

@@ -1,11 +1,11 @@
 import type { DaemonConfig, DetectedRuntime } from '../types.js';
 import {
   detectCcsClaudeProviders,
-  loadCcSwitchCodexProviders,
+  loadCcSwitchProviders,
   parseCcSwitchProviderRows,
   parseCcsClaudeListOutput,
 } from './providers/cc-switch-provider.js';
-import { codexCliFallbackProvider, detectCodexCommand } from './providers/local-command-provider.js';
+import { codexCliFallbackProvider, detectClaudeCommand, detectCodexCommand } from './providers/local-command-provider.js';
 import { loadManualRuntimeProviders, parseManualRuntimeProviders } from './providers/manual-provider.js';
 import type {
   LocalRuntimeProvider,
@@ -20,6 +20,9 @@ export type {
 } from './providers/provider-types.js';
 
 export {
+  detectClaudeCommand,
+  detectCodexCommand,
+  loadCcSwitchProviders,
   parseCcSwitchProviderRows,
   parseCcsClaudeListOutput,
   parseManualRuntimeProviders,
@@ -27,21 +30,23 @@ export {
 
 export function detectRuntimeProviders(env: NodeJS.ProcessEnv = process.env): RuntimeProviderInventory {
   const homeDir = env.USERPROFILE || env.HOME || '';
+  const claudeCommand = detectClaudeCommand(env);
   const codexCommand = detectCodexCommand(env);
   const manualProviders = loadManualRuntimeProviders(env);
-  const ccSwitchCodexProviders = loadCcSwitchCodexProviders(env, homeDir);
+  const ccSwitchProviders = loadCcSwitchProviders(env, homeDir);
   const ccsClaude = detectCcsClaudeProviders(env);
   const providers = mergeRuntimeProviders([
     manualProviders,
+    ccSwitchProviders,
     ccsClaude.providers,
-    ccSwitchCodexProviders,
-    codexCommand && !hasRuntimeProvider([...manualProviders, ...ccSwitchCodexProviders], 'codex')
+    codexCommand && !hasRuntimeProvider([...manualProviders, ...ccSwitchProviders], 'codex')
       ? [codexCliFallbackProvider(codexCommand)]
       : [],
   ]);
 
   return {
     ccsClaudeCommand: ccsClaude.command,
+    claudeCommand,
     codexCommand,
     providers,
   };
@@ -108,6 +113,19 @@ export function resolveRuntimeProviderLaunch(
   if (provider.runtime === 'codex') {
     return {
       runtimeProvider: provider.id,
+      ...(provider.command ? { command: provider.command } : {}),
+      ...(provider.commandArgs ? { commandArgs: provider.commandArgs } : {}),
+      model: provider.model,
+    };
+  }
+
+  if (provider.runtime === 'claude_code' && provider.source === 'cc-switch') {
+    if (!inventory.claudeCommand) {
+      return { runtimeProvider: provider.id, error: `Runtime provider ${provider.name} requires a detected Claude Code command` };
+    }
+    return {
+      runtimeProvider: provider.id,
+      command: inventory.claudeCommand,
       model: provider.model,
     };
   }
@@ -133,6 +151,15 @@ export function resolveRuntimeProviderLaunch(
     commandArgs: [provider.name, provider.model].filter((item): item is string => Boolean(item)),
     model: provider.model,
   };
+}
+
+export function resolveDetectedRuntimeCommand(
+  runtime: 'claude_code' | 'codex_cli' | 'codex',
+  inventory: RuntimeProviderInventory,
+): string | undefined {
+  if (runtime === 'claude_code') return inventory.claudeCommand;
+  if (runtime === 'codex_cli') return inventory.codexCommand;
+  return undefined;
 }
 
 function mergeRuntimeProviders(providerGroups: Array<LocalRuntimeProvider[] | false | undefined>): LocalRuntimeProvider[] {

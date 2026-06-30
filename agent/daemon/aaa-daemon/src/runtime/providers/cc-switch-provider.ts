@@ -1,5 +1,6 @@
 import { existsSync } from 'fs';
 import { spawnSync } from 'child_process';
+import { join } from 'path';
 import type { LocalRuntimeProvider } from './provider-types.js';
 
 interface CcSwitchProviderRow {
@@ -15,19 +16,10 @@ export interface CcsClaudeProviderDetection {
 }
 
 export function detectCcsClaudeProviders(env: NodeJS.ProcessEnv = process.env): CcsClaudeProviderDetection {
-  const homeDir = env.USERPROFILE || env.HOME || '';
   const candidates = [
     env.SLOCK_CCS_CLAUDE_COMMAND,
     env.CCS_CLAUDE_COMMAND,
-    '/Users/lee/.local/bin/ccs-claude',
-    'ccs-claude',
-    `${homeDir}/.local/bin/ccs-claude`,
-  ].filter((item): item is string => Boolean(item));
-
-  const ccSwitchPs1 = homeDir ? `${homeDir}/.claude/cc-switch.ps1` : '';
-  if (ccSwitchPs1 && existsSync(ccSwitchPs1)) {
-    candidates.push(`powershell.exe|-ExecutionPolicy|Bypass|${ccSwitchPs1}`);
-  }
+  ].filter((item): item is string => Boolean(item?.trim()));
 
   for (const candidate of candidates) {
     const parts = candidate.split('|');
@@ -56,8 +48,8 @@ export function detectCcsClaudeProviders(env: NodeJS.ProcessEnv = process.env): 
   return { providers: [] };
 }
 
-export function loadCcSwitchCodexProviders(env: NodeJS.ProcessEnv, homeDir = env.USERPROFILE || env.HOME || ''): LocalRuntimeProvider[] {
-  const dbPath = env.SLOCK_CC_SWITCH_DB || env.CC_SWITCH_DB || (homeDir ? `${homeDir}/.cc-switch/cc-switch.db` : '');
+export function loadCcSwitchProviders(env: NodeJS.ProcessEnv, homeDir = env.USERPROFILE || env.HOME || ''): LocalRuntimeProvider[] {
+  const dbPath = env.SLOCK_CC_SWITCH_DB || env.CC_SWITCH_DB || (homeDir ? join(homeDir, '.cc-switch', 'cc-switch.db') : '');
   if (!dbPath || !existsSync(dbPath)) return [];
   const sqliteCommand = env.SLOCK_SQLITE_COMMAND || env.SQLITE_COMMAND || 'sqlite3';
   const result = spawnSync(sqliteCommand, [
@@ -66,7 +58,7 @@ export function loadCcSwitchCodexProviders(env: NodeJS.ProcessEnv, homeDir = env
     [
       'select id, app_type, name, settings_config',
       'from providers',
-      "where app_type = 'codex'",
+      "where app_type in ('claude', 'codex')",
       'order by coalesce(sort_index, 999999), name',
     ].join(' '),
   ], {
@@ -77,10 +69,14 @@ export function loadCcSwitchCodexProviders(env: NodeJS.ProcessEnv, homeDir = env
   if (result.status !== 0) return [];
   try {
     const rows = JSON.parse(result.stdout || '[]');
-    return Array.isArray(rows) ? parseCcSwitchProviderRows(rows, 'codex') : [];
+    return Array.isArray(rows) ? parseCcSwitchProviderRows(rows, ['claude', 'codex']) : [];
   } catch {
     return [];
   }
+}
+
+export function loadCcSwitchCodexProviders(env: NodeJS.ProcessEnv, homeDir = env.USERPROFILE || env.HOME || ''): LocalRuntimeProvider[] {
+  return loadCcSwitchProviders(env, homeDir).filter((provider) => provider.runtime === 'codex');
 }
 
 export function parseCcsClaudeListOutput(output: string): LocalRuntimeProvider[] {
@@ -107,12 +103,14 @@ export function parseCcsClaudeListOutput(output: string): LocalRuntimeProvider[]
   return providers;
 }
 
-export function parseCcSwitchProviderRows(rows: unknown[], appType: 'codex' | 'claude'): LocalRuntimeProvider[] {
+export function parseCcSwitchProviderRows(rows: unknown[], appType: 'codex' | 'claude' | Array<'codex' | 'claude'>): LocalRuntimeProvider[] {
+  const allowedAppTypes = new Set(Array.isArray(appType) ? appType : [appType]);
   const providers: LocalRuntimeProvider[] = [];
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue;
     const provider = row as CcSwitchProviderRow;
-    if (provider.app_type !== appType) continue;
+    if (provider.app_type !== 'codex' && provider.app_type !== 'claude') continue;
+    if (!allowedAppTypes.has(provider.app_type)) continue;
     if (typeof provider.id !== 'string' || typeof provider.name !== 'string') continue;
     const id = provider.id.trim();
     const name = provider.name.trim();
@@ -120,7 +118,7 @@ export function parseCcSwitchProviderRows(rows: unknown[], appType: 'codex' | 'c
     providers.push({
       id,
       name,
-      runtime: appType === 'codex' ? 'codex' : 'claude_code',
+      runtime: provider.app_type === 'codex' ? 'codex' : 'claude_code',
       model: readProviderModel(provider.settings_config),
       source: 'cc-switch',
     });

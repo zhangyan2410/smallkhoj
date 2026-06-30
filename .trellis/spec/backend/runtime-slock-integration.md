@@ -465,18 +465,20 @@ Keep ACP session identity scoped to one daemon-managed agent/workspace runtime, 
 
 - Daemon CLI:
   - `aaa-daemon start --runtime-provider <providerName>`
-- Daemon local provider launcher:
-  - default command discovery order: `SLOCK_CCS_CLAUDE_COMMAND`, `CCS_CLAUDE_COMMAND`, `/Users/lee/.local/bin/ccs-claude`, `ccs-claude`
-  - discovery: `<ccsClaudeCommand> list`
-  - launch: `<ccsClaudeCommand> <providerName> <model>`
+- Daemon local runtime command detection:
+  - Claude Code command discovery starts with explicit env overrides (`SLOCK_CLAUDE_COMMAND`, `CLAUDE_COMMAND`), then platform-aware PATH/common-location probes for `claude`/`claude.cmd`.
+  - Codex command discovery starts with explicit env overrides (`SLOCK_CODEX_COMMAND`, `CODEX_COMMAND`), then platform-aware PATH/common-location probes for `codex`/`codex.cmd`.
+  - Detection code must not contain developer-specific absolute paths such as `/Users/<developer>/...`.
+  - Detection code must not automatically discover or invoke `$HOME/.claude/cc-switch.ps1`, `ccs-claude`, or other provider-switching scripts as the product launch path.
 - Manual provider inventory:
   - env var discovery order: `SLOCK_RUNTIME_PROVIDERS_JSON`, `AAA_DAEMON_RUNTIME_PROVIDERS_JSON`, `RUNTIME_PROVIDERS_JSON`
   - JSON shape: `[{id,name,runtime,model?,command?,commandArgs?}]`
-  - `command` and `commandArgs` are daemon-local launch data only; they must not be echoed through backend/public heartbeat payloads.
-- CC Switch Codex provider inventory:
+  - `command` and `commandArgs` are daemon-local launch data only for explicit advanced opt-in; they must not be echoed through backend/public heartbeat payloads.
+- CC Switch provider inventory:
   - default database discovery order: `SLOCK_CC_SWITCH_DB`, `CC_SWITCH_DB`, `$HOME/.cc-switch/cc-switch.db`
-  - query only local `providers` rows with `app_type='codex'`
-  - provider rows are parsed into public runtime `codex`; ACP remains an implementation detail
+  - query local `providers` rows with `app_type in ('claude', 'codex')`
+  - provider rows are parsed into sanitized public runtimes: `app_type='claude'` -> `claude_code`; `app_type='codex'` -> `codex`
+  - DB paths, `settings_config`, auth payloads, provider tokens, and local command details remain daemon-local and are never sent to backend/public heartbeat payloads.
 - Public/backend payload fields:
   - `Member.config.runtimeProvider?: string`
   - `AgentWorkspace.runtimeProvider?: string` in serialized responses
@@ -487,12 +489,13 @@ Keep ACP session identity scoped to one daemon-managed agent/workspace runtime, 
 
 - `runtimeProvider` is a provider/profile name, not an API key, shell command, or serialized credential.
 - The backend may store and return `runtimeProvider`, but it must not store API keys, CC Switch provider config, generated Claude settings files, command args, or auth headers.
-- The daemon owns provider detection and launch resolution. If local CC Switch DB/`ccs-claude` is unavailable, `detectedRuntimes` still includes the default runtime capability and existing default runtime launch behavior continues.
-- Detected manual and CC Switch providers are reported as sanitized capabilities only: `type`, `status`, `provider`, `runtimeProvider`, `model`, and `source`. Do not include `ccs-claude` path, CC Switch DB path, provider config JSON, tokens, request headers, provider command, or command args.
+- The daemon owns provider detection and launch resolution. If local CC Switch DB is unavailable, `detectedRuntimes` still includes whichever local runtime commands were detected, and default runtime launch uses those local commands.
+- Detected manual and CC Switch providers are reported as sanitized capabilities only: `type`, `status`, `provider`, `runtimeProvider`, `model`, and `source`. Do not include executable paths, CC Switch DB path, provider config JSON, tokens, request headers, provider command, or command args.
 - `backend` is a legacy/old display field. Do not infer `runtimeProvider` from `backend` during serialization or runtime start command construction.
 - Creating or updating an agent may set `runtimeProvider` explicitly. Old `backend` values remain old data and must not silently become provider selections.
-- If a Claude `start_runtime` command includes `runtimeProvider` and omits `runtimeCommand`, the daemon resolves the provider locally and starts Claude Code via the local provider launcher.
-- If a Codex `start_runtime` command includes a CC Switch `runtimeProvider`, the daemon records the selected sanitized provider identity and starts public runtime `codex`; provider-specific Codex launch isolation requires a future `ccs-codex`-equivalent launcher or per-runtime Codex config writer before it can guarantee switching without mutating CC Switch global state.
+- If a Claude `start_runtime` command includes `runtimeProvider` and omits `runtimeCommand`, the daemon resolves the provider locally and starts the detected Claude Code command with daemon-owned Claude arguments and selected model/provider metadata. It must not invoke `cc-switch.ps1` or `ccs-claude`.
+- If a Codex `start_runtime` command includes a CC Switch `runtimeProvider`, the daemon records the selected sanitized provider identity and starts public runtime `codex` using daemon-local command/config resolution. It must not mutate global CC Switch state through provider-switching scripts.
+- Exact provider credential isolation must be implemented through daemon-local config generation if the CC Switch DB contains enough data. If not implemented yet, do not pretend that scripts are product behavior; report sanitized provider metadata and fail clearly when launch cannot be made local.
 - If a manually configured `runtimeProvider` includes `command` / `commandArgs`, the daemon may use them for local launch resolution, but heartbeat and backend storage still carry only the provider id/name/model/source.
 - If `runtimeCommand` is explicitly supplied, it takes precedence over provider resolution for test/custom-launch paths.
 - Daemon workspace register/heartbeat payloads for provider-launched runtimes include `runtimeProvider`, but omit `runtimeCommand` and `runtimeModel` unless those were explicitly configured outside provider launch.
@@ -500,8 +503,9 @@ Keep ACP session identity scoped to one daemon-managed agent/workspace runtime, 
 
 ### 4. Validation & Error Matrix
 
-- No local `ccs-claude` available -> report no Claude CC Switch provider capabilities; keep default runtime path usable.
-- No local CC Switch DB or `sqlite3` available -> report no Codex CC Switch provider capabilities; keep default runtime path usable.
+- No detected `claude` command -> report Claude default capability as unavailable or omit provider launch, and emit a clear local command detection error rather than a generic `spawn claude ENOENT`.
+- No detected `codex` command -> report Codex CLI capability as unavailable or omit provider launch, and emit a clear local command detection error.
+- No local CC Switch DB or `sqlite3` available -> report no CC Switch provider capabilities; keep detected default runtime commands usable.
 - `runtimeProvider` supplied but not found in local provider inventory -> daemon logs a sanitized warning and does not start that runtime.
 - Manual provider JSON is malformed or contains unsupported runtime values -> skip those entries; keep other detection sources usable.
 - `runtimeProvider` supplied with `runtimeCommand` -> daemon uses the explicit command and does not try to resolve the provider locally.
@@ -511,14 +515,17 @@ Keep ACP session identity scoped to one daemon-managed agent/workspace runtime, 
 
 ### 5. Good/Base/Bad Cases
 
-- Good: `create_agent` receives `{runtimeProvider:"Kimi"}`; backend stores `Member.config.runtimeProvider`; daemon receives `start_runtime.config.runtimeProvider:"Kimi"` and launches `ccs-claude Kimi kimi-for-coding` locally.
+- Good: `create_agent` receives `{runtimeProvider:"Kimi"}`; backend stores `Member.config.runtimeProvider`; daemon receives `start_runtime.config.runtimeProvider:"Kimi"` and launches the detected Claude Code command locally with selected model/provider metadata, without a switching script.
 - Good: `SLOCK_RUNTIME_PROVIDERS_JSON` defines `local-codex-krill`; daemon heartbeat reports `{type:"codex", provider:"Local Codex Krill", runtimeProvider:"local-codex-krill", source:"manual"}` while launch resolution uses the local command privately.
 - Good: CC Switch DB contains Codex provider `krill`; daemon heartbeat reports `{type:"codex", provider:"krill", runtimeProvider:"<local-provider-id>", source:"cc-switch"}` without exposing `settings_config`.
-- Base: no CC Switch on the machine; the daemon reports only the base runtime capability and starts the default Claude runtime when no provider is selected.
+- Good: CC Switch DB contains Claude provider `Kimi`; daemon heartbeat reports `{type:"claude_code", provider:"Kimi", runtimeProvider:"<local-provider-id>", source:"cc-switch"}` without exposing `settings_config` or invoking `cc-switch.ps1`.
+- Base: no CC Switch on the machine; the daemon reports only detected base runtime capabilities and starts default runtimes with detected local commands when no provider is selected.
 - Base: daemon reports `Kimi`, `Zhipu GLM`, and Codex providers such as `krill` in `detectedRuntimes`; UI lists provider names/models but cannot see API keys, DB paths, settings JSON, or launcher arguments.
 - Bad: storing `CCS_PROVIDER_DEFAULTS`, provider tokens, or provider command args on the backend.
 - Bad: treating `backend:"Claude"` as `runtimeProvider:"Claude"`; that can block default Claude startup when no such CC Switch provider exists.
-- Bad: sending `/Users/.../ccs-claude` or generated Claude settings paths through server APIs.
+- Bad: shipping developer-specific paths such as `/Users/lee/...` in daemon discovery code.
+- Bad: auto-discovering `$HOME/.claude/cc-switch.ps1` or launching `ccs-claude <provider> <model>` as product behavior.
+- Bad: sending executable paths, generated settings paths, or provider DB paths through server APIs.
 
 ### 6. Tests Required
 
@@ -527,10 +534,11 @@ Keep ACP session identity scoped to one daemon-managed agent/workspace runtime, 
   - `backend` alone does not become `runtimeProvider`.
   - missing expected-running workspaces are re-armed to `pending_start`, but `runtimeDesiredStatus:"stopped"` is not re-armed.
 - Daemon unit/integration tests:
-  - parse `ccs-claude list` output into sanitized providers.
-  - parse CC Switch Codex provider rows into sanitized public `codex` providers.
+  - detect Claude and Codex commands through env/PATH/platform candidates without hardcoded personal paths.
+  - prove `$HOME/.claude/cc-switch.ps1` is not an implicit provider detection or launch source.
+  - parse CC Switch Claude and Codex provider rows into sanitized public providers.
   - parse manual provider JSON and verify command/args are launch-only, not heartbeat payload fields.
-  - fake `ccs-claude` launches the selected provider/model from `start_runtime.config.runtimeProvider`.
+  - selected Claude CC Switch provider resolves to detected Claude command and selected model, not a wrapper script.
   - daemon register/heartbeat reports provider capabilities and provider workspace state without command args.
 - Real test:
   - create a marker agent with `runtimeProvider:"Kimi"`.

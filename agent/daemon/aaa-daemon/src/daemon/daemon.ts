@@ -35,6 +35,7 @@ import {
 import {
   detectedRuntimesForInventory,
   detectRuntimeProviders,
+  resolveDetectedRuntimeCommand,
   resolveRuntimeProviderLaunch,
   type RuntimeProviderInventory,
 } from '../runtime/runtime-provider.js';
@@ -776,6 +777,17 @@ export class DaemonCore extends EventEmitter {
 
     const workspacePath = runtimeConfig.workspacePath
       ?? this.defaultRuntimeWorkspacePath(agentId, runtimeConfig.workspaceId);
+    const resumeSessionId = this.runtimeSessionIds.get(agentId) ?? this.config.runtimeResumeSessionId;
+    const model = runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel;
+    const command = runtimeConfig.runtimeCommand
+      ?? providerLaunch.command
+      ?? this.config.runtimeCommand
+      ?? resolveDetectedRuntimeCommand(runtimeType, this.runtimeProviderInventory);
+    const commandArgs = runtimeConfig.runtimeCommandArgs ?? providerLaunch.commandArgs ?? this.config.runtimeCommandArgs;
+    if (requiresDetectedRuntimeCommand(runtimeType) && !command) {
+      this.log(runtimeCommandDetectionError(runtimeType), 'warn');
+      return;
+    }
     const credential: Credential = {
       ...this.credential,
       agentId,
@@ -793,10 +805,6 @@ export class DaemonCore extends EventEmitter {
       credential,
       activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
     });
-    const resumeSessionId = this.runtimeSessionIds.get(agentId) ?? this.config.runtimeResumeSessionId;
-    const model = runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel;
-    const command = runtimeConfig.runtimeCommand ?? providerLaunch.command ?? this.config.runtimeCommand;
-    const commandArgs = runtimeConfig.runtimeCommandArgs ?? providerLaunch.commandArgs ?? this.config.runtimeCommandArgs;
     const driver: ManagedRuntimeDriver = runtimeType === 'codex_cli'
       ? new CodexRuntimeDriver({
         credential,
@@ -2139,6 +2147,20 @@ function normalizeDaemonRuntimeType(runtime: string | undefined): DaemonRuntimeI
   if (runtime === 'codex' || runtime === 'codex_acp') return 'codex';
   if (runtime === 'codex_cli') return 'codex_cli';
   return undefined;
+}
+
+function requiresDetectedRuntimeCommand(runtime: DaemonRuntimeImplementation): boolean {
+  return runtime === 'claude_code' || runtime === 'codex_cli';
+}
+
+function runtimeCommandDetectionError(runtime: DaemonRuntimeImplementation): string {
+  if (runtime === 'claude_code') {
+    return 'Cannot start claude_code runtime: no Claude Code command was detected. Install Claude Code or set SLOCK_CLAUDE_COMMAND/CLAUDE_COMMAND.';
+  }
+  if (runtime === 'codex_cli') {
+    return 'Cannot start codex_cli runtime: no Codex command was detected. Install Codex CLI or set SLOCK_CODEX_COMMAND/CODEX_COMMAND.';
+  }
+  return `Cannot start ${runtime} runtime: no launch command was detected.`;
 }
 
 function findAgentId(input: unknown): string | undefined {

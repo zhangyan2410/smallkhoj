@@ -3,15 +3,18 @@ import { spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import test from 'node:test';
 import {
   daemonRuntimeWorkspacePath,
   defaultDaemonWorkspaceRoot,
 } from '../dist/daemon/daemon.js';
 import {
+  detectClaudeCommand,
+  detectCodexCommand,
   detectRuntimeProviders,
   detectedRuntimesForInventory,
+  loadCcSwitchProviders,
   parseManualRuntimeProviders,
   parseCcSwitchProviderRows,
   parseCcsClaudeListOutput,
@@ -114,9 +117,13 @@ test('daemon runtime workspace path isolates different computers on the same ser
 });
 
 function writeFakeClaudeScript(path, marker, includeSend = true) {
-  writeFileSync(path, `
+  writeFileSync(path, `#!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+if (process.argv.includes('--version')) {
+  process.stdout.write('claude-code 0.0.0-fake\\n');
+  process.exit(0);
+}
 const slockCommand = process.platform === 'win32' ? 'slock.cmd' : 'slock';
 const serverInfo = spawnSync(slockCommand, ['server', 'info'], {
   encoding: 'utf-8',
@@ -191,7 +198,7 @@ writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
 }
 
 function writeFakeCodexScript(path, marker) {
-  writeFileSync(path, `
+  writeFileSync(path, `#!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
@@ -229,6 +236,16 @@ process.stdin.on('end', () => {
   writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
 });
 `, 'utf-8');
+}
+
+function writeVersionCommand(path, output) {
+  writeFileSync(path, `#!/bin/sh
+case " $* " in
+  *" --version "*) printf '%s' ${JSON.stringify(output)}; exit 0 ;;
+esac
+exit 0
+`, 'utf-8');
+  chmodSync(path, 0o755);
 }
 
 function writeFakeAcpScript(path, marker) {
@@ -332,7 +349,91 @@ test('ccs-claude provider list output is parsed into sanitized providers', () =>
   ]);
 });
 
-test('cc-switch Codex provider rows are parsed into sanitized public Codex providers', () => {
+test('daemon detects Claude command through env override, PATH lookup, and Windows-style command shim', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-claude-command-'));
+  const fakeClaudeCmd = join(root, 'claude.cmd');
+  const binDir = join(root, 'bin');
+  const pathClaude = join(binDir, 'claude');
+  mkdirSync(binDir, { recursive: true });
+  writeVersionCommand(fakeClaudeCmd, 'claude-code 1.0.0-fake\n');
+  writeVersionCommand(pathClaude, 'claude-code 1.0.0-path\n');
+
+  try {
+    assert.equal(detectClaudeCommand({
+      ...process.env,
+      SLOCK_CLAUDE_COMMAND: fakeClaudeCmd,
+      CLAUDE_COMMAND: '',
+      PATH: '',
+    }), fakeClaudeCmd);
+    assert.equal(detectClaudeCommand({
+      ...process.env,
+      SLOCK_CLAUDE_COMMAND: '',
+      CLAUDE_COMMAND: '',
+      PATH: [binDir, process.env.PATH ?? ''].filter(Boolean).join(delimiter),
+    }), 'claude');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('daemon detects Codex command through env override, PATH lookup, and Windows-style command shim', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-codex-command-'));
+  const fakeCodexCmd = join(root, 'codex.cmd');
+  const binDir = join(root, 'bin');
+  const pathCodex = join(binDir, 'codex');
+  mkdirSync(binDir, { recursive: true });
+  writeVersionCommand(fakeCodexCmd, 'codex-cli 1.0.0-fake\n');
+  writeVersionCommand(pathCodex, 'codex-cli 1.0.0-path\n');
+
+  try {
+    assert.equal(detectCodexCommand({
+      ...process.env,
+      SLOCK_CODEX_COMMAND: fakeCodexCmd,
+      CODEX_COMMAND: '',
+      PATH: '',
+    }), fakeCodexCmd);
+    assert.equal(detectCodexCommand({
+      ...process.env,
+      SLOCK_CODEX_COMMAND: '',
+      CODEX_COMMAND: '',
+      PATH: [binDir, process.env.PATH ?? ''].filter(Boolean).join(delimiter),
+    }), 'codex');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('daemon does not implicitly discover Windows cc-switch.ps1 as a Claude provider launcher', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-no-ps1-'));
+  const claudeDir = join(root, '.claude');
+  mkdirSync(claudeDir, { recursive: true });
+  writeFileSync(join(claudeDir, 'cc-switch.ps1'), 'Write-Output "Kimi"', 'utf-8');
+
+  try {
+    const inventory = detectRuntimeProviders({
+      ...process.env,
+      HOME: root,
+      USERPROFILE: root,
+      PATH: '',
+      SLOCK_CCS_CLAUDE_COMMAND: '',
+      CCS_CLAUDE_COMMAND: '',
+      SLOCK_CC_SWITCH_DB: join(root, 'missing.db'),
+      CC_SWITCH_DB: '',
+      SLOCK_CODEX_COMMAND: '',
+      CODEX_COMMAND: '',
+      SLOCK_CLAUDE_COMMAND: '',
+      CLAUDE_COMMAND: '',
+    });
+
+    assert.equal(inventory.ccsClaudeCommand, undefined);
+    assert.equal(JSON.stringify(inventory).includes('cc-switch.ps1'), false);
+    assert.equal(inventory.providers.some(item => item.source === 'cc-switch' && item.runtime === 'claude_code'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cc-switch provider rows are parsed into sanitized public Claude and Codex providers', () => {
   const providers = parseCcSwitchProviderRows([
     {
       id: 'codex-krill',
@@ -349,39 +450,61 @@ test('cc-switch Codex provider rows are parsed into sanitized public Codex provi
       name: 'Kimi',
       settings_config: JSON.stringify({ auth: { api_key: 'OTHER_SECRET' } }),
     },
-  ], 'codex');
+  ], ['claude', 'codex']);
 
-  assert.deepEqual(providers, [{
-    id: 'codex-krill',
-    name: 'krill',
-    runtime: 'codex',
-    model: 'gpt-5.3-codex',
-    source: 'cc-switch',
-  }]);
+  assert.deepEqual(providers, [
+    {
+      id: 'codex-krill',
+      name: 'krill',
+      runtime: 'codex',
+      model: 'gpt-5.3-codex',
+      source: 'cc-switch',
+    },
+    {
+      id: 'claude-kimi',
+      name: 'Kimi',
+      runtime: 'claude_code',
+      model: undefined,
+      source: 'cc-switch',
+    },
+  ]);
   const serialized = JSON.stringify(providers);
   assert.equal(serialized.includes('SECRET_TOKEN'), false);
+  assert.equal(serialized.includes('OTHER_SECRET'), false);
   assert.equal(serialized.includes('api_key'), false);
   assert.equal(serialized.includes('settings_config'), false);
 });
 
-test('daemon loads Codex providers from the local CC Switch database command', () => {
+test('daemon loads Claude and Codex providers from the local CC Switch database command', () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-cc-switch-codex-'));
   const fakeDb = join(root, 'cc-switch.db');
   const fakeSqlite = join(root, 'fake-sqlite.mjs');
   const fakeCodex = join(root, 'fake-codex.mjs');
+  const fakeClaude = join(root, 'fake-claude.cmd');
   writeFileSync(fakeDb, '', 'utf-8');
-  writeFakeCodexScript(fakeCodex, join(root, 'unused-marker.json'));
-  chmodSync(fakeCodex, 0o755);
+  writeVersionCommand(fakeCodex, 'codex-cli 1.0.0-fake\n');
+  writeVersionCommand(fakeClaude, 'claude-code 1.0.0-fake\n');
   writeFileSync(fakeSqlite, `#!/usr/bin/env node
-process.stdout.write(JSON.stringify([{
-  id: 'codex-krill',
-  app_type: 'codex',
-  name: 'krill',
-  settings_config: JSON.stringify({
-    auth: { api_key: 'SECRET_TOKEN' },
-    config: { model: 'gpt-5.3-codex' },
-  }),
-}]));
+process.stdout.write(JSON.stringify([
+  {
+    id: 'codex-krill',
+    app_type: 'codex',
+    name: 'krill',
+    settings_config: JSON.stringify({
+      auth: { api_key: 'SECRET_TOKEN' },
+      config: { model: 'gpt-5.3-codex' },
+    }),
+  },
+  {
+    id: 'claude-kimi',
+    app_type: 'claude',
+    name: 'Kimi',
+    settings_config: JSON.stringify({
+      auth: { api_key: 'OTHER_SECRET' },
+      config: { model: 'kimi-for-coding' },
+    }),
+  },
+]));
 `, 'utf-8');
   chmodSync(fakeSqlite, 0o755);
 
@@ -393,17 +516,35 @@ process.stdout.write(JSON.stringify([{
       SLOCK_CC_SWITCH_DB: fakeDb,
       SLOCK_SQLITE_COMMAND: fakeSqlite,
       SLOCK_CODEX_COMMAND: fakeCodex,
+      SLOCK_CLAUDE_COMMAND: fakeClaude,
       SLOCK_CCS_CLAUDE_COMMAND: join(root, 'missing-ccs-claude'),
     });
-    const codexProviders = inventory.providers.filter(item => item.runtime === 'codex');
-    assert.deepEqual(codexProviders, [{
-      id: 'codex-krill',
-      name: 'krill',
-      runtime: 'codex',
-      model: 'gpt-5.3-codex',
-      source: 'cc-switch',
-    }]);
+    const ccSwitchProviders = inventory.providers.filter(item => item.source === 'cc-switch');
+    assert.deepEqual(ccSwitchProviders, [
+      {
+        id: 'codex-krill',
+        name: 'krill',
+        runtime: 'codex',
+        model: 'gpt-5.3-codex',
+        source: 'cc-switch',
+      },
+      {
+        id: 'claude-kimi',
+        name: 'Kimi',
+        runtime: 'claude_code',
+        model: 'kimi-for-coding',
+        source: 'cc-switch',
+      },
+    ]);
+    assert.deepEqual(loadCcSwitchProviders({
+      ...process.env,
+      SLOCK_CC_SWITCH_DB: fakeDb,
+      SLOCK_SQLITE_COMMAND: fakeSqlite,
+    }, root), ccSwitchProviders);
+    assert.equal(inventory.claudeCommand, fakeClaude);
+    assert.equal(inventory.codexCommand, fakeCodex);
     assert.equal(JSON.stringify(inventory).includes('SECRET_TOKEN'), false);
+    assert.equal(JSON.stringify(inventory).includes('OTHER_SECRET'), false);
     assert.equal(inventory.providers.some(item => item.runtime === 'codex_cli'), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -500,6 +641,28 @@ test('daemon resolves selected CC Switch Codex provider without exposing launch 
     runtimeProvider: 'codex-krill',
     model: 'gpt-5.3-codex',
   });
+});
+
+test('daemon resolves selected CC Switch Claude provider to detected Claude command without wrapper script', () => {
+  const launch = resolveRuntimeProviderLaunch('Kimi', {
+    claudeCommand: '/opt/runtime/bin/claude',
+    ccsClaudeCommand: 'powershell.exe|-ExecutionPolicy|Bypass|C:/Users/me/.claude/cc-switch.ps1',
+    providers: [{
+      id: 'claude-kimi',
+      name: 'Kimi',
+      runtime: 'claude_code',
+      model: 'kimi-for-coding',
+      source: 'cc-switch',
+    }],
+  });
+
+  assert.deepEqual(launch, {
+    runtimeProvider: 'claude-kimi',
+    command: '/opt/runtime/bin/claude',
+    model: 'kimi-for-coding',
+  });
+  assert.equal(JSON.stringify(launch).includes('cc-switch.ps1'), false);
+  assert.equal(JSON.stringify(launch).includes('ccs-claude'), false);
 });
 
 test('daemon runtime starts fake Claude with slock wrapper on PATH', async () => {
@@ -606,6 +769,7 @@ test('daemon runtime starts fake Codex with slock wrapper on PATH', async () => 
   });
 
   writeFakeCodexScript(fakeCodex, marker);
+  chmodSync(fakeCodex, 0o755);
 
   const daemon = spawn(process.execPath, [
     resolve('dist/cmd/main.js'),
@@ -618,11 +782,14 @@ test('daemon runtime starts fake Codex with slock wrapper on PATH', async () => 
     '--pid-file', join(root, 'aaa-daemon.pid'),
     '--workspace', root,
     '--runtime', 'codex_cli',
-    '--runtime-command', process.execPath,
-    '--runtime-command-arg', fakeCodex,
   ], {
     cwd: resolve('.'),
-    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real', SLOCK_ALLOW_WRITES: '1' },
+    env: {
+      ...process.env,
+      SLOCK_AGENT_TOKEN: 'sk_machine_real',
+      SLOCK_CODEX_COMMAND: fakeCodex,
+      SLOCK_ALLOW_WRITES: '1',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -868,8 +1035,6 @@ test('daemon handles backend start_runtime control command dynamically', async (
               workspaceId: 'workspace-dynamic',
               config: {
                 runtime: 'claude_code',
-                runtimeCommand: process.execPath,
-                runtimeCommandArgs: [fakeClaude],
               },
             },
           },
@@ -899,6 +1064,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
   });
 
   writeFakeClaudeScript(fakeClaude, marker, true);
+  chmodSync(fakeClaude, 0o755);
 
   const daemon = spawn(process.execPath, [
     resolve('dist/cmd/main.js'),
@@ -919,6 +1085,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
       SLOCK_AGENT_TOKEN: 'sk_machine_real',
       SLOCK_SERVER_ID: 'server-control',
       SLOCK_COMPUTER_ID: 'computer-control',
+      SLOCK_CLAUDE_COMMAND: fakeClaude,
       SLOCK_ALLOW_WRITES: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -974,11 +1141,13 @@ test('daemon handles backend start_runtime control command dynamically', async (
   }
 });
 
-test('daemon resolves selected runtimeProvider locally through ccs-claude', async () => {
+test('daemon resolves selected CC Switch Claude provider through detected Claude command', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-provider-runtime-'));
   const runtimeWorkspace = join(root, 'provider-agent-workspace');
   const marker = join(root, 'provider-runtime-marker.json');
-  const fakeCcsClaude = join(root, 'fake-ccs-claude.mjs');
+  const fakeDb = join(root, 'cc-switch.db');
+  const fakeSqlite = join(root, 'fake-sqlite.mjs');
+  const fakeClaude = join(root, 'fake-claude.mjs');
   const registerBodies = [];
   const upstream = await startServer((req, res, body) => {
     const url = new URL(req.url, 'http://upstream.test');
@@ -1021,7 +1190,21 @@ test('daemon resolves selected runtimeProvider locally through ccs-claude', asyn
     res.end(JSON.stringify({ events: [] }));
   });
 
-  writeFakeCcsClaudeScript(fakeCcsClaude, marker);
+  writeFileSync(fakeDb, '', 'utf-8');
+  writeFileSync(fakeSqlite, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify([{
+  id: 'claude-kimi',
+  app_type: 'claude',
+  name: 'Kimi',
+  settings_config: JSON.stringify({
+    auth: { api_key: 'SECRET_TOKEN' },
+    config: { model: 'kimi-for-coding' },
+  }),
+}]));
+`, 'utf-8');
+  chmodSync(fakeSqlite, 0o755);
+  writeFakeClaudeScript(fakeClaude, marker);
+  chmodSync(fakeClaude, 0o755);
 
   const daemon = spawn(process.execPath, [
     resolve('dist/cmd/main.js'),
@@ -1040,7 +1223,10 @@ test('daemon resolves selected runtimeProvider locally through ccs-claude', asyn
     env: {
       ...process.env,
       SLOCK_AGENT_TOKEN: 'sk_machine_real',
-      SLOCK_CCS_CLAUDE_COMMAND: fakeCcsClaude,
+      SLOCK_CC_SWITCH_DB: fakeDb,
+      SLOCK_SQLITE_COMMAND: fakeSqlite,
+      SLOCK_CLAUDE_COMMAND: fakeClaude,
+      SLOCK_CCS_CLAUDE_COMMAND: join(root, 'missing-ccs-claude'),
       SLOCK_ALLOW_WRITES: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1057,22 +1243,25 @@ test('daemon resolves selected runtimeProvider locally through ccs-claude', asyn
   try {
     await waitFor(() => existsSync(marker));
     const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
-    assert.equal(runtime.provider, 'Kimi');
-    assert.equal(runtime.model, 'kimi-for-coding');
     assert.equal(runtime.agentId, 'agent-provider');
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
     assert.match(runtime.serverStdout, /"server-provider"/);
-    assert.equal(runtime.managedArgs.includes('--append-system-prompt-file'), true);
+    assert.equal(runtime.argv.includes('--append-system-prompt-file'), true);
+    assert.equal(runtime.argv.includes('--model'), true);
+    assert.equal(runtime.argv.includes('kimi-for-coding'), true);
+    assert.equal(runtime.argv.includes('Kimi'), false);
 
     await waitFor(() => registerBodies.length > 0);
     const detected = registerBodies[0].detectedRuntimes ?? [];
-    assert.ok(detected.some(item => item.runtimeProvider === 'Kimi' && item.provider === 'Kimi'));
+    assert.ok(detected.some(item => item.runtimeProvider === 'claude-kimi' && item.provider === 'Kimi'));
     assert.equal(detected.some(item => 'runtimeCommandArgs' in item), false);
+    assert.equal(JSON.stringify(detected).includes('SECRET_TOKEN'), false);
+    assert.equal(JSON.stringify(detected).includes(fakeClaude), false);
 
     await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-provider')));
     const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-provider'));
     const workspace = runtimeHeartbeat.workspaces.find(item => item.agentId === 'agent-provider');
-    assert.equal(workspace.runtimeProvider, 'Kimi');
+    assert.equal(workspace.runtimeProvider, 'claude-kimi');
     assert.equal('runtimeCommand' in workspace, false);
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
