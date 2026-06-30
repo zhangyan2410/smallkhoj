@@ -385,8 +385,14 @@
     "roleMember": "Member"
   },
   "settings": {
-    "title": "Settings",
-    "description": "Server, account, runtime defaults, API keys, and safety controls for the local product.",
+    "title": "Appearance",
+    "description": "Choose the interface theme. Changes apply instantly and persist across reloads.",
+    "appearance": {
+      "label": "Theme",
+      "water": "Water & Sand",
+      "dark": "Deep Sea",
+      "shuimo": "Ink Wash"
+    },
     "sidebarTitle": "Admin Links",
     "sidebarDescription": "Secondary surfaces stay reachable without taking over the main app.",
     "apiDocs": "API Docs",

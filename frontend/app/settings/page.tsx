@@ -2,11 +2,12 @@ import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { KeyRound, Server, Shield, SlidersHorizontal } from "lucide-react"
+import { KeyRound, Palette, Server, Shield, SlidersHorizontal } from "lucide-react"
 import { getTranslations } from "next-intl/server"
 
 import { ProductShell } from "@/components/product-shell"
 import { RuntimeChip } from "@/components/product-ui"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -47,6 +48,18 @@ export default async function SettingsPage() {
       }
     >
       <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Palette className="size-4 text-accent-rose" />
+              {t("appearance.title")}
+            </CardTitle>
+            <CardDescription>{t("appearance.description")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ThemeSwitcher />
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
