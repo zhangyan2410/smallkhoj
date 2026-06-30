@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import inspect
 import uuid
 from types import SimpleNamespace
@@ -9,8 +9,8 @@ from sqlalchemy.exc import MultipleResultsFound
 
 import models.seed as seed
 import routers.public_api as public_api
-from models import Account, Base, Channel, ChannelMember, Computer, Member, Server, ServerMembership
-from services import server_membership
+from models import Account, Base, Channel, ChannelMember, Computer, Member, Server, ServerInvite, ServerMembership
+from services import server_invites, server_membership
 
 
 class _ExecuteResult:
@@ -135,6 +135,28 @@ def _membership(server: Server, account: Account, member: Member, *, role="membe
         status="active",
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
+    )
+
+
+def _invite(
+    server: Server,
+    *,
+    token_hash: str = "invite-token-hash",
+    role: str = "member",
+    accepted_account_id: uuid.UUID | None = None,
+    accepted_at: datetime | None = None,
+    expires_at: datetime | None = None,
+    revoked_at: datetime | None = None,
+) -> ServerInvite:
+    return ServerInvite(
+        id=uuid.uuid4(),
+        server_id=server.id,
+        token_hash=token_hash,
+        role=role,
+        expires_at=expires_at or (datetime.now(timezone.utc) + timedelta(days=7)),
+        revoked_at=revoked_at,
+        accepted_at=accepted_at,
+        accepted_account_id=accepted_account_id,
     )
 
 
@@ -394,6 +416,213 @@ async def test_create_server_endpoint_returns_switchable_account_payload(monkeyp
     assert payload["created"] is True
     assert payload["server"]["id"] == str(server.id)
     assert payload["memberships"][0]["server"]["id"] == str(server.id)
+
+
+@pytest.mark.asyncio
+async def test_create_server_invite_returns_join_url_and_stores_only_token_hash():
+    server = Server(id=uuid.uuid4(), name="青禾的服务器")
+    creator = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="青禾")
+    db = _FakeSession()
+
+    created = await server_invites.create_server_invite(
+        db,
+        server=server,
+        creator=creator,
+        role="member",
+        invited_name="竹影",
+        expires_in_days=14,
+        public_base_url="http://localhost:3000",
+    )
+
+    assert created.token.startswith("sk_invite_")
+    assert created.join_url == f"http://localhost:3000/join/{created.token}"
+    assert created.invite in db.added
+    assert created.invite.server_id == server.id
+    assert created.invite.role == "member"
+    assert created.invite.invited_name == "竹影"
+    assert created.invite.token_hash == server_invites.hash_invite_token(created.token)
+    assert created.token not in created.invite.token_hash
+
+
+@pytest.mark.asyncio
+async def test_create_server_invite_endpoint_requires_owner_or_admin(monkeypatch):
+    account = Account(id=uuid.uuid4(), name="member", server_id=uuid.uuid4(), member_id=uuid.uuid4())
+    server = Server(id=account.server_id, name="青禾的服务器")
+    member = Member(id=account.member_id, server_id=server.id, kind="human", display_name="member")
+    membership = _membership(server, account, member, role="member")
+    db = _FakeSession()
+
+    async def fake_context(_db, _request):
+        return SimpleNamespace(account=account, server=server, member=member, membership=membership)
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_context)
+
+    with pytest.raises(HTTPException) as error:
+        await public_api.create_server_invite(
+            _JsonRequest({"role": "member"}),
+            _auth=None,
+            db=db,
+        )
+
+    assert error.value.status_code == 403
+    assert db.added == []
+
+
+@pytest.mark.asyncio
+async def test_create_server_invite_endpoint_returns_admin_invite_for_owner(monkeypatch):
+    account = Account(id=uuid.uuid4(), name="owner", server_id=uuid.uuid4(), member_id=uuid.uuid4())
+    server = Server(id=account.server_id, name="青禾的服务器")
+    member = Member(id=account.member_id, server_id=server.id, kind="human", display_name="青禾")
+    membership = _membership(server, account, member, role="owner")
+    db = _FakeSession()
+
+    async def fake_context(_db, _request):
+        return SimpleNamespace(account=account, server=server, member=member, membership=membership)
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_context)
+
+    payload = await public_api.create_server_invite(
+        _JsonRequest(
+            {"role": "admin", "invitedName": "竹影", "expiresInDays": 3},
+            headers={"origin": "https://app.smallkhoj.test"},
+        ),
+        _auth=None,
+        db=db,
+    )
+
+    invite = payload["invite"]
+    assert db.committed is True
+    assert invite["serverId"] == str(server.id)
+    assert invite["serverName"] == server.name
+    assert invite["role"] == "admin"
+    assert invite["invitedName"] == "竹影"
+    assert invite["joinUrl"].startswith("https://app.smallkhoj.test/join/sk_invite_")
+    assert "token" not in invite
+
+
+@pytest.mark.asyncio
+async def test_accept_server_invite_creates_human_member_membership_and_marks_invite():
+    server = Server(id=uuid.uuid4(), name="青禾的服务器")
+    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影", server_id=uuid.uuid4(), member_id=uuid.uuid4())
+    token = "sk_invite_test_token"
+    invite = _invite(server, token_hash=server_invites.hash_invite_token(token))
+    db = _FakeSession(
+        _ExecuteResult(invite),
+        _ExecuteResult(server),
+        _ExecuteResult(row=None),
+        _ExecuteResult(None),
+        _ExecuteResult(None),
+    )
+
+    accepted = await server_invites.accept_server_invite(db, token=token, account=account)
+
+    assert accepted.server is server
+    assert accepted.member.server_id == server.id
+    assert accepted.member.kind == "human"
+    assert accepted.member.display_name == "竹影"
+    assert accepted.membership.server_id == server.id
+    assert accepted.membership.account_id == account.id
+    assert accepted.membership.member_id == accepted.member.id
+    assert accepted.membership.role == "member"
+    assert invite.accepted_account_id == account.id
+    assert invite.accepted_at is not None
+    assert accepted.member in db.added
+    assert accepted.membership in db.added
+
+
+@pytest.mark.asyncio
+async def test_accept_server_invite_rejects_consumed_by_another_account():
+    server = Server(id=uuid.uuid4(), name="青禾的服务器")
+    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影")
+    token = "sk_invite_consumed"
+    invite = _invite(
+        server,
+        token_hash=server_invites.hash_invite_token(token),
+        accepted_at=datetime.now(timezone.utc),
+        accepted_account_id=uuid.uuid4(),
+    )
+    db = _FakeSession(_ExecuteResult(invite))
+
+    with pytest.raises(HTTPException) as error:
+        await server_invites.accept_server_invite(db, token=token, account=account)
+
+    assert error.value.status_code == 410
+
+
+@pytest.mark.asyncio
+async def test_accept_server_invite_rejects_malformed_token_without_database_lookup():
+    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影")
+    db = _FakeSession()
+
+    with pytest.raises(HTTPException) as error:
+        await server_invites.accept_server_invite(db, token="not-an-invite-token", account=account)
+
+    assert error.value.status_code == 404
+    assert db._results == []
+
+
+@pytest.mark.asyncio
+async def test_accept_server_invite_rejects_expired_invite():
+    server = Server(id=uuid.uuid4(), name="青禾的服务器")
+    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影")
+    token = "sk_invite_expired"
+    invite = _invite(
+        server,
+        token_hash=server_invites.hash_invite_token(token),
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+    )
+    db = _FakeSession(_ExecuteResult(invite))
+
+    with pytest.raises(HTTPException) as error:
+        await server_invites.accept_server_invite(db, token=token, account=account)
+
+    assert error.value.status_code == 410
+    assert "expired" in error.value.detail
+
+
+@pytest.mark.asyncio
+async def test_accept_server_invite_rejects_revoked_invite():
+    server = Server(id=uuid.uuid4(), name="青禾的服务器")
+    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影")
+    token = "sk_invite_revoked"
+    invite = _invite(
+        server,
+        token_hash=server_invites.hash_invite_token(token),
+        revoked_at=datetime.now(timezone.utc),
+    )
+    db = _FakeSession(_ExecuteResult(invite))
+
+    with pytest.raises(HTTPException) as error:
+        await server_invites.accept_server_invite(db, token=token, account=account)
+
+    assert error.value.status_code == 410
+    assert "revoked" in error.value.detail
+
+
+@pytest.mark.asyncio
+async def test_accept_server_invite_is_idempotent_for_same_account_membership():
+    server = Server(id=uuid.uuid4(), name="青禾的服务器")
+    member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="竹影")
+    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影", server_id=uuid.uuid4(), member_id=uuid.uuid4())
+    membership = _membership(server, account, member, role="member")
+    token = "sk_invite_same_account"
+    invite = _invite(
+        server,
+        token_hash=server_invites.hash_invite_token(token),
+        accepted_at=datetime.now(timezone.utc),
+        accepted_account_id=account.id,
+    )
+    db = _FakeSession(
+        _ExecuteResult(invite),
+        _ExecuteResult(server),
+        _ExecuteResult(row=(membership, member)),
+    )
+
+    accepted = await server_invites.accept_server_invite(db, token=token, account=account)
+
+    assert accepted.member is member
+    assert accepted.membership is membership
+    assert db.added == []
 
 
 @pytest.mark.asyncio

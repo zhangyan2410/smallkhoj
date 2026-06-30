@@ -1,14 +1,15 @@
 "use client"
 
 import { useMemo } from "react"
-import { Check, GripVertical, Plus, Server } from "lucide-react"
+import { Check, GripVertical, LogOut, Plus, Server } from "lucide-react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
 
-import { createServerAction, switchActiveServerAction } from "@/app/server-actions"
+import { createServerAction, logoutAction, switchActiveServerAction } from "@/app/server-actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { AccountServerMembership, AccountSession } from "@/lib/control-plane"
+import { switchableMemberships } from "@/lib/server-switcher-state"
 
 function membershipFallback(session: AccountSession): AccountServerMembership {
   return {
@@ -45,6 +46,7 @@ export function ServerSwitcher({ session }: { session: AccountSession }) {
   }, [pathname, searchParams])
   const memberships = session.memberships?.length ? session.memberships : [membershipFallback(session)]
   const active = memberships.find((item) => item.server.id === session.server.id) ?? memberships[0]
+  const switchableServers = switchableMemberships(memberships, active.server.id)
   const accountLabel = session.account.displayName || session.account.name
   const accountHandle =
     session.account.name && session.account.name !== accountLabel && !session.account.name.startsWith("ba_")
@@ -89,29 +91,29 @@ export function ServerSwitcher({ session }: { session: AccountSession }) {
           </div>
         </div>
 
-        <div className="space-y-1 px-2.5 pb-2" aria-label={t("serverList")}>
-          {memberships.map((item) => {
-            const selected = item.server.id === active.server.id
-            return (
-              <form key={item.server.id} action={switchActiveServerAction}>
-                <input type="hidden" name="serverId" value={item.server.id} />
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <Button
-                  type="submit"
-                  variant={selected ? "secondary" : "ghost"}
-                  size="sm"
-                  className={selected ? "w-full justify-start gap-2 sk-accent-mint-soft" : "w-full justify-start gap-2"}
-                  disabled={selected}
-                  aria-label={selected ? t("selectedServer", { name: item.server.name }) : t("switchTo", { name: item.server.name })}
-                >
-                  {selected ? <Check className="size-3.5" /> : <Server className="size-3.5" />}
-                  <span className="min-w-0 flex-1 truncate text-left">{item.server.name}</span>
-                  <span className="shrink-0 text-[0.68rem] uppercase text-muted-foreground">{t(roleKey(item.role))}</span>
-                </Button>
-              </form>
-            )
-          })}
-        </div>
+        {switchableServers.length > 0 ? (
+          <div className="space-y-1 px-2.5 pb-2" aria-label={t("serverList")}>
+            {switchableServers.map((item) => {
+              return (
+                <form key={item.server.id} action={switchActiveServerAction}>
+                  <input type="hidden" name="serverId" value={item.server.id} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <Button
+                    type="submit"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start gap-2"
+                    aria-label={t("switchTo", { name: item.server.name })}
+                  >
+                    <Server className="size-3.5" />
+                    <span className="min-w-0 flex-1 truncate text-left">{item.server.name}</span>
+                    <span className="shrink-0 text-[0.68rem] uppercase text-muted-foreground">{t(roleKey(item.role))}</span>
+                  </Button>
+                </form>
+              )
+            })}
+          </div>
+        ) : null}
 
         <form action={createServerAction} className="border-t-2 border-[var(--ink)] px-2.5 py-2">
           <input type="hidden" name="returnTo" value={returnTo} />
@@ -124,6 +126,12 @@ export function ServerSwitcher({ session }: { session: AccountSession }) {
               <Plus className="size-3.5" />
             </Button>
           </div>
+        </form>
+        <form action={logoutAction} className="border-t-2 border-[var(--ink)] px-2.5 py-2">
+          <Button type="submit" variant="ghost" size="sm" className="w-full justify-start gap-2" aria-label={t("signOut")}>
+            <LogOut className="size-3.5" />
+            <span className="min-w-0 flex-1 truncate text-left">{t("signOut")}</span>
+          </Button>
         </form>
       </div>
     </details>

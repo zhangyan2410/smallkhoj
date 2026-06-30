@@ -20,6 +20,7 @@ import {
 
 import ActivityTab from "./activity-tab"
 import { CreateAgentDialog } from "../chat/[channel]/create-agent-dialog"
+import { InviteMemberDialog } from "./invite-member-dialog"
 import { RestoreMemberSelection } from "./restore-member-selection"
 import { MembersList } from "./members-list"
 
@@ -30,6 +31,7 @@ import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Panel } from "@/components/ui/panel"
 import {
   API_BASE,
   apiGet,
@@ -41,7 +43,7 @@ import {
   shortId,
   statusLabel,
 } from "@/lib/control-plane"
-import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 async function getMembers(sessionToken?: string | null, activeServerId?: string | null) {
   return apiGet<{ members: Member[]; count?: number }>("/api/v1/members", { members: [], count: 0 }, sessionToken, activeServerId)
@@ -127,10 +129,10 @@ function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }
           <Link
             key={key}
             href={memberDetailHref(memberId, key)}
-            className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-none border-b-2 px-3 text-xs font-medium transition-colors ${
+            className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-none px-3 text-xs font-medium transition-colors ${
               isActive
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "bg-sand-card text-foreground"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Icon className="size-3.5" />
@@ -687,7 +689,7 @@ export default async function MembersPage({
   const session = await requireCurrentAccount()
   const resolvedSearchParams = (await searchParams) ?? {}
   const sessionToken = await getSessionToken()
-  const activeServerId = await getActiveServerId()
+  const activeServerId = session.server.id
   const [{ members }, { computers }] = await Promise.all([
     getMembers(sessionToken, activeServerId),
     getComputers(sessionToken, activeServerId),
@@ -700,6 +702,8 @@ export default async function MembersPage({
   const agentsList = members.filter((m) => m.kind === "agent")
   const boundAgents = agentsList.filter((m) => m.computerId).length
   const t = await getTranslations("members")
+  const activeMembership = session.memberships?.find((membership) => membership.server.id === session.server.id)
+  const canInviteMembers = activeMembership?.role === "owner" || activeMembership?.role === "admin"
 
   const selectedMember = selectedMemberId
     ? members.find((m) => m.id === selectedMemberId)
@@ -718,18 +722,43 @@ export default async function MembersPage({
       sidebarDescription={t("selectMember")}
       sidebar={
         <div className="space-y-2">
-          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
-            <div className="text-xs text-muted-foreground">Humans</div>
+          <Panel className="p-3">
+            <div className="text-xs text-muted-foreground">{t("humans")}</div>
             <div className="mt-1 text-2xl font-semibold">{humansList.length}</div>
-          </div>
-          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
-            <div className="text-xs text-muted-foreground">Agents</div>
+          </Panel>
+          <Panel className="p-3">
+            <div className="text-xs text-muted-foreground">{t("agents")}</div>
             <div className="mt-1 text-2xl font-semibold">{agentsList.length}</div>
-          </div>
-          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
-            <div className="text-xs text-muted-foreground">Bound agents</div>
+          </Panel>
+          <Panel className="p-3">
+            <div className="text-xs text-muted-foreground">{t("boundAgents")}</div>
             <div className="mt-1 text-2xl font-semibold">{boundAgents}</div>
-          </div>
+          </Panel>
+          {canInviteMembers && (
+            <Panel className="space-y-3 p-3">
+              <div>
+                <div className="text-xs text-muted-foreground">{t("inviteServerLabel")}</div>
+                <div className="mt-1 truncate text-sm font-medium">{session.server.name}</div>
+              </div>
+              <InviteMemberDialog
+                serverName={session.server.name}
+                copy={{
+                  inviteMember: t("inviteMember"),
+                  inviteMemberDesc: t("inviteMemberDesc"),
+                  serverLabel: t("inviteServerLabel"),
+                  invitedNameLabel: t("invitedNameLabel"),
+                  invitedNamePlaceholder: t("invitedNamePlaceholder"),
+                  manualCopyHint: t("manualCopyHint"),
+                  generateInviteLink: t("generateInviteLink"),
+                  generatingInviteLink: t("generatingInviteLink"),
+                  copyInviteLink: t("copyInviteLink"),
+                  copiedInviteLink: t("copiedInviteLink"),
+                  inviteLinkLabel: t("inviteLinkLabel"),
+                  close: t("closeInviteDialog"),
+                }}
+              />
+            </Panel>
+          )}
         </div>
       }
       actions={

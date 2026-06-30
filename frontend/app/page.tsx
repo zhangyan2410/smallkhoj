@@ -25,7 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { API_BASE, apiGet, formatTime, type Computer, type Member } from "@/lib/control-plane"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
-import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 type Channel = {
   id: string
@@ -221,7 +221,7 @@ export default async function Home({
 }) {
   const session = await requireCurrentAccount()
   const sessionToken = await getSessionToken()
-  const activeServerId = await getActiveServerId()
+  const activeServerId = session.server.id
   const resolvedSearchParams = (await searchParams) ?? {}
   const searchQuery = Array.isArray(resolvedSearchParams.q) ? resolvedSearchParams.q[0] : resolvedSearchParams.q
   const t = await getTranslations("home")

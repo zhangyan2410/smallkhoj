@@ -1237,6 +1237,75 @@ test('smallkhoj-daemon packaged CLI connect starts daemon with one-time ticket',
   }
 });
 
+test('smallkhoj-daemon supports Raft-style one-line npx onboarding arguments', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'smallkhoj-daemon-npx-onboarding-'));
+  const registerBodies = [];
+  const connectToken = 'sk_connect_npx_style';
+  const machineToken = 'sk_machine_npx_style';
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/connect') {
+      assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
+      const payload = JSON.parse(body);
+      assert.equal(payload.daemonVersion, '0.2.0');
+      res.end(JSON.stringify({
+        connected: true,
+        daemonId: 'daemon-npx-style-connect',
+        machineToken,
+        computer: { serverId: 'server-npx-style-connect' },
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/register' || url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      registerBodies.push(JSON.parse(body));
+      assert.equal(req.headers.authorization, `Bearer ${machineToken}`);
+      res.end(JSON.stringify({ ok: true, controlCommands: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    '--server-url', upstream.url,
+    '--api-key', connectToken,
+  ], {
+    cwd: root,
+    env: {
+      ...process.env,
+      AAA_DAEMON_MACHINE_ID_FILE: join(root, 'machine-id'),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => registerBodies.length > 0 || daemon.exitCode !== null);
+    if (registerBodies.length === 0) {
+      assert.fail(`one-line npx-style onboarding exited before daemon registration\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+    }
+    assert.equal(registerBodies[0].daemonVersion, '0.2.0');
+    assert.equal(daemon.exitCode, null, `daemon exited early\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('smallkhoj-daemon connect uses a computer-scoped default runtime workspace', async () => {
   const root = mkdtempSync(join(tmpdir(), 'smallkhoj-daemon-computer-workspace-'));
   const workspaceRoot = join(root, 'workspace-root');

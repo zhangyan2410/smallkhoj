@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Browser-facing verification and frontend quality gate"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Marker and message preview types must stay explicit at boundaries"}

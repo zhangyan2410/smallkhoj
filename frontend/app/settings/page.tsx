@@ -12,14 +12,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Panel } from "@/components/ui/panel"
 import { API_BASE, apiGet, formatTime } from "@/lib/control-plane"
-import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
 
 export default async function SettingsPage() {
   const t = await getTranslations("settings")
   const session = await requireCurrentAccount()
   const sessionToken = await getSessionToken()
-  const activeServerId = await getActiveServerId()
+  const activeServerId = session.server.id
   const apiKeys = await getApiKeys(sessionToken, activeServerId)
   const lastSecret = parseLastApiKeyCookie((await cookies()).get("smallkhoj_last_api_key")?.value)
   const publicApiBase = resolvePublicApiBaseFromHeaders(process.env, await headers())

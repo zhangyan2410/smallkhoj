@@ -9,6 +9,7 @@ from scripts import post_deploy_smoke as smoke
 class FakeDeploymentHandler(BaseHTTPRequestHandler):
     health_status = "ok"
     daemon_ws_status = 403
+    daemon_package_status = 200
 
     def log_message(self, format: str, *args) -> None:
         return
@@ -38,6 +39,13 @@ class FakeDeploymentHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"openapi": "3.1.0", "paths": {"/api/health": {}}}).encode())
             return
+        if self.path == "/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.0.tgz":
+            self.send_response(self.daemon_package_status)
+            self.send_header("Content-Type", "application/x-tar")
+            self.end_headers()
+            if self.daemon_package_status == 200:
+                self.wfile.write(b"tgz-bytes")
+            return
         if self.path == "/internal/agent-api/ws":
             self.send_response(self.daemon_ws_status)
             self.end_headers()
@@ -47,11 +55,21 @@ class FakeDeploymentHandler(BaseHTTPRequestHandler):
 
 
 class FakeDeploymentServer:
-    def __init__(self, *, health_status: str = "ok", daemon_ws_status: int = 403) -> None:
+    def __init__(
+        self,
+        *,
+        health_status: str = "ok",
+        daemon_ws_status: int = 403,
+        daemon_package_status: int = 200,
+    ) -> None:
         self.handler = type(
             "Handler",
             (FakeDeploymentHandler,),
-            {"health_status": health_status, "daemon_ws_status": daemon_ws_status},
+            {
+                "health_status": health_status,
+                "daemon_ws_status": daemon_ws_status,
+                "daemon_package_status": daemon_package_status,
+            },
         )
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self.handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -75,7 +93,16 @@ class PostDeploySmokeTests(unittest.TestCase):
         self.assertEqual(report.failures, 0)
         self.assertEqual(report.warnings, 0)
         self.assertTrue(any(check.name == "http.health" for check in report.checks))
+        self.assertTrue(any(check.name == "http.daemonPackage" for check in report.checks))
         self.assertTrue(any(check.name == "ws.daemonAuth" for check in report.checks))
+
+    def test_daemon_package_must_be_downloadable(self) -> None:
+        with FakeDeploymentServer(daemon_package_status=404) as base_url:
+            report = smoke.run_smoke(base_url=base_url, allow_http=True, timeout=2)
+
+        by_name = {check.name: check for check in report.checks}
+        self.assertFalse(report.ready)
+        self.assertEqual(by_name["http.daemonPackage"].status, "failed")
 
     def test_daemon_websocket_no_auth_rejection_proves_route(self) -> None:
         with FakeDeploymentServer(daemon_ws_status=403) as base_url:

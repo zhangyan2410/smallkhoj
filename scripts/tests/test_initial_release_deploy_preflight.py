@@ -67,6 +67,8 @@ def make_repo(
           reverse_proxy @backend_internal backend:8000
           @backend_docs path /docs /docs/* /openapi.json
           reverse_proxy @backend_docs backend:8000
+          @backend_downloads path /downloads/smallkhoj-daemon /downloads/smallkhoj-daemon/*
+          reverse_proxy @backend_downloads backend:8000
           reverse_proxy frontend:3000
         }
     """)
@@ -83,10 +85,27 @@ def make_repo(
         export default nextConfig
     """)
     write(root / "frontend" / "Dockerfile", """
+        FROM oven/bun:1 AS builder
+        ARG BETTER_AUTH_SECRET=sk_better_auth_build_placeholder_min_32_chars
+        ARG BETTER_AUTH_URL=http://localhost
+        ARG BETTER_AUTH_DATABASE_URL=postgresql://smallkhoj:smallkhoj@localhost:5432/smallkhoj
+        ARG AUTH_BRIDGE_SECRET=sk_auth_bridge_build_placeholder_min_32_chars
+        ENV BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
+        ENV BETTER_AUTH_URL=$BETTER_AUTH_URL
+        ENV BETTER_AUTH_DATABASE_URL=$BETTER_AUTH_DATABASE_URL
+        ENV AUTH_BRIDGE_SECRET=$AUTH_BRIDGE_SECRET
+        RUN bun run build
         FROM oven/bun:1 AS runner
         COPY --from=builder /app/.next/standalone ./
         COPY --from=builder /app/.next/static ./.next/static
         CMD ["bun", "run", "server.js"]
+    """)
+    write(root / "backend" / "Dockerfile", """
+        FROM python:3.12-slim
+        WORKDIR /app/backend
+        COPY backend/ ./
+        COPY release-artifacts/ /app/release-artifacts/
+        CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
     """)
 
 
@@ -136,6 +155,40 @@ class DeployPreflightTests(unittest.TestCase):
             failed = [check for check in report.checks if check.name == "repo.frontend.standalone"]
             self.assertEqual(failed[0].status, "failed")
 
+    def test_repo_config_fails_when_frontend_build_auth_env_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_repo(root)
+            write(root / "frontend" / "Dockerfile", """
+                FROM oven/bun:1 AS runner
+                COPY --from=builder /app/.next/standalone ./
+                COPY --from=builder /app/.next/static ./.next/static
+                CMD ["bun", "run", "server.js"]
+            """)
+
+            report = preflight.run_preflight(root=root)
+
+            self.assertFalse(report.ready)
+            failed = [check for check in report.checks if check.name == "repo.frontend.buildAuthEnv"]
+            self.assertEqual(failed[0].status, "failed")
+
+    def test_repo_config_fails_when_backend_image_omits_daemon_release_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_repo(root)
+            write(root / "backend" / "Dockerfile", """
+                FROM python:3.12-slim
+                WORKDIR /app
+                COPY backend/ ./
+                CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+            """)
+
+            report = preflight.run_preflight(root=root)
+
+            self.assertFalse(report.ready)
+            failed = [check for check in report.checks if check.name == "repo.backend.daemonArtifacts"]
+            self.assertEqual(failed[0].status, "failed")
+
     def test_env_file_reports_missing_required_values_without_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -154,7 +207,14 @@ class DeployPreflightTests(unittest.TestCase):
             self.assertEqual(
                 env_check.details,
                 {
-                    "missing": ["SMALLKHOJ_FRONTEND_IMAGE", "POSTGRES_PASSWORD", "BACKEND_CORS_ORIGINS"],
+                    "missing": [
+                        "SMALLKHOJ_FRONTEND_IMAGE",
+                        "POSTGRES_PASSWORD",
+                        "BACKEND_CORS_ORIGINS",
+                        "BETTER_AUTH_SECRET",
+                        "BETTER_AUTH_URL",
+                        "AUTH_BRIDGE_SECRET",
+                    ],
                     "placeholder": [],
                 },
             )
@@ -171,6 +231,9 @@ class DeployPreflightTests(unittest.TestCase):
                 SMALLKHOJ_FRONTEND_IMAGE=<registry>/smallkhoj-frontend:<tag>
                 POSTGRES_PASSWORD=<set-outside-repo>
                 BACKEND_CORS_ORIGINS=<public-origin>
+                BETTER_AUTH_SECRET=<set-outside-repo>
+                BETTER_AUTH_URL=<public-origin>
+                AUTH_BRIDGE_SECRET=<set-outside-repo>
             """)
 
             report = preflight.run_preflight(root=root, env_file=env_file)
@@ -188,6 +251,9 @@ class DeployPreflightTests(unittest.TestCase):
                         "SMALLKHOJ_FRONTEND_IMAGE",
                         "POSTGRES_PASSWORD",
                         "BACKEND_CORS_ORIGINS",
+                        "BETTER_AUTH_SECRET",
+                        "BETTER_AUTH_URL",
+                        "AUTH_BRIDGE_SECRET",
                     ],
                 },
             )

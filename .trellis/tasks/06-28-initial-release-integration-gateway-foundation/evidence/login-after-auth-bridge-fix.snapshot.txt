@@ -1,0 +1,16 @@
+
+
+
+SmallKhoj
+使用邮箱和密码登录。新账号会自动获得一个个人 Server。
+
+邮箱
+[INPUT #login-email name=email type=email "lee@example.com"]
+
+密码
+[INPUT #login-password name=password type=password "至少 8 位"]
+
+显示名称
+[INPUT #login-display-name name=displayName type=text "注册时填写即可"]
+
+登录注册

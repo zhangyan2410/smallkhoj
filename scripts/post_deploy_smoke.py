@@ -249,6 +249,41 @@ def check_openapi(base_url: str, *, timeout: float) -> CheckResult:
     return failed("http.openapi", "POST_DEPLOY_SMOKE_OPENAPI_UNEXPECTED", "OpenAPI route returned unexpected JSON.", {"status": probe.status})
 
 
+def check_daemon_package(base_url: str, *, timeout: float) -> CheckResult:
+    package_path = "/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.0.tgz"
+    try:
+        probe = get_url(urljoin(base_url, package_path), timeout=timeout)
+    except Exception as exc:
+        return failed(
+            "http.daemonPackage",
+            "POST_DEPLOY_SMOKE_DAEMON_PACKAGE_UNREACHABLE",
+            "Self-hosted daemon package request failed.",
+            {"error": str(exc), "path": package_path},
+        )
+    if is_success_status(probe.status, allow_redirect=False) and len(probe.body) > 0:
+        return passed(
+            "http.daemonPackage",
+            "Self-hosted daemon package is reachable.",
+            {
+                "status": probe.status,
+                "contentType": probe.content_type,
+                "bytesRead": len(probe.body),
+                "path": package_path,
+            },
+        )
+    return failed(
+        "http.daemonPackage",
+        "POST_DEPLOY_SMOKE_DAEMON_PACKAGE_UNEXPECTED",
+        "Self-hosted daemon package did not return a non-empty 2xx response.",
+        {
+            "status": probe.status,
+            "contentType": probe.content_type,
+            "bytesRead": len(probe.body),
+            "path": package_path,
+        },
+    )
+
+
 def websocket_url_for(base_url: str, path: str) -> str:
     parsed = urlparse(base_url)
     scheme = "wss" if parsed.scheme == "https" else "ws"
@@ -356,6 +391,7 @@ def run_smoke(*, base_url: str, allow_http: bool = False, timeout: float = 8.0) 
             skipped_http_check("http.health", "/api/health"),
             skipped_http_check("http.docs", "/docs"),
             skipped_http_check("http.openapi", "/openapi.json"),
+            skipped_http_check("http.daemonPackage", "/downloads/smallkhoj-daemon/*.tgz"),
         ])
         return SmokeReport(base_url=normalized, checks=checks)
 
@@ -368,6 +404,7 @@ def run_smoke(*, base_url: str, allow_http: bool = False, timeout: float = 8.0) 
                 skipped_http_check("http.health", "/api/health"),
                 skipped_http_check("http.docs", "/docs"),
                 skipped_http_check("http.openapi", "/openapi.json"),
+                skipped_http_check("http.daemonPackage", "/downloads/smallkhoj-daemon/*.tgz"),
             ])
             return SmokeReport(base_url=normalized, checks=checks)
 
@@ -376,6 +413,7 @@ def run_smoke(*, base_url: str, allow_http: bool = False, timeout: float = 8.0) 
         check_health(normalized, timeout=timeout),
         check_docs(normalized, timeout=timeout),
         check_openapi(normalized, timeout=timeout),
+        check_daemon_package(normalized, timeout=timeout),
         check_daemon_websocket_auth_route(normalized, timeout=timeout),
     ])
     return SmokeReport(base_url=normalized, checks=checks)

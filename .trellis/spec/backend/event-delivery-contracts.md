@@ -39,6 +39,7 @@ Use this spec whenever code changes any of:
 - **Dotted and legacy event names must normalize before classification.** `message.created` and `message_received` are equivalent for message delivery; `task.created` and `task_created` are equivalent for assigned task delivery.
 - **Non-message events must not poison message freshness.** Task/thread/control events can be delivered to runtime when actionable, but they must not block later sends as pending unread messages.
 - **Runtime prompt payloads must stay small and reply-safe.** A delivered message event must include `target` for replies and enough context to act, but not full activity feeds or unrelated event payloads.
+- **Runtime activity command previews are summaries, not transcripts.** `runtime_output.details.commandPreview` must be optional and token-safe. It must redact/remove Slock proxy internals such as `SLOCK_AGENT_PROXY_URL`, `SLOCK_AGENT_PROXY_TOKEN`, `SLOCK_AGENT_PROXY_TOKEN_FILE`, `SLOCK_AGENT_ACTIVE_CAPABILITIES`, and any `agent-proxy-tokens` filesystem path before the backend stores it or the UI renders it. The UI must not depend on full command text for product behavior.
 
 ### 4. Validation & Error Matrix
 
@@ -77,6 +78,7 @@ Use this spec whenever code changes any of:
   - heartbeat/register updates do not create high-volume activity/event records.
 - Token regression:
   - a runtime that sends a message does not receive its own `message.created` event as a new turn.
+  - a runtime tool command or wrapper snippet containing Slock proxy env assignments does not persist those env names or `agent-proxy-tokens` paths in `runtime_output.details.commandPreview`.
 
 ### Adding a new EventRecord type — required checklist
 

@@ -20,6 +20,9 @@ FRONTEND_PID_FILE="$PID_DIR/frontend.pid"
 DEFAULT_DB_USER="${SMALLKHOJ_DB_USER:-smallkhoj}"
 DEFAULT_DB_PASSWORD="${SMALLKHOJ_DB_PASSWORD:-smallkhoj}"
 DEFAULT_DB_NAME="${SMALLKHOJ_DB_NAME:-smallkhoj}"
+LOCAL_AUTH_BRIDGE_SECRET="${AUTH_BRIDGE_SECRET:-sk_auth_bridge_local_dev_secret_min_32_chars}"
+LOCAL_BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-sk_better_auth_local_dev_secret_min_32_chars}"
+LOCAL_BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://localhost:$FRONTEND_PORT}"
 
 # ── helpers ──────────────────────────────────────────────
 
@@ -146,6 +149,16 @@ backend_database_url() {
   echo "postgresql+asyncpg://${DEFAULT_DB_USER}:${DEFAULT_DB_PASSWORD}@localhost:${port}/${DEFAULT_DB_NAME}"
 }
 
+frontend_database_url() {
+  if [[ -n "${BETTER_AUTH_DATABASE_URL:-}" ]]; then
+    echo "$BETTER_AUTH_DATABASE_URL"
+    return
+  fi
+  local port
+  port=$(default_db_port)
+  echo "postgresql://${DEFAULT_DB_USER}:${DEFAULT_DB_PASSWORD}@localhost:${port}/${DEFAULT_DB_NAME}"
+}
+
 backend_command() {
   if is_windows && [[ -x "$BACKEND_DIR/.venv/Scripts/python.exe" ]]; then
     echo ".venv/Scripts/python.exe main.py"
@@ -166,11 +179,14 @@ start_background() {
   if is_windows; then
     "$@" >> "$logfile" 2>&1 &
   else
-    "$@" >> "$logfile" 2>&1 &
+    nohup "$@" >> "$logfile" 2>&1 < /dev/null &
   fi
   local child_pid=$!
+  if ! is_windows; then
+    disown "$child_pid" 2>/dev/null || true
+  fi
   echo "$child_pid" > "$pidfile"
-  echo "$child_pid"
+  STARTED_PID="$child_pid"
 }
 
 # ── commands ─────────────────────────────────────────────
@@ -233,7 +249,8 @@ cmd_start() {
     log "Backend database: ${db_url}"
     log "Backend command: ${backend_cmd}"
     # shellcheck disable=SC2086
-    be_pid=$(DATABASE_URL="$db_url" start_background "$BACKEND_PID_FILE" "$LOG_DIR/backend.log" $backend_cmd)
+    start_background "$BACKEND_PID_FILE" "$LOG_DIR/backend.log" env DATABASE_URL="$db_url" AUTH_BRIDGE_SECRET="$LOCAL_AUTH_BRIDGE_SECRET" $backend_cmd
+    be_pid="$STARTED_PID"
     cd "$ROOT_DIR"
   fi
 
@@ -253,14 +270,16 @@ cmd_start() {
   fi
 
   # ── 启动 frontend ──
-  local fe_pid
+  local fe_pid frontend_db_url
   if http_ready "http://localhost:$FRONTEND_PORT"; then
     fe_pid=$(pids_on_port "$FRONTEND_PORT" | head -n 1)
     log "Frontend already ready on :$FRONTEND_PORT (PID ${fe_pid:-external})"
   else
     log "Starting frontend on :$FRONTEND_PORT..."
     cd "$FRONTEND_DIR"
-    fe_pid=$(NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-http://localhost:$BACKEND_PORT}" NEXT_PUBLIC_API_KEY="${NEXT_PUBLIC_API_KEY:-sk_public_local}" start_background "$FRONTEND_PID_FILE" "$LOG_DIR/frontend.log" npm run dev)
+    frontend_db_url=$(frontend_database_url)
+    start_background "$FRONTEND_PID_FILE" "$LOG_DIR/frontend.log" env INTERNAL_API_BASE_URL="${INTERNAL_API_BASE_URL:-http://127.0.0.1:$BACKEND_PORT}" NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-http://localhost:$BACKEND_PORT}" NEXT_PUBLIC_API_KEY="${NEXT_PUBLIC_API_KEY:-sk_public_local}" BETTER_AUTH_SECRET="$LOCAL_BETTER_AUTH_SECRET" BETTER_AUTH_URL="$LOCAL_BETTER_AUTH_URL" BETTER_AUTH_DATABASE_URL="$frontend_db_url" AUTH_BRIDGE_SECRET="$LOCAL_AUTH_BRIDGE_SECRET" npm run dev
+    fe_pid="$STARTED_PID"
     cd "$ROOT_DIR"
   fi
 

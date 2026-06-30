@@ -12,15 +12,19 @@ def make_daemon_tree(root: Path, *, version: str = "0.2.0") -> None:
     daemon_dir = root / "agent" / "daemon" / "aaa-daemon"
     write(daemon_dir / "package.json", f"""
         {{
-          "name": "aaa-daemon",
+          "name": "@smallkhoj/smallkhoj-daemon",
           "version": "{version}",
           "type": "module",
+          "files": ["dist", "README.md"],
+          "bin": {{
+            "smallkhoj-daemon": "dist/cmd/main.js"
+          }},
           "dependencies": {{}}
         }}
     """)
     write(daemon_dir / "package-lock.json", """
         {
-          "name": "aaa-daemon",
+          "name": "@smallkhoj/smallkhoj-daemon",
           "lockfileVersion": 3,
           "packages": {}
         }
@@ -49,6 +53,8 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertEqual(result.version, "0.2.0")
             self.assertEqual(result.platform, "darwin-arm64")
             self.assertEqual(result.artifact.name, "smallkhoj-daemon-v0.2.0-darwin-arm64.tar.gz")
+            self.assertEqual(result.npm_package.name, "smallkhoj-smallkhoj-daemon-0.2.0.tgz")
+            self.assertTrue(result.npm_package.is_file())
             self.assertTrue(result.checksum_file.is_file())
             self.assertTrue(result.manifest.is_file())
             self.assertTrue(result.install_script.is_file())
@@ -86,6 +92,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertEqual(payload["version"], "0.3.0")
             self.assertEqual(payload["platform"], "linux-x64")
             self.assertTrue(payload["artifact"].endswith("smallkhoj-daemon-v0.3.0-linux-x64.tar.gz"))
+            self.assertTrue(payload["npmPackage"].endswith("smallkhoj-smallkhoj-daemon-0.3.0.tgz"))
             json.dumps(payload)
 
 

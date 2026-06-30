@@ -26,7 +26,7 @@ import { FieldLabel, Select, Textarea } from "@/components/ui/form"
 import { TaskListPanel } from "@/components/task-list-panel"
 import { TaskFormDialogs } from "@/components/task-form-dialogs"
 import { API_BASE, apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
-import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 import { TaskDndBoard } from "@/components/task-dnd-board"
 import { TaskDetailDialog } from "@/components/task-detail-dialog"
@@ -653,7 +653,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   const t = await getTranslations("tasks")
   const copy = makeTasksCopy(t)
   const sessionToken = await getSessionToken()
-  const activeServerId = await getActiveServerId()
+  const activeServerId = session.server.id
   const params = await searchParams
   const view = firstParam(params.view, "board") === "list" ? "list" : "board"
   const filters = {

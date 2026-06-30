@@ -405,6 +405,115 @@
 .text-accent-purple { color: var(--accent-purple); }
 .text-accent-yellow { color: var(--accent-yellow); }
 
+/*
+ * Tailwind v4 dev builds can omit project-defined utility-like selectors from
+ * the generated sheet. Keep SmallKhoj's design-system selectors in the
+ * components layer so ProductShell/pages always receive the actual colors.
+ */
+@layer components {
+  .bg-sand { background-color: var(--sand); }
+  .bg-sand-deep { background-color: var(--sand-deep); }
+  .bg-sand-card { background-color: var(--sand-card); }
+  .bg-paper { background-color: var(--paper); }
+  .text-paper-ink { color: var(--paper-ink); }
+  .text-sand-ink { color: var(--sand-ink); }
+  .text-sand-muted { color: var(--sand-muted); }
+  .border-sand-border { border-color: var(--sand-border); }
+  .bg-sand-deep\/55 { background-color: color-mix(in oklch, var(--sand-deep) 55%, transparent); }
+  .bg-sand-deep\/60 { background-color: color-mix(in oklch, var(--sand-deep) 60%, transparent); }
+
+  .sk-ink-border { border: 2px solid var(--ink); border-radius: 0; }
+  .sk-ink-border-1 { border: 1.5px solid var(--ink); border-radius: 0; }
+  .sk-hard-shadow { box-shadow: 2px 2px 0 var(--ink); }
+  .sk-hard-shadow-sm { box-shadow: 1px 1px 0 var(--ink); }
+
+  .bg-success { background-color: var(--success); }
+  .bg-warning { background-color: var(--warning); }
+  .bg-info { background-color: var(--info); }
+  .bg-danger { background-color: var(--danger); }
+  .text-success-fg { color: var(--success-fg); }
+  .text-warning-fg { color: var(--warning-fg); }
+  .text-info-fg { color: var(--info-fg); }
+  .text-danger-fg { color: var(--danger-fg); }
+  .sk-status-success { background-color: var(--success); color: var(--success-fg); }
+  .sk-status-warning { background-color: var(--warning); color: var(--warning-fg); }
+  .sk-status-info { background-color: var(--info); color: var(--info-fg); }
+  .sk-status-danger { background-color: var(--danger); color: var(--danger-fg); }
+
+  .sk-cat-info { background-color: var(--cat-info); color: var(--cat-info-fg); }
+  .sk-cat-success { background-color: var(--cat-success); color: var(--cat-success-fg); }
+  .sk-cat-warning { background-color: var(--cat-warning); color: var(--cat-warning-fg); }
+  .sk-cat-danger { background-color: var(--cat-danger); color: var(--cat-danger-fg); }
+  .sk-cat-neutral { background-color: var(--cat-neutral); color: var(--cat-neutral-fg); }
+
+  .sk-accent-blue { background-color: var(--accent-blue) !important; color: var(--accent-blue-fg); }
+  .sk-accent-mint { background-color: var(--accent-mint) !important; color: var(--accent-mint-fg); }
+  .sk-accent-green { background-color: var(--accent-green) !important; color: var(--accent-green-fg); }
+  .sk-accent-rose { background-color: var(--accent-rose) !important; color: var(--accent-rose-fg); }
+  .sk-accent-purple { background-color: var(--accent-purple) !important; color: var(--accent-purple-fg); }
+  .sk-accent-yellow { background-color: var(--accent-yellow) !important; color: var(--accent-yellow-fg); }
+  .sk-accent-blue-soft { background-color: var(--accent-blue-soft) !important; color: var(--accent-blue-soft-fg); }
+  .sk-accent-mint-soft { background-color: var(--accent-mint-soft) !important; color: var(--accent-mint-soft-fg); }
+  .sk-accent-green-soft { background-color: var(--accent-green-soft) !important; color: var(--accent-green-soft-fg); }
+  .sk-accent-rose-soft { background-color: var(--accent-rose-soft) !important; color: var(--accent-rose-soft-fg); }
+  .sk-accent-purple-soft { background-color: var(--accent-purple-soft) !important; color: var(--accent-purple-soft-fg); }
+  .sk-accent-yellow-soft { background-color: var(--accent-yellow-soft) !important; color: var(--accent-yellow-soft-fg); }
+  .border-accent-blue { border-color: var(--accent-blue); }
+  .border-accent-mint { border-color: var(--accent-mint); }
+  .border-accent-green { border-color: var(--accent-green); }
+  .border-accent-rose { border-color: var(--accent-rose); }
+  .border-accent-purple { border-color: var(--accent-purple); }
+  .border-accent-yellow { border-color: var(--accent-yellow); }
+  .text-accent-blue { color: var(--accent-blue); }
+  .text-accent-mint { color: var(--accent-mint); }
+  .text-accent-green { color: var(--accent-green); }
+  .text-accent-rose { color: var(--accent-rose); }
+  .text-accent-purple { color: var(--accent-purple); }
+  .text-accent-yellow { color: var(--accent-yellow); }
+
+  .sk-panel { border: 2px solid var(--ink); background-color: var(--sand-card); border-radius: 0; }
+  .sk-panel-raised { border: 2px solid var(--ink); background-color: var(--sand-card); border-radius: 0; box-shadow: 2px 2px 0 var(--ink); }
+
+  .sk-rail-logo {
+    background: oklch(0.93 0.05 188);
+    color: oklch(0.22 0.1 208);
+    box-shadow: 0 2px 10px oklch(0.22 0.08 220 / 0.4);
+  }
+  .sk-rail-icon {
+    background: oklch(0.2 0.03 220 / 0.32);
+    color: oklch(0.99 0.005 190);
+  }
+  .sk-rail-icon:hover {
+    background: oklch(0.2 0.03 220 / 0.5);
+  }
+  .sk-rail-active { background: var(--accent-blue); color: var(--accent-blue-fg); }
+  .sk-rail-active-blue { background: var(--accent-blue); color: var(--accent-blue-fg); }
+  .sk-rail-active-rose { background: var(--accent-rose); color: var(--accent-rose-fg); }
+  .sk-rail-active-mint { background: var(--accent-mint); color: var(--accent-mint-fg); }
+  .sk-rail-active-green { background: var(--accent-green); color: var(--accent-green-fg); }
+  .sk-rail-active-purple { background: var(--accent-purple); color: var(--accent-purple-fg); }
+  .sk-rail-active::before,
+  .sk-rail-active-blue::before,
+  .sk-rail-active-rose::before,
+  .sk-rail-active-mint::before,
+  .sk-rail-active-green::before,
+  .sk-rail-active-purple::before {
+    content: "";
+    position: absolute;
+    left: -13px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 22px;
+    border-radius: 999px;
+  }
+  .sk-rail-active-blue::before { background: var(--accent-blue); }
+  .sk-rail-active-rose::before { background: var(--accent-rose); }
+  .sk-rail-active-mint::before { background: var(--accent-mint); }
+  .sk-rail-active-green::before { background: var(--accent-green); }
+  .sk-rail-active-purple::before { background: var(--accent-purple); }
+}
+
 @layer utilities {
   /*
    * 组合工具类：让裸 div 一行收口到手作风。

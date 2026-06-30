@@ -1,8 +1,10 @@
 """SmallKhoj 后端入口。参考 khoj main.py 的 FastAPI app 创建模式。"""
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from config import settings
 from routers import health, chat, agent_api, public_api, hello
@@ -16,6 +18,9 @@ from services.public_events import (
 from services.reminder_scheduler import start_reminder_scheduler, stop_reminder_scheduler
 from services.thread_summary import start_thread_summary_scheduler, stop_thread_summary_scheduler
 from services.cors_config import build_cors_origins
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DAEMON_DOWNLOAD_DIR = PROJECT_ROOT / "release-artifacts" / "smallkhoj-daemon"
 
 
 @asynccontextmanager
@@ -60,6 +65,12 @@ app.include_router(chat.router)
 app.include_router(agent_api.router)
 app.include_router(public_api.router)
 app.include_router(hello.router)
+
+app.mount(
+    "/downloads/smallkhoj-daemon",
+    StaticFiles(directory=str(DAEMON_DOWNLOAD_DIR), check_dir=False),
+    name="smallkhoj-daemon-downloads",
+)
 
 
 if __name__ == "__main__":

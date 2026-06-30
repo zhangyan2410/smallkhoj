@@ -60,12 +60,12 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
   const bashWrapper = join(wrapperDir, 'slock');
   writeFileSync(bashWrapper, [
     '#!/usr/bin/env bash',
-    `export SLOCK_AGENT_PROXY_URL=${quotePosix(commonEnv.SLOCK_AGENT_PROXY_URL)}`,
-    `export SLOCK_AGENT_PROXY_TOKEN_FILE=${quotePosix(commonEnv.SLOCK_AGENT_PROXY_TOKEN_FILE)}`,
-    `export SLOCK_AGENT_ACTIVE_CAPABILITIES=${quotePosix(commonEnv.SLOCK_AGENT_ACTIVE_CAPABILITIES)}`,
-    `export SLOCK_AGENT_ID=${quotePosix(commonEnv.SLOCK_AGENT_ID)}`,
-    `export SLOCK_SERVER_URL=${quotePosix(commonEnv.SLOCK_SERVER_URL)}`,
-    `export SLOCK_CURRENT_WORKSPACE_PATH=${quotePosix(commonEnv.SLOCK_CURRENT_WORKSPACE_PATH)}`,
+    `SLOCK_AGENT_PROXY_URL=${quotePosix(commonEnv.SLOCK_AGENT_PROXY_URL)} \\`,
+    `SLOCK_AGENT_PROXY_TOKEN_FILE=${quotePosix(commonEnv.SLOCK_AGENT_PROXY_TOKEN_FILE)} \\`,
+    `SLOCK_AGENT_ACTIVE_CAPABILITIES=${quotePosix(commonEnv.SLOCK_AGENT_ACTIVE_CAPABILITIES)} \\`,
+    `SLOCK_AGENT_ID=${quotePosix(commonEnv.SLOCK_AGENT_ID)} \\`,
+    `SLOCK_SERVER_URL=${quotePosix(commonEnv.SLOCK_SERVER_URL)} \\`,
+    `SLOCK_CURRENT_WORKSPACE_PATH=${quotePosix(commonEnv.SLOCK_CURRENT_WORKSPACE_PATH)} \\`,
     `exec ${quotePosix(process.execPath)} ${quotePosix(cliPath)} "$@"`,
     '',
   ].join('\n'), 'utf-8');

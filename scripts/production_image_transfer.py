@@ -109,9 +109,11 @@ def build_steps(options: TransferOptions) -> list[PlanStep]:
             "build",
             *platform_args,
             *proxy_args,
+            "-f",
+            "backend/Dockerfile",
             "-t",
             options.backend_image,
-            "./backend",
+            ".",
         ]),
         PlanStep("build-frontend-image", [
             "docker",

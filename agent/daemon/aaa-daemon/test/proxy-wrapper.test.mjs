@@ -95,7 +95,12 @@ test('writeSlockWrapper writes wrappers and proxy token', () => {
     assert.equal(readFileSync(result.tokenFile, 'utf-8'), 'sap_test_token');
     assert.equal(result.slockHome, result.wrapperDir);
     assert.equal(result.launchId, 'pid-test');
-    assert.match(readFileSync(result.bashWrapper, 'utf-8'), /SLOCK_AGENT_PROXY_URL='http:\/\/127\.0\.0\.1:3456'/);
+    const bashWrapper = readFileSync(result.bashWrapper, 'utf-8');
+    assert.doesNotMatch(bashWrapper, /^export SLOCK_AGENT_PROXY_URL=/m);
+    assert.doesNotMatch(bashWrapper, /^export SLOCK_AGENT_PROXY_TOKEN_FILE=/m);
+    assert.match(bashWrapper, /SLOCK_AGENT_PROXY_URL='http:\/\/127\.0\.0\.1:3456'/);
+    assert.match(bashWrapper, /SLOCK_AGENT_PROXY_TOKEN_FILE='[^']+' \\/);
+    assert.match(bashWrapper, /exec '.*node(\.exe)?' 'D:\/repo\/dist\/slock-cli\.js' "\$@"/);
     assert.match(readFileSync(result.cmdWrapper, 'utf-8'), /set "SLOCK_AGENT_ID=agent-123"/);
     assert.match(readFileSync(result.psWrapper, 'utf-8'), /\$env:SLOCK_SERVER_URL='https:\/\/api\.slock\.ai'/);
     assert.equal(prependPathEnv(result.wrapperDir, 'BASE'), `${result.wrapperDir}${process.platform === 'win32' ? ';' : ':'}BASE`);

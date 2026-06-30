@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 import { API_BASE, type AccountSession } from "@/lib/control-plane"
-import { serverApiHeaders, setActiveServerCookie } from "@/lib/server-auth"
+import { clearSessionCookie, serverApiHeaders, setActiveServerCookie } from "@/lib/server-auth"
 
 function safeReturnTo(value: FormDataEntryValue | null) {
   const raw = String(value || "").trim()
@@ -49,4 +49,33 @@ export async function createServerAction(formData: FormData) {
   if (data.server?.id) await setActiveServerCookie(data.server.id)
   revalidatePath("/", "layout")
   redirect(returnTo)
+}
+
+export async function acceptServerInviteAction(formData: FormData) {
+  const token = String(formData.get("token") || "").trim()
+  if (!token) redirect("/members?error=Missing%20invite")
+
+  const response = await fetch(`${API_BASE}/api/v1/server-invites/${encodeURIComponent(token)}/accept`, {
+    method: "POST",
+    cache: "no-store",
+    headers: await serverApiHeaders(true),
+    body: JSON.stringify({}),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/join/${encodeURIComponent(token)}?error=${encodeURIComponent(detail)}`)
+  }
+
+  const data = (await response.json()) as AccountSession
+  if (data.server?.id) await setActiveServerCookie(data.server.id)
+  revalidatePath("/", "layout")
+  redirect("/members")
+}
+
+export async function logoutAction() {
+  await clearSessionCookie()
+  revalidatePath("/", "layout")
+  redirect("/login")
 }

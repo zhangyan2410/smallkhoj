@@ -22,6 +22,7 @@ zy-think/.obsidian/
 # Build caches
 *.tsbuildinfo
 toremove/
+release-artifacts/
 
 # Dev server runtime
 .dev-pids/

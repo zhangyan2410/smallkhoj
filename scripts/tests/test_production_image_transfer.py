@@ -29,9 +29,11 @@ class ProductionImageTransferTests(unittest.TestCase):
         self.assertEqual(plan.steps[0].argv, [
             "docker",
             "build",
+            "-f",
+            "backend/Dockerfile",
             "-t",
             "smallkhoj-backend:local-release",
-            "./backend",
+            ".",
         ])
         self.assertIn("smallkhoj-backend:local-release", plan.steps[3].argv)
         self.assertIn("smallkhoj-frontend:local-release", plan.steps[3].argv)

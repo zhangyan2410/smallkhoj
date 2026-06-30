@@ -195,6 +195,11 @@ def check_repo_config(root: Path) -> list[CheckResult]:
             "repo.caddy.apiRoute": ("/api", "/api/*", "reverse_proxy @backend_api backend:8000"),
             "repo.caddy.internalRoute": ("/internal", "/internal/*", "reverse_proxy @backend_internal backend:8000"),
             "repo.caddy.docsRoute": ("/docs", "/docs/*", "/openapi.json", "reverse_proxy @backend_docs backend:8000"),
+            "repo.caddy.daemonDownloadsRoute": (
+                "/downloads/smallkhoj-daemon",
+                "/downloads/smallkhoj-daemon/*",
+                "reverse_proxy @backend_downloads backend:8000",
+            ),
             "repo.caddy.frontendRoute": ("reverse_proxy frontend:3000",),
         }
         for name, needles in caddy_expectations.items():
@@ -220,6 +225,33 @@ def check_repo_config(root: Path) -> list[CheckResult]:
                 "repo.caddy.dockerfile",
                 "DEPLOY_PREFLIGHT_CADDY_DOCKERFILE_CONTRACT_MISSING",
                 "deploy/caddy/Dockerfile must copy Caddyfile to /etc/caddy/Caddyfile.",
+            ))
+
+    backend_dockerfile_path, backend_dockerfile_error = require_file(root, "backend/Dockerfile")
+    if backend_dockerfile_error:
+        checks.append(backend_dockerfile_error)
+    else:
+        backend_dockerfile = read_text(backend_dockerfile_path)
+        if contains_all(
+            backend_dockerfile,
+            ("COPY backend/", "COPY release-artifacts/", "/app/release-artifacts"),
+        ):
+            checks.append(passed(
+                "repo.backend.daemonArtifacts",
+                "Backend Dockerfile copies self-hosted daemon release artifacts into the image.",
+            ))
+        else:
+            checks.append(failed(
+                "repo.backend.daemonArtifacts",
+                "DEPLOY_PREFLIGHT_BACKEND_DAEMON_ARTIFACTS_MISSING",
+                "Backend Dockerfile must include release-artifacts so /downloads/smallkhoj-daemon works in production.",
+                {
+                    "requiredMarkers": [
+                        "COPY backend/",
+                        "COPY release-artifacts/",
+                        "/app/release-artifacts",
+                    ]
+                },
             ))
 
     next_config_path, next_config_error = require_file(root, "frontend/next.config.mjs")
@@ -248,6 +280,35 @@ def check_repo_config(root: Path) -> list[CheckResult]:
                 "repo.frontend.dockerfile",
                 "DEPLOY_PREFLIGHT_FRONTEND_DOCKERFILE_CONTRACT_MISSING",
                 "Frontend Dockerfile must copy .next/standalone and start server.js.",
+            ))
+        if contains_all(
+            dockerfile,
+            (
+                "BETTER_AUTH_SECRET",
+                "BETTER_AUTH_URL",
+                "BETTER_AUTH_DATABASE_URL",
+                "AUTH_BRIDGE_SECRET",
+                "RUN bun run build",
+            ),
+        ):
+            checks.append(passed(
+                "repo.frontend.buildAuthEnv",
+                "Frontend Dockerfile provides build-time auth env placeholders for Next production build.",
+            ))
+        else:
+            checks.append(failed(
+                "repo.frontend.buildAuthEnv",
+                "DEPLOY_PREFLIGHT_FRONTEND_BUILD_AUTH_ENV_MISSING",
+                "Frontend Dockerfile must provide build-time Better Auth env before running the Next production build.",
+                {
+                    "requiredMarkers": [
+                        "BETTER_AUTH_SECRET",
+                        "BETTER_AUTH_URL",
+                        "BETTER_AUTH_DATABASE_URL",
+                        "AUTH_BRIDGE_SECRET",
+                        "RUN bun run build",
+                    ]
+                },
             ))
 
     return checks

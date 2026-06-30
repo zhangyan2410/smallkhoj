@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
+import Script from "next/script"
 import { NextIntlClientProvider } from "next-intl"
 import { getLocale, getMessages } from "next-intl/server"
 import "./globals.css"
@@ -26,7 +27,9 @@ export default async function RootLayout({
     <html lang={locale} className={inter.variable} suppressHydrationWarning>
       <head>
         {/* DESIGN.md: light is the default; dark is opt-in via theme=localStorage. */}
-        <script
+        <Script
+          id="smallkhoj-theme"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               (function() {

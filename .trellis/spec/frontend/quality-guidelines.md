@@ -181,6 +181,42 @@ export function CreateThingForm() {
 - Browser smoke tests for mutation forms must assert a real `POST` happened, not only that the page changed.
 - If a credential or token is returned, assert it is not leaked through the URL.
 
+### Convention: Daemon Onboarding Shows One Copyable Command
+
+**What**: Computers onboarding and reconnect surfaces must show exactly one
+copyable command to the user:
+
+```text
+npx -y <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz --server-url <public-base-url> --api-key <token> # <server-name>
+```
+
+Do not show separate install/download/connect command blocks in the product UI.
+The command card must also show the Server name or short Server id in metadata.
+
+**Why**: The split install/connect UI made it unclear which command was real
+and hid whether the command was production-installable. The product contract
+should match Raft-style onboarding: copy one command, run it, daemon connects.
+
+**Wrong vs Correct**:
+```tsx
+// Wrong: three visible command blocks.
+<code data-testid="daemon-one-step-command">{oneStep}</code>
+<code data-testid="daemon-install-command">{install}</code>
+<code data-testid="connection-command">{connect}</code>
+
+// Correct: one visible command from the backend response.
+<code data-testid="daemon-connect-command">{credential.command}</code>
+```
+
+**Tests Required**:
+- Frontend unit tests must not depend on install-command derivation helpers for
+  product onboarding.
+- `./twd` evidence must assert there is one visible command block and that the
+  page text does not include `安装命令`, `Install Command`,
+  `smallkhoj-daemon connect --token`, or `smallkhoj-daemon start --machine-token`.
+- `./twd` evidence must assert the copied command includes the `# <server-name>`
+  comment and the card visibly renders the Server identifier.
+
 ---
 
 ## Testing Requirements

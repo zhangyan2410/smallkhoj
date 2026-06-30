@@ -28,7 +28,6 @@ export async function currentAccount(): Promise<AccountSession | null> {
     headers: apiHeaders(token, false, activeServerId),
   })
   if (response.status === 403 && activeServerId) {
-    await clearActiveServerCookie()
     const fallback = await fetch(`${API_BASE}/api/v1/auth/me`, {
       cache: "no-store",
       headers: apiHeaders(token),
@@ -47,7 +46,8 @@ export async function requireCurrentAccount() {
 }
 
 export async function serverApiHeaders(contentType = false) {
-  return apiHeaders(await getSessionToken(), contentType, await getActiveServerId())
+  const account = await currentAccount()
+  return apiHeaders(await getSessionToken(), contentType, account?.server.id)
 }
 
 export async function setSessionCookie(sessionToken: string) {

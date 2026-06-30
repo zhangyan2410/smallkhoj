@@ -83,6 +83,8 @@ Future environment support must validate:
   - `SLOCK_AGENT_ID`
   - `SLOCK_SERVER_URL`
   - `SLOCK_CURRENT_WORKSPACE_PATH`
+- POSIX `.slock/slock` must pass those variables as command-scoped assignments immediately before `exec`, not as standalone `export SLOCK_*` lines. Standalone export lines are easy for shell tracing, wrapper inspection, or runtime activity previews to surface as noisy output and may expose local proxy token-file paths.
+- Existing-runtime import must remain backward-compatible with both old standalone `export KEY='value'` wrappers and new command-scoped `KEY='value' \` wrappers.
 - `slock` CLI must authenticate local proxy requests with `Authorization: Bearer {sap_token}` read from `SLOCK_AGENT_PROXY_TOKEN_FILE`.
 - Proxy path rewriting must preserve query strings:
   - `/internal/agent/{agentId}/receive?limit=10` -> `/internal/agent-api/events?limit=10&since=latest`
@@ -356,6 +358,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - Integration: fake Codex CLI receives generated Slock wrapper in `PATH`, isolated workspace `cwd`, and no proxy secret env vars.
 - Integration: resume session id from daemon restart is reused for the next turn.
 - Regression: global Codex config files are not created or modified by daemon-managed runtime launch.
+- Regression: the generated POSIX wrapper does not contain standalone `export SLOCK_AGENT_PROXY_URL` or `export SLOCK_AGENT_PROXY_TOKEN_FILE` lines, while the import path still parses command-scoped single-quoted assignments.
 
 ### 7. Wrong vs Correct
 

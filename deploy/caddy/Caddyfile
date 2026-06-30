@@ -10,5 +10,8 @@
 	@backend_docs path /docs /docs/* /openapi.json
 	reverse_proxy @backend_docs backend:8000
 
+	@backend_downloads path /downloads/smallkhoj-daemon /downloads/smallkhoj-daemon/*
+	reverse_proxy @backend_downloads backend:8000
+
 	reverse_proxy frontend:3000
 }

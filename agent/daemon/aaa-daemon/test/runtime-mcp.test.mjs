@@ -25,6 +25,7 @@ import {
   isRuntimeActionableEventType,
   normalizeRuntimeIncomingMessage,
   parseDaemonControlCommand,
+  sanitizeRuntimeCommandPreview,
   selectRuntimeSessionScope,
 } from '../dist/daemon/daemon.js';
 import { appendDaemonConnectionParams, buildAckPayload, buildActivityPayload, parseWebSocketPayload } from '../dist/websocket.js';
@@ -108,6 +109,7 @@ test('claude args and prompt force slock CLI communication', () => {
   assert.match(prompt, /slock CLI ONLY/);
   assert.match(prompt, /D:\/workspace\/\.slock\/slock/);
   assert.match(prompt, /slock message check/);
+  assert.match(prompt, /Use freely during work/);
   assert.match(prompt, /slock message resolve/);
   assert.match(prompt, /slock server info/);
   assert.match(prompt, /slock task list/);
@@ -131,6 +133,20 @@ test('claude args and prompt force slock CLI communication', () => {
   assert.match(prompt, /`target=` — where the message came from/);
   assert.match(prompt, /reuse the exact `target`/i);
   assert.match(prompt, /Agent ID: agent-123/);
+});
+
+test('runtime activity command preview redacts Slock proxy internals', () => {
+  const preview = sanitizeRuntimeCommandPreview([
+    "export SLOCK_AGENT_PROXY_URL='http://127.0.0.1:64165'",
+    "export SLOCK_AGENT_PROXY_TOKEN_FILE='/Users/lee/.slock/agent-proxy-tokens/agent-1/pid-1.token'",
+    "export SLOCK_AGENT_ACTIVE_CAPABILITIES='send,read'",
+    "slock message send --target '#all' hello",
+  ].join('\n'));
+
+  assert.doesNotMatch(preview, /SLOCK_AGENT_PROXY_URL/);
+  assert.doesNotMatch(preview, /SLOCK_AGENT_PROXY_TOKEN_FILE/);
+  assert.doesNotMatch(preview, /agent-proxy-tokens/);
+  assert.match(preview, /slock message send --target '#all' hello/);
 });
 
 test('claude system prompt is written under slock home', () => {

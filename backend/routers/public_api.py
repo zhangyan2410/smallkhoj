@@ -11,7 +11,7 @@ import shlex
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import HTTPException
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
@@ -72,6 +72,11 @@ from services.server_membership import (
     require_admin_role,
     resolve_active_server_context,
 )
+from services.server_invites import (
+    accept_server_invite as accept_server_invite_record,
+    create_server_invite as create_server_invite_record,
+    inspect_server_invite,
+)
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.task_run_templates import (
     create_template,
@@ -95,6 +100,7 @@ logger = logging.getLogger(__name__)
 PUBLIC_API_KEY = "sk_public_local"
 DAEMON_CLI_COMMAND = "smallkhoj-daemon"
 DAEMON_DOWNLOAD_PATH = "/downloads/smallkhoj-daemon"
+DAEMON_NPX_PACKAGE_PREFIX = "smallkhoj-smallkhoj-daemon"
 CONNECT_TICKET_TTL_SECONDS = 300
 DEFAULT_SERVER_ID = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
 DEFAULT_SERVER_NAME = "Slock Server"
@@ -153,18 +159,40 @@ async def _push_committed_events(db: AsyncSession, *, server_id: uuid.UUID) -> i
     return await push_latest_events_for_server(db, server_id=server_id)
 
 
-def _computer_connection_command(token: str, server_url: str) -> str:
-    """Command shown in the UI for reconnecting an installed daemon."""
-    return " ".join(
+def _shell_comment_label(value: str | None) -> str:
+    if not value:
+        return ""
+    return re.sub(r"\s+", " ", value).strip()[:80]
+
+
+def _with_server_comment(command: str, server_label: str | None) -> str:
+    label = _shell_comment_label(server_label)
+    return f"{command} # {label}" if label else command
+
+
+def _daemon_npx_package(server_url: str) -> str:
+    configured = settings.daemon_npx_package.strip()
+    if configured:
+        return configured
+    version = settings.minimum_daemon_version.strip() or "0.2.0"
+    return f"{_daemon_download_base_url(server_url)}/{DAEMON_NPX_PACKAGE_PREFIX}-{version}.tgz"
+
+
+def _computer_connection_command(token: str, server_url: str, server_label: str | None = None) -> str:
+    """One-line product command for reconnecting this computer's daemon."""
+    package = _daemon_npx_package(server_url)
+    command = " ".join(
         [
-            shlex.quote(DAEMON_CLI_COMMAND),
-            "start",
-            "--machine-token",
-            shlex.quote(token),
-            "--server",
+            "npx",
+            "-y",
+            shlex.quote(package),
+            "--server-url",
             shlex.quote(server_url),
+            "--api-key",
+            shlex.quote(token),
         ]
     )
+    return _with_server_comment(command, server_label)
 
 
 def _daemon_download_base_url(server_url: str) -> str:
@@ -188,18 +216,21 @@ def _daemon_install_metadata(server_url: str) -> dict[str, str]:
     }
 
 
-def _computer_connect_command(connect_token: str, server_url: str) -> str:
-    """Command shown in the UI for connecting an installed daemon with a one-time ticket."""
-    return " ".join(
+def _computer_connect_command(connect_token: str, server_url: str, server_label: str | None = None) -> str:
+    """One-line product command for connecting this computer with a one-time ticket."""
+    package = _daemon_npx_package(server_url)
+    command = " ".join(
         [
-            shlex.quote(DAEMON_CLI_COMMAND),
-            "connect",
-            "--token",
-            shlex.quote(connect_token),
-            "--server",
+            "npx",
+            "-y",
+            shlex.quote(package),
+            "--server-url",
             shlex.quote(server_url),
+            "--api-key",
+            shlex.quote(connect_token),
         ]
     )
+    return _with_server_comment(command, server_label)
 
 MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]+)")
 
@@ -306,6 +337,42 @@ async def _ensure_human_member(db: AsyncSession, server: Server, handle_or_id: s
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _public_frontend_base_url(request: Request) -> str:
+    origin = request.headers.get("origin")
+    if origin:
+        return origin.rstrip("/")
+    referer = request.headers.get("referer")
+    if referer:
+        parsed = urlsplit(referer)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}"
+    forwarded_host = request.headers.get("x-forwarded-host")
+    forwarded_proto = request.headers.get("x-forwarded-proto") or "https"
+    if forwarded_host:
+        return f"{forwarded_proto.split(',')[0].strip()}://{forwarded_host.split(',')[0].strip()}"
+    host = request.headers.get("host")
+    if host:
+        return f"http://{host}"
+    return "http://localhost:3000"
+
+
+def _serialize_invite_payload(invite, server: Server, *, join_url: str | None = None, already_member: bool | None = None) -> dict:
+    payload = {
+        "id": str(invite.id),
+        "serverId": str(server.id),
+        "serverName": server.name,
+        "role": invite.role,
+        "invitedName": invite.invited_name,
+        "expiresAt": invite.expires_at.isoformat() if invite.expires_at else None,
+        "acceptedAt": invite.accepted_at.isoformat() if invite.accepted_at else None,
+    }
+    if join_url is not None:
+        payload["joinUrl"] = join_url
+    if already_member is not None:
+        payload["alreadyMember"] = already_member
+    return payload
 
 
 def _normalize_account_name(raw_name: str | None) -> str:
@@ -708,6 +775,52 @@ async def create_server(request: Request, _auth: None = Depends(verify_public_ap
     await db.commit()
     payload = await _serialize_account(db, account, server, member)
     payload["created"] = True
+    return payload
+
+
+@router.post("/server-invites")
+async def create_server_invite(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    body = await request.json()
+    created = await create_server_invite_record(
+        db,
+        server=context.server,
+        creator=context.member,
+        role=body.get("role") or "member",
+        invited_name=body.get("invitedName"),
+        expires_in_days=body.get("expiresInDays"),
+        public_base_url=_public_frontend_base_url(request),
+    )
+    await db.commit()
+    return {
+        "invite": _serialize_invite_payload(created.invite, context.server, join_url=created.join_url),
+    }
+
+
+@router.get("/server-invites/{token}")
+async def get_server_invite(token: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    account = await _current_account(db, request)
+    preview = await inspect_server_invite(db, token=token, account=account)
+    return {
+        "invite": _serialize_invite_payload(
+            preview.invite,
+            preview.server,
+            already_member=preview.already_member,
+        ),
+    }
+
+
+@router.post("/server-invites/{token}/accept")
+async def accept_server_invite(token: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
+    account = await _current_account(db, request)
+    if not account:
+        raise HTTPException(401, "Login required for invite acceptance")
+    accepted = await accept_server_invite_record(db, token=token, account=account)
+    await db.commit()
+    payload = await _serialize_account(db, account, accepted.server, accepted.member)
+    payload["accepted"] = True
+    payload["invite"] = _serialize_invite_payload(accepted.invite, accepted.server)
     return payload
 
 
@@ -3323,8 +3436,10 @@ async def generate_computer_connect_command(
     await db.commit()
     return {
         "connectToken": token,
-        "command": _computer_connect_command(token, server_url),
+        "command": _computer_connect_command(token, server_url, server.name),
         "daemonInstall": _daemon_install_metadata(server_url),
+        "serverId": str(server.id),
+        "serverName": server.name,
         "expiresAt": expires_at.isoformat(),
     }
 
@@ -3366,8 +3481,10 @@ async def generate_computer_reconnect_command(
         "connectToken": token,
         "computerId": str(computer.id),
         "name": computer.name,
-        "command": _computer_connect_command(token, server_url),
+        "command": _computer_connect_command(token, server_url, server.name),
         "daemonInstall": _daemon_install_metadata(server_url),
+        "serverId": str(server.id),
+        "serverName": server.name,
         "expiresAt": expires_at.isoformat(),
     }
 

@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "06-26-daemon-single-local-computer-identity"
+  ],
   "parent": null,
   "relatedFiles": [],
   "notes": "",

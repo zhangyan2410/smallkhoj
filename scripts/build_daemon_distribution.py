@@ -27,6 +27,7 @@ class DaemonDistribution:
     version: str
     platform: str
     artifact: Path
+    npm_package: Path
     checksum_file: Path
     sha256: str
     manifest: Path
@@ -152,6 +153,29 @@ def create_archive(staging_dir: Path, output_dir: Path, *, version: str, target_
     return artifact
 
 
+def create_npm_package(daemon_dir: Path, output_dir: Path) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    completed = subprocess.run(
+        ["npm", "pack", "--pack-destination", str(output_dir), "--json"],
+        cwd=daemon_dir,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"npm pack failed with exit code {completed.returncode}: {completed.stderr.strip()}")
+    try:
+        payload = json.loads(completed.stdout)
+        filename = payload[0]["filename"]
+    except (IndexError, KeyError, json.JSONDecodeError, TypeError) as exc:
+        raise RuntimeError(f"npm pack returned an unexpected payload: {completed.stdout}") from exc
+    package_path = output_dir / filename
+    if not package_path.is_file():
+        raise FileNotFoundError(f"npm pack did not create expected package: {package_path}")
+    return package_path
+
+
 def write_install_script(
     output_dir: Path,
     *,
@@ -232,6 +256,8 @@ def build_distribution(
         run_command(["npm", "install", "--silent"], cwd=daemon_dir, timeout=180)
         run_command(["npm", "run", "build"], cwd=daemon_dir, timeout=120)
 
+    npm_package = create_npm_package(daemon_dir, output_dir.resolve())
+
     with tempfile.TemporaryDirectory(prefix="smallkhoj-daemon-dist-") as tmp:
         staging_dir = Path(tmp) / "staging"
         staging_dir.mkdir(parents=True)
@@ -266,6 +292,7 @@ def build_distribution(
                 "version": version,
                 "platform": platform_value,
                 "artifact": str(artifact),
+                "npmPackage": str(npm_package),
                 "sha256": digest,
                 "checksumFile": str(checksum),
                 "installScript": str(install_script),
@@ -281,6 +308,7 @@ def build_distribution(
         version=version,
         platform=platform_value,
         artifact=artifact,
+        npm_package=npm_package,
         checksum_file=checksum,
         sha256=digest,
         manifest=manifest,
@@ -293,6 +321,7 @@ def report_to_dict(result: DaemonDistribution) -> dict[str, Any]:
         "version": result.version,
         "platform": result.platform,
         "artifact": str(result.artifact),
+        "npmPackage": str(result.npm_package),
         "checksumFile": str(result.checksum_file),
         "sha256": result.sha256,
         "manifest": str(result.manifest),

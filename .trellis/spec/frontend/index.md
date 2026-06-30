@@ -21,6 +21,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [State Management](./state-management.md) | Server state, URL state, local UI state, durable preferences | Active |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns, browser evidence gates | Active |
 | [Type Safety](./type-safety.md) | API types, boundary normalization, forbidden type patterns | Active |
+| [Auth Onboarding Contracts](./auth-onboarding-contracts.md) | Better Auth signup/login, email verification policy, provider/env gates | Active |
 
 ---
 

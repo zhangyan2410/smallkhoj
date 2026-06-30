@@ -1,6 +1,6 @@
-import { resolveApiBase } from "./runtime-url"
+import { resolveApiBase, resolvePublicApiBase } from "./runtime-url"
 
-export const BROWSER_API_BASE = resolveApiBase(process.env, "browser")
+export const BROWSER_API_BASE = resolvePublicApiBase(process.env, "browser")
 export const SERVER_API_BASE = resolveApiBase(process.env, "server")
 export const API_BASE = typeof window === "undefined" ? SERVER_API_BASE : BROWSER_API_BASE
 export const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
@@ -79,6 +79,22 @@ export type AccountServerMembership = {
   role: "owner" | "admin" | "member" | string
   status: "active" | string
   isDefault: boolean
+}
+
+export type ServerInvite = {
+  id: string
+  serverId: string
+  serverName: string
+  role: "admin" | "member" | string
+  invitedName?: string | null
+  expiresAt?: string | null
+  acceptedAt?: string | null
+  joinUrl?: string
+  alreadyMember?: boolean
+}
+
+export type ServerInviteResponse = {
+  invite: ServerInvite
 }
 
 function browserCookieValue(name: string) {

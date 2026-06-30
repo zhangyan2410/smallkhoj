@@ -68,6 +68,11 @@ type StartOptions = {
   connectToken?: string;
 };
 
+type ProductConnectOptions = {
+  serverUrl?: string;
+  apiKey?: string;
+};
+
 async function runStart(options: StartOptions): Promise<void> {
   const foreground = options.foreground || Boolean(options.machineToken || options.connectToken);
 
@@ -135,10 +140,37 @@ async function runStart(options: StartOptions): Promise<void> {
   }
 }
 
+async function runProductConnect(options: ProductConnectOptions): Promise<void> {
+  if (!options.serverUrl || !options.apiKey) {
+    program.outputHelp();
+    process.exit(2);
+  }
+
+  const apiKey = options.apiKey.trim();
+  const tokenOptions = apiKey.startsWith('sk_machine_')
+    ? { machineToken: apiKey }
+    : { connectToken: apiKey };
+
+  await runStart({
+    server: options.serverUrl,
+    ws: 'auto',
+    proxyPort: '0',
+    pidFile: './smallkhoj-daemon.pid',
+    runtime: 'none',
+    runtimeCommandArg: [],
+    foreground: true,
+    registerDaemon: true,
+    ...tokenOptions,
+  });
+}
+
 program
   .name('smallkhoj-daemon')
   .description('SmallKhoj Agent Daemon')
-  .version(DAEMON_VERSION);
+  .version(DAEMON_VERSION)
+  .option('--server-url <url>', 'SmallKhoj server URL for one-line onboarding')
+  .option('--api-key <key>', 'One-time sk_connect_ ticket or sk_machine_ token')
+  .action(async (options: ProductConnectOptions) => runProductConnect(options));
 
 // ── start ────────────────────────────────────────────────────
 

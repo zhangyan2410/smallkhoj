@@ -23,6 +23,74 @@ materials:
 The brand accent is **mid-sea blue** (`--primary`, hue ~210) — used sparingly on
 primary buttons, links, focus rings. Never purple (hue 250-265 is forbidden).
 
+### Future theme: water-ink / Shui-mo
+
+The user clarified that the desired monochrome direction is **not black-and-white**.
+It should be a deliberate **water-ink (水墨) product theme**: rice paper, layered
+ink wash, handmade edges, and a small amount of seal/mineral accent. This is a
+future frontend implementation direction, not an accidental fallback for missing
+tokens.
+
+Design intent:
+
+- The app should still feel like a practical work tool. Ink-wash is the material
+  language, not a decorative landing-page treatment.
+- The physical scene is a handmade operating desk: xuan-paper surface, damp ink
+  settling into paper fibers, blue-black text, and one restrained cinnabar seal
+  accent for important state.
+- Preserve the current handcraft frame language. Square ink borders and hard
+  offset shadows can remain, but the surfaces around them should feel like paper
+  and wash, not plain gray UI.
+- Use real or generated bitmap texture for paper/ink material if texture is
+  needed. Do not fake it with sketchy SVG doodles, diagonal stripes, or gradient
+  blobs.
+
+Required palette qualities:
+
+- **Paper base:** warm xuan-paper off-white with a faint green/yellow mineral
+  undertone; never pure white.
+- **Ink text:** deep blue-black or soot ink; never browser black as the only
+  identity.
+- **Ink wash surfaces:** several low-chroma wash layers for sidebars, selected
+  rows, hover, and panels. These should vary by lightness and chroma, not by
+  generic grayscale steps.
+- **Cinnabar accent:** restrained red/orange-red for critical emphasis, current
+  selection accents, or confirmation marks. Use sparingly, like a seal stamp.
+- **Mineral accent:** muted blue-green or green-gray may support runtime/member
+  categories. It should feel like mineral pigment beside ink, not SaaS teal.
+
+Implementation contract for the future frontend agent:
+
+- Add the theme as an explicit class such as `.theme-ink` and persist selection
+  with `localStorage.theme = "ink"` or an equivalent user preference.
+- Keep the existing water+sand identity available unless the product decision is
+  to replace the default theme. Do not silently overwrite the default with an
+  incomplete grayscale theme.
+- Override the same tokens used by the app today: `--background`,
+  `--foreground`, `--card`, `--sand`, `--sand-deep`, `--sand-card`, `--paper`,
+  `--paper-ink`, `--sand-ink`, `--sand-muted`, `--sand-border`, `--ink`,
+  `--primary`, `--ring`, `--accent-*`, and status tokens.
+- Define project utility selectors in the `@layer components` design-system
+  block, not as loose selectors that Tailwind/Next may omit from the compiled
+  sheet.
+- The icon rail may use an ink-wash material variant, or the existing water
+  texture may be toned into ink wash with a deliberate CSS treatment. It should
+  not look like a broken/disabled water image.
+- Text contrast remains product-grade: body text >= 4.5:1 and important labels
+  readable on all wash surfaces.
+- Browser evidence must include the real app in the ink theme, with the server
+  switcher/list/detail surfaces visible enough to prove it is not just token
+  replacement.
+
+Forbidden interpretations:
+
+- Do not implement the theme as plain black text on white background.
+- Do not implement it as a generic dark mode, desaturated grayscale, or missing
+  CSS fallback.
+- Do not cover the UI with decorative ink splashes that reduce scanability.
+- Do not introduce purple-blue gradients, glass panels, soft SaaS shadows, or
+  round-card redesigns under the name "artistic".
+
 ### What this replaces
 Earlier guidance said "do not copy Slock's black-border brutalist style." That is
 **superseded**: SmallKhoj now intentionally uses ink-black hard borders as its
@@ -93,8 +161,11 @@ variants so any usage is contrast-safe:
 Tokens in `globals.css`: `--accent-<hue>`, `--accent-<hue>-fg`,
 `--accent-<hue>-soft`, `--accent-<hue>-soft-fg`. Utility classes
 `.sk-accent-<hue>{,-soft}`, `.text-accent-<hue>`, `.border-accent-<hue>`
-(defined OUTSIDE `@layer utilities` with `!important` — Tailwind v4
-tree-shakes unknown utility names inside the layer).
+are defined in the `@layer components` design-system block with `!important`
+where they must override atom defaults. Do not rely on plain CSS selectors
+outside Tailwind layers for these project utility names; Next/Tailwind v4 dev
+builds can omit them from the generated sheet, which makes the app look like
+the theme disappeared even though the tokens still exist.
 
 | Hue | solid | soft | Semantic use |
 |---|---|---|---|

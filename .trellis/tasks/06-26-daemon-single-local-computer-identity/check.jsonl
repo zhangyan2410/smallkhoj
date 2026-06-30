@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend tests and quality gate for connect/reconnect behavior"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend verification for Computers page onboarding and reconnect UX"}

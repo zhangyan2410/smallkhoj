@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "Daemon connect and Computer identity backend contracts"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Task spans frontend, backend API, database, and daemon identity flow"}

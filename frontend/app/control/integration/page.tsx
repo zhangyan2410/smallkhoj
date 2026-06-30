@@ -33,7 +33,7 @@ import {
   type Member,
   type RuntimeInfo,
 } from "@/lib/control-plane"
-import { getActiveServerId, getSessionToken, requireCurrentAccount } from "@/lib/server-auth"
+import { getSessionToken, requireCurrentAccount } from "@/lib/server-auth"
 import { cn } from "@/lib/utils"
 
 type TaskRun = {
@@ -621,7 +621,7 @@ function CompactActivity({ items }: { items: ActivityItem[] }) {
 export default async function IntegrationControlPage() {
   const session = await requireCurrentAccount()
   const sessionToken = await getSessionToken()
-  const activeServerId = await getActiveServerId()
+  const activeServerId = session.server.id
   const { tasks, computers, members, activity } = await getIntegrationData(sessionToken, activeServerId)
   const runs = tasks
     .flatMap((task) => (task.runs || []).map((run) => ({ ...run, task })))

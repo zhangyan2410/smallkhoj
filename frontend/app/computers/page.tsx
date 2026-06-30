@@ -33,7 +33,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Panel } from "@/components/ui/panel"
 import { ConnectComputerForm } from "./connect-computer-form"
 import { buildComputerReconnectUrl, shouldShowConnectComputerForm } from "@/lib/computer-navigation"
-import { deriveDaemonInstallCommand } from "@/lib/daemon-install"
 import {
   apiGet,
   API_BASE,
@@ -46,17 +45,10 @@ import {
   type Computer,
   type RuntimeInfo,
 } from "@/lib/control-plane"
-import { getActiveServerId, getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
 
 type TranslationFn = (key: string, values?: Record<string, string | number>) => string
-
-type DaemonInstallMetadata = {
-  commandName: string
-  downloadBaseUrl: string
-  installScriptUrl?: string
-  installCommand: string
-}
 
 function makeComputersCopy(t: TranslationFn) {
   return {
@@ -82,9 +74,9 @@ function makeComputersCopy(t: TranslationFn) {
     lifecycleHelp: t("lifecycleHelp"),
     offlineHelp: t("offlineHelp"),
     reconnectCommand: t("reconnectCommand"),
-    installCommand: t("installCommand"),
     useOn: (name: string) => t("useOn", { name }),
     computerName: t("computerName"),
+    server: t("server"),
     expires: t("expires"),
     none: t("none"),
     expired: t("expired"),
@@ -135,7 +127,8 @@ function parseCredentialCookie(value?: string) {
       expiresAt?: unknown
       mode?: unknown
       computerId?: unknown
-      daemonInstall?: unknown
+      serverId?: unknown
+      serverName?: unknown
     }
     if (typeof data.name !== "string" || typeof data.command !== "string" || typeof data.expiresAt !== "string") {
       return null
@@ -146,33 +139,11 @@ function parseCredentialCookie(value?: string) {
       expiresAt: data.expiresAt,
       mode: data.mode === "reconnect" ? "reconnect" : "create",
       computerId: typeof data.computerId === "string" ? data.computerId : null,
-      daemonInstall: parseDaemonInstallMetadata(data.daemonInstall),
+      serverId: typeof data.serverId === "string" ? data.serverId : null,
+      serverName: typeof data.serverName === "string" ? data.serverName : null,
     }
   } catch {
     return null
-  }
-}
-
-function parseDaemonInstallMetadata(value: unknown): DaemonInstallMetadata | null {
-  if (!value || typeof value !== "object") return null
-  const data = value as {
-    commandName?: unknown
-    downloadBaseUrl?: unknown
-    installScriptUrl?: unknown
-    installCommand?: unknown
-  }
-  if (
-    typeof data.commandName !== "string" ||
-    typeof data.downloadBaseUrl !== "string" ||
-    typeof data.installCommand !== "string"
-  ) {
-    return null
-  }
-  return {
-    commandName: data.commandName,
-    downloadBaseUrl: data.downloadBaseUrl,
-    installScriptUrl: typeof data.installScriptUrl === "string" ? data.installScriptUrl : undefined,
-    installCommand: data.installCommand,
   }
 }
 
@@ -199,7 +170,8 @@ async function createComputerConnectCommandAction(formData: FormData) {
     name,
     command: data.command,
     expiresAt: data.expiresAt,
-    daemonInstall: parseDaemonInstallMetadata(data.daemonInstall),
+    serverId: data.serverId,
+    serverName: data.serverName,
     mode: "create",
   }), {
     httpOnly: true,
@@ -236,7 +208,8 @@ async function createComputerReconnectCommandAction(formData: FormData) {
     name: data.name,
     command: data.command,
     expiresAt: data.expiresAt,
-    daemonInstall: parseDaemonInstallMetadata(data.daemonInstall),
+    serverId: data.serverId,
+    serverName: data.serverName,
     mode: "reconnect",
     computerId: data.computerId,
   }), {
@@ -375,7 +348,6 @@ function ComputerDetail({
   reconnectComputerId?: string | null
   copy: ComputersCopy
 }) {
-  const reconnectInstallCommand = reconnectCredential?.daemonInstall?.installCommand ?? deriveDaemonInstallCommand(reconnectCredential?.command)
   const runningWorkspaces = computer.agentWorkspaces.filter((w) => w.status === "running").length
   const deleteBlockingWorkspaces = computer.agentWorkspaces.filter((w) =>
     ["running", "active", "idle", "busy", "starting", "restarting"].includes(w.status)
@@ -462,25 +434,15 @@ function ComputerDetail({
                 <div className="text-sm font-medium text-foreground">{copy.reconnectCommand}</div>
                 <div className="text-xs text-muted-foreground">{copy.useOn(computer.name)}</div>
               </div>
-              {reconnectInstallCommand && (
-                <>
-                  <div className="text-xs font-medium uppercase text-muted-foreground">{copy.installCommand}</div>
-                  <code
-                    data-testid="daemon-reconnect-install-command"
-                    className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
-                  >
-                    {reconnectInstallCommand}
-                  </code>
-                </>
-              )}
               <code
                 data-testid="reconnect-command"
                 className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
               >
                 {reconnectCredential.command}
               </code>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 <Field label={copy.computerName} value={reconnectCredential.name} />
+                <Field label={copy.server} value={reconnectCredential.serverName || shortId(reconnectCredential.serverId)} />
                 <Field label={copy.expires} value={reconnectCredential.expiresAt} />
               </div>
             </div>
@@ -713,7 +675,7 @@ export default async function ComputersPage({
   const resolvedSearchParams = (await searchParams) ?? {}
   const cookieStore = await cookies()
   const sessionToken = await getSessionToken()
-  const activeServerId = await getActiveServerId()
+  const activeServerId = session.server.id
   const { computers } = await getComputers(sessionToken, activeServerId)
 
   const selectedComputerId = searchValue(resolvedSearchParams.computer)

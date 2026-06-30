@@ -68,6 +68,15 @@ These guides help you **ask the right questions before coding**.
 
 → Read [Reference Projects Guide](./reference-projects.md)
 
+### When to Validate Deployment Or Auth Onboarding
+
+- [ ] You're starting services and claiming "works", "ready", or "deployed"
+- [ ] You're changing Docker, Caddy, env, daemon connect URLs, or production startup
+- [ ] You're changing signup, login, Better Auth config, or account invite behavior
+- [ ] You're unsure whether to test local-dev, local-prod, or cloud-prod
+
+→ Read `.trellis/spec/backend/deployment-environment-contracts.md` and `.trellis/spec/frontend/auth-onboarding-contracts.md`
+
 ---
 
 ## Pre-Modification Rule (CRITICAL)

@@ -1058,7 +1058,7 @@ export class DaemonCore extends EventEmitter {
             const cmd = typeof input.command === 'string' ? input.command : '';
             void this.reportRuntimeActivity(runtime, 'runtime_output', `Ran ${name}`, {
               toolName: name,
-              commandPreview: cmd,
+              commandPreview: cmd ? sanitizeRuntimeCommandPreview(cmd) : undefined,
             });
           }
           if (toolUseRecorded && runtime.activeTaskRunId) {
@@ -2203,6 +2203,30 @@ function truncateDetails(obj: Record<string, unknown>, maxLen: number): Record<s
     }
   }
   return out;
+}
+
+const SENSITIVE_SLOCK_ENV_NAMES = [
+  'SLOCK_AGENT_PROXY_URL',
+  'SLOCK_AGENT_PROXY_TOKEN',
+  'SLOCK_AGENT_PROXY_TOKEN_FILE',
+  'SLOCK_AGENT_ACTIVE_CAPABILITIES',
+] as const;
+
+export function sanitizeRuntimeCommandPreview(command: string): string {
+  let preview = command;
+  for (const name of SENSITIVE_SLOCK_ENV_NAMES) {
+    preview = preview
+      .replace(new RegExp(`^\\s*export\\s+${name}=.*(?:\\r?\\n|$)`, 'gmi'), '')
+      .replace(new RegExp(`^\\s*set\\s+"${name}=.*"\\s*(?:\\r?\\n|$)`, 'gmi'), '')
+      .replace(new RegExp(`^\\s*\\$env:${name}=.*(?:\\r?\\n|$)`, 'gmi'), '')
+      .replace(new RegExp(`\\b${name}=(?:'((?:'\\\\''|[^'])*)'|"[^"]*"|\\S+)\\s*`, 'g'), '');
+  }
+  preview = preview.replace(/[^\s'"]*agent-proxy-tokens[^\s'"]*/g, '[slock-proxy-token-file]');
+  return preview
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n');
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

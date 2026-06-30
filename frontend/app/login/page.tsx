@@ -10,6 +10,19 @@ import { API_BASE, PUBLIC_KEY, type AccountSession } from "@/lib/control-plane"
 import { auth, ensureBetterAuthSchema } from "@/lib/auth"
 import { currentAccount, setActiveServerCookie, setSessionCookie } from "@/lib/server-auth"
 
+function safeReturnTo(value: FormDataEntryValue | string | string[] | undefined | null) {
+  const raw = Array.isArray(value) ? value[0] : String(value || "").trim()
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/"
+  return raw
+}
+
+function loginPathWithError(returnTo: string, message: string) {
+  const params = new URLSearchParams()
+  if (returnTo !== "/") params.set("returnTo", returnTo)
+  params.set("error", message)
+  return `/login?${params.toString()}`
+}
+
 async function loginAction(formData: FormData) {
   "use server"
 
@@ -17,7 +30,8 @@ async function loginAction(formData: FormData) {
   const password = String(formData.get("password") || "")
   const displayName = String(formData.get("displayName") || "").trim()
   const mode = String(formData.get("mode") || "signin") === "signup" ? "signup" : "signin"
-  if (!email || !password) redirect("/login?error=Missing%20email%20or%20password")
+  const returnTo = safeReturnTo(formData.get("returnTo"))
+  if (!email || !password) redirect(loginPathWithError(returnTo, "Missing email or password"))
 
   let betterAuthUser: BetterAuthUser | null = null
   try {
@@ -45,11 +59,11 @@ async function loginAction(formData: FormData) {
       })
     betterAuthUser = betterAuthUserFromResult(result)
   } catch (error) {
-    redirect(`/login?error=${encodeURIComponent(authErrorMessage(error))}`)
+    redirect(loginPathWithError(returnTo, authErrorMessage(error)))
   }
 
   if (!betterAuthUser) {
-    redirect("/login?error=Auth%20session%20missing%20user")
+    redirect(loginPathWithError(returnTo, "Auth session missing user"))
   }
 
   const bridgeSecret = process.env.AUTH_BRIDGE_SECRET || ""
@@ -70,7 +84,7 @@ async function loginAction(formData: FormData) {
   if (!bridgeResponse.ok) {
     const error = await bridgeResponse.json().catch(() => ({}))
     const detail = typeof error.detail === "string" ? error.detail : `HTTP ${bridgeResponse.status}`
-    redirect(`/login?error=${encodeURIComponent(detail)}`)
+    redirect(loginPathWithError(returnTo, detail))
   }
   const data = (await bridgeResponse.json()) as AccountSession
   if (data.sessionToken) {
@@ -79,7 +93,7 @@ async function loginAction(formData: FormData) {
   if (data.server?.id) {
     await setActiveServerCookie(data.server.id)
   }
-  redirect("/")
+  redirect(returnTo)
 }
 
 type BetterAuthUser = {
@@ -120,9 +134,10 @@ export default async function LoginPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
   const session = await currentAccount()
-  if (session) redirect("/")
   const resolvedSearchParams = (await searchParams) ?? {}
   const error = Array.isArray(resolvedSearchParams.error) ? resolvedSearchParams.error[0] : resolvedSearchParams.error
+  const returnTo = safeReturnTo(resolvedSearchParams.returnTo)
+  if (session) redirect(returnTo)
   const t = await getTranslations("login")
 
   return (
@@ -137,6 +152,7 @@ export default async function LoginPage({
         </CardHeader>
         <CardContent>
           <form action={loginAction} className="space-y-3">
+            <input type="hidden" name="returnTo" value={returnTo} />
             <div>
               <label htmlFor="login-email" className="mb-1.5 block text-xs font-medium text-muted-foreground">
                 {t("emailLabel")}
@@ -158,6 +174,11 @@ export default async function LoginPage({
             {error && (
               <p className="border-2 border-[var(--ink)] bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
                 {error}
+              </p>
+            )}
+            {returnTo !== "/" && (
+              <p className="text-xs text-muted-foreground">
+                {t("returnToHint")}
               </p>
             )}
             <div className="grid grid-cols-2 gap-2">
