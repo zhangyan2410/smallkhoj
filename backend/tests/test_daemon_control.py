@@ -181,6 +181,10 @@ def test_public_agent_runtime_normalizer_exposes_codex_without_acp_detail():
     assert public_api._normalize_runtime("codex") == "codex"
     assert public_api._normalize_runtime("codex_acp") == "codex"
     assert public_api._normalize_runtime("codex-acp") == "codex"
+    with pytest.raises(HTTPException) as exc:
+        public_api._normalize_runtime("codex_cli")
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Unsupported runtime: codex_cli"
 
 
 def test_agent_api_public_runtime_hides_codex_implementation_detail():
@@ -227,6 +231,19 @@ def test_runtime_start_command_does_not_infer_provider_from_legacy_fields():
     config = command["command"]["config"]
     assert "runtimeProvider" not in config
     assert config["backend"] == "Claude"
+
+
+def test_runtime_start_command_suppresses_codex_runtime_command():
+    workspace = _workspace(status="pending_start")
+    workspace.runtime = "codex"
+    workspace.runtime_command = "claude"
+    agent = _runtime_member(config={})
+
+    command = runtime_start_command(workspace, agent)
+
+    config = command["command"]["config"]
+    assert config["runtime"] == "codex"
+    assert "runtimeCommand" not in config
 
 
 def test_runtime_control_command_builds_stop_envelope_without_provider_leakage():
@@ -376,6 +393,25 @@ async def test_missing_running_workspace_is_rearmed_when_autostart_enabled():
 
 
 @pytest.mark.asyncio
+async def test_recent_running_workspace_with_session_is_not_rearmed_by_empty_heartbeat():
+    workspace = _workspace(status="running", started_at=datetime.now(timezone.utc))
+    workspace.session_id = "codex-acp-session"
+    agent = _runtime_member(config={"runtimeDesiredStatus": "running"}, status="active")
+    db = _FakeSession(_ExecuteResult(rows=[(workspace, agent)]))
+
+    await mark_missing_runtimes_pending_start(
+        db,
+        server_id=uuid.uuid4(),
+        computer_id=uuid.uuid4(),
+        reported_workspace_ids=set(),
+    )
+
+    assert workspace.status == "running"
+    assert workspace.pid == 1234
+    assert agent.status == "active"
+
+
+@pytest.mark.asyncio
 async def test_missing_stopped_workspace_is_not_rearmed_when_desired_running():
     workspace = _workspace(status="stopped")
     agent = _runtime_member(config={"runtimeDesiredStatus": "running"}, status="active")
@@ -436,6 +472,38 @@ async def test_daemon_workspace_stopped_update_clears_stale_pid():
     assert updated_agent.status == "offline"
     assert updated.stopped_at is not None
     assert getattr(updated, "_smallkhoj_realtime_changed") is True
+
+
+@pytest.mark.asyncio
+async def test_daemon_workspace_codex_heartbeat_clears_runtime_command():
+    server = SimpleNamespace(id=uuid.uuid4())
+    computer = _computer()
+    agent = _runtime_member(status="offline")
+    workspace = _workspace(status="pending_start")
+    workspace.runtime = "codex"
+    workspace.runtime_command = "claude"
+    db = _FakeSession(
+        _ExecuteResult(scalar_one=agent),
+        _ExecuteResult(scalar_one=workspace),
+    )
+    item = agent_api.DaemonWorkspacePayload(
+        workspaceId=str(workspace.id),
+        agentId=str(agent.id),
+        runtime="codex",
+        runtimeCommand="claude",
+        status="running",
+        sessionId="codex-acp-session",
+    )
+
+    updated, updated_agent, created = await agent_api._upsert_daemon_workspace(db, server, computer, item)
+
+    assert created is False
+    assert updated is workspace
+    assert updated.runtime == "codex"
+    assert updated.runtime_command is None
+    assert updated.status == "running"
+    assert updated.session_id == "codex-acp-session"
+    assert updated_agent.status == "online"
 
 
 @pytest.mark.asyncio

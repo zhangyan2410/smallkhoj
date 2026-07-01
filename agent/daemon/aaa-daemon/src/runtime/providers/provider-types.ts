@@ -1,6 +1,6 @@
-export type LocalRuntimeProviderRuntime = 'claude_code' | 'codex' | 'codex_cli' | 'codex_acp';
+export type LocalRuntimeProviderRuntime = 'claude_code' | 'codex' | 'codex_acp';
 
-export type LocalRuntimeProviderSource = 'cc-switch' | 'codex-cli' | 'manual';
+export type LocalRuntimeProviderSource = 'cc-switch' | 'manual';
 
 export interface LocalRuntimeProvider {
   id: string;

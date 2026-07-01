@@ -754,28 +754,13 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
   }
 });
 
-test('daemon runtime starts fake Codex with slock wrapper on PATH', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-codex-runtime-'));
-  const marker = join(root, 'codex-runtime-marker.json');
-  const fakeCodex = join(root, 'fake-codex.mjs');
-  const upstream = await startServer((req, res) => {
-    const url = new URL(req.url, 'http://upstream.test');
-    res.writeHead(200, { 'content-type': 'application/json' });
-    if (url.pathname === '/internal/agent-api/server') {
-      res.end(JSON.stringify({ id: 'server-codex', channels: [{ name: 'general' }] }));
-      return;
-    }
-    res.end(JSON.stringify({ events: [] }));
-  });
-
-  writeFakeCodexScript(fakeCodex, marker);
-  chmodSync(fakeCodex, 0o755);
-
+test('daemon CLI rejects historical codex_cli runtime path', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-codex-cli-rejected-'));
   const daemon = spawn(process.execPath, [
     resolve('dist/cmd/main.js'),
     'start',
     '--foreground',
-    '--server', upstream.url,
+    '--server', 'http://127.0.0.1:9',
     '--ws', 'ws://127.0.0.1:9',
     '--agent-id', 'agent-codex',
     '--proxy-port', '0',
@@ -787,7 +772,6 @@ test('daemon runtime starts fake Codex with slock wrapper on PATH', async () => 
     env: {
       ...process.env,
       SLOCK_AGENT_TOKEN: 'sk_machine_real',
-      SLOCK_CODEX_COMMAND: fakeCodex,
       SLOCK_ALLOW_WRITES: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -802,31 +786,11 @@ test('daemon runtime starts fake Codex with slock wrapper on PATH', async () => 
   daemon.stderr.on('data', chunk => { stderr += chunk; });
 
   try {
-    await waitFor(() => existsSync(marker));
-    const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
-
-    assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
-    assert.match(runtime.serverStdout, /"server-codex"/);
-    assert.equal(runtime.pathHead, join(root, '.slock'));
-    assert.equal(runtime.slockHome, join(root, '.slock'));
-    assert.match(runtime.launchId, /^pid-/);
-    assert.equal(runtime.argv.includes('exec'), true);
-    assert.equal(runtime.argv.includes('--json'), true);
-    assert.match(runtime.prompt, /Codex Runtime Notes/);
-    assert.match(runtime.prompt, new RegExp(`Run \`${join(root, '.slock', 'slock').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} server info\` once`));
-    assert.match(readFileSync(join(root, '.slock', 'codex-slock-prompt.md'), 'utf-8'), /Codex Runtime Notes/);
-
-    await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
-    const serverRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/server');
-    assert.equal(serverRequest.req.headers.authorization, 'Bearer sk_machine_real');
-    assert.equal(serverRequest.req.headers['x-agent-id'], 'agent-codex');
-  } catch (err) {
-    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
-  } finally {
-    daemon.kill('SIGTERM');
     await waitForExit(daemon);
-    await upstream.close();
-    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    assert.notEqual(daemon.exitCode, null, `${stdout}\n${stderr}`);
+    assert.notEqual(daemon.exitCode, 0);
+    assert.match(`${stdout}\n${stderr}`, /Unsupported runtime: codex_cli/);
+  } finally {
     try {
       rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     } catch {
@@ -840,6 +804,7 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
   const marker = join(root, 'codex-acp-marker.json');
   const fakeAcp = join(root, 'fake-acp.mjs');
   const registerBodies = [];
+  const agentHeartbeatBodies = [];
   const activityBodies = [];
   const sendBodies = [];
   const memoryContextBodies = [];
@@ -854,6 +819,11 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
       return;
     }
     if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/heartbeat') {
+      agentHeartbeatBodies.push({ headers: req.headers, body: JSON.parse(body) });
       res.end(JSON.stringify({ ok: true }));
       return;
     }
@@ -966,6 +936,12 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     assert.equal(workspace.sessionId, 'fake-acp-daemon-session');
     assert.equal(workspace.cwd, root);
     assert.equal(typeof workspace.pid, 'number');
+    assert.equal('runtimeCommand' in workspace, false);
+    await waitFor(() => agentHeartbeatBodies.some(item => item.body.workspaceStatus === 'running'));
+    const readyHeartbeat = agentHeartbeatBodies.find(item => item.body.workspaceStatus === 'running');
+    assert.equal(readyHeartbeat.headers['x-agent-id'], 'agent-acp');
+    assert.equal(readyHeartbeat.body.sessionId, 'fake-acp-daemon-session');
+    assert.equal(readyHeartbeat.body.cwd, root);
 
     await waitFor(() => activityBodies.some(item => item.type === 'runtime_idle'));
     const idle = activityBodies.find(item => item.type === 'runtime_idle');

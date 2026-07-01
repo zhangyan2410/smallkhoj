@@ -1,0 +1,7 @@
+[Daemon] claude_code runtime started for agent 2ce85d03-a047-4e62-bfbb-64a9abd6a39d: pid=19776
+[Daemon] claude_code runtime started for agent 64c7fd22-9f37-499f-87a8-d272fcd6004c: pid=23952
+[Daemon] codex runtime b2e9d16c-d51f-4a70-9cf4-e8da307e6df7 stderr: Codex ACP Slock prompt written to C:\Users\zhangyan.ean\.smallkhoj\daemon\workspaces\.slock-runtimes\3893c518-c8f8-43ba-af0d-54a7773bbb6d\4c9fafa5-2cd5-4dc6-b150-c6dd6d683414\5edfbec0-f585-4210-a199-9aaa0799e292\.slock\codex-acp-slock-prompt.md
+[Daemon] codex runtime started for agent b2e9d16c-d51f-4a70-9cf4-e8da307e6df7: pid=unknown
+[Daemon] codex runtime b2e9d16c-d51f-4a70-9cf4-e8da307e6df7 error: spawn npx ENOENT
+[Daemon] codex runtime b2e9d16c-d51f-4a70-9cf4-e8da307e6df7 error: ACP connection closed
+[Daemon] codex runtime b2e9d16c-d51f-4a70-9cf4-e8da307e6df7 exited: code=0 signal=null

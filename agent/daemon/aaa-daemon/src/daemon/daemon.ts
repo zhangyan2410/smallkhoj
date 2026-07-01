@@ -23,7 +23,6 @@ import { ClientHandler } from './client-handler.js';
 import { SessionManager } from './session-manager.js';
 import { type SlockWrapperResult, writeSlockWrapper } from '../runtime/slock-wrapper.js';
 import { ClaudeRuntimeDriver, getContentBlocks } from '../runtime/claude-runtime.js';
-import { CodexRuntimeDriver } from '../runtime/codex-runtime.js';
 import { CodexAcpRuntimeDriver } from '../runtime/codex-acp-runtime.js';
 import type { ManagedRuntimeDriver } from '../runtime/runtime-driver.js';
 import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
@@ -182,7 +181,7 @@ interface RuntimeRecord {
   };
 }
 
-type DaemonRuntimeImplementation = 'claude_code' | 'codex' | 'codex_cli';
+type DaemonRuntimeImplementation = 'claude_code' | 'codex';
 
 export function workspacePathSegment(value: string | undefined, fallback: string): string {
   const segment = (value || fallback).trim().replace(/[^A-Za-z0-9_.-]/g, '_');
@@ -520,7 +519,7 @@ export class DaemonCore extends EventEmitter {
       this.startDaemonHeartbeat();
     }
 
-    if ((this.config.runtime === 'claude_code' || this.config.runtime === 'codex' || this.config.runtime === 'codex_cli' || this.config.runtime === 'codex_acp') && this.credential.agentId) {
+    if ((this.config.runtime === 'claude_code' || this.config.runtime === 'codex' || this.config.runtime === 'codex_acp') && this.credential.agentId) {
       this.startRuntimeForAgent(this.credential.agentId, {
         runtime: this.config.runtime,
         runtimeCommand: this.config.runtimeCommand,
@@ -767,7 +766,13 @@ export class DaemonCore extends EventEmitter {
       return;
     }
     const runtimeProvider = runtimeConfig.runtimeProvider ?? this.config.runtimeProvider;
-    const providerLaunch = runtimeConfig.runtimeCommand || !runtimeProvider
+    const runtimeConfigCommand = runtimeType === 'codex'
+      ? codexAcpRuntimeCommand(runtimeConfig.runtimeCommand, runtimeConfig.runtimeCommandArgs, 'control')
+      : runtimeConfig.runtimeCommand;
+    const configRuntimeCommand = runtimeType === 'codex'
+      ? codexAcpRuntimeCommand(this.config.runtimeCommand, this.config.runtimeCommandArgs, 'daemon')
+      : this.config.runtimeCommand;
+    const providerLaunch = runtimeConfigCommand || !runtimeProvider
       ? {}
       : resolveRuntimeProviderLaunch(runtimeProvider, this.runtimeProviderInventory);
     if (providerLaunch.error) {
@@ -779,11 +784,20 @@ export class DaemonCore extends EventEmitter {
       ?? this.defaultRuntimeWorkspacePath(agentId, runtimeConfig.workspaceId);
     const resumeSessionId = this.runtimeSessionIds.get(agentId) ?? this.config.runtimeResumeSessionId;
     const model = runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel;
-    const command = runtimeConfig.runtimeCommand
-      ?? providerLaunch.command
-      ?? this.config.runtimeCommand
-      ?? resolveDetectedRuntimeCommand(runtimeType, this.runtimeProviderInventory);
-    const commandArgs = runtimeConfig.runtimeCommandArgs ?? providerLaunch.commandArgs ?? this.config.runtimeCommandArgs;
+    let command: string | undefined;
+    let commandArgs: string[] | undefined;
+    if (runtimeConfigCommand) {
+      command = runtimeConfigCommand;
+      commandArgs = runtimeConfig.runtimeCommandArgs;
+    } else if (providerLaunch.command) {
+      command = providerLaunch.command;
+      commandArgs = providerLaunch.commandArgs;
+    } else if (configRuntimeCommand) {
+      command = configRuntimeCommand;
+      commandArgs = this.config.runtimeCommandArgs;
+    } else {
+      command = resolveDetectedRuntimeCommand(runtimeType, this.runtimeProviderInventory);
+    }
     if (requiresDetectedRuntimeCommand(runtimeType) && !command) {
       this.log(runtimeCommandDetectionError(runtimeType), 'warn');
       return;
@@ -805,19 +819,7 @@ export class DaemonCore extends EventEmitter {
       credential,
       activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
     });
-    const driver: ManagedRuntimeDriver = runtimeType === 'codex_cli'
-      ? new CodexRuntimeDriver({
-        credential,
-        workspacePath,
-        wrapperDir: wrapper.wrapperDir,
-        slockHome: wrapper.slockHome,
-        launchId: wrapper.launchId,
-        model,
-        command,
-        commandArgs,
-        resumeSessionId: resumeSessionId ?? undefined,
-      })
-      : runtimeType === 'codex'
+    const driver: ManagedRuntimeDriver = runtimeType === 'codex'
         ? new CodexAcpRuntimeDriver({
           credential,
           workspacePath,
@@ -897,10 +899,10 @@ export class DaemonCore extends EventEmitter {
       // that happens the runtime stays in 'starting' status and is not
       // advertised as ready/online.
       if (!runtime.ready) {
-        if ((runtime.runtime === 'codex_cli' || runtime.runtime === 'codex') && eventType === 'result') {
+        if (runtime.runtime === 'codex' && eventType === 'result') {
           const exitCode = isRecord(event) && typeof event.exitCode === 'number' ? event.exitCode : undefined;
           if (exitCode === undefined || exitCode === 0) {
-            this.markRuntimeReady(runtime, runtime.runtime === 'codex' ? 'codex_acp_warmup_complete' : 'codex_warmup_complete');
+            this.markRuntimeReady(runtime, 'codex_acp_warmup_complete');
           }
         }
         if (eventType === 'assistant') {
@@ -1157,10 +1159,13 @@ export class DaemonCore extends EventEmitter {
         agentId,
         status: 'active',
         cwd: workspacePath,
-        command: runtime.runtimeCommand ?? (runtime.runtime === 'codex_cli' ? 'codex' : runtime.runtime === 'codex' ? 'npx @zed-industries/codex-acp@0.16.0' : 'claude'),
+        command: runtime.runtimeCommand ?? (runtime.runtime === 'codex' ? 'npx @zed-industries/codex-acp@0.16.0' : 'claude'),
         createdAt: now,
         updatedAt: now,
       });
+      if (runtime.runtime === 'codex') {
+        this.markRuntimeReady(runtime, 'codex_acp_session_ready');
+      }
       this.emitRuntimeTrace({ type: 'session', agentId, sessionId, sessionScope: activeSessionScope?.key });
       this.emit('runtime_session', { agentId, sessionId, sessionScope: activeSessionScope?.key });
       if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
@@ -1256,8 +1261,11 @@ export class DaemonCore extends EventEmitter {
     });
 
     driver.start();
-    this.log(`${runtime.runtime} runtime started for agent ${agentId}: pid=${driver.pid ?? 'unknown'} (status=starting, awaiting warmup)`, 'info');
-    console.error(`[Daemon] ${runtime.runtime} runtime started for agent ${agentId}: pid=${driver.pid ?? 'unknown'}`);
+    const startMessage = driver.pid
+      ? `${runtime.runtime} runtime started for agent ${agentId}: pid=${driver.pid} (status=starting, awaiting warmup)`
+      : `${runtime.runtime} runtime start requested for agent ${agentId} (status=starting, awaiting ACP session/warmup)`;
+    this.log(startMessage, 'info');
+    console.error(`[Daemon] ${startMessage}`);
     this.emitRuntimeTrace({
       type: 'start',
       agentId,
@@ -1467,18 +1475,12 @@ export class DaemonCore extends EventEmitter {
     const endpoint = kind === 'register' ? '/internal/agent-api/daemon/register' : '/internal/agent-api/daemon/heartbeat';
     const configRuntime = normalizeDaemonRuntimeType(this.config.runtime);
     const runtimeCommand = this.config.runtimeCommand
-      ?? (configRuntime === 'claude_code'
-        ? 'claude'
-        : configRuntime === 'codex_cli'
-          ? 'codex'
-          : configRuntime === 'codex'
-            ? 'npx @zed-industries/codex-acp@0.16.0'
-            : undefined);
+      ?? (configRuntime === 'claude_code' ? 'claude' : undefined);
     const workspaces = Array.from(this.runtimes.values()).map((runtime) => ({
       agentId: runtime.agentId,
       workspaceId: runtime.workspaceId,
       runtime: runtime.runtime,
-      runtimeCommand: runtime.runtimeProvider ? undefined : runtime.runtimeCommand ?? runtimeCommand,
+      runtimeCommand: runtime.runtime === 'codex' || runtime.runtimeProvider ? undefined : runtime.runtimeCommand ?? runtimeCommand,
       runtimeModel: runtime.runtimeProvider ? undefined : runtime.runtimeModel ?? this.config.runtimeModel,
       runtimeProvider: runtime.runtimeProvider,
       status: runtime.status,
@@ -1579,7 +1581,37 @@ export class DaemonCore extends EventEmitter {
       `Runtime ${runtime.agentId} ready (reason=${reason}, warmupMs=${runtime.warmupStartedAt ? Date.now() - runtime.warmupStartedAt : 'unknown'})`,
       reason === 'warmup_timeout' ? 'warn' : 'info',
     );
+    void this.reportAgentRuntimeHeartbeat(runtime, 'running');
     if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
+  }
+
+  private async reportAgentRuntimeHeartbeat(runtime: RuntimeRecord, workspaceStatus: 'running' | 'stopped'): Promise<void> {
+    const serverUrl = runtime.credential.serverUrl || this.config.serverUrl;
+    try {
+      const response = await fetch(new URL('/internal/agent-api/heartbeat', serverUrl), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${runtime.credential.token}`,
+          'X-Agent-Id': runtime.agentId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: workspaceStatus === 'running' ? 'online' : 'offline',
+          computerId: this.credential?.computerId,
+          workspaceId: runtime.workspaceId,
+          workspaceStatus,
+          sessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
+          pid: runtime.driver.pid,
+          cwd: runtime.workspacePath,
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        this.log(`Agent runtime heartbeat failed: ${response.status} ${text.slice(0, 200)}`, 'debug');
+      }
+    } catch (err) {
+      this.log(`Agent runtime heartbeat failed: ${(err as Error).message}`, 'debug');
+    }
   }
 
   private startWarmupTimer(runtime: RuntimeRecord): void {
@@ -2145,20 +2177,36 @@ function unwrapControlPayload(input: unknown): unknown {
 function normalizeDaemonRuntimeType(runtime: string | undefined): DaemonRuntimeImplementation | undefined {
   if (!runtime || runtime === 'claude' || runtime === 'claude_code') return 'claude_code';
   if (runtime === 'codex' || runtime === 'codex_acp') return 'codex';
-  if (runtime === 'codex_cli') return 'codex_cli';
   return undefined;
 }
 
+function codexAcpRuntimeCommand(
+  command: string | undefined,
+  commandArgs: string[] | undefined,
+  source: 'control' | 'daemon',
+): string | undefined {
+  const trimmed = command?.trim();
+  if (!trimmed) return undefined;
+  if (isCodexAcpLaunchCommand(trimmed, commandArgs)) return trimmed;
+  console.warn(`Ignoring non-ACP ${source} runtimeCommand for codex runtime: ${trimmed}`);
+  return undefined;
+}
+
+function isCodexAcpLaunchCommand(command: string, commandArgs: string[] | undefined): boolean {
+  const commandName = (command.split(/[\\/]/).pop() ?? command).toLowerCase();
+  if (/^npx(\.cmd)?$/.test(commandName)) return true;
+  if (/^codex-acp(\.(cmd|ps1|bat))?$/.test(commandName)) return true;
+  if (/^node(\.exe)?$/.test(commandName) && commandArgs && commandArgs.length > 0) return true;
+  return false;
+}
+
 function requiresDetectedRuntimeCommand(runtime: DaemonRuntimeImplementation): boolean {
-  return runtime === 'claude_code' || runtime === 'codex_cli';
+  return runtime === 'claude_code';
 }
 
 function runtimeCommandDetectionError(runtime: DaemonRuntimeImplementation): string {
   if (runtime === 'claude_code') {
     return 'Cannot start claude_code runtime: no Claude Code command was detected. Install Claude Code or set SLOCK_CLAUDE_COMMAND/CLAUDE_COMMAND.';
-  }
-  if (runtime === 'codex_cli') {
-    return 'Cannot start codex_cli runtime: no Codex command was detected. Install Codex CLI or set SLOCK_CODEX_COMMAND/CODEX_COMMAND.';
   }
   return `Cannot start ${runtime} runtime: no launch command was detected.`;
 }

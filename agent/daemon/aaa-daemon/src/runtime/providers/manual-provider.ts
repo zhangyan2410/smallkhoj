@@ -12,7 +12,6 @@ interface ManualRuntimeProviderInput {
 const SUPPORTED_MANUAL_RUNTIMES = new Set<LocalRuntimeProviderRuntime>([
   'claude_code',
   'codex',
-  'codex_cli',
   'codex_acp',
 ]);
 

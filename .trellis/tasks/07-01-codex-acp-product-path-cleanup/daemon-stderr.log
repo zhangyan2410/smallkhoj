@@ -1,0 +1,43 @@
+[Daemon] codex runtime 7d26678a-aae3-40c0-a680-b04ad154b1a9 stderr: Codex ACP Slock prompt written to C:\Users\zhangyan.ean\.smallkhoj\daemon\workspaces\.slock-runtimes\prototype\unknown-computer\f43c6520-0e72-4138-9115-640708a640a8\.slock\codex-acp-slock-prompt.md
+[Daemon] codex runtime start requested for agent 7d26678a-aae3-40c0-a680-b04ad154b1a9 (status=starting, awaiting ACP session/warmup)
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: Codex ACP Slock prompt written to C:\Users\zhangyan.ean\.smallkhoj\daemon\workspaces\.slock-runtimes\prototype\unknown-computer\59cfbd5b-1e6b-45c9-b2f8-ecb6830b45c2\.slock\codex-acp-slock-prompt.md
+[Daemon] codex runtime start requested for agent 90089732-b520-4c4f-b067-dce188f117da (status=starting, awaiting ACP session/warmup)
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr: Codex ACP Slock prompt written to C:\Users\zhangyan.ean\.smallkhoj\daemon\workspaces\.slock-runtimes\prototype\unknown-computer\97d8c00c-8bfc-4180-af3b-238621ca6019\.slock\codex-acp-slock-prompt.md
+[Daemon] codex runtime start requested for agent 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca (status=starting, awaiting ACP session/warmup)
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr: 2026-07-01T03:36:01.941431Z ERROR codex_core::tools::router: error=Exit code: 1
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr: Wall time: 0.5 seconds
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr: Output:
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr: rg : The term 'rg' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spe
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr: lling of the name, or if a path was included, verify that the path is correct and try again.
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr: At line:2 char:1
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr: + rg -n "ACP path|status-projection|acp path|projection fix|codex-acp|a ...
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr: + ~~
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr:     + CategoryInfo          : ObjectNotFound: (rg:String) [], CommandNotFoundException
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr:     + FullyQualifiedErrorId : CommandNotFoundException
+[Daemon] codex runtime 07ec9a5c-3fb9-4d39-8c57-0ab35cdba3ca stderr:  
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: 2026-07-01T03:37:04.693457Z ERROR codex_core::tools::router: error=Exit code: 1
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: Wall time: 1.5 seconds
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: Output:
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: {"ok":false,"code":"MISSING_TARGET","message":"Missing --target"}
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: 2026-07-01T03:37:11.824410Z ERROR codex_core::tools::router: error=Exit code: 1
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: Wall time: 0.4 seconds
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: Output:
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: rg : The term 'rg' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spe
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: lling of the name, or if a path was included, verify that the path is correct and try again.
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: At line:2 char:1
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: + rg -n "MISSING_CONTENT|MISSING_TARGET|message send" -S D:\ai\khoj\sma ...
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: + ~~
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr:     + CategoryInfo          : ObjectNotFound: (rg:String) [], CommandNotFoundException
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr:     + FullyQualifiedErrorId : CommandNotFoundException
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr:  
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: 2026-07-01T03:37:11.886959Z ERROR codex_core::tools::router: error=Exit code: 1
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: Wall time: 0.4 seconds
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: Output:
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: rg : The term 'rg' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spe
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: lling of the name, or if a path was included, verify that the path is correct and try again.
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: At line:2 char:1
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: + rg -n "stdin|process\.stdin|readFileSync\(0|fs\.readFileSync\(0" -S D ...
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr: + ~~
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr:     + CategoryInfo          : ObjectNotFound: (rg:String) [], CommandNotFoundException
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr:     + FullyQualifiedErrorId : CommandNotFoundException
+[Daemon] codex runtime 90089732-b520-4c4f-b067-dce188f117da stderr:  

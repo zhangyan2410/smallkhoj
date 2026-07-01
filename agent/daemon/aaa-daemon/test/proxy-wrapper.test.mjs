@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -103,7 +103,36 @@ test('writeSlockWrapper writes wrappers and proxy token', () => {
     assert.match(bashWrapper, /exec '.*node(\.exe)?' 'D:\/repo\/dist\/slock-cli\.js' "\$@"/);
     assert.match(readFileSync(result.cmdWrapper, 'utf-8'), /set "SLOCK_AGENT_ID=agent-123"/);
     assert.match(readFileSync(result.psWrapper, 'utf-8'), /\$env:SLOCK_SERVER_URL='https:\/\/api\.slock\.ai'/);
+    assert.match(readFileSync(join(workspace, 'MEMORY.md'), 'utf-8'), /New daemon-managed Slock\/Raft runtime workspace/);
     assert.equal(prependPathEnv(result.wrapperDir, 'BASE'), `${result.wrapperDir}${process.platform === 'win32' ? ';' : ':'}BASE`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('writeSlockWrapper preserves existing runtime memory', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-wrapper-memory-'));
+  try {
+    const workspace = join(root, 'workspace');
+    mkdirSync(workspace, { recursive: true });
+    writeFileSync(join(workspace, 'MEMORY.md'), '# Existing Memory\n');
+
+    writeSlockWrapper({
+      workspacePath: workspace,
+      tokenHome: join(root, 'tokens'),
+      proxyUrl: 'http://127.0.0.1:3456',
+      proxyToken: 'sap_test_token',
+      activeCapabilities: 'send,read',
+      cliPath: 'D:/repo/dist/slock-cli.js',
+      credential: {
+        agentId: 'agent-123',
+        serverId: 'server-123',
+        token: 'sk_machine_secret',
+        serverUrl: 'https://api.slock.ai',
+      },
+    });
+
+    assert.equal(readFileSync(join(workspace, 'MEMORY.md'), 'utf-8'), '# Existing Memory\n');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

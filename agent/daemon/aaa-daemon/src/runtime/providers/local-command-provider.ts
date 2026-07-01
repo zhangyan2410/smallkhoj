@@ -1,7 +1,6 @@
 import { existsSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { delimiter, isAbsolute, join } from 'path';
-import type { LocalRuntimeProvider } from './provider-types.js';
 
 type RuntimeCommandName = 'claude' | 'codex';
 
@@ -112,12 +111,3 @@ function commandAppearsOnPath(command: string, pathValue: string): boolean {
   return false;
 }
 
-export function codexCliFallbackProvider(codexCommand: string): LocalRuntimeProvider {
-  return {
-    id: 'codex-cli',
-    name: 'Codex',
-    runtime: 'codex_cli',
-    command: codexCommand,
-    source: 'codex-cli',
-  };
-}

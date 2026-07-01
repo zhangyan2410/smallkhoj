@@ -20,6 +20,7 @@ RUNTIME_CONFIGURATION_FAILED_STATUS = "failed"
 RUNTIME_ACTIVE_STATUSES = {"running", "active", "idle"}
 RUNTIME_REARMABLE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"starting", "restarting"}
 RUNTIME_TERMINAL_STATUSES = {"stopped", "offline", "exited"}
+MISSING_RUNTIME_REARM_GRACE_SECONDS = 90
 
 
 def _falsey_config(value: Any) -> bool:
@@ -55,7 +56,7 @@ def runtime_start_command(workspace: AgentWorkspace, agent: Member) -> dict[str,
         "runtime": workspace.runtime,
         "workspaceId": str(workspace.id),
     }
-    if workspace.runtime_command:
+    if workspace.runtime_command and workspace.runtime != "codex":
         config["runtimeCommand"] = workspace.runtime_command
     if workspace.runtime_model:
         config["runtimeModel"] = workspace.runtime_model
@@ -221,11 +222,14 @@ async def mark_missing_runtimes_pending_start(
 
     result = await db.execute(query)
     stale = result.all()
+    now = datetime.now(timezone.utc)
     for workspace, agent in stale:
         if workspace.status in RUNTIME_TERMINAL_STATUSES:
             workspace.pid = None
             continue
         if workspace.status not in RUNTIME_REARMABLE_STATUSES:
+            continue
+        if _workspace_recently_confirmed_running(workspace, now=now):
             continue
         if not runtime_should_autostart(agent):
             continue
@@ -235,6 +239,18 @@ async def mark_missing_runtimes_pending_start(
         if agent.status in {"online", "active", "running", "idle"}:
             agent.status = "offline"
     return list(stale)
+
+
+def _workspace_recently_confirmed_running(workspace: AgentWorkspace, *, now: datetime) -> bool:
+    """Avoid rearming a just-confirmed session from an older empty heartbeat."""
+    if workspace.status not in RUNTIME_ACTIVE_STATUSES:
+        return False
+    if not workspace.session_id or not workspace.started_at:
+        return False
+    started_at = workspace.started_at
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    return (now - started_at).total_seconds() < MISSING_RUNTIME_REARM_GRACE_SECONDS
 
 
 class DaemonControlHub:

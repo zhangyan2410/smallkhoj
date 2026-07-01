@@ -1,0 +1,9 @@
+{"file":"backend/routers/public_api.py","reason":"runtime normalization and public agent creation must stop exposing native codex_cli as product path"}
+{"file":"backend/routers/agent_api.py","reason":"daemon-facing runtime serialization should keep product Codex aligned with ACP"}
+{"file":"backend/services/daemon_control.py","reason":"provider availability and start command construction decide whether Codex product path can launch"}
+{"file":"agent/daemon/aaa-daemon/src/daemon/daemon.ts","reason":"runtime selection currently distinguishes codex/codex_cli and launches ACP or native drivers"}
+{"file":"agent/daemon/aaa-daemon/src/runtime/codex-acp-bridge.ts","reason":"ACP launcher and Windows command resolution are the likely fix point for spawn npx ENOENT"}
+{"file":"agent/daemon/aaa-daemon/src/runtime/codex-runtime.ts","reason":"native CLI driver should be removed, gated, or clearly marked non-product"}
+{"file":"frontend/lib/runtime-options.ts","reason":"frontend runtime options should present only the ACP-backed Codex product path"}
+{"file":".trellis/tasks/06-19-daemon-codex-runtime/prd.md","reason":"older CLI-oriented PRD must be superseded or corrected"}
+{"file":".trellis/tasks/06-30-windows-runtime-launch-conversation-validation/test-results.md","reason":"remaining-fix language should point to ACP, not native CLI"}

@@ -1,0 +1,6 @@
+[Daemon] Starting aaa-daemon v0.2.0...
+[Proxy] Listening on http://127.0.0.1:63561
+[WS] Connecting to ws://124.222.40.40/internal/agent-api/ws?daemonId=6602144a-03ae-498a-aacb-2bf44e244ed6...
+[Daemon] All modules started. Proxy: http://127.0.0.1:63561
+[Daemon] Running. Press Ctrl+C to stop.
+[WS] Connected
