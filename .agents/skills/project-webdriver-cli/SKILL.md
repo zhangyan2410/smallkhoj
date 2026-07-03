@@ -111,6 +111,6 @@ For any command that acts on a tab, check the returned `tabUrl` along with `tabI
 
 - `ok=false` with `NO_TAB`: no connected browser tab. Start/verify the WebDriver master and Chrome extension, then retry `tabs`.
 - `ok=false` with `AMBIGUOUS_TAB`: your `--url-match` matched multiple tabs and no unique active tab was known. Use one of the returned candidate URLs as a narrower match, or pass `--tab`.
-- Port mismatch: default is `18765`; set `TWD_PORT=<port>` for another bridge instance.
+- Port mismatch: `./twd` auto-discovers the active bridge when no port is specified. Set `TWD_PORT=<port>` only when you intentionally want a specific bridge instance.
 - Long output: write to `--out` or return a small slice from `eval`.
 - Need real browser event details or CDP: use `cdp`, `screenshot`, or `act` before opening WebDriver source files.

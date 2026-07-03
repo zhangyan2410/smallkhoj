@@ -14,10 +14,11 @@ import ast
 import base64
 import json
 import os
+import requests
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -45,7 +46,7 @@ except Exception:  # pragma: no cover
     _snap_js = _start_monitor_js = _drain_monitor_js = None  # type: ignore
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = int(os.environ.get("TWD_PORT", "18765"))
+DEFAULT_PORT_CANDIDATES = (28765, 18765)
 
 
 def jdump(obj: Any, pretty: bool = True) -> str:
@@ -64,9 +65,84 @@ def err(code: str, message: str, **kw: Any) -> dict[str, Any]:
     return {"ok": False, "code": code, "message": message, **kw}
 
 
+def parse_port_candidates(raw: str) -> list[int]:
+    ports: list[int] = []
+    for part in raw.split(","):
+        value = part.strip()
+        if not value:
+            continue
+        port = int(value)
+        if port < 1 or port > 65535:
+            raise ValueError(f"Invalid TWD port: {port}")
+        if port not in ports:
+            ports.append(port)
+    if not ports:
+        raise ValueError("TWD_PORT_CANDIDATES did not contain any ports")
+    return ports
+
+
+def twd_port_candidates() -> list[int]:
+    raw = os.environ.get("TWD_PORT_CANDIDATES")
+    if raw:
+        return parse_port_candidates(raw)
+    return list(DEFAULT_PORT_CANDIDATES)
+
+
+def explicit_twd_port(args: argparse.Namespace) -> int | None:
+    arg_port = getattr(args, "port", None)
+    if arg_port is not None:
+        return int(arg_port)
+    env_port = os.environ.get("TWD_PORT")
+    if env_port:
+        return int(env_port)
+    return None
+
+
+def probe_http_sessions(host: str, port: int, token: str | None) -> list[dict[str, Any]] | None:
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        response = requests.post(
+            f"http://{host}:{port + 1}/link",
+            headers=headers,
+            json={"cmd": "get_all_sessions"},
+            timeout=0.35,
+        )
+        if response.status_code == 401:
+            return []
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        return None
+
+    sessions = payload.get("r") if isinstance(payload, dict) else None
+    return sessions if isinstance(sessions, list) else []
+
+
+def resolve_twd_port(
+    args: argparse.Namespace,
+    session_probe: Callable[[str, int, str | None], list[dict[str, Any]] | None] = probe_http_sessions,
+) -> int:
+    explicit = explicit_twd_port(args)
+    if explicit is not None:
+        return explicit
+
+    host = getattr(args, "host", DEFAULT_HOST)
+    token = getattr(args, "token", None) or os.environ.get("TWD_TOKEN")
+    candidates = twd_port_candidates()
+    for port in candidates:
+        sessions = session_probe(host, port, token)
+        if sessions:
+            return port
+    return candidates[0]
+
+
 def make_driver(args: argparse.Namespace) -> TMWebDriver:
     token = getattr(args, "token", None) or os.environ.get("TWD_TOKEN")
-    return TMWebDriver(host=getattr(args, "host", DEFAULT_HOST), port=getattr(args, "port", DEFAULT_PORT), token=token)
+    port = resolve_twd_port(args)
+    setattr(args, "port", port)
+    return TMWebDriver(host=getattr(args, "host", DEFAULT_HOST), port=port, token=token)
 
 
 def wait_sessions(driver: TMWebDriver, timeout: float = 8.0) -> list[dict[str, Any]]:
@@ -709,7 +785,7 @@ def cmd_groups(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="twd", description="TMWebDriver lightweight CLI for local agents")
     p.add_argument("--host", default=DEFAULT_HOST)
-    p.add_argument("--port", type=int, default=DEFAULT_PORT, help="WS port; HTTP control uses port+1")
+    p.add_argument("--port", type=int, default=None, help="WS port; HTTP control uses port+1; omitted = auto-discover")
     p.add_argument("--token", help="Auth token for HTTP API (also reads TWD_TOKEN env var)")
     p.add_argument("--compact", action="store_true", help="single-line JSON output")
     sub = p.add_subparsers(dest="cmd", required=True)

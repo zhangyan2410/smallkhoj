@@ -29,7 +29,7 @@ python -m pip install -r requirements.txt
 3. 点击“加载已解压的扩展程序”
 4. 选择：`D:\ai\khoj\smallkhoj\agent\daemon\webdriver\tmwd_cdp_bridge`
 
-扩展会连接本机 `ws://127.0.0.1:18765`，并暴露 cookies / tabs / CDP / JS 执行能力。
+`tmwd_cdp_bridge` 会连接本机 `ws://127.0.0.1:18765`；`tmwd_slock_bridge` 会连接 `ws://127.0.0.1:28765`。`twd` 在未显式指定端口时会自动发现可用 bridge，并暴露 cookies / tabs / CDP / JS 执行能力。
 
 ## 推荐使用方式
 
@@ -179,7 +179,7 @@ JS 中 await 必须显式 return。
 
 1. `tabs` 为空：确认 Chrome 已打开普通网页，不要只开 `chrome://` / `about:blank`。
 2. 确认扩展已安装并启用：`TMWD CDP Bridge`。
-3. 确认 master 在跑：`agent/daemon/webdriver/twd serve`，端口是 `18765/18766`。
+3. 确认 master 在跑：`agent/daemon/webdriver/twd serve`；未指定端口时会自动发现当前可用 bridge。
 4. 如果扩展刚装或服务刚启动，等 5 秒或刷新网页。
 5. 后台 tab 可能被节流；关键操作可以先切到目标 tab。
 6. `AMBIGUOUS_TAB`：`--url-match` 同时匹配多个 tab 且没有唯一 active 候选。查看返回的 `candidates`，改用更具体的 URL 片段或 `--tab <id>`。
@@ -190,7 +190,7 @@ JS 中 await 必须显式 return。
 
 ## 多实例：TWD_PORT
 
-默认端口 `18765`。设 `TWD_PORT` 环境变量切到独立实例：
+默认不需要设置端口：`twd` 会优先寻找已有且有连接 tab 的 bridge；如果没有可用连接，会按候选顺序启动/连接本项目 bridge。设 `TWD_PORT` 环境变量只用于强制切到某个独立实例：
 
 ```powershell
 # Slock Bridge 独立版（端口 28765）
@@ -236,7 +236,7 @@ python twd.py groups update --group-id 1878492781 --collapsed false
 ```text
 浏览器自动化可用 CLI：agent/daemon/webdriver/twd
 不要直接调用 python twd.py；twd.py 是 CLI 内部实现，只有调试 WebDriver 工具本身时才读。
-默认读 TWD_PORT 环境变量，不设则用 18765。
+默认自动发现可用 bridge；只有需要强制指定实例时才设置 TWD_PORT。
 
 常用命令：
 - agent/daemon/webdriver/twd tabs                                    # 列出已连接 tab
