@@ -1,0 +1,28 @@
+{
+  "id": "notifications-inbox-saved-search",
+  "name": "notifications-inbox-saved-search",
+  "title": "notifications inbox saved search",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-09",
+  "completedAt": "2026-07-06",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "06-11-06-11-saved-items-persistence"
+  ],
+  "parent": "06-09-product-maturity-gap-decomposition",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
