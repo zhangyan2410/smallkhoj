@@ -1,0 +1,94 @@
+{
+  "source": "message-cards-ink.perf.html",
+  "url": "http://127.0.0.1:8771/message-cards-ink.perf.html?v=stress-1783185586",
+  "tabId": "1617512436",
+  "time": "2026-07-04T17:20:03.247Z",
+  "result": {
+    "pass": 21,
+    "fail": 0,
+    "config": {
+      "sameCardCycles": 30,
+      "rotateRounds": 2
+    }
+  },
+  "assertions": [
+    "demo API is ready",
+    "start activeCount is 0",
+    "start contextCount is 0",
+    "start uses no dataURL backgrounds",
+    "same-card phase never has more than one WebGL context",
+    "same-card phase releases WebGL context after each keep",
+    "same-card phase clears active canvas after each keep",
+    "same-card resource count stays stable after first keep",
+    "same-card perCardImage map size stays stable",
+    "same-card replacement revokes old private object URLs",
+    "same-card phase leaves no dataURL backgrounds",
+    "rotate phase never has more than one WebGL context",
+    "rotate phase keeps one private resource per card",
+    "rotate phase perCardImage map is bounded by card count",
+    "rotate replacements revoke old private object URLs",
+    "rotate phase ends with contextCount 0",
+    "rotate phase ends with no active canvas",
+    "rotate phase leaves no dataURL backgrounds",
+    "discard removes that card private resource",
+    "discard revokes private object URL",
+    "discard ends with contextCount 0"
+  ],
+  "summary": {
+    "start": {
+      "usedJSHeapSize": 54629018,
+      "cardResourceCount": 0,
+      "contextCount": 0,
+      "perCardImageSize": 5,
+      "privateBlobBytes": 0,
+      "resourceBlobBytes": 35172370,
+      "revokedObjectUrlCount": 0,
+      "dataUrlBackgroundCount": 0
+    },
+    "afterSameCard30Cycles": {
+      "usedJSHeapSize": 45952155,
+      "cardResourceCount": 1,
+      "contextCount": 0,
+      "activeCanvasCount": 0,
+      "perCardImageSize": 5,
+      "privateBlobBytes": 433480,
+      "resourceBlobBytes": 28571376,
+      "revokedObjectUrlCount": 29,
+      "dataUrlBackgroundCount": 0
+    },
+    "afterRotateAllCardsTwoRounds": {
+      "usedJSHeapSize": 49297050,
+      "cardResourceCount": 5,
+      "contextCount": 0,
+      "activeCanvasCount": 0,
+      "perCardImageSize": 5,
+      "privateBlobBytes": 2307026,
+      "resourceBlobBytes": 2307026,
+      "revokedObjectUrlCount": 35,
+      "dataUrlBackgroundCount": 0
+    },
+    "afterDiscardOneCard": {
+      "usedJSHeapSize": 42928844,
+      "cardResourceCount": 4,
+      "contextCount": 0,
+      "activeCanvasCount": 0,
+      "perCardImageSize": 5,
+      "privateBlobBytes": 1878272,
+      "resourceBlobBytes": 8912746,
+      "revokedObjectUrlCount": 36,
+      "dataUrlBackgroundCount": 0
+    },
+    "deltas": {
+      "heapDeltaAfterFullRun": -11700174,
+      "privateBlobDeltaAfterSameCard30Cycles": 433480,
+      "privateBlobDeltaAfterRotateAllCardsTwoRounds": 2307026,
+      "privateBlobDeltaAfterDiscardOneCard": 1878272
+    }
+  },
+  "interpretation": {
+    "sameCardRepeatedKeep": "Healthy. Thirty same-card render/draw/keep cycles kept cardResourceCount at 1 after the first keep, perCardImageSize stayed bounded at 5, contextCount returned to 0 after every keep, and revoke count reached 29.",
+    "multiCardKeep": "Healthy and bounded by card count. After rotating all five cards twice, cardResourceCount was 5 rather than operation count.",
+    "discard": "Healthy. Discarding one card reduced private card resources from 5 to 4 and increased revoke count.",
+    "memory": "No heap growth signal in this run; usedJSHeapSize ended lower than the starting sample. Blob growth matches retained private card snapshots, not repeated operation count."
+  }
+}

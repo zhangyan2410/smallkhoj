@@ -150,6 +150,30 @@ async def create_tables():
             "ADD COLUMN IF NOT EXISTS mentions UUID[] NOT NULL DEFAULT '{}'::uuid[]"
         ))
         await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS chat_thread_read_cursors (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                root_message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+                last_read_seq BIGINT NOT NULL DEFAULT 0,
+                last_seen_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+            )
+        """))
+        await conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_thread_read_cursor_scope "
+            "ON chat_thread_read_cursors(server_id, member_id, root_message_id)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_chat_thread_read_cursors_member "
+            "ON chat_thread_read_cursors(server_id, member_id, last_read_seq)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_chat_thread_read_cursors_root "
+            "ON chat_thread_read_cursors(root_message_id)"
+        ))
+        await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS task_run_templates (
                 id UUID PRIMARY KEY,
                 slug VARCHAR(120) NOT NULL,

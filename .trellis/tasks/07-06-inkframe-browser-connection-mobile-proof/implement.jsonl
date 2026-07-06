@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/prd.md","reason":"Implementation requirements and acceptance criteria."}
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/design.md","reason":"Recovery state machine and evidence contracts."}
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/implement.md","reason":"Step-by-step command plan."}
+{"file":".agents/skills/project-webdriver-cli/SKILL.md","reason":"Use the project WebDriver wrapper correctly."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Ensure frontend evidence is real and repeatable."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Keep any fixes aligned with Inkframe style."}

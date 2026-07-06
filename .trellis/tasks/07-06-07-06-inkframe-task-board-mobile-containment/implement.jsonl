@@ -1,0 +1,6 @@
+{"path":"frontend/app/tasks/page.tsx","reason":"Tasks route owns task workspace, controls, filter surface, and TaskDndBoard composition."}
+{"path":"frontend/components/task-dnd-board.tsx","reason":"Stable wrapper between Tasks route and TaskBoard, carries task-board mobile role."}
+{"path":"frontend/components/task-board.tsx","reason":"Task board grid, status columns, task tickets, list rows, and drag overlay containment."}
+{"path":"frontend/test/material-surface.test.tsx","reason":"Existing Inkframe source contract tests for task/chat mobile roles and material surfaces."}
+{"path":".trellis/spec/frontend/component-guidelines.md","reason":"Component ownership and data-region/source hook rules."}
+{"path":".trellis/spec/frontend/quality-guidelines.md","reason":"Flex overflow, scroll-owner, ProductShell, and browser evidence rules."}

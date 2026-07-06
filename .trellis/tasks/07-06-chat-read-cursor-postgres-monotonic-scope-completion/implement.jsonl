@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/event-delivery-contracts.md", "reason": "Chat read/unread cursor state feeds event attention projections and must stay scoped and monotonic."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "The new tests use real temporary Postgres schemas and must follow database/session cleanup conventions."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "The slice crosses HTTP, auth, service, database, and serialized API response boundaries."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-twd-evidence-http-cursor-harness/evidence/backend-http-harness.md", "reason": "Previous backend HTTP evidence identifies the remaining practical Postgres monotonicity gap."}

@@ -3,9 +3,8 @@ import { getTranslations } from "next-intl/server"
 import { Hash, MessageSquare } from "lucide-react"
 import { redirect } from "next/navigation"
 
-import { MemberAvatar } from "@/components/member-avatar"
-import { ProductShell } from "@/components/product-shell"
-import { EmptyState, RuntimeChip } from "@/components/product-ui"
+import { AvatarObject, ChannelDivider } from "@/components/inkframe-object-ui"
+import { EmptyState } from "@/components/product-ui"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { API_BASE, type Member } from "@/lib/control-plane"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
@@ -41,7 +40,7 @@ function dmAvatarMember(dm: DmInfo): Member {
 }
 
 export default async function ChatPage() {
-  const session = await requireCurrentAccount()
+  await requireCurrentAccount()
   const t = await getTranslations("chat")
   // 注意：这是服务端组件，必须用 serverApiHeaders() 从 cookie 读 session token。
   // 不能用 apiGet() 不带 token 的形式——那会落到 browserSessionToken()，
@@ -74,73 +73,59 @@ export default async function ChatPage() {
   }
 
   return (
-    <ProductShell
-      active="chat"
-      title={t("landingTitle")}
-      description={t("landingDescription")}
-      session={session}
-      sidebarTitle={t("conversationTabs")}
-      sidebarDescription={t("conversationTabsDesc")}
-      sidebar={
-        <div className="space-y-2">
-          <RuntimeChip>{t("tabChat")}</RuntimeChip>
-          <RuntimeChip tone="info">{t("tabTasks")}</RuntimeChip>
-          <RuntimeChip tone="neutral">{t("tabFiles")}</RuntimeChip>
-        </div>
-      }
-    >
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Hash className="size-4 text-primary" />
-              {t("channels")}
-            </CardTitle>
-            <CardDescription>{t("openChannelDesc")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {channels.map((channel) => (
-              <Link
-                key={channel.id}
-                href={`/chat/${channelPathSegment(channel.name)}`}
-                className="flex min-h-11 items-center gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 text-sm hover:bg-accent"
-              >
-                <Hash className="size-4 text-primary" />
-                <span className="min-w-0 flex-1 truncate font-medium">{channel.name}</span>
-                <span className="text-xs text-muted-foreground">{channel.type}</span>
-              </Link>
-            ))}
-            {channels.length === 0 && <EmptyState title={t("noChannels")} description={t("noChannelsDesc")} />}
-          </CardContent>
-        </Card>
+    <div className="grid gap-4 p-4 sm:p-6 xl:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Hash className="size-4 text-primary" />
+            {t("channels")}
+          </CardTitle>
+          <CardDescription>{t("openChannelDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {channels.map((channel) => (
+            <Link
+              key={channel.id}
+              href={`/chat/${channelPathSegment(channel.name)}`}
+              className="sk-list-object flex min-h-11 items-center gap-2 rounded-none border-2 border-[var(--ink)] px-3 text-sm"
+            >
+              <ChannelDivider kind="channel" active={false} className="px-2 py-1">
+                <Hash className="size-4" />
+              </ChannelDivider>
+              <span className="min-w-0 flex-1 truncate font-medium">{channel.name}</span>
+              <span className="text-xs text-muted-foreground">{channel.type}</span>
+            </Link>
+          ))}
+          {channels.length === 0 && <EmptyState title={t("noChannels")} description={t("noChannelsDesc")} />}
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <MessageSquare className="size-4 text-primary" />
-              {t("directMessage")}
-            </CardTitle>
-            <CardDescription>{t("continueDmDesc")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {dms.map((dm) => (
-              <Link
-                key={dm.id}
-                href={`/chat/${channelPathSegment(dm.name)}`}
-                className="flex min-h-11 items-center gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 text-sm hover:bg-accent"
-              >
-                <MemberAvatar member={dmAvatarMember(dm)} size="sm" />
-                <span className="min-w-0 flex-1 truncate font-medium">
-                  {dm.peer?.displayName || dm.displayName}
-                </span>
-                <span className="text-xs text-muted-foreground">{t("dms")}</span>
-              </Link>
-            ))}
-            {dms.length === 0 && <EmptyState title={t("noDms")} description={t("noDmsDesc")} />}
-            <DmStarter agents={agents} />
-          </CardContent>
-        </Card>
-      </div>
-    </ProductShell>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <MessageSquare className="size-4 text-primary" />
+            {t("directMessage")}
+          </CardTitle>
+          <CardDescription>{t("continueDmDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {dms.map((dm) => (
+            <Link
+              key={dm.id}
+              href={`/chat/${channelPathSegment(dm.name)}`}
+              className="sk-list-object flex min-h-11 items-center gap-2 rounded-none border-2 border-[var(--ink)] px-3 text-sm"
+            >
+              <AvatarObject member={dmAvatarMember(dm)} size="sm" />
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {dm.peer?.displayName || dm.displayName}
+              </span>
+              <span className="text-xs text-muted-foreground">{t("dms")}</span>
+            </Link>
+          ))}
+          {dms.length === 0 && <EmptyState title={t("noDms")} description={t("noDmsDesc")} />}
+          <DmStarter agents={agents} />
+        </CardContent>
+      </Card>
+    </div>
   )
 }

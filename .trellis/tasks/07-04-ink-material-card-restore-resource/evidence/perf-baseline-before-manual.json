@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "tabId": "1617512436",
+  "result": {
+    "activeCanvasCount": 0,
+    "activeCount": 0,
+    "apiReady": true,
+    "bodyBackgroundImageLen": 0,
+    "canvasCount": 6,
+    "cardResourceCount": 4,
+    "contextCount": 0,
+    "deskBackgroundUrl": null,
+    "href": "http://127.0.0.1:8771/message-cards-ink.html?v=manual",
+    "imageBackgroundCount": 5,
+    "initialPaperImagePrefix": "blob:http://127.0.0.1:8771/ac7c2",
+    "memory": {
+      "jsHeapSizeLimit": 4294967296,
+      "totalJSHeapSize": 20145087,
+      "usedJSHeapSize": 19431359
+    },
+    "perCardImageSize": 5,
+    "privateBlobBytes": 2414115,
+    "resourceBlobBytes": 9448589,
+    "resources": [
+      {
+        "blobSize": 7034474,
+        "index": 0,
+        "kind": "shared-paper",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      },
+      {
+        "blobSize": 905264,
+        "index": 1,
+        "kind": "card-private",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      },
+      {
+        "blobSize": 358978,
+        "index": 2,
+        "kind": "card-private",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      },
+      {
+        "blobSize": 846552,
+        "index": 3,
+        "kind": "card-private",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      },
+      {
+        "blobSize": 303321,
+        "index": 4,
+        "kind": "card-private",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      }
+    ],
+    "revokedObjectUrlCount": 14,
+    "time": "2026-07-04T17:07:41.540Z"
+  },
+  "notes": {
+    "interpretation": "Baseline before additional manual render/keep/collapse operations. contextCount=0 and activeCanvasCount=0 mean no live WebGL surface is currently active. cardResourceCount=4 means four cards currently have private kept ink snapshots. resourceBlobBytes includes the shared paper image; privateBlobBytes is the retained per-card ink/image cost.",
+    "expectedHealthyAfterSameCardRepeats": "cardResourceCount/perCardImageSize stay stable, revokedObjectUrlCount increases, contextCount returns to 0 after keep/collapse, privateBlobBytes fluctuates near the latest retained snapshots rather than growing without bound."
+  }
+}

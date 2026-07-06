@@ -1,0 +1,10 @@
+{"file":".trellis/tasks/07-06-chat-unread-frontend-cursor-contract-hardening/prd.md","reason":"Review exact frontend unread cursor contract requirements."}
+{"file":".trellis/tasks/07-06-chat-unread-frontend-cursor-contract-hardening/design.md","reason":"Review state layering and key/write model."}
+{"file":".trellis/tasks/07-06-chat-unread-frontend-cursor-contract-hardening/implement.md","reason":"Review execution and validation plan."}
+{"file":"frontend/lib/chat-unread-state.ts","reason":"Core unread/cursor helper contract."}
+{"file":"frontend/hooks/use-chat-unread-store.ts","reason":"Local pending overlay hook."}
+{"file":"frontend/test/chat-unread-state.test.ts","reason":"Existing and new unit/static contract tests."}
+{"file":"frontend/app/chat/layout.tsx","reason":"Backend cursor fetch and merge usage."}
+{"file":"frontend/app/chat/[channel]/chat-sidebar.tsx","reason":"Active channel/DM read cursor write behavior."}
+{"file":"frontend/app/chat/[channel]/channel-client.tsx","reason":"Thread cursor write and realtime overlay behavior."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend validation expectations."}

@@ -5,13 +5,14 @@ import { redirect } from "next/navigation"
 import { KeyRound, Palette, Server, Shield, SlidersHorizontal } from "lucide-react"
 import { getTranslations } from "next-intl/server"
 
+import { AttachmentSheet, ChannelDivider, ObjectField } from "@/components/inkframe-object-ui"
 import { ProductShell } from "@/components/product-shell"
-import { RuntimeChip } from "@/components/product-ui"
+import { EmptyState, ProductRow, RuntimeChip } from "@/components/product-ui"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Panel } from "@/components/ui/panel"
 import { API_BASE, apiGet, formatTime } from "@/lib/control-plane"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
@@ -35,14 +36,20 @@ export default async function SettingsPage() {
       sidebarDescription={t("sidebarDescription")}
       sidebar={
         <div className="grid gap-2">
-          <a href={`${publicApiBase}/docs`} target="_blank" className="rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm hover:bg-accent">
-            {t("apiDocs")}
+          <a href={`${publicApiBase}/docs`} target="_blank" className="block text-sm">
+            <ChannelDivider kind="thread" className="w-full justify-between">
+              <span>{t("apiDocs")}</span>
+            </ChannelDivider>
           </a>
-          <Link href="/daemon" className="rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm hover:bg-accent">
-            {t("controlPlane")}
+          <Link href="/daemon" className="block text-sm">
+            <ChannelDivider kind="channel" className="w-full justify-between">
+              <span>{t("controlPlane")}</span>
+            </ChannelDivider>
           </Link>
-          <Link href="/computers" className="rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm hover:bg-accent">
-            {t("daemonOnboarding")}
+          <Link href="/computers" className="block text-sm">
+            <ChannelDivider kind="channel" className="w-full justify-between">
+              <span>{t("daemonOnboarding")}</span>
+            </ChannelDivider>
           </Link>
         </div>
       }
@@ -69,14 +76,8 @@ export default async function SettingsPage() {
             <CardDescription>{t("accountServerDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
-              <div className="text-xs text-muted-foreground">{t("account")}</div>
-              <div className="mt-1 truncate text-sm font-medium">{session.account.displayName || session.account.name}</div>
-            </div>
-            <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
-              <div className="text-xs text-muted-foreground">{t("server")}</div>
-              <div className="mt-1 truncate text-sm font-medium">{session.server.name}</div>
-            </div>
+            <ObjectField label={t("account")} value={session.account.displayName || session.account.name} mono={false} />
+            <ObjectField label={t("server")} value={session.server.name} mono={false} />
           </CardContent>
         </Card>
 
@@ -107,28 +108,31 @@ export default async function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {lastSecret && (
-              <Panel variant="flat" className="sk-cat-warning space-y-2 p-3">
+              <AttachmentSheet kind="proof" className="space-y-2 p-3">
                 <div className="text-xs font-semibold">{t("newSecret")}</div>
-                <code className="block break-all rounded-none border-2 border-[var(--ink)] bg-background p-2 text-xs">
+                <code className="block break-all border-2 border-[var(--ink)] bg-[var(--paper)] p-2 text-xs">
                   {lastSecret.secret}
                 </code>
                 <div className="text-xs">{t("onlyTimeSecretShown")}</div>
-              </Panel>
+              </AttachmentSheet>
             )}
             <form action={createApiKeyAction} className="flex flex-wrap items-end gap-2">
               <div>
                 <label htmlFor="api-key-type" className="mb-1.5 block text-xs font-medium text-muted-foreground">
                   {t("type")}
                 </label>
-                <select id="api-key-type" name="resourceType" className="h-9 rounded-none border-2 border-[var(--ink)] bg-transparent px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
-                  <option value="human">{t("human")}</option>
-                  <option value="admin">{t("admin")}</option>
-                </select>
+                <Select
+                  id="api-key-type"
+                  name="resourceType"
+                  items={[`human|${t("human")}`, `admin|${t("admin")}`]}
+                  splitValue
+                  className="h-9"
+                />
               </div>
               <Button type="submit" size="sm" variant="outline">{t("createKey")}</Button>
             </form>
-            <div className="overflow-hidden rounded-none border">
-              <div className="hidden grid-cols-[0.9fr_0.7fr_1fr_0.8fr_0.7fr] gap-2 border-b bg-muted/60 px-3 py-2 text-xs font-medium uppercase text-muted-foreground md:grid">
+            <div className="sk-object-surface overflow-hidden">
+              <div className="hidden grid-cols-[0.9fr_0.7fr_1fr_0.8fr_0.7fr] gap-2 border-b-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
                 <span>{t("prefix")}</span>
                 <span>{t("type")}</span>
                 <span>{t("owner")}</span>
@@ -136,7 +140,7 @@ export default async function SettingsPage() {
                 <span>{t("state")}</span>
               </div>
               {apiKeys.apiKeys.map((apiKey) => (
-                <div key={apiKey.id} className="grid gap-2 border-b px-3 py-3 text-sm last:border-b-0 md:grid-cols-[0.9fr_0.7fr_1fr_0.8fr_0.7fr] md:items-center">
+                <ProductRow key={apiKey.id} className="md:grid-cols-[0.9fr_0.7fr_1fr_0.8fr_0.7fr]">
                   <div className="font-mono text-xs">{apiKey.prefix}</div>
                   <div className="text-xs text-muted-foreground">{apiKey.resourceType}</div>
                   <div className="truncate">{apiKey.owner?.name ?? apiKey.resourceId.slice(0, 8)}</div>
@@ -156,10 +160,10 @@ export default async function SettingsPage() {
                       </form>
                     )}
                   </div>
-                </div>
+                </ProductRow>
               ))}
               {apiKeys.apiKeys.length === 0 && (
-                <div className="px-3 py-8 text-center text-sm text-muted-foreground">{t("noApiKeys")}</div>
+                <EmptyState title={t("noApiKeys")} className="my-0 border-0 shadow-none" />
               )}
             </div>
           </CardContent>

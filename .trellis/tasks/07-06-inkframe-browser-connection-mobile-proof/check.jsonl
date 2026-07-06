@@ -1,0 +1,9 @@
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/prd.md","reason":"Review exact browser/mobile evidence requirements."}
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/design.md","reason":"Review recovery and evidence design."}
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/implement.md","reason":"Review execution and validation plan."}
+{"file":".trellis/tasks/07-05-inkframe-product-ui-refactor/prd.md","reason":"Ensure proof task stays aligned with parent Inkframe frontend completion criteria."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/evidence/browser-connectivity.md","reason":"Prior no-tab and Chrome diagnostic evidence."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-twd-evidence-http-cursor-harness/evidence/twd-connectivity.md","reason":"Latest no-tab evidence and next browser commands."}
+{"file":".agents/skills/project-webdriver-cli/SKILL.md","reason":"Project WebDriver rules: use ./twd, no Playwright substitution."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend/browser evidence standards."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Inkframe product UI style expectations."}

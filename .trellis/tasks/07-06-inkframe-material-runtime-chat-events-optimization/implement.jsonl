@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Frontend component layering and no route-local visual primitive duplication."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Hydration-safe hooks and browser/local state boundaries for material/runtime hooks."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"State ownership rules: material UI state vs backend-owned chat read cursors."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser evidence, overflow, ProductShell ownership, and frontend quality gates."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Backend persistence design for per-member read cursors."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Realtime message/event delivery contracts for unread cursor reconciliation."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Cross-layer chat read cursor flow from DB/service/API to UI."}
+{"file":".trellis/tasks/07-05-inkframe-product-ui-refactor/quality-gate.md","reason":"Carry over residual risks and verified state from the previous Inkframe refactor pass."}

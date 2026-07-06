@@ -1,0 +1,1027 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat Message Frame Demo</title>
+  <style>
+    :root {
+      --paper: #f6f1e2;
+      --paper-soft: #fbf7ea;
+      --paper-deep: #e7dcc2;
+      --ink: #221e16;
+      --ink-soft: #4d4639;
+      --muted: #766e5f;
+      --line: rgba(34, 30, 22, 0.085);
+      --agent-tile: #e8dfc8;
+      --human-tile: #f2e8d0;
+      --status: #55a064;
+      --mention-bg: #dfead2;
+      --mention-ink: #365532;
+      --channel-bg: #dde7e8;
+      --channel-ink: #31505a;
+      --task-bg: #eadbc7;
+      --path-bg: #fff0b8;
+      --path-ink: #20170a;
+      --shadow: #241f17;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px),
+        radial-gradient(circle at 16% 10%, rgba(255,255,255,0.62), transparent 28%),
+        linear-gradient(180deg, var(--paper-soft), var(--paper));
+      background-size: 56px 56px, 56px 56px, auto, auto;
+      padding: 38px 42px 64px;
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    header {
+      max-width: 820px;
+      margin-bottom: 30px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    header p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .demo-stack {
+      display: grid;
+      gap: 30px;
+    }
+
+    .demo-band {
+      border: 2px solid var(--ink);
+      background: color-mix(in srgb, white 24%, var(--paper));
+      box-shadow: 4px 4px 0 var(--shadow);
+      padding: 24px 28px 28px;
+    }
+
+    .band-title {
+      margin: 0 0 18px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 750;
+      letter-spacing: 0;
+    }
+
+    /*
+     * Replacement-ready slot mapping:
+     * MessageFrame -> data-slot="message-frame"
+     * AvatarObject -> data-slot="avatar-object"
+     * MessageHeader -> data-slot="message-header"
+     * MessageToolStrip -> data-slot="message-actions"
+     * MessagePaper -> data-slot="message-paper"
+     * MentionToken -> .mention
+     */
+    .message-frame {
+      position: relative;
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      max-width: 1120px;
+      padding: 6px 8px 12px;
+    }
+
+    .message-frame + .message-frame {
+      margin-top: 22px;
+    }
+
+    .avatar-object {
+      position: relative;
+      display: inline-flex;
+      border: 1.25px solid color-mix(in srgb, var(--ink) 82%, transparent);
+      background: color-mix(in srgb, white 14%, var(--paper));
+      box-shadow: 1px 1px 0 color-mix(in srgb, var(--ink) 72%, transparent);
+      padding: 1px;
+    }
+
+    .message-anchor {
+      display: grid;
+      justify-items: center;
+      gap: 7px;
+      width: 96px;
+    }
+
+    .anchor-meta {
+      display: grid;
+      justify-items: center;
+      gap: 3px;
+      max-width: 96px;
+      text-align: center;
+    }
+
+    .anchor-name {
+      max-width: 96px;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+
+    .anchor-time {
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .avatar-tile {
+      position: relative;
+      display: inline-flex;
+      width: 58px;
+      height: 58px;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, color-mix(in srgb, white 40%, transparent), transparent 42%),
+        linear-gradient(180deg, color-mix(in srgb, #d6a33f 18%, var(--paper)), color-mix(in srgb, #78956a 12%, var(--paper))),
+        var(--agent-tile);
+    }
+
+    .avatar-human .avatar-tile {
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.5), transparent 42%),
+        var(--human-tile);
+      color: var(--ink);
+      font-family: ui-serif, Georgia, serif;
+      font-size: 22px;
+      font-weight: 720;
+    }
+
+    .status-dot {
+      position: absolute;
+      right: -3px;
+      top: -3px;
+      width: 13px;
+      height: 13px;
+      border: 2px solid var(--paper);
+      border-radius: 999px;
+      background: var(--status);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 42%, transparent);
+    }
+
+    .face-part {
+      position: absolute;
+      display: block;
+      pointer-events: none;
+    }
+
+    .face-brow {
+      top: 17px;
+      width: 15px;
+      border-top: 1.6px solid var(--ink);
+      opacity: 0.88;
+    }
+
+    .face-brow.left { left: 11px; transform: rotate(12deg); }
+    .face-brow.right { right: 9px; transform: rotate(-22deg); }
+
+    .face-eye {
+      top: 23px;
+      width: 10px;
+      height: 4px;
+      border-top: 1.5px solid var(--ink);
+      border-radius: 50%;
+    }
+
+    .face-eye.left { left: 15px; transform: rotate(10deg); }
+    .face-eye.right { right: 14px; transform: rotate(-16deg); }
+
+    .face-nose {
+      left: 27px;
+      top: 31px;
+      width: 6px;
+      height: 6px;
+      border-left: 1.4px solid var(--ink);
+      border-bottom: 1.4px solid var(--ink);
+      border-radius: 50%;
+      transform: rotate(-18deg);
+    }
+
+    .face-mouth {
+      left: 16px;
+      bottom: 13px;
+      width: 21px;
+      height: 9px;
+      border-top: 1.5px solid var(--ink);
+      border-radius: 50%;
+      transform: rotate(-18deg);
+    }
+
+    .face-mark {
+      right: 8px;
+      top: 13px;
+      width: 9px;
+      height: 9px;
+      border: 2px solid color-mix(in srgb, var(--ink) 62%, transparent);
+      border-left-color: transparent;
+      border-radius: 50%;
+      opacity: 0.72;
+    }
+
+    .message-column {
+      min-width: 0;
+      position: relative;
+      width: min(100%, 76ch);
+      padding-top: 4px;
+    }
+
+    .message-header {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      min-height: 28px;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .author-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 760;
+      line-height: 1.15;
+    }
+
+    .time-mark {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .message-actions {
+      position: absolute;
+      right: -2px;
+      top: -38px;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      border: 2px solid var(--ink);
+      background: color-mix(in srgb, white 18%, var(--paper));
+      box-shadow: 2px 2px 0 var(--shadow);
+      padding: 3px 4px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(6px);
+      transition: opacity 140ms ease, transform 140ms ease;
+    }
+
+    .message-frame:hover .message-actions,
+    .message-frame:focus-within .message-actions,
+    .message-frame.is-hovered .message-actions {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+
+    .tool-button {
+      display: inline-flex;
+      width: 27px;
+      height: 27px;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--ink);
+      padding: 0;
+      cursor: default;
+    }
+
+    .tool-button:hover {
+      background: color-mix(in srgb, #d6a33f 18%, var(--paper));
+    }
+
+    .tool-button svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .message-body {
+      position: relative;
+      width: fit-content;
+      max-width: min(100%, 70ch);
+    }
+
+    .message-body.long {
+      width: min(100%, 70ch);
+    }
+
+    .message-body.notebook {
+      padding-top: 8px;
+    }
+
+    .message-paper {
+      width: fit-content;
+      min-width: min(17rem, 100%);
+      max-width: 100%;
+      border: 2px solid var(--ink);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, white 18%, var(--paper)), var(--paper)),
+        var(--paper);
+      box-shadow: 3px 3px 0 var(--shadow);
+      color: var(--ink);
+      padding: 18px 22px 20px;
+      transform: translate(0, 0);
+      transform-origin: 18px 18px;
+      transition: transform 180ms cubic-bezier(.22, 1, .36, 1), box-shadow 180ms cubic-bezier(.22, 1, .36, 1);
+    }
+
+    .message-frame[data-movable="true"] .message-paper {
+      cursor: grab;
+    }
+
+    .message-frame[data-movable="true"] .message-column::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: -13px;
+      width: min(22rem, 72%);
+      height: 8px;
+      border: 1px dashed color-mix(in srgb, var(--ink) 42%, transparent);
+      background: color-mix(in srgb, white 24%, var(--paper));
+      opacity: 0;
+      transform: translateY(-2px);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .message-frame[data-movable="true"]:hover .message-paper,
+    .message-frame[data-movable="true"]:focus-within .message-paper,
+    .message-frame[data-movable="true"].is-hovered .message-paper {
+      transform: translate(-2px, -3px);
+      box-shadow: 6px 7px 0 var(--shadow);
+    }
+
+    .message-frame[data-movable="true"]:hover .message-column::after,
+    .message-frame[data-movable="true"]:focus-within .message-column::after,
+    .message-frame[data-movable="true"].is-hovered .message-column::after {
+      opacity: 0.58;
+      transform: translateY(0);
+    }
+
+    .message-paper.long {
+      width: 100%;
+    }
+
+    .notebook-page {
+      position: relative;
+      min-height: 230px;
+      overflow: visible;
+      padding: 58px 24px 22px;
+      background:
+        linear-gradient(color-mix(in srgb, var(--ink) 18%, transparent) 1px, transparent 1px) 0 48px / 100% 1px no-repeat,
+        linear-gradient(180deg, color-mix(in srgb, white 24%, var(--paper)), var(--paper)),
+        var(--paper);
+    }
+
+    .notebook-page::before {
+      content: "";
+      position: absolute;
+      left: 28px;
+      top: -17px;
+      z-index: 4;
+      width: 38px;
+      height: 38px;
+      border: 3px solid var(--ink);
+      border-radius: 999px;
+      background: color-mix(in srgb, white 18%, var(--paper));
+      box-shadow: 1px 1px 0 color-mix(in srgb, var(--ink) 38%, transparent);
+    }
+
+    .notebook-page::after {
+      content: "";
+      position: absolute;
+      left: 54px;
+      top: -5px;
+      z-index: 3;
+      width: 35px;
+      height: 42px;
+      border: 3px solid var(--ink);
+      border-left-color: transparent;
+      border-radius: 999px;
+      background: transparent;
+      transform: rotate(6deg);
+    }
+
+    .binding-gap {
+      position: absolute;
+      left: 20px;
+      top: -4px;
+      z-index: 2;
+      width: 78px;
+      height: 12px;
+      background: color-mix(in srgb, white 18%, var(--paper));
+      pointer-events: none;
+    }
+
+    .notebook .message-actions {
+      top: 10px;
+      right: 12px;
+      background: color-mix(in srgb, white 22%, var(--paper));
+    }
+
+    .notebook-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .page-turn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      background: transparent;
+      color: var(--ink-soft);
+      font-weight: 700;
+      padding: 0;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .page-corner {
+      display: inline-block;
+      width: 20px;
+      height: 16px;
+      border-right: 2px solid var(--ink);
+      border-bottom: 2px solid var(--ink);
+      background: linear-gradient(135deg, transparent 0 48%, color-mix(in srgb, white 24%, var(--paper-deep)) 50%);
+      box-shadow: 2px 2px 0 color-mix(in srgb, var(--ink) 75%, transparent);
+      transform: skew(-12deg);
+    }
+
+    .notebook-content {
+      transition: opacity 120ms ease, transform 160ms ease;
+    }
+
+    .notebook-page.is-turning .notebook-content {
+      opacity: 0.45;
+      transform: translateX(-5px);
+    }
+
+    .flip-leaf {
+      position: absolute;
+      inset: 2px 2px 2px auto;
+      z-index: 6;
+      width: calc(100% - 4px);
+      border-left: 2px solid color-mix(in srgb, var(--ink) 24%, transparent);
+      background:
+        linear-gradient(90deg, color-mix(in srgb, var(--ink) 11%, transparent), transparent 16%),
+        linear-gradient(180deg, color-mix(in srgb, white 26%, var(--paper)), var(--paper-deep));
+      box-shadow: -8px 0 0 color-mix(in srgb, var(--ink) 10%, transparent);
+      opacity: 0;
+      pointer-events: none;
+      transform: perspective(900px) rotateY(0deg);
+      transform-origin: left center;
+    }
+
+    .notebook-page.is-turning .flip-leaf {
+      animation: page-flip 520ms cubic-bezier(.2, .76, .24, 1) both;
+    }
+
+    @keyframes page-flip {
+      0% {
+        opacity: 0;
+        transform: perspective(900px) rotateY(0deg) translateX(0);
+      }
+      15% {
+        opacity: 0.96;
+      }
+      62% {
+        opacity: 0.92;
+        transform: perspective(900px) rotateY(-116deg) translateX(-4px);
+      }
+      100% {
+        opacity: 0;
+        transform: perspective(900px) rotateY(-172deg) translateX(-10px);
+      }
+    }
+
+    .message-text {
+      margin: 0;
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.62;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .message-text + .message-text {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+    }
+
+    .marker-lines {
+      margin: 0 0 14px;
+      color: var(--ink-soft);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .marker-lines + .message-text {
+      padding-top: 12px;
+      border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+    }
+
+    .message-list {
+      display: grid;
+      gap: 7px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+      color: var(--ink);
+      font-size: 15.5px;
+      line-height: 1.58;
+    }
+
+    .message-list li {
+      position: relative;
+      padding-left: 18px;
+    }
+
+    .message-list li::before {
+      content: "";
+      position: absolute;
+      left: 1px;
+      top: 0.72em;
+      width: 8px;
+      border-top: 2px solid color-mix(in srgb, var(--ink) 72%, transparent);
+      transform: rotate(-5deg);
+    }
+
+    .message-note {
+      margin: 14px 0 0;
+      border: 1px solid color-mix(in srgb, var(--ink) 28%, transparent);
+      background: color-mix(in srgb, white 18%, var(--paper));
+      padding: 10px 12px;
+      color: var(--ink-soft);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .mention,
+    .channel-token,
+    .task-token,
+    .path-token {
+      display: inline;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+      border: 1px solid color-mix(in srgb, var(--ink) 44%, transparent);
+      padding: 0.02em 0.22em 0.05em;
+      font-weight: 700;
+    }
+
+    .mention,
+    .channel-token,
+    .task-token {
+      white-space: nowrap;
+    }
+
+    .mention {
+      background: var(--mention-bg);
+      color: var(--mention-ink);
+    }
+
+    .channel-token {
+      background: var(--channel-bg);
+      color: var(--channel-ink);
+    }
+
+    .task-token {
+      background: var(--task-bg);
+      color: var(--ink);
+    }
+
+    .path-token {
+      background: var(--path-bg);
+      color: var(--path-ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.94em;
+      font-weight: 650;
+      word-break: break-word;
+    }
+
+    .short .message-paper {
+      transform: rotate(-0.25deg);
+      min-width: 12rem;
+    }
+
+    .message-frame.short[data-movable="true"]:hover .message-paper,
+    .message-frame.short[data-movable="true"]:focus-within .message-paper,
+    .message-frame.short[data-movable="true"].is-hovered .message-paper {
+      transform: translate(-2px, -3px) rotate(-0.25deg);
+    }
+
+    .short .message-text {
+      font-size: 15.5px;
+    }
+
+    @media (max-width: 820px) {
+      body { padding: 22px; }
+      .demo-band { padding: 16px; }
+      .message-frame {
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 10px;
+        padding-left: 0;
+        padding-right: 0;
+      }
+      .message-header {
+        flex-wrap: wrap;
+      }
+      .message-actions {
+        width: fit-content;
+      }
+      .message-paper {
+        max-width: 100%;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .message-actions,
+      .message-paper,
+      .message-frame[data-movable="true"] .message-column::after {
+        transition: none;
+      }
+
+      .message-frame[data-movable="true"]:hover .message-paper,
+      .message-frame[data-movable="true"]:focus-within .message-paper,
+      .message-frame[data-movable="true"].is-hovered .message-paper,
+      .message-frame.short[data-movable="true"]:hover .message-paper,
+      .message-frame.short[data-movable="true"]:focus-within .message-paper,
+      .message-frame.short[data-movable="true"].is-hovered .message-paper {
+        transform: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Chat Message Frame Prototype</h1>
+      <p>
+        独立示例，不修改产品代码。结构沿用 MessageFrame / AvatarObject / MessagePaper / MessageToolStrip 的 slot，
+        后面可以按这个方向迁回 React 组件。
+      </p>
+    </header>
+
+    <section class="demo-stack" aria-label="chat message prototype">
+      <article class="demo-band">
+        <h2 class="band-title">Default state: action strip is hidden and attached to the paper edge</h2>
+        <div class="message-frame" data-slot="message-frame" data-sender-type="agent" data-movable="true">
+          <div class="message-anchor">
+            <span class="avatar-object" data-slot="avatar-object" data-object="avatar" data-avatar-kind="agent">
+              <span class="avatar-tile" aria-hidden="true">
+                <span class="face-part face-brow left"></span>
+                <span class="face-part face-brow right"></span>
+                <span class="face-part face-eye left"></span>
+                <span class="face-part face-eye right"></span>
+                <span class="face-part face-nose"></span>
+                <span class="face-part face-mouth"></span>
+                <span class="face-part face-mark"></span>
+              </span>
+              <span class="status-dot" aria-label="running"></span>
+            </span>
+            <span class="anchor-meta">
+              <span class="anchor-name" data-slot="message-author">gate-minimax</span>
+              <time class="anchor-time" data-slot="message-time" title="2026-06-24 16:55:04">06-24 16:55</time>
+            </span>
+          </div>
+
+          <div class="message-column">
+            <div class="message-body long notebook">
+              <div class="message-actions" data-slot="message-actions" data-object="message-actions" aria-label="message actions">
+                <button class="tool-button" title="Reply" aria-label="Reply"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></button>
+                <button class="tool-button" title="React" aria-label="React"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8 14c1.1 1.2 2.4 1.8 4 1.8s2.9-.6 4-1.8"/></svg></button>
+                <button class="tool-button" title="Save" aria-label="Save"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
+                <button class="tool-button" title="Create task" aria-label="Create task"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></button>
+                <button class="tool-button" title="Copy" aria-label="Copy"><svg viewBox="0 0 24 24"><path d="M8 7V5a2 2 0 0 1 2-2h6l4 4v12a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-2"/><path d="M16 3v5h5"/><rect x="4" y="7" width="10" height="14" rx="1"/></svg></button>
+              </div>
+
+              <div class="message-paper long notebook-page" data-slot="message-paper" data-object="chat-message" data-density="long" data-variant="notebook">
+                <span class="binding-gap" aria-hidden="true"></span>
+                <p class="marker-lines">REAL_TASKRUN_AUTOSTART_20260625005429<br />EXACT_MARKER: REAL_TASKRUN_AUTOSTART_20260625005429</p>
+                <p class="message-text">
+                  TaskRun auto-start acknowledged. <span class="mention">@gate-minimax</span> has claimed
+                  <span class="task-token">task #3</span>, posted the required marker back to
+                  <span class="channel-token">#gate-lab</span>, and is now advancing the task to
+                  <span class="task-token">in_review</span> per the gate protocol.
+                </p>
+                <p class="message-text">
+                  关键路径会被读成局部证据，而不是普通正文：
+                  <span class="path-token">/Users/lee/.kimi-code/bin/kimi</span>
+                  和 <span class="path-token">kimi.executablePath</span> 都应该比普通文本更容易扫到。
+                </p>
+                <div class="notebook-footer">
+                  <span>Page 1 / 2</span>
+                  <span class="page-turn"><span class="page-corner"></span> 翻到下一页</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="demo-band">
+        <h2 class="band-title">Forced hover sample: strip appears just above the message</h2>
+        <div class="message-frame is-hovered" data-slot="message-frame" data-sender-type="agent" data-movable="true">
+          <div class="message-anchor">
+            <span class="avatar-object" data-slot="avatar-object" data-object="avatar" data-avatar-kind="agent">
+              <span class="avatar-tile" aria-hidden="true">
+                <span class="face-part face-brow left"></span>
+                <span class="face-part face-brow right"></span>
+                <span class="face-part face-eye left"></span>
+                <span class="face-part face-eye right"></span>
+                <span class="face-part face-nose"></span>
+                <span class="face-part face-mouth"></span>
+                <span class="face-part face-mark"></span>
+              </span>
+              <span class="status-dot" aria-label="running"></span>
+            </span>
+            <span class="anchor-meta">
+              <span class="anchor-name" data-slot="message-author">gate-minimax</span>
+              <time class="anchor-time" data-slot="message-time" title="2026-06-24 16:57:04">06-24 16:57</time>
+            </span>
+          </div>
+
+          <div class="message-column">
+            <div class="message-body long notebook">
+              <div class="message-actions" data-slot="message-actions" data-object="message-actions" aria-label="message actions">
+                <button class="tool-button" title="Reply" aria-label="Reply"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></button>
+                <button class="tool-button" title="React" aria-label="React"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8 14c1.1 1.2 2.4 1.8 4 1.8s2.9-.6 4-1.8"/></svg></button>
+                <button class="tool-button" title="Save" aria-label="Save"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
+                <button class="tool-button" title="Create task" aria-label="Create task"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></button>
+                <button class="tool-button" title="Copy" aria-label="Copy"><svg viewBox="0 0 24 24"><path d="M8 7V5a2 2 0 0 1 2-2h6l4 4v12a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-2"/><path d="M16 3v5h5"/><rect x="4" y="7" width="10" height="14" rx="1"/></svg></button>
+              </div>
+
+              <div class="message-paper long notebook-page interactive-notebook" data-slot="message-paper" data-object="chat-message" data-density="long" data-variant="notebook" data-page="1">
+                <span class="binding-gap" aria-hidden="true"></span>
+                <span class="flip-leaf" aria-hidden="true"></span>
+                <div class="notebook-content">
+                  <p class="message-text">
+                    This state shows the intended placement. The action strip is outside the readable paper, but it is still physically
+                    attached to the message object instead of being pushed to the far row edge.
+                  </p>
+                  <p class="message-text">
+                    Hover also lifts the paper and reveals a faint landing slot below it, so motion means this slip can be moved.
+                    Without hover, the tool strip disappears and the message reads cleanly.
+                  </p>
+                </div>
+                <div class="notebook-footer">
+                  <span class="page-count">Page 1 / 3</span>
+                  <button class="page-turn" type="button"><span class="page-corner"></span><span class="page-turn-label">翻到下一页</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="demo-band">
+        <h2 class="band-title">Agent output stress cases: long paragraphs, paths, lists, and notes</h2>
+        <div class="message-frame" data-slot="message-frame" data-sender-type="agent" data-movable="true">
+          <div class="message-anchor">
+            <span class="avatar-object" data-slot="avatar-object" data-object="avatar" data-avatar-kind="agent">
+              <span class="avatar-tile" aria-hidden="true">
+                <span class="face-part face-brow left"></span>
+                <span class="face-part face-brow right"></span>
+                <span class="face-part face-eye left"></span>
+                <span class="face-part face-eye right"></span>
+                <span class="face-part face-nose"></span>
+                <span class="face-part face-mouth"></span>
+                <span class="face-part face-mark"></span>
+              </span>
+              <span class="status-dot" aria-label="running"></span>
+            </span>
+            <span class="anchor-meta">
+              <span class="anchor-name" data-slot="message-author">codex-m-krill</span>
+              <time class="anchor-time" data-slot="message-time" title="2026-06-24 21:44:00">21:44</time>
+            </span>
+          </div>
+
+          <div class="message-column">
+            <div class="message-body long notebook">
+              <div class="message-actions" data-slot="message-actions" data-object="message-actions" aria-label="message actions">
+                <button class="tool-button" title="Reply" aria-label="Reply"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></button>
+                <button class="tool-button" title="React" aria-label="React"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8 14c1.1 1.2 2.4 1.8 4 1.8s2.9-.6 4-1.8"/></svg></button>
+                <button class="tool-button" title="Copy" aria-label="Copy"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V4h12"/></svg></button>
+              </div>
+
+              <div class="message-paper long notebook-page" data-slot="message-paper" data-object="chat-message" data-density="long" data-variant="notebook">
+                <span class="binding-gap" aria-hidden="true"></span>
+                <p class="message-text">
+                  查到并处理了：这是 VS Code 插件和新版 standalone Kimi Code CLI 的参数协议不兼容。之前把
+                  <span class="path-token">kimi.executablePath</span> 指到了
+                  <span class="path-token">/Users/lee/.kimi-code/bin/kimi</span>，这个 standalone CLI 现在是
+                  <span class="path-token">0.21.1</span>，它的登录和信息命令不支持插件仍在调用的
+                  <span class="path-token">--json</span> 参数，所以插件报
+                  <span class="path-token">error: unknown option '--json'</span>。
+                </p>
+                <p class="message-text">
+                  我已经把 VS Code User Settings 里的 <span class="path-token">kimi.executablePath</span>
+                  清掉了，让插件回到使用它自己的兼容 CLI：
+                  <span class="path-token">/Users/lee/Library/Application Support/Code/User/globalStorage/moonshot-ai.kimi-code/bin/kimi/kimi</span>。
+                </p>
+                <ul class="message-list">
+                  <li>bundled 插件 CLI：<span class="path-token">kimi, version 1.43.0</span>，<span class="path-token">info --json</span> 正常返回；</li>
+                  <li>standalone CLI：<span class="path-token">/Users/lee/.kimi-code/bin/kimi</span> 继续用于终端；</li>
+                  <li>恢复方式：VS Code 里点一次 Kimi 的 Reload/Reset Kimi，或者重载 VS Code Window。</li>
+                </ul>
+                <p class="message-note">
+                  这种长输出里，路径和命令必须像证据碎片一样被扫到；普通解释文本则保持自然段，不抢证据标记。
+                </p>
+                <div class="notebook-footer">
+                  <span>Page 2 / 4</span>
+                  <span class="page-turn"><span class="page-corner"></span> 下一页是验证结果</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="message-frame short" data-slot="message-frame" data-sender-type="member" data-movable="true">
+          <div class="message-anchor">
+            <span class="avatar-object avatar-human" data-slot="avatar-object" data-object="avatar" data-avatar-kind="human">
+              <span class="avatar-tile">LY</span>
+              <span class="status-dot" aria-label="online"></span>
+            </span>
+            <span class="anchor-meta">
+              <span class="anchor-name" data-slot="message-author">Lee Yan</span>
+              <time class="anchor-time" data-slot="message-time" title="2026-06-24 21:46:12">21:46</time>
+            </span>
+          </div>
+
+          <div class="message-column">
+            <div class="message-body">
+              <div class="message-actions" data-slot="message-actions" data-object="message-actions" aria-label="message actions">
+                <button class="tool-button" title="Reply" aria-label="Reply"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></button>
+                <button class="tool-button" title="React" aria-label="React"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8 14c1.1 1.2 2.4 1.8 4 1.8s2.9-.6 4-1.8"/></svg></button>
+                <button class="tool-button" title="Copy" aria-label="Copy"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V4h12"/></svg></button>
+              </div>
+              <div class="message-paper" data-slot="message-paper" data-object="chat-message" data-density="short">
+                <p class="message-text">收到，先把 <span class="channel-token">#gate-lab</span> 的状态收敛。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="message-frame" data-slot="message-frame" data-sender-type="agent" data-movable="true">
+          <div class="message-anchor">
+            <span class="avatar-object" data-slot="avatar-object" data-object="avatar" data-avatar-kind="agent">
+              <span class="avatar-tile" aria-hidden="true">
+                <span class="face-part face-brow left"></span>
+                <span class="face-part face-brow right"></span>
+                <span class="face-part face-eye left"></span>
+                <span class="face-part face-eye right"></span>
+                <span class="face-part face-nose"></span>
+                <span class="face-part face-mouth"></span>
+                <span class="face-part face-mark"></span>
+              </span>
+              <span class="status-dot" aria-label="running"></span>
+            </span>
+            <span class="anchor-meta">
+              <span class="anchor-name" data-slot="message-author">design-agent</span>
+              <time class="anchor-time" data-slot="message-time" title="2026-06-24 22:02:09">22:02</time>
+            </span>
+          </div>
+
+          <div class="message-column">
+            <div class="message-body long notebook">
+              <div class="message-actions" data-slot="message-actions" data-object="message-actions" aria-label="message actions">
+                <button class="tool-button" title="Reply" aria-label="Reply"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></button>
+                <button class="tool-button" title="Create task" aria-label="Create task"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></button>
+                <button class="tool-button" title="Copy" aria-label="Copy"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V4h12"/></svg></button>
+              </div>
+              <div class="message-paper long notebook-page" data-slot="message-paper" data-object="chat-message" data-density="long" data-variant="notebook">
+                <span class="binding-gap" aria-hidden="true"></span>
+                <p class="message-text">
+                  我对这个消息对象的判断是：正文区域应该像一张稳定的阅读纸，而不是每个 markdown 元素都自己变成一个小卡片。
+                  真正需要突出的是身份、路径、任务引用、频道引用和状态词；普通解释文本应该安静地形成段落。
+                </p>
+                <p class="message-text">
+                  所以这里保留纸片边框和硬阴影，但把内部层级压到三档：自然段是主阅读层，路径和命令是局部证据层，
+                  列表是扫描层。这样 agent 输出很长时，用户先扫到证据，再回头读解释，不会一进来就看到一整墙同强度黑框。
+                </p>
+                <ul class="message-list">
+                  <li><span class="mention">@gate-minimax</span> 属于身份 token，不应该是红色警告。</li>
+                  <li><span class="channel-token">#gate-lab</span> 属于位置 token，颜色可以更冷一点。</li>
+                  <li><span class="task-token">task #3</span> 属于工作票据 token，应该接近纸票颜色。</li>
+                  <li><span class="path-token">frontend/components/markdown-message.tsx:55</span> 属于证据 token。</li>
+                </ul>
+                <div class="notebook-footer">
+                  <span>Page 1 / 2</span>
+                  <span class="page-turn"><span class="page-corner"></span> 翻到结构页</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+  <script>
+    const notebookPages = [
+      `
+        <p class="message-text">
+          This state shows the intended placement. The action strip is outside the readable paper, but it is still physically
+          attached to the message object instead of being pushed to the far row edge.
+        </p>
+        <p class="message-text">
+          Hover also lifts the paper and reveals a faint landing slot below it, so motion means this slip can be moved.
+          Without hover, the tool strip disappears and the message reads cleanly.
+        </p>
+      `,
+      `
+        <p class="message-text">
+          Page two is the same message after it has been paged. The notebook is no longer just a long paper: it can hold
+          multiple slices of an agent answer without forcing the chat thread to become a wall of text.
+        </p>
+        <ul class="message-list">
+          <li>Summary stays on page one.</li>
+          <li>Evidence paths move to a later page.</li>
+          <li>Review or next action can become the final page.</li>
+        </ul>
+      `,
+      `
+        <p class="message-text">
+          第三页可以放验证结果、后续动作或者完整引用。这里的翻页不是装饰，而是表示这条 agent 输出真的被拆成了多页。
+        </p>
+        <p class="message-note">
+          后面如果迁回 React，应该由消息结构决定分页，而不是按固定高度硬切。
+        </p>
+      `
+    ];
+
+    document.querySelectorAll(".interactive-notebook").forEach((notebook) => {
+      const content = notebook.querySelector(".notebook-content");
+      const count = notebook.querySelector(".page-count");
+      const label = notebook.querySelector(".page-turn-label");
+      const turnButton = notebook.querySelector(".page-turn");
+      let page = 0;
+
+      turnButton?.addEventListener("click", () => {
+        if (notebook.classList.contains("is-turning")) return;
+        notebook.classList.add("is-turning");
+        page = (page + 1) % notebookPages.length;
+        window.setTimeout(() => {
+          content.innerHTML = notebookPages[page];
+          count.textContent = `Page ${page + 1} / ${notebookPages.length}`;
+          label.textContent = page === notebookPages.length - 1 ? "翻回第一页" : "翻到下一页";
+        }, 230);
+        window.setTimeout(() => {
+          notebook.classList.remove("is-turning");
+        }, 560);
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Proof runner no-tab classification, browser evidence honesty, and frontend quality gate."}
+{"file": ".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/evidence/integrated-execution-plan.md", "reason": "Parent product direction: app background is a material surface, not only a static wrapper."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-proof-runner-app-background-material-surface-contract/prd.md", "reason": "Task requirements and acceptance criteria."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-proof-runner-app-background-material-surface-contract/design.md", "reason": "Selector contract for the route sweep implementation."}

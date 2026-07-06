@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review Server/member scoping and no-write behavior for malformed cursor requests."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Review that browser unread/event semantics are hardened without adding runtime noise."}
+{"file":".trellis/spec/backend/threading-contracts.md","reason":"Review top-level thread fallback compatibility and thread validation behavior."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review public API parser ownership and edge-case coverage."}

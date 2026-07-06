@@ -15,6 +15,8 @@ import { getTranslations } from "next-intl/server"
 
 import type { AccountSession } from "@/lib/control-plane"
 import { cn } from "@/lib/utils"
+import { AppDeskBackground } from "@/components/inkframe/app-desk-background"
+import { InkMaterialRuntimeScript } from "@/components/inkframe/ink-material-engine"
 import { ProductShellBody, type ListPanelConfig } from "@/components/product-shell-body"
 import { ServerSwitcher } from "@/components/server-switcher"
 
@@ -73,14 +75,21 @@ export async function ProductShell({
 }) {
   const t = await getTranslations("nav")
   return (
-    <main className="h-screen overflow-hidden bg-background text-foreground">
-      {/* Col 0 — icon rail：fixed 钉死在视口左侧，不随任何滚动离开位置。
-          背景图来自 .sk-rail-bg（globals.css），仍用 absolute inset-0 铺满 rail 本身。 */}
+    <main
+      data-slot="workbench-desk"
+      data-inkframe-background-owner="product-shell"
+      data-inkframe-background-scope="global-desk"
+      className="sk-workbench-desk relative isolate h-screen overflow-hidden text-foreground"
+    >
+      <InkMaterialRuntimeScript />
+      <AppDeskBackground />
+      {/* Col 0 — icon rail：fixed 钉死在视口左侧，不随任何滚动离开位置。 */}
       <nav
         aria-label="Primary"
-        className="sk-rail hidden w-14 flex-col items-center gap-1 py-3 sm:flex"
+        data-region="icon-rail"
+        data-slot="tool-spine"
+        className="sk-rail z-20 hidden w-14 flex-col items-center gap-1 py-3 sm:flex"
       >
-        {/* 真实水材质底图（阳光穿透中海蓝 + 暖沙），来自 zy-think 色彩提取与生图 */}
         <span
           aria-hidden
           className="sk-rail-bg pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -128,7 +137,7 @@ export async function ProductShell({
 
       {/* 主内容区—— 留出 rail 宽度 (w-14 = 56px)，自身占满 h-screen。
           子栏的滚动由 ProductShellBody 内部按列独立控制。 */}
-      <div className="ml-14 flex h-screen min-w-0 flex-col">
+      <div className="relative z-10 flex h-screen min-w-0 flex-col sm:ml-14">
         <ProductShellBody
           title={title}
           description={description}

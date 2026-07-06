@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 
 import { ProductShell } from "@/components/product-shell"
+import { AttachmentSheet, ComputerInkstone, InkframeObjectSurface, ObjectField, ObjectMetric, SidebarEntityItem } from "@/components/inkframe-object-ui"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, RuntimeChip, type CategoryTone, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
@@ -36,7 +37,6 @@ import { buildComputerReconnectUrl, shouldShowConnectComputerForm } from "@/lib/
 import {
   apiGet,
   API_BASE,
-  dotClass,
   formatTime,
   runtimeLabel,
   shortId,
@@ -270,13 +270,15 @@ async function deleteComputerAction(formData: FormData) {
 
 function Field({ label, value, icon }: { label: string; value?: string | null; icon?: React.ReactNode }) {
   return (
-    <div className="min-w-0 rounded-none border-2 border-[var(--ink)] bg-sand-card p-2">
-      <div className="flex items-center gap-1 text-sm font-medium text-foreground">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-1 truncate font-mono text-xs">{value || "none"}</div>
-    </div>
+    <ObjectField
+      label={
+        <span className="inline-flex items-center gap-1">
+          {icon}
+          {label}
+        </span>
+      }
+      value={value || "none"}
+    />
   )
 }
 
@@ -330,7 +332,18 @@ function RuntimeStatusChip({ runtime }: { runtime: RuntimeInfo }) {
   const icon = runtimeStatusIcon(status)
 
   return (
-    <RuntimeChip tone={runtimeStatusKind(status)} className="gap-1">
+    <RuntimeChip tone="paper" className="gap-1">
+      <span
+        className={
+          runtimeStatusKind(status) === "success"
+            ? "size-1.5 shrink-0 rounded-full bg-success"
+            : runtimeStatusKind(status) === "danger"
+              ? "size-1.5 shrink-0 rounded-full bg-danger"
+              : runtimeStatusKind(status) === "warning"
+                ? "size-1.5 shrink-0 rounded-full bg-warning"
+                : "size-1.5 shrink-0 rounded-full bg-muted-foreground"
+        }
+      />
       {icon}
       {label}
     </RuntimeChip>
@@ -358,7 +371,7 @@ function ComputerDetail({
   const leaseExpired = leaseExpiry ? leaseExpiry < new Date() : true
 
   return (
-    <div className="space-y-4">
+    <div data-inkframe-mobile-role="computer-detail" className="min-w-0 space-y-4 overflow-x-hidden">
       <div className="flex flex-wrap items-center gap-3">
         <Link href="/computers" className="text-sm text-muted-foreground hover:text-foreground">
           ← {copy.allComputers}
@@ -367,23 +380,24 @@ function ComputerDetail({
 
       <Card>
         <CardHeader className="border-b">
-          <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-            <Monitor className="size-5 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">{computer.name}</span>
-            <StatusPill status={computer.status} label={statusLabel(computer.status)} />
-          </CardTitle>
-          <CardDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
-            <span>{computer.os || copy.unknownOs}</span>
-            <span>daemon {computer.daemonVersion || copy.unknown}</span>
-            <span className="inline-flex items-center gap-1">
-              <Clock className="size-3" />
-              {formatTime(computer.lastHeartbeatAt)}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <HardDrive className="size-3" />
-              {copy.workspacesRunning(computer.agentWorkspaces.length, runningWorkspaces)}
-            </span>
-          </CardDescription>
+          <ComputerInkstone status={computer.status}>
+            <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+              <span className="min-w-0 flex-1 truncate">{computer.name}</span>
+              <StatusPill status={computer.status} label={statusLabel(computer.status)} />
+            </CardTitle>
+            <CardDescription className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span>{computer.os || copy.unknownOs}</span>
+              <span>daemon {computer.daemonVersion || copy.unknown}</span>
+              <span className="inline-flex items-center gap-1">
+                <Clock className="size-3" />
+                {formatTime(computer.lastHeartbeatAt)}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <HardDrive className="size-3" />
+                {copy.workspacesRunning(computer.agentWorkspaces.length, runningWorkspaces)}
+              </span>
+            </CardDescription>
+          </ComputerInkstone>
         </CardHeader>
         <CardContent className="space-y-5 pt-4">
           <div className="space-y-2">
@@ -391,7 +405,7 @@ function ComputerDetail({
               <Power className="size-3" />
               {copy.lifecycleControls}
             </div>
-            <div className="rounded-none border-2 border-[var(--ink)] p-3">
+            <div data-inkframe-mobile-role="computer-lifecycle" className="min-w-0 overflow-x-hidden rounded-none border-2 border-[var(--ink)] p-3">
               <div className="flex flex-wrap gap-2">
                 <form action={createComputerReconnectCommandAction}>
                   <input type="hidden" name="computerId" value={computer.id} />
@@ -429,23 +443,25 @@ function ComputerDetail({
           </div>
 
           {reconnectCredential?.computerId === computer.id && reconnectComputerId === computer.id && (
-            <div className="space-y-2 rounded-none border-2 border-[var(--ink)] bg-muted/40 p-3">
+            <InkframeObjectSurface material="drying" data-inkframe-mobile-role="computer-reconnect-command" className="min-w-0 space-y-2 overflow-x-hidden p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-medium text-foreground">{copy.reconnectCommand}</div>
                 <div className="text-xs text-muted-foreground">{copy.useOn(computer.name)}</div>
               </div>
-              <code
-                data-testid="reconnect-command"
-                className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
-              >
-                {reconnectCredential.command}
-              </code>
+              <AttachmentSheet kind="proof" className="p-2">
+                <code
+                  data-testid="reconnect-command"
+                  className="block whitespace-pre-wrap break-all text-xs"
+                >
+                  {reconnectCredential.command}
+                </code>
+              </AttachmentSheet>
               <div className="grid gap-2 sm:grid-cols-3">
                 <Field label={copy.computerName} value={reconnectCredential.name} />
                 <Field label={copy.server} value={reconnectCredential.serverName || shortId(reconnectCredential.serverId)} />
                 <Field label={copy.expires} value={reconnectCredential.expiresAt} />
               </div>
-            </div>
+            </InkframeObjectSurface>
           )}
 
           <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -481,8 +497,8 @@ function ComputerDetail({
               <Network className="size-3" />
               {copy.agentWorkspaces}
             </div>
-            <div className="overflow-hidden rounded-none border">
-              <div className="hidden grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] gap-2 border-b bg-muted/60 px-3 py-2 text-sm font-medium text-foreground md:grid">
+            <InkframeObjectSurface material="dry" data-inkframe-mobile-role="computer-workspace-list" className="min-w-0 overflow-x-hidden p-0">
+              <div className="hidden grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] gap-2 border-b-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-2 text-sm font-medium text-foreground md:grid">
                 <span>{copy.agent}</span>
                 <span>{copy.runtime}</span>
                 <span>{copy.status}</span>
@@ -505,7 +521,7 @@ function ComputerDetail({
                   {copy.noWorkspaces}
                 </div>
               )}
-            </div>
+            </InkframeObjectSurface>
           </div>
 
           <div className="space-y-2">
@@ -566,7 +582,7 @@ function WorkspaceRow({
   const runtimeError = workspace.runtimeLastError
 
   return (
-    <div className="grid gap-2 border-b px-3 py-3 last:border-b-0 md:grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] md:items-center">
+    <div data-inkframe-mobile-role="computer-workspace-row" className="grid min-w-0 gap-2 overflow-x-hidden border-b px-3 py-3 last:border-b-0 md:grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] md:items-center">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <Bot className="size-4 text-muted-foreground" />
@@ -639,28 +655,16 @@ function ComputerListRow({ computer, selectedId, copy }: { computer: Computer; s
   const running = computer.agentWorkspaces.filter((w) => w.status === "running").length
 
   return (
-    <Link href={`/computers?computer=${computer.id}`}>
-      <Card className={`cursor-pointer transition-colors hover:border-primary/40 ${isSelected ? "border-primary/50 ring-1 ring-primary/30" : ""}`}>
-        <CardContent className="flex items-center gap-3 p-3">
-          <span className={`size-2 shrink-0 rounded-full ${dotClass(computer.status)}`} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-sm font-medium">{computer.name}</span>
-              <StatusPill status={computer.status} label={statusLabel(computer.status)} />
-            </div>
-            <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-              <span>{computer.os || copy.unknownOs}</span>
-              <span>daemon {computer.daemonVersion || copy.unknown}</span>
-              <span>{copy.workspacesRunning(computer.agentWorkspaces.length, running)}</span>
-              <span className="inline-flex items-center gap-1">
-                <Clock className="size-3" />
-                {formatTime(computer.lastHeartbeatAt)}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+    <SidebarEntityItem
+      href={`/computers?computer=${computer.id}`}
+      data-inkframe-mobile-role="computer-entity-item"
+      active={isSelected}
+      tone="green"
+      icon={<Monitor className="size-4" />}
+      title={computer.name}
+      subtitle={`${computer.os || copy.unknownOs} · daemon ${computer.daemonVersion || copy.unknown} · ${copy.workspacesRunning(computer.agentWorkspaces.length, running)} · ${formatTime(computer.lastHeartbeatAt)}`}
+      trailing={<StatusPill status={computer.status} label={statusLabel(computer.status)} />}
+    />
   )
 }
 
@@ -717,7 +721,7 @@ export default async function ComputersPage({
             <span className="font-semibold text-sand-ink">{copy.computerCount(computers.length)}</span>
             <span className="text-xs text-sand-muted">{onlineComputers} {copy.online}</span>
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div data-inkframe-mobile-role="computers-list" className="min-h-0 min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto p-2">
             {computers.map((computer) => (
               <ComputerListRow key={computer.id} computer={computer} selectedId={selectedComputerId} copy={copy} />
             ))}
@@ -737,18 +741,9 @@ export default async function ComputersPage({
       sidebarDescription={copy.runtimeSnapshotDesc}
       sidebar={
         <div className="space-y-2">
-          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
-            <div className="text-xs text-muted-foreground">{copy.registered}</div>
-            <div className="mt-1 text-2xl font-semibold">{computers.length}</div>
-          </div>
-          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
-            <div className="text-xs text-muted-foreground">{copy.online}</div>
-            <div className="mt-1 text-2xl font-semibold">{onlineComputers}</div>
-          </div>
-          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
-            <div className="text-xs text-muted-foreground">{copy.runningWorkspaces}</div>
-            <div className="mt-1 text-2xl font-semibold">{runningWorkspaces}</div>
-          </div>
+          <ObjectMetric label={copy.registered} value={computers.length} />
+          <ObjectMetric label={copy.online} value={onlineComputers} />
+          <ObjectMetric label={copy.runningWorkspaces} value={runningWorkspaces} />
         </div>
       }
       actions={

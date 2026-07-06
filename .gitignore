@@ -34,6 +34,7 @@ release-artifacts/
 # Dev server runtime
 .dev-pids/
 .dev-logs/
+smallkhoj-daemon.pid
 .slock/
 .slock-runtimes/
 agent/daemon/aaa-daemon/.slock/

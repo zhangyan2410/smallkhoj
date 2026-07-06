@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend source/unit proof and ./twd no-tab honesty rules for browser-facing UI work."}
+{"file": ".trellis/spec/guides/index.md", "reason": "Shared thinking guide index, including code reuse and cross-layer triggers."}
+{"file": ".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/evidence/integrated-execution-plan.md", "reason": "Parent product direction: app background is material-capable by default and must preserve desk owner/tint."}
+{"file": ".trellis/tasks/07-05-inkframe-product-ui-refactor/prd.md", "reason": "Umbrella product acceptance contract for Inkframe default product background."}

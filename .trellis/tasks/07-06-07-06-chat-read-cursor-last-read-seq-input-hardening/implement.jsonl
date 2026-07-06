@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Read cursor storage and server/member scoping are backend database contracts."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Unread/read cursor state feeds browser event projections and must stay separate from runtime delivery noise."}
+{"file":".trellis/spec/backend/threading-contracts.md","reason":"Thread read cursor validation must respect thread/root/reply boundaries."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Input validation belongs at the public API boundary before service/database writes."}

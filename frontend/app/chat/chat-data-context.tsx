@@ -5,13 +5,24 @@ import { usePathname } from "next/navigation"
 
 import type { Member } from "@/lib/control-plane"
 
-export type ChannelInfo = { id: string; name: string; type: string; description?: string | null }
+export type ChannelInfo = {
+  id: string
+  name: string
+  type: string
+  description?: string | null
+  latestSeq?: number
+  unreadCount?: number
+  hasUnread?: boolean
+}
 export type DmInfo = {
   id: string
   name: string
   type: "dm"
   displayName: string
   peer?: Member | null
+  latestSeq?: number
+  unreadCount?: number
+  hasUnread?: boolean
 }
 
 type ChatData = {

@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Layering and single-source styling constraints for shell/background and product primitives."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Inkframe visual language constraints for clean desk background, object surfaces, and forbidden dirty/pink drift."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend verification gates, ProductShell ownership, overflow, and real-browser evidence rules."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Session-local material resource state and durable-storage boundaries."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Resource and cursor ownership boundaries across frontend/runtime/backend."}

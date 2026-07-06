@@ -306,6 +306,35 @@ class ThreadSummary(Base):
     updated_by_member = relationship("Member", foreign_keys=[updated_by])
 
 
+class ChatThreadReadCursor(Base):
+    __tablename__ = "chat_thread_read_cursors"
+    __table_args__ = (
+        Index(
+            "uq_chat_thread_read_cursor_scope",
+            "server_id",
+            "member_id",
+            "root_message_id",
+            unique=True,
+        ),
+        Index("idx_chat_thread_read_cursors_member", "server_id", "member_id", "last_read_seq"),
+        Index("idx_chat_thread_read_cursors_root", "root_message_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    root_message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    last_read_seq: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
+    last_seen_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    server = relationship("Server")
+    member = relationship("Member")
+    root_message = relationship("Message", foreign_keys=[root_message_id])
+    last_seen_message = relationship("Message", foreign_keys=[last_seen_message_id])
+
+
 # ── Tasks ────────────────────────────────────────────────────
 
 class Task(Base):

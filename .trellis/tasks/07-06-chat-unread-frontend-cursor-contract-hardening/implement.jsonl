@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/07-06-chat-unread-frontend-cursor-contract-hardening/prd.md","reason":"Implementation requirements."}
+{"file":".trellis/tasks/07-06-chat-unread-frontend-cursor-contract-hardening/design.md","reason":"Technical design."}
+{"file":".trellis/tasks/07-06-chat-unread-frontend-cursor-contract-hardening/implement.md","reason":"Step-by-step plan."}
+{"file":"frontend/lib/chat-unread-state.ts","reason":"Primary implementation target if gaps exist."}
+{"file":"frontend/test/chat-unread-state.test.ts","reason":"Primary test target."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Validation guidance."}

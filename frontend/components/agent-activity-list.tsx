@@ -21,8 +21,10 @@ import {
   User,
 } from "lucide-react"
 
-import { apiGet, activityCategoryKind, formatTime, shortId } from "@/lib/control-plane"
+import { AttachmentSheet, EvidenceSurface, InkframeObjectSurface } from "@/components/inkframe-object-ui"
+import { Button } from "@/components/ui/button"
 import { RuntimeChip } from "@/components/product-ui"
+import { apiGet, activityCategoryKind, formatTime, shortId } from "@/lib/control-plane"
 
 export type ActivityItem = {
   id: string
@@ -129,7 +131,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
   const hasDetails = Object.keys(item.details).length > 0
 
   return (
-    <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card">
+    <EvidenceSurface kind="activity">
       <button
         onClick={() => hasDetails && setExpanded(!expanded)}
         className={`flex w-full items-center gap-2 px-3 py-2 text-left ${hasDetails ? "cursor-pointer hover:bg-accent/50" : "cursor-default"}`}
@@ -156,7 +158,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
         );
       })()}
       {expanded && hasDetails && (
-        <div className="border-t px-3 py-2">
+        <div className="border-t-2 border-[var(--ink)] px-3 py-2">
           <div className="space-y-1">
             <ActivityDetailRow label="activityId" value={shortId(item.id)} />
             {item.channelId && <ActivityDetailRow label="channelId" value={shortId(item.channelId)} />}
@@ -170,17 +172,21 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             {item.details.thought != null && (
               <div className="mt-1">
                 <span className="text-[11px] text-muted-foreground">Thought</span>
-                <pre className="mt-0.5 max-h-32 overflow-auto rounded-none bg-muted p-1.5 text-[11px]">
-                  {String(item.details.thought)}
-                </pre>
+                <AttachmentSheet kind="proof" className="mt-0.5 p-1.5">
+                  <pre className="max-h-32 overflow-auto text-[11px]">
+                    {String(item.details.thought)}
+                  </pre>
+                </AttachmentSheet>
               </div>
             )}
             {item.details.commandPreview != null && (
               <div className="mt-1">
                 <span className="text-[11px] text-muted-foreground">Command</span>
-                <pre className="mt-0.5 max-h-24 overflow-auto rounded-none bg-muted p-1.5 text-[11px]">
-                  {String(item.details.commandPreview)}
-                </pre>
+                <AttachmentSheet kind="proof" className="mt-0.5 p-1.5">
+                  <pre className="max-h-24 overflow-auto text-[11px]">
+                    {String(item.details.commandPreview)}
+                  </pre>
+                </AttachmentSheet>
               </div>
             )}
             {item.details.tokens != null && (
@@ -199,14 +205,16 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             )}
             <details className="mt-1">
               <summary className="cursor-pointer text-[11px] text-muted-foreground">raw details</summary>
-              <pre className="mt-1 max-h-40 overflow-auto rounded-none bg-muted p-2 text-[11px]">
-                {JSON.stringify(item.details, null, 2)}
-              </pre>
+              <AttachmentSheet kind="proof" className="mt-1 p-2">
+                <pre className="max-h-40 overflow-auto text-[11px]">
+                  {JSON.stringify(item.details, null, 2)}
+                </pre>
+              </AttachmentSheet>
             </details>
           </div>
         </div>
       )}
-    </div>
+    </EvidenceSurface>
   )
 }
 
@@ -275,20 +283,21 @@ export function AgentActivityList({
               {Math.min(activity.length, maxDisplay)}{activity.length > maxDisplay ? `/${activity.length}` : ""} {runtimeOnly ? "state change" : "event"}{activity.length === 1 ? "" : "s"}
             </span>
           </h2>
-          <button
+          <Button
             onClick={() => void refreshActivity()}
-            className="rounded-none border-2 border-[var(--ink)] px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+            variant="outline"
+            size="xs"
           >
             Refresh
-          </button>
+          </Button>
         </div>
       )}
       {loading && <p className="py-8 text-center text-sm text-muted-foreground">Loading activity...</p>}
       {!loading && activity.length === 0 && !compact && (
-        <div className="rounded-none border border-dashed py-10 text-center">
+        <InkframeObjectSurface material="dry" className="py-10 text-center">
           <Cpu className="mx-auto size-7 text-muted-foreground/50" />
           <p className="mt-2 text-sm text-muted-foreground">No activity yet.</p>
-        </div>
+        </InkframeObjectSurface>
       )}
       {!loading && activity.length === 0 && compact && (
         <p className="py-4 text-center text-xs text-muted-foreground">No activity</p>

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react"
 
+import { Select, type SelectOption } from "@/components/ui/form"
+
 export function ProviderSelect({
   options,
   unavailableOptions,
@@ -15,35 +17,25 @@ export function ProviderSelect({
   const selectedIsUnavailable = unavailableOptions.some((option) => option.value === runtimeProvider)
   const selectedValue = selectedOption && !selectedIsUnavailable ? runtimeProvider : ""
   const provider = selectedValue ? selectedOption?.label.split(" / ")[0] ?? "" : ""
+  const items: SelectOption[] = [
+    ...options,
+    ...(unavailableOptions.length > 0 ? [{ value: "__unavailable", label: "Unavailable providers", disabled: true }] : []),
+    ...unavailableOptions.map((option) => ({ ...option, disabled: true })),
+  ]
 
   return (
     <>
-      <select
+      <Select
         id="agent-provider"
         name="runtimeProvider"
         value={selectedValue}
-        className="h-9 min-w-36 rounded-none border-2 border-[var(--ink)] bg-transparent px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
+        items={items}
+        emptyLabel="Default"
+        className="h-9 min-w-36 px-3"
         onChange={(e) => {
           setRuntimeProvider(e.target.value)
         }}
-      >
-        <option value="">Default</option>
-        {options.map((provider) => (
-          <option key={provider.value} value={provider.value}>
-            {provider.label}
-          </option>
-        ))}
-        {unavailableOptions.length > 0 && (
-          <option value="" disabled>
-            Unavailable providers
-          </option>
-        )}
-        {unavailableOptions.map((provider) => (
-          <option key={provider.value} value={provider.value} disabled>
-            {provider.label}
-          </option>
-        ))}
-      </select>
+      />
       <input type="hidden" name="provider" value={provider} />
     </>
   )

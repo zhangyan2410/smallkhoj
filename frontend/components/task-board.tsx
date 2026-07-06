@@ -35,8 +35,8 @@ import {
 } from "lucide-react"
 
 import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
+import { EvidenceSurface, InkframeObjectSurface, ObjectToggleField, ReviewStamp, TaskMaterialSurface } from "@/components/inkframe-object-ui"
 import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
-import { Card, CardContent } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/form"
 import { Button } from "@/components/ui/button"
 import { apiGet, apiHeaders, apiPatch, apiPost,  formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
@@ -172,7 +172,7 @@ function SortableTaskCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="relative">
+    <div ref={setNodeRef} style={style} className="relative min-w-0">
       <div
         {...attributes}
         {...listeners}
@@ -190,37 +190,38 @@ function SortableTaskCard({
         }}
         aria-label={`Drag or open task ${task.title}`}
         title="Drag to move status, click to inspect"
-        className={`group block w-full text-left outline-none ${
+        className={`group block min-w-0 w-full text-left outline-none ${
           dragDisabled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
         }`}
       >
-        <Card
-          size="sm"
-          className={`transition-all ${
-            selected ? "border-primary/60 bg-primary/5 ring-1 ring-primary/20" : ""
+        <TaskMaterialSurface
+          status={task.status}
+          materialSurface={{
+            ownerId: task.id,
+            mode: "static",
+            pointerMode: "none",
+          }}
+          className={`min-w-0 overflow-x-hidden transition-all ${
+            selected ? "ring-2 ring-[var(--cinnabar)]/35" : ""
           } ${
-            recentlyUpdated ? "border-[var(--success)] bg-[color-mix(in_oklch,var(--success)_12%,transparent)] ring-1 ring-[var(--success)]/40" : ""
+            recentlyUpdated ? "ring-2 ring-[var(--moss)]/35" : ""
           } ${
-            isAgentOver ? "border-primary/50 bg-primary/10 ring-2 ring-primary/30" : ""
-          } ${
-            dragDisabled
-              ? "hover:border-primary/40 hover:bg-primary/5"
-              : "hover:border-primary/60 hover:bg-primary/5 sk-hard-shadow-sm hover:ring-1 hover:ring-primary/15"
-          } ${isDragging ? "border-primary/70 bg-primary/10 sk-hard-shadow ring-2 ring-primary/30" : ""}`}
+            isAgentOver ? "ring-2 ring-[var(--wash)]/35" : ""
+          } ${isDragging ? "sk-hard-shadow ring-2 ring-[var(--wash)]/45" : ""}`}
         >
-          <CardContent className="space-y-2">
-            <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-2 px-3 py-3">
+            <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="font-mono text-xs text-muted-foreground">
                   {formatChannelName(task.channel, agentName)} #{task.number}
                 </div>
                 <div className="mt-1 line-clamp-2 text-sm font-medium">{task.title}</div>
               </div>
-              <div className="flex items-center gap-1 transition-transform group-hover:translate-x-0.5">
+              <div className="flex shrink-0 items-center gap-1 transition-transform group-hover:translate-x-0.5">
                 <StatusPill status={task.status} label={statusLabel(task.status)} />
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs">
+            <div className="flex min-w-0 flex-wrap gap-2 text-xs">
               {task.creator && (
                 <RuntimeChip tone="info" className="min-h-0 px-1.5 py-0.5">创建 @{task.creator}</RuntimeChip>
               )}
@@ -230,18 +231,20 @@ function SortableTaskCard({
               <span className="text-muted-foreground">{formatTime(task.updatedAt || task.createdAt)}</span>
             </div>
             {source && (
-              <div className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+              <EvidenceSurface kind="source" className="inline-flex max-w-full min-w-0 items-center gap-1 overflow-x-hidden px-2 py-1 text-xs text-muted-foreground">
                 <ExternalLink className="size-3" />
-                {source.channel ? formatChannelName(source.channel, agentName) : (source.type || "来源")}
-              </div>
+                <span className="min-w-0 truncate">
+                  {source.channel ? formatChannelName(source.channel, agentName) : (source.type || "来源")}
+                </span>
+              </EvidenceSurface>
             )}
             {isAgentOver && (
-              <div className="rounded-none border-2 border-[var(--ink)] bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+              <InkframeObjectSurface material="wet" className="px-2 py-1 text-xs font-medium text-primary">
                 松开以分配 agent
-              </div>
+              </InkframeObjectSurface>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </TaskMaterialSurface>
       </div>
     </div>
   )
@@ -279,10 +282,10 @@ function TaskStatusColumn({
     <section
       ref={setNodeRef}
       data-status={status}
-      className={`min-w-0 rounded-none border-2 border-[var(--ink)] p-1.5 transition-all ${
+      className={`sk-task-status-column min-w-0 overflow-x-hidden p-1.5 transition-all ${
         isDropTarget
-          ? "border-primary/60 bg-primary/10 sk-hard-shadow-sm ring-2 ring-primary/15"
-          : "bg-muted/20"
+          ? "sk-task-status-column-active sk-hard-shadow-sm ring-2 ring-[var(--wash)]/20"
+          : ""
       }`}
     >
       <div className={`mb-1.5 flex items-center justify-between gap-2 rounded-none px-1 py-0.5 ${
@@ -291,7 +294,7 @@ function TaskStatusColumn({
         <span className="text-xs font-medium">{statusLabel(status)}</span>
         <span className="text-[0.65rem] text-muted-foreground">{tasks.length}</span>
       </div>
-      <div className="min-h-[72px] space-y-1.5">
+      <div className="min-h-[72px] min-w-0 space-y-1.5 overflow-x-hidden">
         <SortableContext
           items={tasks.map((task) => task.id)}
           strategy={verticalListSortingStrategy}
@@ -309,38 +312,63 @@ function TaskStatusColumn({
           ))}
         </SortableContext>
         {tasks.length === 0 && (
-          <div className="rounded-none border border-dashed py-4 text-center text-[0.65rem] text-muted-foreground">
+          <InkframeObjectSurface material="dry" className="py-4 text-center text-[0.65rem] text-muted-foreground">
             {isDropTarget ? "松开以放置" : "空"}
-          </div>
+          </InkframeObjectSurface>
         )}
       </div>
     </section>
   )
 }
 
-function ListRow({ task, selected, onSelect }: { task: Task; selected: boolean; onSelect: (task: Task) => void }) {
+function ListRow({
+  task,
+  selected,
+  onSelect,
+}: {
+  task: Task
+  selected: boolean
+  onSelect: (task: Task) => void
+}) {
   const agentName = task.assigneeMember?.displayName ?? task.assignee ?? undefined
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(task)}
-      className={`grid w-full gap-2 border-b px-3 py-3 text-left text-sm last:border-b-0 hover:bg-muted/40 md:grid-cols-[auto_1fr_auto] md:items-center ${selected ? "bg-primary/5" : ""}`}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          onSelect(task)
+        }
+      }}
+      className="block min-w-0 w-full text-left text-sm"
     >
-      <div className="font-mono text-xs text-muted-foreground">{formatChannelName(task.channel, agentName)} #{task.number}</div>
-      <div className="min-w-0">
-        <div className="truncate font-medium">{task.title}</div>
-        <div className="mt-1 flex flex-wrap gap-2 text-xs">
-          {task.creator && (
-            <RuntimeChip tone="info" className="min-h-0 px-1.5 py-0.5">创建 @{task.creator}</RuntimeChip>
-          )}
-          {task.assignee && (
-            <RuntimeChip tone="primary" className="min-h-0 px-1.5 py-0.5">负责 @{task.assignee}</RuntimeChip>
-          )}
-          <span className="text-muted-foreground">更新 {formatTime(task.updatedAt || task.createdAt)}</span>
+      <TaskMaterialSurface
+        status={task.status}
+        materialSurface={{
+          ownerId: task.id,
+          mode: "static",
+          pointerMode: "none",
+        }}
+        className={`grid min-w-0 grid-cols-1 gap-2 overflow-x-hidden px-3 py-3 md:grid-cols-[auto_1fr_auto_auto] md:items-center ${selected ? "ring-2 ring-[var(--cinnabar)]/35" : ""}`}
+      >
+        <div className="font-mono text-xs text-muted-foreground">{formatChannelName(task.channel, agentName)} #{task.number}</div>
+        <div className="min-w-0">
+          <div className="truncate font-medium">{task.title}</div>
+          <div className="mt-1 flex flex-wrap gap-2 text-xs">
+            {task.creator && (
+              <RuntimeChip tone="info" className="min-h-0 px-1.5 py-0.5">创建 @{task.creator}</RuntimeChip>
+            )}
+            {task.assignee && (
+              <RuntimeChip tone="primary" className="min-h-0 px-1.5 py-0.5">负责 @{task.assignee}</RuntimeChip>
+            )}
+            <span className="text-muted-foreground">更新 {formatTime(task.updatedAt || task.createdAt)}</span>
+          </div>
         </div>
-      </div>
-      <StatusPill status={task.status} label={statusLabel(task.status)} />
-    </button>
+        <StatusPill status={task.status} label={statusLabel(task.status)} />
+      </TaskMaterialSurface>
+    </div>
   )
 }
 
@@ -365,7 +393,7 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
     }
   })()
   return (
-    <div className="flex items-start gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
+    <EvidenceSurface kind={entry.type} className="flex items-start gap-2 px-2.5 py-2">
       {icon}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -376,23 +404,17 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
         {entry.content && <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{entry.content}</p>}
         {entry.decision && (
           <div className="mt-1">
-            <RuntimeChip
-              className="min-h-0 px-1.5 py-0.5"
-              tone={
-                entry.decision === "approved" || entry.decision === "pass"
-                  ? "success"
-                  : entry.decision === "rejected" || entry.decision === "fail"
-                    ? "danger"
-                    : "neutral"
-              }
+            <ReviewStamp
+              tone={entry.decision === "approved" || entry.decision === "pass" ? "approved" : entry.decision === "rejected" || entry.decision === "fail" ? "blocked" : "review"}
+              className="text-[0.65rem]"
             >
               {entry.decision}
-            </RuntimeChip>
+            </ReviewStamp>
           </div>
         )}
         {entry.note && <p className="mt-1 text-xs text-muted-foreground">{entry.note}</p>}
       </div>
-    </div>
+    </EvidenceSurface>
   )
 }
 
@@ -442,7 +464,8 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-none border border-dashed bg-muted/30 p-2.5">
+    <InkframeObjectSurface material="dry" className="p-2.5">
+    <form onSubmit={handleSubmit}>
       <div className="flex items-start gap-2">
         <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
@@ -461,7 +484,7 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
       />
       <div className="mt-2 flex flex-wrap gap-1.5">
         {MEMORY_OUTPUT_DIRECTIONS.map((direction) => (
-          <label key={direction} className="cursor-pointer">
+          <ObjectToggleField key={direction} className="cursor-pointer px-0 py-0 text-[0.68rem]">
             <input
               type="checkbox"
               name="outputDirection"
@@ -470,10 +493,10 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
               className="peer sr-only"
               disabled={!hasAgentAssignee || status === "sending"}
             />
-            <span className="inline-flex rounded-none border-2 border-[var(--ink)] bg-sand-card px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
+            <span className="inline-flex px-2 py-1 text-muted-foreground peer-checked:text-primary">
               {memoryOutputDirectionLabel(direction)}
             </span>
-          </label>
+          </ObjectToggleField>
         ))}
       </div>
       <div className="mt-2 flex items-center justify-between gap-2">
@@ -485,6 +508,7 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
         </Button>
       </div>
     </form>
+    </InkframeObjectSurface>
   )
 }
 
@@ -546,10 +570,10 @@ function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionTok
 
   if (loading) {
     return (
-      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
+      <InkframeObjectSurface material="drying" className="p-2.5">
         <h4 className="text-xs font-medium">任务记忆</h4>
         <p className="mt-1.5 text-xs text-muted-foreground">Loading memory...</p>
-      </div>
+      </InkframeObjectSurface>
     )
   }
 
@@ -564,7 +588,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
   const entries = evidence?.entries ?? []
   const agentName = task.assigneeMember?.displayName ?? task.assignee ?? undefined
   return (
-    <div className="space-y-3">
+    <div data-slot="task-detail-inline" className="min-w-0 space-y-3 overflow-x-hidden">
       <div>
         <div className="font-mono text-xs text-muted-foreground">{formatChannelName(task.channel, agentName)} #{task.number}</div>
         <h3 className="mt-1 text-sm font-semibold">{task.title}</h3>
@@ -577,28 +601,28 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">负责人</span>
-          <span className="font-medium text-purple-700">{task.assignee ? `@${task.assignee}` : "未指派"}</span>
+          <span className="font-medium text-paper-ink">{task.assignee ? `@${task.assignee}` : "未指派"}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">创建者</span>
-          <span className="font-medium text-blue-700">{task.creator ? `@${task.creator}` : "未知"}</span>
+          <span className="font-medium text-paper-ink">{task.creator ? `@${task.creator}` : "未知"}</span>
         </div>
       </div>
       {source && (
-        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
+        <EvidenceSurface kind="source" className="px-2.5 py-2">
           <h4 className="text-xs font-medium">来源</h4>
           <div className="mt-1.5 space-y-1 text-xs text-muted-foreground">
             <div>类型: {source.type || "message"}</div>
             {source.messageId && <div>消息: {source.messageShortId || source.messageId.slice(0, 8)}</div>}
           </div>
-        </div>
+        </EvidenceSurface>
       )}
       {(entries.length > 0 || (evidence?.notes?.length ?? 0) > 0) && (
-        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
+        <div className="space-y-1.5">
           <h4 className="text-xs font-medium">证据</h4>
           <div className="mt-1.5 space-y-1.5">
             {(evidence?.notes || []).map((note) => (
-              <div key={note} className="rounded-none border border-dashed bg-muted/30 px-2 py-1 text-xs">{note}</div>
+              <EvidenceSurface key={note} kind="note" className="px-2 py-1 text-xs">{note}</EvidenceSurface>
             ))}
             {entries.map((entry, i) => (
               <EvidenceEntryRow key={`${entry.type}-${entry.timestamp}-${i}`} entry={entry} />
@@ -607,7 +631,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
         </div>
       )}
       {activity.length > 0 && (
-        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-2.5">
+        <EvidenceSurface kind="activity" className="px-2.5 py-2">
           <h4 className="text-xs font-medium">活动</h4>
           <div className="mt-1.5 space-y-1.5">
             {activity.map((item) => (
@@ -618,7 +642,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
               </div>
             ))}
           </div>
-        </div>
+        </EvidenceSurface>
       )}
       <TaskMemoryRequestInline task={task} sessionToken={sessionToken} />
       <TaskMemoryInline taskId={task.id} sessionToken={sessionToken} />
@@ -867,7 +891,7 @@ export function TaskBoard({
   }
 
   const boardContent = (
-    <div className={`grid gap-2 ${compact ? "grid-cols-1" : "grid-cols-2 md:grid-cols-3 xl:grid-cols-5"}`}>
+    <div className={`grid min-w-0 grid-cols-1 gap-2 overflow-x-hidden ${compact ? "" : "sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5"}`}>
       {TASK_STATUSES.map((status) => {
         const columnTasks = tasks.filter((t) => t.status === status)
         return (
@@ -890,7 +914,7 @@ export function TaskBoard({
   const activeTask = activeDragId ? tasks.find((task) => task.id === activeDragId) : null
 
   return (
-    <div className="space-y-3">
+    <div data-slot="task-board-root" className="min-w-0 space-y-3 overflow-x-hidden">
       {dragError && (
         <div className="rounded-none border-2 border-[var(--ink)] sk-cat-danger px-3 py-2 text-xs">
           {dragError}
@@ -924,10 +948,18 @@ export function TaskBoard({
           {boardContent}
           <DragOverlay>
             {activeTask ? (
-              <div className="rotate-1 opacity-95">
-                <Card size="sm" className="border-primary/60 bg-card sk-hard-shadow ring-2 ring-primary/20">
-                  <CardContent className="space-y-2">
-                    <div className="flex items-start justify-between gap-3">
+              <div className="max-w-full min-w-0 overflow-x-hidden opacity-95">
+                <TaskMaterialSurface
+                  status={activeTask.status}
+                  materialSurface={{
+                    ownerId: activeTask.id,
+                    mode: "static",
+                    pointerMode: "none",
+                  }}
+                  className="sk-hard-shadow min-w-0 overflow-x-hidden px-3 py-3 ring-2 ring-[var(--wash)]/20"
+                >
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-mono text-xs text-muted-foreground">
                           {formatChannelName(activeTask.channel, activeTask.assigneeMember?.displayName ?? activeTask.assignee ?? undefined)} #{activeTask.number}
@@ -937,8 +969,8 @@ export function TaskBoard({
                       <StatusPill status={activeTask.status} label={statusLabel(activeTask.status)} />
                     </div>
                     <div className="text-xs text-muted-foreground">移动到目标状态列</div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </TaskMaterialSurface>
               </div>
             ) : null}
           </DragOverlay>
@@ -946,7 +978,7 @@ export function TaskBoard({
       ) : view === "board" ? (
         boardContent
       ) : (
-        <div className="overflow-hidden rounded-none border-2 border-[var(--ink)] bg-card">
+        <InkframeObjectSurface material="dry" className="overflow-hidden p-0">
           {tasks.map((task) => (
             <ListRow
               key={task.id}
@@ -955,11 +987,19 @@ export function TaskBoard({
               onSelect={handleSelect}
             />
           ))}
-        </div>
+        </InkframeObjectSurface>
       )}
 
       {showDetail && selectedTask && (
-        <div className="rounded-none border-2 border-[var(--ink)] bg-card p-3">
+        <TaskMaterialSurface
+          status={selectedTask.status}
+          materialSurface={{
+            ownerId: selectedTask.id,
+            mode: "static",
+            pointerMode: "none",
+          }}
+          className="p-3"
+        >
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold">任务详情</h3>
             <button
@@ -971,7 +1011,7 @@ export function TaskBoard({
             </button>
           </div>
           <TaskDetailInline task={selectedTask} activity={activity} sessionToken={sessionToken} />
-        </div>
+        </TaskMaterialSurface>
       )}
     </div>
   )

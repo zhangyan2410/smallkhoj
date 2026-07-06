@@ -14,6 +14,7 @@
  */
 import { useCallback, useSyncExternalStore } from "react"
 import { useTranslations } from "next-intl"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 type Theme = "water" | "dark" | "shuimo"
@@ -89,22 +90,23 @@ export function ThemeSwitcher() {
       {options.map(({ key, labelKey }) => {
         const active = theme === key
         return (
-          <button
+          <Button
             key={key}
             type="button"
+            variant={active ? "default" : "outline"}
+            size="sm"
             role="radio"
             aria-checked={active}
             onClick={() => choose(key)}
             className={cn(
-              "rounded-none border-2 border-[var(--ink)] px-3 py-1.5 text-sm transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset",
+              "min-w-16",
               active
                 ? "bg-[var(--ink)] text-[var(--paper)]"
-                : "bg-transparent text-foreground hover:bg-muted",
+                : "bg-[var(--paper)] text-foreground",
             )}
           >
             {t(labelKey)}
-          </button>
+          </Button>
         )
       })}
     </div>

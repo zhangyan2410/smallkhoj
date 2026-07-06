@@ -159,18 +159,26 @@ test("unknown agent message sender still uses generated agent avatar fallback", 
 
 test("MessageFrame aligns author text and message body in one component", () => {
   const markup = renderToStaticMarkup(
-    <MessageFrame member={agent} senderType="agent" time="2026-06-21 12:00:00" avatarSize="lg" showStatus>
+    <MessageFrame member={agent} senderType="agent" time="2026-06-21 12:00:00" avatarSize="lg" showStatus actions={<button type="button">copy</button>} contentLength={180}>
       <p>hello</p>
     </MessageFrame>
   )
 
   assert.match(markup, /data-slot="message-frame"/)
   assert.match(markup, /data-slot="member-avatar"/)
+  assert.match(markup, /data-slot="avatar-object"/)
+  assert.match(markup, /sk-avatar-object/)
+  assert.doesNotMatch(markup, /data-slot="agent-seal-mark"/)
   assert.match(markup, /data-slot="message-author"/)
   assert.match(markup, /data-slot="message-body"/)
+  assert.match(markup, /data-slot="message-actions"/)
+  assert.match(markup, /data-slot="message-paper"/)
+  assert.match(markup, /data-density="long"/)
+  assert.match(markup, /sk-message-meta/)
+  assert.match(markup, /sk-message-actions/)
   assert.match(markup, /data-status="running"/)
   assert.match(markup, /assistant/)
-  assert.match(markup, /border-left-color:var\(--agent-color-/)
+  assert.doesNotMatch(markup, /border-left-color:var\(--agent-color-/)
   assert.match(markup, /2026-06-21 12:00:00/)
   assert.match(markup, /hello/)
 })
@@ -184,6 +192,10 @@ test("MessageFrame hides status dots for human chat authors", () => {
 
   assert.match(markup, /data-slot="message-frame"/)
   assert.match(markup, /data-slot="member-avatar"/)
+  assert.match(markup, /data-slot="avatar-object"/)
+  assert.match(markup, /sk-avatar-object/)
+  assert.doesNotMatch(markup, /data-slot="human-signature-card"/)
+  assert.doesNotMatch(markup, /data-slot="agent-seal-mark"/)
   assert.doesNotMatch(markup, /data-status=/)
 })
 

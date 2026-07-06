@@ -4,8 +4,10 @@ import { FormEvent, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Bot, HardDrive, Hash, Plus } from "lucide-react"
 
+import { AttachmentSheet, InkframeObjectSurface, ObjectToggleField } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { API_BASE, PUBLIC_KEY, runtimeLabel, type Channel, type Computer, type Member } from "@/lib/control-plane"
 import { resolvePublicApiBase } from "@/lib/runtime-url"
@@ -84,12 +86,18 @@ export function ComputerConnectForm({ compact = false }: { compact?: boolean }) 
             Create
           </Button>
         </form>
-        {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+        {state.error && (
+          <InkframeObjectSurface material="blocked" className="px-2 py-1.5 text-sm text-destructive">
+            {state.error}
+          </InkframeObjectSurface>
+        )}
         {state.command && (
-          <div className="space-y-2 rounded-none border-2 border-[var(--ink)] bg-muted/40 p-3">
+          <InkframeObjectSurface material="drying" className="space-y-2 p-3">
             <div className="text-xs font-medium uppercase text-muted-foreground">Run on the target computer</div>
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-none bg-background p-2 text-xs">{state.command}</pre>
-          </div>
+            <AttachmentSheet kind="proof" className="p-2">
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs">{state.command}</pre>
+            </AttachmentSheet>
+          </InkframeObjectSurface>
         )}
       </CardContent>
     </Card>
@@ -147,26 +155,22 @@ export function AgentCreateForm({ computers, compact = false }: { computers: Com
       <CardContent className="space-y-3">
         <form onSubmit={onSubmit} className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           <Input name="displayName" placeholder="agent handle, e.g. aaa" required />
-          <select
+          <Select
+            id="agent-computer"
             name="computerId"
+            items={computers.map((computer) => `${computer.id}|${computer.name}`)}
+            splitValue
             value={computerId}
             onChange={(event) => setComputerId(event.target.value)}
-            className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
             required
-          >
-            {computers.map((computer) => (
-              <option key={computer.id} value={computer.id}>
-                {computer.name}
-              </option>
-            ))}
-          </select>
-          <select name="runtime" className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
-            {runtimeOptions.map((runtime) => (
-              <option key={runtime} value={runtime}>
-                {runtimeLabel(runtime)}
-              </option>
-            ))}
-          </select>
+          />
+          <Select
+            id="agent-runtime"
+            name="runtime"
+            items={runtimeOptions.map((runtime) => `${runtime}|${runtimeLabel(runtime)}`)}
+            splitValue
+            fallback="claude_code|Claude Code"
+          />
           <Input name="backend" placeholder="backend label" defaultValue="Claude" />
           <Input name="runtimeModel" placeholder="model, optional" />
           <Input name="cwd" placeholder="workspace path, optional" />
@@ -176,12 +180,20 @@ export function AgentCreateForm({ computers, compact = false }: { computers: Com
             Create
           </Button>
         </form>
-        {computers.length === 0 && <p className="text-sm text-muted-foreground">Connect a computer before creating agents.</p>}
-        {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+        {computers.length === 0 && (
+          <InkframeObjectSurface material="dry" className="px-2 py-1.5 text-sm text-muted-foreground">
+            Connect a computer before creating agents.
+          </InkframeObjectSurface>
+        )}
+        {state.error && (
+          <InkframeObjectSurface material="blocked" className="px-2 py-1.5 text-sm text-destructive">
+            {state.error}
+          </InkframeObjectSurface>
+        )}
         {state.token && (
-          <p className="break-all rounded-none border-2 border-[var(--ink)] bg-muted/40 p-2 text-xs text-muted-foreground">
+          <AttachmentSheet kind="proof" className="break-all p-2 text-xs text-muted-foreground">
             Agent token created: {state.token}
-          </p>
+          </AttachmentSheet>
         )}
       </CardContent>
     </Card>
@@ -234,15 +246,19 @@ export function ChannelCreateForm({ members, compact = false }: { members: Membe
           </div>
           <div className="flex flex-wrap gap-2">
             {members.map((member) => (
-              <label key={member.id} className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-xs">
+              <ObjectToggleField key={member.id} className="text-xs">
                 <input name="memberIds" type="checkbox" value={member.id} />
                 @{member.name}
                 <span className="text-muted-foreground">[{member.kind}]</span>
-              </label>
+              </ObjectToggleField>
             ))}
           </div>
         </form>
-        {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+        {state.error && (
+          <InkframeObjectSurface material="blocked" className="px-2 py-1.5 text-sm text-destructive">
+            {state.error}
+          </InkframeObjectSurface>
+        )}
       </CardContent>
     </Card>
   )
@@ -292,29 +308,37 @@ export function ChannelMemberAddForm({
       <CardContent className="space-y-3">
         <form onSubmit={onSubmit} className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-            <select name="channel" className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset" required>
-              {channels.map((channel) => (
-                <option key={channel.id} value={channel.rawName || channel.name.replace("#", "")}>
-                  {channel.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="channel-member-channel"
+              name="channel"
+              items={channels.map((channel) => `${channel.rawName || channel.name.replace("#", "")}|${channel.name}`)}
+              splitValue
+              required
+            />
             <Button disabled={pending || channels.length === 0} type="submit">
               Add
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
             {members.map((member) => (
-              <label key={member.id} className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-xs">
+              <ObjectToggleField key={member.id} className="text-xs">
                 <input name="memberIds" type="checkbox" value={member.id} />
                 @{member.name}
                 <span className="text-muted-foreground">[{member.kind}]</span>
-              </label>
+              </ObjectToggleField>
             ))}
           </div>
         </form>
-        {channels.length === 0 && <p className="text-sm text-muted-foreground">Create a channel before adding members.</p>}
-        {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+        {channels.length === 0 && (
+          <InkframeObjectSurface material="dry" className="px-2 py-1.5 text-sm text-muted-foreground">
+            Create a channel before adding members.
+          </InkframeObjectSurface>
+        )}
+        {state.error && (
+          <InkframeObjectSurface material="blocked" className="px-2 py-1.5 text-sm text-destructive">
+            {state.error}
+          </InkframeObjectSurface>
+        )}
       </CardContent>
     </Card>
   )

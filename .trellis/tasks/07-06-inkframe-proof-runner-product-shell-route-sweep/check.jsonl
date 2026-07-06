@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/07-06-inkframe-proof-runner-product-shell-route-sweep/prd.md", "reason": "Review the route-sweep acceptance criteria and no-browser-claim boundary."}
+{"file": ".trellis/tasks/07-06-inkframe-proof-runner-product-shell-route-sweep/design.md", "reason": "Review the generated route-check design."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-selector-driven-twd-proof-runner/evidence/validation.md", "reason": "Compare this follow-up with prior runner validation."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Ensure browser evidence language stays truthful."}

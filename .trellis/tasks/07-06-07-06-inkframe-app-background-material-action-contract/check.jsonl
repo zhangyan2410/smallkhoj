@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Review against source-test strength, browser proof honesty, and ProductShell ownership rules."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-app-background-material-action-contract/prd.md", "reason": "Task-specific requirements and acceptance criteria."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-app-background-material-action-contract/design.md", "reason": "Task-specific action mapping and resource/tint contract."}
+{"file": ".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/evidence/integrated-execution-plan.md", "reason": "Parent scope guardrails: no material persistence, app-background/global-desk/desk contract, no browser proof without twd tab."}

@@ -63,11 +63,11 @@
 }
 
 :root {
-  /* DESIGN.md — light-first, mid-sea blue band (hue 205-220), warm sand surface. */
-  --background: oklch(0.985 0.008 220);     /* 近白带极淡冷蓝调 */
-  --foreground: oklch(0.28 0.04 225);      /* 深蓝灰文字，非纯黑 */
-  --card: oklch(0.975 0.012 85);          /* 暖沙白，平衡冷蓝 */
-  --card-foreground: oklch(0.28 0.04 225);
+  /* Inkframe object desk branch — dry xuan-paper desk, not blue water UI. */
+  --background: #f6f1e2;
+  --foreground: oklch(0.205 0.028 78);
+  --card: #f6f1e2;
+  --card-foreground: oklch(0.205 0.028 78);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.28 0.04 225);
   --primary: oklch(0.62 0.13 215);         /* 中海蓝 */
@@ -111,21 +111,42 @@
    * 色相来自 zy-think 色彩提取（hue 60-120 的暖沙区）。
    * rail 仍用水材质；列表栏/主区用暖沙，呼应「水 + 沙」冷暖分工。
    */
-  --sand-deep: oklch(0.852 0.035 85);     /* Col1 列表栏底色（深暖沙，做层次；= color-options body 底）*/
-  --sand: oklch(0.898 0.035 85);          /* Col2 主区底色（暖沙，比之前更深更实）*/
-  --sand-card: oklch(0.939 0.025 87);     /* 浮在主区上的卡片/侧栏面板（暖沙白，非纯白）*/
-  --paper: oklch(0.985 0.010 87);         /* 书卷纸色：接近纯白带极淡暖沙，消息气泡底色 */
-  --paper-ink: oklch(0.30 0.025 60);      /* 书卷上的墨字 */
-  --sand-ink: oklch(0.32 0.04 55);        /* 暖沙上的深棕文字 */
-  --sand-muted: oklch(0.52 0.035 60);     /* 暖沙上的次要文字 */
-  --sand-border: oklch(0.86 0.035 80);    /* 暖沙上的分隔线 */
+  --sand-deep: #e2dac7;                   /* engine dry-paper shadow */
+  --sand: #f1efe8;                        /* lab dry-paper field */
+  --sand-card: #f6f1e2;                   /* xuan-paper object surface */
+  --paper: #f6f1e2;                       /* wet-ink-engine paper [246,241,226] */
+  --paper-cool: #f1efe8;
+  --paper-deep: #e2dac7;
+  --paper-ink: oklch(0.205 0.028 78);
+  --sand-ink: oklch(0.205 0.028 78);
+  --sand-muted: oklch(0.43 0.026 78);
+  --sand-border: color-mix(in oklch, var(--ink) 24%, transparent);
+  --ink-soft: oklch(0.34 0.032 78);
+  --wash: oklch(0.39 0.035 78);
+  --wash-soft: oklch(0.82 0.04 84);
+  --desk-paper-bg:
+    linear-gradient(90deg, color-mix(in oklch, var(--ink) 3.5%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--ink) 2%, transparent) 1px, transparent 1px),
+    linear-gradient(135deg, color-mix(in oklch, white 48%, var(--paper)), var(--paper) 60%, color-mix(in oklch, var(--paper-deep) 60%, white));
+  --desk-paper-size: 43px 43px, 37px 37px, auto;
+  --sheet-paper-bg:
+    linear-gradient(90deg, color-mix(in oklch, var(--ink) 2.4%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--ink) 1.4%, transparent) 1px, transparent 1px),
+    linear-gradient(135deg, color-mix(in oklch, white 44%, var(--paper)), var(--paper) 62%, color-mix(in oklch, var(--paper-deep) 48%, white));
+  --sheet-paper-size: 43px 43px, 37px 37px, auto;
+  --slip-paper-bg:
+    linear-gradient(180deg, color-mix(in oklch, var(--paper) 94%, white), var(--paper));
+  --cinnabar: oklch(0.50 0.17 32);
+  --moss: oklch(0.48 0.088 150);
+  --amber: oklch(0.66 0.12 74);
+  --desk-line: color-mix(in oklch, var(--ink) 88%, transparent);
 
   /*
    * 手作墨色描边（Croodles/raft 手作风）。
    * 跟 agent 头像的 stroke="#111827" 同色，形成统一视觉签名。
    * 用于卡片/按钮/输入框/气泡的硬描边 —— 直角、无圆角、靠墨色硬线表达结构。
    */
-  --ink: oklch(0.21 0.03 264);            /* #111827 蓝灰墨，跟头像描边一致 */
+  --ink: oklch(0.205 0.028 78);           /* warm soot ink, aligned with the demo */
 
   /*
    * 状态色 token（单一真源）—— 收口 badgeClass/dotClass/StatusPill。
@@ -358,21 +379,115 @@
   --sidebar-ring: oklch(0.50 0.15 25);
 }
 
+/*
+ * Branch override: the active visual direction is Inkframe object desk, not the
+ * earlier grayscale shuimo token experiment. Keep the class mechanically
+ * compatible while making it render like the demo: bright xuan paper, warm soot
+ * ink, restrained cinnabar seal accents.
+ */
+.shuimo {
+  --background: #f6f1e2;
+  --foreground: oklch(0.205 0.028 78);
+  --card: #f6f1e2;
+  --card-foreground: oklch(0.205 0.028 78);
+  --popover: oklch(0.974 0.012 83);
+  --popover-foreground: oklch(0.205 0.028 78);
+  --primary: oklch(0.205 0.028 78);
+  --primary-foreground: oklch(0.974 0.012 83);
+  --secondary: oklch(0.958 0.011 88);
+  --secondary-foreground: oklch(0.205 0.028 78);
+  --muted: oklch(0.958 0.011 88);
+  --muted-foreground: oklch(0.43 0.026 78);
+  --accent: oklch(0.205 0.028 78);
+  --accent-foreground: oklch(0.974 0.012 83);
+  --border: color-mix(in oklch, var(--ink) 24%, transparent);
+  --input: color-mix(in oklch, var(--ink) 24%, transparent);
+  --ring: oklch(0.50 0.17 32);
+  --ink: oklch(0.205 0.028 78);
+  --ink-soft: oklch(0.34 0.032 78);
+  --wash: oklch(0.39 0.035 78);
+  --wash-soft: oklch(0.82 0.04 84);
+  --paper: #f6f1e2;
+  --paper-cool: #f1efe8;
+  --paper-deep: #e2dac7;
+  --sand-deep: #e2dac7;
+  --sand: #f1efe8;
+  --sand-card: #f6f1e2;
+  --paper-ink: oklch(0.205 0.028 78);
+  --sand-ink: oklch(0.205 0.028 78);
+  --sand-muted: oklch(0.43 0.026 78);
+  --sand-border: color-mix(in oklch, var(--ink) 24%, transparent);
+  --desk-line: color-mix(in oklch, var(--ink) 88%, transparent);
+  --desk-paper-bg:
+    linear-gradient(90deg, color-mix(in oklch, var(--ink) 3.5%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--ink) 2%, transparent) 1px, transparent 1px),
+    linear-gradient(135deg, color-mix(in oklch, white 48%, var(--paper)), var(--paper) 60%, color-mix(in oklch, var(--paper-deep) 60%, white));
+  --desk-paper-size: 43px 43px, 37px 37px, auto;
+  --sheet-paper-bg:
+    linear-gradient(90deg, color-mix(in oklch, var(--ink) 2.4%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--ink) 1.4%, transparent) 1px, transparent 1px),
+    linear-gradient(135deg, color-mix(in oklch, white 44%, var(--paper)), var(--paper) 62%, color-mix(in oklch, var(--paper-deep) 48%, white));
+  --sheet-paper-size: 43px 43px, 37px 37px, auto;
+  --slip-paper-bg:
+    linear-gradient(180deg, color-mix(in oklch, var(--paper) 94%, white), var(--paper));
+  --cinnabar: oklch(0.50 0.17 32);
+  --moss: oklch(0.48 0.088 150);
+  --amber: oklch(0.66 0.12 74);
+  --accent-rose: oklch(0.50 0.17 32);
+  --accent-rose-fg: oklch(0.974 0.012 83);
+  --accent-rose-soft: color-mix(in oklch, var(--cinnabar) 9%, var(--paper));
+  --accent-rose-soft-fg: oklch(0.32 0.10 32);
+  --accent-yellow: oklch(0.66 0.12 74);
+  --accent-yellow-fg: oklch(0.205 0.028 78);
+  --accent-yellow-soft: color-mix(in oklch, var(--amber) 18%, var(--paper));
+  --accent-yellow-soft-fg: oklch(0.28 0.05 78);
+  --accent-mint: oklch(0.48 0.088 150);
+  --accent-mint-fg: oklch(0.974 0.012 83);
+  --accent-mint-soft: color-mix(in oklch, var(--moss) 14%, var(--paper));
+  --accent-mint-soft-fg: oklch(0.25 0.06 145);
+  --accent-blue: var(--ink);
+  --accent-blue-fg: var(--paper);
+  --accent-blue-soft: color-mix(in oklch, var(--wash) 12%, var(--paper));
+  --accent-blue-soft-fg: var(--ink);
+  --accent-green: var(--moss);
+  --accent-green-fg: var(--paper);
+  --accent-green-soft: color-mix(in oklch, var(--moss) 14%, var(--paper));
+  --accent-green-soft-fg: oklch(0.25 0.06 145);
+  --accent-purple: var(--ink-soft);
+  --accent-purple-fg: var(--paper);
+  --accent-purple-soft: color-mix(in oklch, var(--wash) 12%, var(--paper));
+  --accent-purple-soft-fg: var(--ink);
+  --sidebar: oklch(0.902 0.020 84);
+  --sidebar-foreground: oklch(0.205 0.028 78);
+  --sidebar-primary: oklch(0.205 0.028 78);
+  --sidebar-primary-foreground: oklch(0.974 0.012 83);
+  --sidebar-accent: oklch(0.958 0.011 88);
+  --sidebar-accent-foreground: oklch(0.205 0.028 78);
+  --sidebar-border: color-mix(in oklch, var(--ink) 24%, transparent);
+  --sidebar-ring: oklch(0.50 0.17 32);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply text-foreground;
-    /* 暖沙底（对齐 color-options.html 的顺眼背景 #d9cdb5）。
-       自上而下极淡明度渐变，仅 body 层，光感·中。 */
-    background-color: var(--sand-deep);
-    background-image: linear-gradient(
-      to bottom,
-      oklch(0.872 0.035 85) 0%,
-      oklch(0.852 0.035 85) 50%,
-      oklch(0.832 0.035 85) 100%
-    );
+    /* Inkframe demo dry-paper background: keep pigment local, never dirty the whole page. */
+    background-color: var(--paper);
+    background-image: var(--desk-paper-bg);
+    background-size: var(--desk-paper-size);
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.16;
+    background-image:
+      linear-gradient(90deg, color-mix(in oklch, var(--ink) 3.5%, transparent) 1px, transparent 1px),
+      linear-gradient(color-mix(in oklch, var(--ink) 2%, transparent) 1px, transparent 1px);
+    background-size: 43px 43px, 37px 37px;
   }
   html {
     @apply font-sans;
@@ -423,6 +538,589 @@
   /* 硬阴影（offset 不模糊，墨色）—— 用于卡片/对话框/面板 */
   .sk-hard-shadow { box-shadow: 2px 2px 0 var(--ink); }
   .sk-hard-shadow-sm { box-shadow: 1px 1px 0 var(--ink); }
+
+  .sk-object-surface {
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: var(--sand-card);
+  }
+  .sk-object-raised { box-shadow: 2px 2px 0 var(--ink); }
+  .sk-object-wet { background-color: color-mix(in oklch, var(--accent-blue-soft) 22%, var(--sand-card)); }
+  .sk-object-drying { background-color: color-mix(in oklch, var(--accent-yellow-soft) 18%, var(--sand-card)); }
+  .sk-object-fixed { background-color: color-mix(in oklch, var(--accent-mint-soft) 18%, var(--sand-card)); }
+  .sk-object-blocked { background-color: color-mix(in oklch, var(--accent-rose-soft) 18%, var(--sand-card)); }
+
+  .sk-object-field {
+    min-width: 0;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: var(--paper);
+    background-image: var(--slip-paper-bg);
+    padding: 0.5rem 0.6rem;
+  }
+  .sk-object-field-label {
+    color: var(--paper-ink);
+    font-size: 0.875rem;
+    font-weight: 650;
+    line-height: 1.25;
+  }
+  .sk-object-field-value {
+    margin-top: 0.25rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--paper-ink);
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+  .sk-object-metric {
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: var(--paper);
+    background-image: var(--slip-paper-bg);
+    box-shadow: 2px 2px 0 var(--ink);
+    padding: 0.75rem;
+  }
+  .sk-object-metric-label,
+  .sk-object-metric-description {
+    color: var(--sand-muted);
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+  .sk-object-metric-value {
+    margin-top: 0.25rem;
+    color: var(--paper-ink);
+    font-size: 1.55rem;
+    font-weight: 720;
+    line-height: 1;
+  }
+  .sk-object-toggle-field {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.45rem;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: var(--paper);
+    background-image: var(--slip-paper-bg);
+    color: var(--paper-ink);
+    padding: 0.25rem 0.5rem;
+    transition: background-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  }
+  .sk-object-toggle-field:hover,
+  .sk-object-toggle-field:focus-within {
+    background-color: color-mix(in oklch, var(--paper) 82%, var(--accent-yellow-soft));
+    box-shadow: 2px 2px 0 var(--ink);
+    transform: translate(-1px, -1px);
+  }
+
+  .sk-message-paper {
+    position: relative;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: var(--paper);
+    background-image: linear-gradient(180deg, color-mix(in oklch, var(--paper) 92%, white), var(--paper));
+    box-shadow: 2px 2px 0 var(--ink);
+    transform-origin: 18% 18%;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+    width: fit-content;
+    min-width: min(14rem, 100%);
+    max-width: min(100%, 72ch);
+  }
+  .sk-message-paper[data-density="long"] {
+    width: min(100%, 72ch);
+  }
+  .sk-message-annotation-layer {
+    position: relative;
+    min-width: 0;
+  }
+  .sk-material-surface.sk-message-annotation-surface {
+    position: relative;
+    min-width: 0;
+    border: 0;
+    background-color: transparent;
+    background-image: none;
+    overflow: hidden;
+  }
+  .sk-message-annotation-surface .sk-material-static-layer {
+    opacity: 0.72;
+    mix-blend-mode: multiply;
+  }
+  .sk-message-annotation-surface .sk-material-canvas {
+    opacity: 0.64;
+    mix-blend-mode: multiply;
+  }
+  .sk-message-annotation-surface[data-captures-pointer="true"] {
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .sk-message-paper-content {
+    position: relative;
+    z-index: 3;
+  }
+  .sk-message-meta {
+    isolation: isolate;
+  }
+  .sk-message-tool-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    border: 2px solid var(--ink);
+    background-color: var(--paper);
+    box-shadow: 2px 2px 0 var(--ink);
+    padding: 0.1875rem;
+  }
+  .sk-message-actions {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(2px);
+    transition: opacity 120ms ease, transform 120ms ease;
+  }
+  .group\/message:hover .sk-message-actions,
+  .group\/message:focus-within .sk-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .sk-message-tool-strip button {
+    color: var(--paper-ink);
+  }
+  .sk-message-tool-strip button:hover {
+    background-color: color-mix(in oklch, var(--amber) 18%, var(--paper));
+  }
+  .sk-message-paper-tilt { transform: rotate(-0.45deg); }
+
+  .sk-avatar-object {
+    position: relative;
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--ink);
+    background-color: color-mix(in oklch, var(--paper) 86%, white);
+    box-shadow: 1px 1px 0 var(--ink);
+    padding: 0.125rem;
+  }
+  .sk-avatar-object[data-avatar-kind="agent"] {
+    background-color: color-mix(in oklch, var(--accent-blue-soft) 15%, var(--paper));
+  }
+  .sk-avatar-object[data-avatar-kind="human"] {
+    background-color: color-mix(in oklch, var(--accent-mint-soft) 14%, var(--paper));
+  }
+
+  .sk-event-badge {
+    display: inline-flex;
+    min-width: 0.625rem;
+    height: 0.625rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--ink);
+    background-color: var(--paper-deep);
+    color: var(--paper-ink);
+    font-size: 0.625rem;
+    font-weight: 760;
+    line-height: 1;
+  }
+  .sk-event-badge:not(:empty) {
+    min-width: 1.125rem;
+    height: 1rem;
+    padding-inline: 0.25rem;
+  }
+  .sk-event-badge-active {
+    background-color: var(--cinnabar);
+    color: var(--primary-foreground);
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+
+  .sk-sidebar-entity-item {
+    display: flex;
+    min-height: 2.35rem;
+    min-width: 0;
+    align-items: center;
+    gap: 0.5rem;
+    border: 2px solid transparent;
+    border-radius: 0;
+    color: var(--sand-ink);
+    padding: 0.35rem 0.5rem;
+    text-decoration: none;
+    transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  }
+  .sk-sidebar-entity-item:hover,
+  .sk-sidebar-entity-item:focus-visible {
+    border-color: color-mix(in oklch, var(--ink) 72%, transparent);
+    background-color: color-mix(in oklch, var(--paper) 72%, var(--paper-deep));
+    outline: none;
+  }
+  .sk-sidebar-entity-item-active {
+    border-color: var(--ink);
+    background-color: var(--paper);
+    box-shadow: 2px 2px 0 var(--ink);
+    font-weight: 650;
+  }
+  .sk-sidebar-entity-item[data-tone="blue"].sk-sidebar-entity-item-active { background-color: color-mix(in oklch, var(--accent-blue-soft) 32%, var(--paper)); }
+  .sk-sidebar-entity-item[data-tone="mint"].sk-sidebar-entity-item-active { background-color: color-mix(in oklch, var(--accent-mint-soft) 32%, var(--paper)); }
+  .sk-sidebar-entity-item[data-tone="rose"].sk-sidebar-entity-item-active { background-color: color-mix(in oklch, var(--accent-rose-soft) 32%, var(--paper)); }
+  .sk-sidebar-entity-item[data-tone="purple"].sk-sidebar-entity-item-active { background-color: color-mix(in oklch, var(--accent-purple-soft) 32%, var(--paper)); }
+  .sk-sidebar-entity-item[data-tone="green"].sk-sidebar-entity-item-active { background-color: color-mix(in oklch, var(--accent-green-soft) 32%, var(--paper)); }
+  .sk-sidebar-entity-item[data-tone="yellow"].sk-sidebar-entity-item-active { background-color: color-mix(in oklch, var(--accent-yellow-soft) 32%, var(--paper)); }
+  .sk-sidebar-entity-icon,
+  .sk-sidebar-entity-avatar,
+  .sk-sidebar-entity-trailing {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+  }
+  .sk-sidebar-entity-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    line-height: 1.2;
+  }
+  .sk-sidebar-entity-title,
+  .sk-sidebar-entity-subtitle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sk-sidebar-entity-title {
+    font-size: 0.875rem;
+  }
+  .sk-sidebar-entity-subtitle {
+    color: var(--sand-muted);
+    font-size: 0.72rem;
+  }
+
+  .sk-agent-seal-mark,
+  .sk-human-signature-card {
+    position: relative;
+    display: inline-flex;
+    width: fit-content;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+  }
+  .sk-agent-seal-mark {
+    border: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--cinnabar) 8%, var(--paper));
+    box-shadow: 2px 2px 0 var(--ink);
+    padding: 0.125rem;
+  }
+  .sk-agent-seal-mark::after {
+    content: "";
+    position: absolute;
+    right: -0.28rem;
+    top: -0.28rem;
+    width: 0.62rem;
+    height: 0.62rem;
+    border: 2px solid var(--ink);
+    background-color: var(--cinnabar);
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+  .sk-agent-seal-mark[data-status="running"],
+  .sk-agent-seal-mark[data-status="active"],
+  .sk-agent-seal-mark[data-status="busy"],
+  .sk-agent-seal-mark[data-status="online"] {
+    background-color: color-mix(in oklch, var(--moss) 12%, var(--paper));
+  }
+  .sk-human-signature-card {
+    border: 2px solid color-mix(in oklch, var(--ink) 64%, transparent);
+    background-color: color-mix(in oklch, white 24%, var(--paper));
+    box-shadow: 1px 1px 0 color-mix(in oklch, var(--ink) 72%, transparent);
+    padding: 0.125rem;
+  }
+
+  .sk-channel-divider {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.45rem;
+    border: 2px solid var(--ink);
+    background-color: color-mix(in oklch, white 18%, var(--paper));
+    box-shadow: 2px 2px 0 var(--ink);
+    color: var(--paper-ink);
+    padding: 0.3rem 0.65rem 0.3rem 0.85rem;
+    text-decoration: none;
+  }
+  .sk-channel-divider::before {
+    content: "";
+    position: absolute;
+    left: -2px;
+    top: -2px;
+    bottom: -2px;
+    width: 0.38rem;
+    border-right: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--amber) 24%, var(--paper));
+  }
+  .sk-channel-divider[data-kind="dm"]::before {
+    background-color: color-mix(in oklch, var(--moss) 20%, var(--paper));
+  }
+  .sk-channel-divider-active {
+    background-color: color-mix(in oklch, var(--amber) 18%, var(--paper));
+    box-shadow: inset 2px 2px 0 color-mix(in oklch, var(--amber) 28%, transparent), 3px 3px 0 var(--ink);
+    transform: translate(-1px, -1px);
+  }
+
+  .sk-computer-inkstone {
+    position: relative;
+    display: block;
+    min-height: 5.25rem;
+    overflow: hidden;
+    border: 2px solid var(--ink);
+    background:
+      linear-gradient(180deg, color-mix(in oklch, white 22%, var(--paper)), transparent 42%),
+      linear-gradient(135deg, color-mix(in oklch, white 18%, var(--paper)), var(--paper) 52%, color-mix(in oklch, var(--paper-deep) 44%, white));
+    box-shadow: 3px 3px 0 var(--ink);
+    padding: 0.85rem 1rem 0.95rem 1rem;
+  }
+  .sk-computer-inkstone::after {
+    content: none;
+  }
+  .sk-computer-inkstone::before {
+    content: "";
+    position: absolute;
+    right: 0.7rem;
+    top: 0.62rem;
+    width: 1.08rem;
+    height: 0.78rem;
+    border: 2px solid var(--ink);
+    background: color-mix(in oklch, var(--paper-deep) 52%, var(--paper));
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+  .sk-computer-inkstone-compact {
+    min-height: 3.4rem;
+    padding: 0.62rem 0.7rem 0.72rem 0.85rem;
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .sk-computer-inkstone-compact::before {
+    right: 0.48rem;
+    top: 0.42rem;
+    width: 0.82rem;
+    height: 0.54rem;
+    border-width: 1.5px;
+  }
+  .sk-computer-inkstone-well {
+    position: absolute;
+    right: 1.02rem;
+    top: 0.92rem;
+    width: 0.58rem;
+    height: 0.34rem;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background:
+      linear-gradient(180deg, color-mix(in oklch, white 8%, var(--wash)), color-mix(in oklch, var(--ink) 68%, var(--wash)));
+    box-shadow:
+      inset 1px 1px 0 color-mix(in oklch, white 9%, transparent),
+      1px 1px 0 var(--ink);
+  }
+  .sk-computer-inkstone-well::before {
+    content: "";
+    position: absolute;
+    left: -0.38rem;
+    top: -0.38rem;
+    width: 0.42rem;
+    height: 0.42rem;
+    border: 1.5px solid color-mix(in oklch, var(--ink) 86%, transparent);
+    background: color-mix(in oklch, var(--paper-deep) 60%, var(--paper));
+  }
+  .sk-computer-inkstone-well::after {
+    content: none;
+  }
+  .sk-computer-inkstone-compact .sk-computer-inkstone-well {
+    right: 0.74rem;
+    top: 0.66rem;
+    width: 0.42rem;
+    height: 0.25rem;
+    border-width: 1.5px;
+  }
+  .sk-computer-inkstone-compact .sk-computer-inkstone-well::before {
+    left: -0.28rem;
+    top: -0.28rem;
+    width: 0.3rem;
+    height: 0.3rem;
+    border-width: 1px;
+  }
+  .sk-computer-inkstone[data-status="offline"] .sk-computer-inkstone-well {
+    filter: saturate(0.35);
+    opacity: 0.62;
+  }
+  .sk-computer-inkstone[data-status="online"] .sk-computer-inkstone-well,
+  .sk-computer-inkstone[data-status="active"] .sk-computer-inkstone-well {
+    background: linear-gradient(135deg, color-mix(in oklch, var(--moss) 16%, var(--paper)), color-mix(in oklch, var(--ink) 9%, var(--paper)));
+  }
+  .sk-computer-inkstone[data-status="online"] .sk-computer-inkstone-well::before,
+  .sk-computer-inkstone[data-status="active"] .sk-computer-inkstone-well::before {
+    background:
+      linear-gradient(180deg, color-mix(in oklch, white 18%, var(--moss)), var(--moss) 45%, color-mix(in oklch, var(--ink) 72%, var(--moss)));
+  }
+  .sk-computer-inkstone-content {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+  }
+
+  .sk-task-material-surface {
+    position: relative;
+    overflow: hidden;
+    border: 2px solid var(--ink);
+    background-color: var(--paper);
+    background-image: linear-gradient(180deg, color-mix(in oklch, white 26%, var(--paper)), var(--paper));
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .sk-task-material-surface::before {
+    content: "";
+    position: absolute;
+    right: 0.8rem;
+    top: -0.14rem;
+    width: 0.95rem;
+    height: 0.72rem;
+    border: 2px solid var(--ink);
+    background:
+      linear-gradient(180deg, color-mix(in oklch, white 18%, var(--paper-deep)), var(--paper-deep));
+    box-shadow:
+      inset 0 -0.18rem 0 color-mix(in oklch, var(--ink) 12%, transparent),
+      1px 1px 0 var(--ink);
+  }
+  .sk-task-material-surface::after {
+    content: "";
+    position: absolute;
+    right: 1.02rem;
+    top: 0.48rem;
+    width: 0.48rem;
+    height: 0.28rem;
+    border-right: 2px solid var(--ink);
+    border-bottom: 2px solid var(--ink);
+    border-left: 2px solid var(--ink);
+    background: transparent;
+  }
+  .sk-task-material-layer,
+  .sk-task-material-layer-surface {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background-color: transparent;
+    pointer-events: none;
+  }
+  .sk-task-material-layer-surface {
+    background-image: none;
+  }
+  .sk-task-material-layer-surface .sk-material-static-layer {
+    opacity: 0.72;
+    mix-blend-mode: multiply;
+  }
+  .sk-task-material-layer-surface[data-captures-pointer="true"] {
+    pointer-events: auto;
+  }
+  .sk-task-material-content {
+    position: relative;
+    z-index: 2;
+  }
+  .sk-task-material-surface[data-task-material="wet"] {
+    background-color: color-mix(in oklch, var(--wash) 10%, var(--paper));
+    box-shadow: 3px 3px 0 var(--ink), 6px 6px 0 color-mix(in oklch, var(--wash) 20%, transparent);
+  }
+  .sk-task-material-surface[data-task-material="drying"] {
+    background-color: color-mix(in oklch, var(--amber) 14%, var(--paper));
+  }
+  .sk-task-material-surface[data-task-material="fixed"] {
+    background-color: color-mix(in oklch, var(--moss) 10%, var(--paper));
+    filter: saturate(0.86);
+  }
+  .sk-task-material-surface[data-task-material="blocked"] {
+    background-color: color-mix(in oklch, var(--cinnabar) 10%, var(--paper));
+  }
+
+  .sk-task-status-column {
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background:
+      linear-gradient(180deg, color-mix(in oklch, white 20%, var(--paper)), var(--paper-cool)),
+      linear-gradient(90deg, color-mix(in oklch, var(--ink) 7%, transparent) 0 0.38rem, transparent 0.38rem 100%);
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .sk-task-status-column-active {
+    background:
+      linear-gradient(180deg, color-mix(in oklch, var(--wash) 12%, var(--paper)), var(--paper-cool)),
+      linear-gradient(90deg, color-mix(in oklch, var(--wash) 18%, transparent) 0 0.38rem, transparent 0.38rem 100%);
+  }
+
+  .sk-evidence-surface {
+    position: relative;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: var(--paper);
+    background-image: linear-gradient(180deg, color-mix(in oklch, var(--paper) 94%, white), var(--paper));
+    box-shadow: 3px 3px 0 var(--ink), 6px 6px 0 color-mix(in oklch, var(--accent-yellow-soft) 38%, transparent);
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+  .sk-evidence-surface::before {
+    content: "";
+    position: absolute;
+    right: 0.7rem;
+    top: -0.18rem;
+    width: 0.68rem;
+    height: 1.05rem;
+    pointer-events: none;
+    border: 1.5px solid color-mix(in oklch, var(--ink) 70%, transparent);
+    border-bottom-color: transparent;
+    border-radius: 999px 999px 0 0;
+    background: transparent;
+  }
+  .sk-evidence-surface:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--ink), 7px 7px 0 color-mix(in oklch, var(--accent-yellow-soft) 42%, transparent);
+  }
+
+  .sk-review-stamp {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    border: 2px solid var(--cinnabar, var(--danger));
+    border-radius: 0;
+    color: var(--cinnabar, var(--danger));
+    background-color: color-mix(in oklch, var(--danger) 8%, transparent);
+    padding: 0.25rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    transform: rotate(-1deg);
+    box-shadow: 1px 1px 0 color-mix(in oklch, var(--danger) 55%, transparent);
+  }
+
+  .sk-task-ticket {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.35rem;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: color-mix(in oklch, var(--accent-yellow-soft) 42%, var(--paper));
+    color: var(--paper-ink);
+    padding: 0.25rem 0.55rem;
+    font-size: 0.76rem;
+    font-weight: 760;
+    text-decoration: none;
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+  .sk-task-ticket:hover { transform: translate(-1px, -1px); box-shadow: 2px 2px 0 var(--ink); }
+
+  .sk-memory-fixed-note {
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: var(--paper);
+    padding: 0.5rem 0.625rem;
+  }
+  .sk-memory-fixed-note-fixed {
+    border-color: color-mix(in oklch, var(--ink) 58%, transparent);
+    color: color-mix(in oklch, var(--paper-ink) 72%, transparent);
+    background-color: color-mix(in oklch, var(--paper) 84%, var(--accent-mint-soft));
+  }
 
   /*
    * 状态色工具类（单一真源）。手作风：实色底 + 对比字 + 墨边直角。
@@ -552,27 +1250,474 @@
   .text-accent-purple { color: var(--accent-purple); }
   .text-accent-yellow { color: var(--accent-yellow); }
 
+  .sk-workbench-desk {
+    background-color: var(--paper);
+    background-image: none;
+  }
+
+  .sk-app-desk-background {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    background-color: var(--paper);
+  }
+
+  .sk-app-desk-background[data-inkframe-pointer-capture="true"] {
+    z-index: 30;
+    pointer-events: auto;
+    cursor: crosshair;
+  }
+
+  .sk-material-surface {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: var(--paper);
+    background-image: var(--sheet-paper-bg);
+    background-size: var(--sheet-paper-size);
+  }
+
+  .sk-material-surface[data-owner-kind="app-background"] {
+    border: 0;
+    background-color: var(--paper);
+  }
+
+  .sk-material-static-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+
+  .sk-material-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .sk-material-surface[data-captures-pointer="true"] .sk-material-canvas {
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  .sk-material-layer-capturing {
+    z-index: 5;
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  .sk-material-content {
+    position: relative;
+    z-index: 2;
+  }
+
+  .sk-app-desk-material {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background-color: var(--paper);
+    background-image: none;
+  }
+
+  .sk-app-desk-static,
+  .sk-app-desk-fibers,
+  .sk-app-desk-vignette {
+    position: absolute;
+    inset: 0;
+  }
+
+  .sk-app-desk-static {
+    background-color: var(--paper);
+    background-image: none;
+  }
+
+  .sk-app-desk-fibers {
+    opacity: 0;
+    background-image: none;
+    mix-blend-mode: normal;
+  }
+
+  .sk-app-desk-vignette {
+    background: none;
+    opacity: 0;
+  }
+
+  .sk-workbench-body {
+    background-color: transparent;
+  }
+
+  .sk-workbench-header {
+    border-bottom: 2px solid var(--ink);
+    background-color: var(--paper);
+    background-image: var(--slip-paper-bg);
+    box-shadow: 0 2px 0 var(--ink);
+  }
+  .sk-workbench-header::after {
+    content: none;
+  }
+  .sk-workbench-kicker {
+    color: var(--sand-muted);
+    letter-spacing: 0;
+  }
+
+  .sk-paper-stack {
+    border-right: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--paper-deep) 58%, var(--paper));
+    background-image:
+      linear-gradient(180deg, color-mix(in oklch, white 20%, var(--paper)), transparent 48%),
+      linear-gradient(90deg, color-mix(in oklch, var(--ink) 3%, transparent) 1px, transparent 1px),
+      linear-gradient(color-mix(in oklch, var(--ink) 1.6%, transparent) 1px, transparent 1px);
+    background-size: auto, 43px 43px, 37px 37px;
+    box-shadow: 2px 0 0 var(--ink);
+  }
+  .sk-paper-stack-label {
+    border-bottom: 2px solid var(--ink);
+    background-color: var(--paper);
+    background-image: var(--slip-paper-bg);
+    box-shadow: 0 2px 0 color-mix(in oklch, var(--ink) 78%, transparent);
+  }
+
+  .sk-paper-field {
+    background-color: var(--paper);
+    background-image: var(--sheet-paper-bg);
+    background-size: var(--sheet-paper-size);
+  }
+
+  .sk-side-paper {
+    border-left: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--paper-deep) 34%, var(--paper));
+    background-image: var(--sheet-paper-bg);
+    background-size: var(--sheet-paper-size);
+    box-shadow: -2px 0 0 var(--ink);
+  }
+  .sk-side-paper-label {
+    border: 2px solid var(--ink);
+    background-color: var(--paper);
+    box-shadow: 2px 2px 0 var(--ink);
+    padding: 0.65rem 0.75rem;
+  }
+
+  .sk-object-card {
+    border-radius: 0;
+    background-color: var(--paper);
+    background-image: var(--slip-paper-bg);
+    box-shadow: 3px 3px 0 var(--ink), 7px 7px 0 color-mix(in oklch, var(--accent-yellow-soft) 40%, var(--sand-deep));
+    transform-origin: 24% 12%;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+  .sk-object-card::before {
+    content: none;
+  }
+  .sk-object-card::after {
+    content: none;
+  }
+  .sk-object-card:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--ink), 8px 8px 0 color-mix(in oklch, var(--accent-yellow-soft) 42%, var(--sand-deep));
+  }
+  .sk-object-card-header {
+    padding-top: 0.95rem;
+  }
+  .sk-object-card-title {
+    color: var(--paper-ink);
+    text-wrap: balance;
+  }
+  .sk-object-card-footer {
+    border-top: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--sand-card) 62%, var(--paper));
+  }
+
+  .sk-object-panel {
+    background-color: var(--paper);
+    background-image: var(--slip-paper-bg);
+  }
+  .sk-object-panel-raised {
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+
+  .sk-object-toolbar {
+    background-color: var(--paper);
+    background-image: linear-gradient(180deg, color-mix(in oklch, var(--paper) 94%, white), var(--paper));
+    box-shadow: 3px 3px 0 var(--ink);
+    transform-origin: left center;
+  }
+
+  .sk-empty-note {
+    position: relative;
+    margin: 1.5rem auto;
+    max-width: 34rem;
+    border: 2px solid var(--ink);
+    background-color: var(--paper);
+    background-image: linear-gradient(180deg, color-mix(in oklch, var(--paper) 94%, white), var(--paper));
+    box-shadow: 3px 3px 0 var(--ink), 7px 7px 0 color-mix(in oklch, var(--accent-mint-soft) 35%, var(--sand-deep));
+    padding: 2rem 2.25rem;
+    text-align: left;
+  }
+  .sk-empty-note::before {
+    content: "";
+    position: absolute;
+    right: 1rem;
+    top: -0.55rem;
+    width: 2.75rem;
+    height: 0.9rem;
+    border: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--accent-yellow-soft) 70%, var(--paper));
+    transform: rotate(2.5deg);
+  }
+  .sk-empty-note-title {
+    font-size: 1rem;
+    color: var(--paper-ink);
+  }
+
+  .sk-product-row {
+    border-bottom: 2px solid color-mix(in oklch, var(--ink) 70%, transparent);
+    background-color: color-mix(in oklch, var(--paper) 82%, transparent);
+    transition: background-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+  }
+  .sk-product-row:hover {
+    background-color: var(--paper);
+    box-shadow: 2px 2px 0 var(--ink);
+    transform: translate(-1px, -1px);
+  }
+
+  .sk-list-action,
+  .sk-list-object,
+  .sk-list-empty {
+    border: 2px solid var(--ink);
+    background-color: var(--paper);
+    background-image: linear-gradient(180deg, color-mix(in oklch, var(--paper) 94%, white), var(--paper));
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .sk-list-action {
+  }
+  .sk-list-object {
+    color: var(--paper-ink);
+    transform-origin: 12% 18%;
+  }
+  .sk-list-object:hover,
+  .sk-list-object-active {
+    background-color: color-mix(in oklch, var(--paper) 82%, var(--accent-yellow-soft));
+    box-shadow: 3px 3px 0 var(--ink);
+    transform: translate(-1px, -1px);
+  }
+  .sk-list-empty {
+    background-image: linear-gradient(180deg, color-mix(in oklch, var(--paper) 94%, white), var(--paper));
+  }
+
+  .sk-chat-main {
+    background-color: var(--paper);
+    background-image: var(--sheet-paper-bg);
+    background-size: var(--sheet-paper-size);
+  }
+
+  .sk-chat-channel-header {
+    border-bottom: 2px solid var(--ink);
+    background-color: var(--paper);
+    background-image: var(--slip-paper-bg);
+    box-shadow: 0 2px 0 var(--ink);
+  }
+
+  .sk-chat-content {
+    background-image: none;
+  }
+
+  .sk-chat-message-list {
+    position: relative;
+    isolation: isolate;
+    background-color: transparent;
+  }
+
+  .sk-chat-desk-material-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .sk-chat-desk-material-layer[data-captures-pointer="true"] {
+    pointer-events: auto;
+    cursor: crosshair;
+  }
+  .sk-material-surface.sk-chat-desk-material-surface {
+    position: absolute;
+    inset: 0;
+    min-height: 100%;
+    border: 0;
+    background-color: transparent;
+    background-image: none;
+  }
+  .sk-chat-desk-material-surface .sk-material-static-layer,
+  .sk-chat-desk-material-surface .sk-material-canvas {
+    opacity: 1;
+    mix-blend-mode: normal;
+  }
+  .sk-chat-desk-static {
+    position: absolute;
+    inset: 0;
+    background-image: none;
+  }
+  .sk-chat-message-stack {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+  }
+
+  .sk-chat-empty-note {
+    margin-top: 5rem;
+  }
+
+  .sk-chat-composer {
+    border-top: 2px solid var(--ink);
+    background-color: var(--paper);
+    background-image: var(--slip-paper-bg);
+    box-shadow: 0 -2px 0 var(--ink);
+  }
+
+  .sk-chat-composer-surface {
+    border: 2px solid var(--ink);
+    background-color: var(--paper);
+    box-shadow: 3px 3px 0 var(--ink);
+    padding: 0.5rem;
+  }
+
+  .sk-chat-task-toggle {
+    display: inline-flex;
+    cursor: pointer;
+    user-select: none;
+    align-items: center;
+    gap: 0.25rem;
+    border: 2px solid transparent;
+    padding: 0.125rem 0.25rem;
+    color: var(--sand-muted);
+    font-size: 0.75rem;
+  }
+  .sk-chat-task-toggle:hover {
+    color: var(--paper-ink);
+    background-color: color-mix(in oklch, var(--amber) 10%, transparent);
+  }
+  .sk-chat-task-toggle-active {
+    border-color: var(--ink);
+    color: var(--paper-ink);
+    background-color: color-mix(in oklch, var(--cinnabar) 8%, var(--paper));
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+  .sk-chat-task-toggle-mark {
+    display: inline-flex;
+    width: 1rem;
+    height: 1rem;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--ink);
+    background-color: var(--paper);
+  }
+  .sk-chat-task-toggle-active .sk-chat-task-toggle-mark {
+    background-color: var(--cinnabar);
+    color: var(--paper);
+  }
+
+  .sk-attachment-sheet {
+    position: relative;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-color: var(--paper);
+    background-image: linear-gradient(180deg, color-mix(in oklch, var(--paper) 94%, white), var(--paper));
+    box-shadow: 2px 2px 0 var(--ink);
+    transition: transform 140ms ease, box-shadow 140ms ease;
+  }
+  .sk-attachment-sheet::before {
+    content: "";
+    position: absolute;
+    right: 0.62rem;
+    top: -0.16rem;
+    width: 0.82rem;
+    height: 0.5rem;
+    pointer-events: none;
+    border: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--paper-deep) 42%, var(--paper));
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+  .sk-attachment-sheet:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .sk-attachment-sheet-icon {
+    border: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--paper-deep) 30%, var(--paper));
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+  .sk-attachment-sheet[data-attachment-kind="image"] .sk-attachment-sheet-icon {
+    background-color: color-mix(in oklch, var(--moss) 14%, var(--paper));
+  }
+
+  .sk-member-name-tag {
+    border: 2px solid transparent;
+    border-radius: 0;
+    background-color: color-mix(in oklch, var(--paper) 84%, transparent);
+    color: var(--paper-ink);
+  }
+  .sk-member-name-tag:hover {
+    border-color: var(--ink);
+    background-color: var(--paper);
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .sk-member-name-tag[data-member-kind="agent"] {
+    background-color: color-mix(in oklch, var(--moss) 8%, var(--paper));
+  }
+  .sk-member-name-tag[data-status="running"],
+  .sk-member-name-tag[data-status="active"],
+  .sk-member-name-tag[data-status="busy"],
+  .sk-member-name-tag[data-status="online"] {
+    border-color: color-mix(in oklch, var(--ink) 34%, transparent);
+  }
+
+  .sk-chat-thread-panel,
+  .sk-chat-members-panel {
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(180deg, color-mix(in oklch, var(--paper) 94%, white), var(--paper)),
+      linear-gradient(90deg, color-mix(in oklch, var(--moss) 8%, transparent) 0 2.75rem, transparent 2.75rem 100%);
+    box-shadow: -3px 0 0 var(--ink);
+  }
+
   .sk-panel { border: 2px solid var(--ink); background-color: var(--sand-card); border-radius: 0; }
   .sk-panel-raised { border: 2px solid var(--ink); background-color: var(--sand-card); border-radius: 0; box-shadow: 2px 2px 0 var(--ink); }
 
   .sk-rail-logo {
-    background: oklch(0.93 0.05 188);
-    color: oklch(0.22 0.1 208);
-    box-shadow: 0 2px 10px oklch(0.22 0.08 220 / 0.4);
+    border: 2px solid var(--ink);
+    background: var(--paper);
+    color: var(--ink);
+    box-shadow: 2px 2px 0 var(--ink);
   }
   .sk-rail-icon {
-    background: oklch(0.2 0.03 220 / 0.32);
-    color: oklch(0.99 0.005 190);
+    border: 2px solid var(--ink);
+    background: color-mix(in oklch, var(--paper) 88%, transparent);
+    color: var(--ink);
+    box-shadow: 1px 1px 0 var(--ink);
   }
   .sk-rail-icon:hover {
-    background: oklch(0.2 0.03 220 / 0.5);
+    background: var(--paper);
+    transform: translate(-1px, -1px);
   }
-  .sk-rail-active { background: var(--accent-blue); color: var(--accent-blue-fg); }
-  .sk-rail-active-blue { background: var(--accent-blue); color: var(--accent-blue-fg); }
-  .sk-rail-active-rose { background: var(--accent-rose); color: var(--accent-rose-fg); }
-  .sk-rail-active-mint { background: var(--accent-mint); color: var(--accent-mint-fg); }
-  .sk-rail-active-green { background: var(--accent-green); color: var(--accent-green-fg); }
-  .sk-rail-active-purple { background: var(--accent-purple); color: var(--accent-purple-fg); }
+  .sk-rail-active,
+  .sk-rail-active-blue,
+  .sk-rail-active-rose,
+  .sk-rail-active-mint,
+  .sk-rail-active-green,
+  .sk-rail-active-purple {
+    border: 2px solid var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+    box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-rose) 76%, var(--ink));
+  }
   .sk-rail-active::before,
   .sk-rail-active-blue::before,
   .sk-rail-active-rose::before,
@@ -588,11 +1733,32 @@
     height: 22px;
     border-radius: 999px;
   }
-  .sk-rail-active-blue::before { background: var(--accent-blue); }
-  .sk-rail-active-rose::before { background: var(--accent-rose); }
-  .sk-rail-active-mint::before { background: var(--accent-mint); }
-  .sk-rail-active-green::before { background: var(--accent-green); }
-  .sk-rail-active-purple::before { background: var(--accent-purple); }
+  .sk-rail-active-blue::before,
+  .sk-rail-active-rose::before,
+  .sk-rail-active-mint::before,
+  .sk-rail-active-green::before,
+  .sk-rail-active-purple::before { background: var(--accent-rose); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sk-object-card,
+    .sk-object-card:hover,
+    .sk-object-toolbar,
+    .sk-empty-note,
+    .sk-product-row:hover,
+    .sk-list-action,
+    .sk-list-object,
+    .sk-list-object:hover,
+    .sk-list-object-active,
+    .sk-list-empty,
+    .sk-chat-composer-surface,
+    .sk-message-tool-strip,
+    .sk-agent-seal-mark,
+    .sk-human-signature-card,
+    .sk-channel-divider-active {
+      transform: none;
+      transition: none;
+    }
+  }
 }
 
 @layer utilities {
@@ -622,9 +1788,7 @@
 }
 
 /*
- * 水材质侧栏（rail）：真实生图当材质底图 + 代码层叠图标。
- * 色相来自 zy-think 色彩提取（深青 226 → 中海蓝 208 → 透亮青 198 → 暖沙 70）。
- * 真实水质感（焦散/光柱/颗粒）由底图提供，CSS 无法复现那部分。
+ * 左侧工具脊：本分支改为纸质工作台的一条装订脊，而不是旧水材质。
  */
 @layer components {
   .sk-rail {
@@ -637,54 +1801,53 @@
     overflow: hidden;
   }
   .sk-rail-bg {
-    /* 真实水材质底图：阳光穿透中海蓝 + 暖沙。背景来自 zy-think 色彩提取 + GPT image 生图 */
-    background-image: url("/rail-water-texture.png");
-    background-size: cover;
-    background-position: center;
+    border-right: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--sand-deep) 82%, var(--paper));
+    background-image:
+      linear-gradient(180deg, color-mix(in oklch, var(--paper) 16%, transparent), transparent 44%),
+      linear-gradient(90deg, color-mix(in oklch, var(--ink) 10%, transparent) 0 2px, transparent 2px 100%);
     z-index: 0;
   }
-  /* 顶部一缕水面高光，强化「阳光打在水面」的感觉 */
   .sk-rail-bg::after {
     content: "";
     position: absolute;
     inset: 0;
-    background: radial-gradient(
-      ellipse 70% 35% at 50% 0%,
-      oklch(0.99 0.05 180 / 0.28) 0%,
-      transparent 70%
-    );
+    background:
+      linear-gradient(180deg, transparent 0 4rem, color-mix(in oklch, var(--ink) 8%, transparent) 4rem 4.125rem, transparent 4.125rem 100%),
+      linear-gradient(112deg, transparent 0 72%, color-mix(in oklch, var(--paper) 20%, transparent) 72% 100%);
     z-index: 0;
   }
   .sk-rail > *:not(.sk-rail-bg) {
     position: relative;
     z-index: 1;
   }
-  /* logo：浅青实色 + 柔和投影，替代旧的紫蓝渐变 */
   .sk-rail-logo {
-    background: oklch(0.93 0.05 188);
-    color: oklch(0.22 0.1 208);
-    box-shadow: 0 2px 10px oklch(0.22 0.08 220 / 0.4);
+    border: 2px solid var(--ink);
+    background: var(--paper);
+    color: var(--ink);
+    box-shadow: 2px 2px 0 var(--ink);
   }
-  /*
-   * 非激活图标：半透明白胶囊 + 白图标。
-   * 关键：白胶囊在任何水深/沙底上都有对比（底色相都在蓝-沙范围，白都压得住），
-   * 把图标清晰度跟底图完全解耦。hover 时胶囊变实。
-   */
   .sk-rail-icon {
-    background: oklch(0.2 0.03 220 / 0.32);
-    color: oklch(0.99 0.005 190);
+    border: 2px solid var(--ink);
+    background: color-mix(in oklch, var(--paper) 88%, transparent);
+    color: var(--ink);
+    box-shadow: 1px 1px 0 var(--ink);
   }
   .sk-rail-icon:hover {
-    background: oklch(0.2 0.03 220 / 0.5);
+    background: var(--paper);
+    transform: translate(-1px, -1px);
   }
-  /* 激活态：每个功能区用自己的 accent solid 色做胶囊 + 左侧高亮条。
-     导航色 = 功能色，一致性。 */
-  .sk-rail-active { background: var(--accent-blue); color: var(--accent-blue-fg); }
-  .sk-rail-active-blue { background: var(--accent-blue); color: var(--accent-blue-fg); }
-  .sk-rail-active-rose { background: var(--accent-rose); color: var(--accent-rose-fg); }
-  .sk-rail-active-mint { background: var(--accent-mint); color: var(--accent-mint-fg); }
-  .sk-rail-active-green { background: var(--accent-green); color: var(--accent-green-fg); }
-  .sk-rail-active-purple { background: var(--accent-purple); color: var(--accent-purple-fg); }
+  .sk-rail-active,
+  .sk-rail-active-blue,
+  .sk-rail-active-rose,
+  .sk-rail-active-mint,
+  .sk-rail-active-green,
+  .sk-rail-active-purple {
+    border: 2px solid var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+    box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-rose) 76%, var(--ink));
+  }
   .sk-rail-active::before,
   .sk-rail-active-blue::before,
   .sk-rail-active-rose::before,
@@ -700,11 +1863,11 @@
     height: 22px;
     border-radius: 0;
   }
-  .sk-rail-active-blue::before { background: var(--accent-blue); }
-  .sk-rail-active-rose::before { background: var(--accent-rose); }
-  .sk-rail-active-mint::before { background: var(--accent-mint); }
-  .sk-rail-active-green::before { background: var(--accent-green); }
-  .sk-rail-active-purple::before { background: var(--accent-purple); }
+  .sk-rail-active-blue::before,
+  .sk-rail-active-rose::before,
+  .sk-rail-active-mint::before,
+  .sk-rail-active-green::before,
+  .sk-rail-active-purple::before { background: var(--accent-rose); }
 }
 
 @layer components {
@@ -749,11 +1912,12 @@
   }
   /* 引用块用玫瑰调（强调/备注语义）*/
   .markdown-body blockquote {
-    border-left: 3px solid var(--accent-rose);
+    border: 2px solid var(--ink);
     background-color: var(--accent-rose-soft);
-    padding: 0.25rem 0.75rem;
+    padding: 0.35rem 0.75rem;
     margin: 0.5rem 0;
     color: var(--accent-rose-soft-fg);
+    box-shadow: 1px 1px 0 var(--ink);
   }
   /* @提及 / #频道标签：手作风彩色小 chip，区别于普通正文 */
   .markdown-body .mention {

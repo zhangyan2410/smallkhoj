@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/07-06-07-06-inkframe-selector-driven-twd-proof-runner/prd.md", "reason": "Defines the original selector-driven TWD proof runner contract."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-browserless-dom-mobile-proof-readiness/evidence/twd-proof-checklist.md", "reason": "Source selector checklist that the runner should continue to encode."}
+{"file": ".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/evidence/operator-scope-addendum.md", "reason": "Latest operator scope clarification says product pages need material-capable shell background by default."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Browser-facing changes must use project WebDriver evidence and not claim UI proof from static tests."}

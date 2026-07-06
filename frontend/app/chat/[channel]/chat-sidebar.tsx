@@ -1,14 +1,18 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { Activity, Bot, Bookmark, Hash } from "lucide-react"
 
-import { MemberAvatar } from "@/components/member-avatar"
+import { AvatarObject, SidebarEntityItem } from "@/components/inkframe-object-ui"
 import { CreateAgentDialog } from "@/app/chat/[channel]/create-agent-dialog"
 import { CreateChannelDialog } from "@/app/chat/[channel]/create-channel-dialog"
 import { useChatData, type DmInfo } from "@/app/chat/chat-data-context"
+import { useChatUnreadStore } from "@/hooks/use-chat-unread-store"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
+import { chatEntityKeys, chatReadCursorRequestForEntity, deriveChatUnreadView, type ChatUnreadEntity } from "@/lib/chat-unread-state"
+import { apiPost } from "@/lib/control-plane"
 import { cn } from "@/lib/utils"
 
 function channelPathSegment(name: string) {
@@ -29,8 +33,39 @@ function dmAvatarMember(dm: DmInfo) {
 
 export function ChatSidebar() {
   const { channels, dms, allMembers, currentChannelName } = useChatData()
+  const { store: unreadStore, clearEntity } = useChatUnreadStore()
+  const [clearedServerReadSeq, setClearedServerReadSeq] = useState<Record<string, number>>({})
   const tChat = useTranslations("chat")
   const tNav = useTranslations("nav")
+
+  useEffect(() => {
+    const activeChannel = channels.find((ch) => ch.name.replace("#", "") === currentChannelName)
+    const activeDm = dms.find((dm) => dm.name === currentChannelName)
+    const activeEntity = activeChannel ?? activeDm
+    if (!activeEntity) return
+    clearEntity(activeEntity)
+    const cursorRequest = chatReadCursorRequestForEntity(activeEntity)
+    if (!cursorRequest) return
+    void apiPost("/api/v1/chat/read-cursors", cursorRequest)
+      .then(() => {
+        const keys = chatEntityKeys(activeEntity)
+        const readSeq = Math.max(0, activeEntity.latestSeq ?? 0)
+        setClearedServerReadSeq((previous) => {
+          const next = { ...previous }
+          for (const key of keys) next[key] = Math.max(next[key] ?? 0, readSeq)
+          return next
+        })
+      })
+      .catch((error) => {
+        console.warn("[chat] read cursor write failed", error)
+      })
+  }, [channels, dms, currentChannelName, clearEntity])
+
+  const entityWithLocalClear = (entity: ChatUnreadEntity): ChatUnreadEntity => {
+    const latestSeq = Math.max(0, entity.latestSeq ?? 0)
+    const cleared = chatEntityKeys(entity).some((key) => (clearedServerReadSeq[key] ?? -1) >= latestSeq)
+    return cleared ? { ...entity, unreadCount: 0, hasUnread: false } : entity
+  }
 
   const activeAgents = allMembers.filter((m) => {
     if (m.kind !== "agent") return false
@@ -74,20 +109,20 @@ export function ChatSidebar() {
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((ch) => {
               const isActive = ch.name.replace("#", "") === currentChannelName
+              const unread = deriveChatUnreadView(entityWithLocalClear(ch), unreadStore, currentChannelName)
               return (
-                <Link
+                <SidebarEntityItem
                   key={ch.id}
                   href={`/chat/${channelPathSegment(ch.name)}`}
-                  className={cn(
-                    "flex items-center gap-2 truncate rounded-none border-2 border-transparent px-2 py-1.5 text-sm transition-colors",
-                    isActive
-                      ? "border-[var(--ink)] sk-accent-blue-soft font-medium"
-                      : "text-sand-ink hover:bg-sand"
-                  )}
-                >
-                  <Hash className="size-3 shrink-0 text-sand-muted" />
-                  <span className="truncate">{ch.name.replace("#", "")}</span>
-                </Link>
+                  active={isActive}
+                  tone="blue"
+                  icon={<Hash className="size-3 shrink-0 text-sand-muted" />}
+                  title={ch.name.replace("#", "")}
+                  subtitle={ch.description || undefined}
+                  unreadCount={unread.unreadCount}
+                  hasUnread={unread.hasUnread}
+                  unreadLabel={tChat("unread", { count: unread.unreadCount ?? 1 })}
+                />
               )
             })}
           {channels.length === 0 && (
@@ -100,23 +135,20 @@ export function ChatSidebar() {
           {dms.map((dm) => {
             const peer = dmAvatarMember(dm)
             const isActive = dm.name === currentChannelName
+            const unread = deriveChatUnreadView(entityWithLocalClear(dm), unreadStore, currentChannelName)
             return (
-              <Link
+              <SidebarEntityItem
                 key={dm.id}
                 href={`/chat/${channelPathSegment(dm.name)}`}
-                className={cn(
-                  "flex items-center gap-2 truncate rounded-none border-2 border-transparent px-2 py-1.5 text-sm transition-colors",
-                  isActive
-                    ? "border-[var(--ink)] sk-accent-mint-soft font-medium"
-                    : "text-sand-ink hover:bg-sand"
-                )}
-              >
-                <MemberAvatar member={peer} size="sm" />
-                <span className="truncate">{peer.displayName || peer.name}</span>
-                {peer.kind === "agent" && (
-                  <Bot className="ml-auto size-3 shrink-0 text-sand-muted" />
-                )}
-              </Link>
+                active={isActive}
+                tone="mint"
+                avatar={<AvatarObject member={peer} size="sm" />}
+                title={peer.displayName || peer.name}
+                trailing={peer.kind === "agent" ? <Bot className="size-3 shrink-0 text-sand-muted" /> : null}
+                unreadCount={unread.unreadCount}
+                hasUnread={unread.hasUnread}
+                unreadLabel={tChat("unread", { count: unread.unreadCount ?? 1 })}
+              />
             )
           })}
           {dms.length === 0 && (
@@ -136,7 +168,7 @@ export function ChatSidebar() {
                 key={agent.id}
                 className="flex items-center gap-2 py-0.5 text-sm text-sand-ink"
               >
-                <MemberAvatar member={agent} size="xs" showStatus />
+                <AvatarObject member={agent} size="xs" showStatus />
                 <span className="truncate">{agent.displayName || agent.name}</span>
                 <span className="ml-auto text-xs text-sand-muted">
                   {getStatusLabel(agent.status)}

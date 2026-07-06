@@ -1,0 +1,8 @@
+{"path":".trellis/tasks/07-06-07-06-inkframe-task-board-mobile-containment/prd.md","reason":"Reviewer should verify requirements and acceptance criteria."}
+{"path":".trellis/tasks/07-06-07-06-inkframe-task-board-mobile-containment/design.md","reason":"Reviewer should verify containment design and browser evidence honesty."}
+{"path":".trellis/tasks/07-06-07-06-inkframe-task-board-mobile-containment/implement.md","reason":"Reviewer should verify validation plan."}
+{"path":"frontend/app/tasks/page.tsx","reason":"Changed route filter/workspace source contract."}
+{"path":"frontend/components/task-dnd-board.tsx","reason":"Changed task board mobile wrapper contract."}
+{"path":"frontend/components/task-board.tsx","reason":"Changed board/list/card/overlay containment."}
+{"path":"frontend/test/material-surface.test.tsx","reason":"Changed source contract tests."}
+{"path":".trellis/tasks/07-06-07-06-inkframe-task-board-mobile-containment/evidence/source-contract-validation.md","reason":"Reviewer should inspect command evidence and twd status honesty."}
