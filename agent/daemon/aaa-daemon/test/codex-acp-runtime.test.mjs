@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -181,10 +181,22 @@ test('codex acp runtime creates a session and emits daemon-compatible stream lif
 });
 
 test('codex acp runtime keeps package args when daemon config supplies empty runtime args', () => {
-  assert.deepEqual(resolveCodexAcpLaunchCommand({ commandArgs: [] }), {
-    command: 'npx',
-    args: ['-y', '@zed-industries/codex-acp@0.16.0'],
-  });
+  const launch = resolveCodexAcpLaunchCommand({ commandArgs: [] });
+  assert.match(launch.command, /^npx(\.cmd)?$/);
+  assert.deepEqual(launch.args, ['-y', '@zed-industries/codex-acp@0.16.0']);
+});
+
+test('codex acp runtime resolves npx.cmd on Windows PATH', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-codex-acp-runtime-npx-path-'));
+  try {
+    writeFileSync(join(root, 'npx.cmd'), '@echo off\r\n');
+    assert.deepEqual(resolveCodexAcpLaunchCommand({ commandArgs: [], baseEnv: { PATH: root } }), {
+      command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
+      args: ['-y', '@zed-industries/codex-acp@0.16.0'],
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('codex acp runtime queues one prompt while another is in flight', async () => {

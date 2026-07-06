@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Credential } from '../types.js';
 import { prependPathEnv } from './slock-wrapper.js';
-import { runtimeProcessSpawnOptions, scheduleRuntimeProcessTreeKill, signalRuntimeProcessTree } from './process-tree.js';
+import { runtimeProcessSpawnOptions, runtimeCommandNeedsWindowsShell, scheduleRuntimeProcessTreeKill, signalRuntimeProcessTree } from './process-tree.js';
 import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
 
 export interface ClaudeRuntimeOptions {
@@ -491,6 +491,7 @@ export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeD
       cwd: this.options.workspacePath,
       env: buildClaudeRuntimeEnv(this.options, this.options.baseEnv ?? process.env),
       stdio: ['pipe', 'pipe', 'pipe'],
+      shell: runtimeCommandNeedsWindowsShell(command),
     }));
 
     this.child = child;

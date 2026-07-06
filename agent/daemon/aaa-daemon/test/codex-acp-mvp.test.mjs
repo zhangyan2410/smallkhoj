@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   CodexAcpBridge,
   buildCodexAcpCommand,
+  resolveNpxCommand,
   translateAcpUpdate,
 } from '../dist/runtime/codex-acp-bridge.js';
 
@@ -92,7 +93,18 @@ test('codex acp command builder supports direct binary and npx package modes', (
     args: [],
   });
   assert.deepEqual(buildCodexAcpCommand({ npmPackage: '@zed-industries/codex-acp@0.16.0' }), {
-    command: 'npx',
+    command: resolveNpxCommand(),
     args: ['-y', '@zed-industries/codex-acp@0.16.0'],
   });
+});
+
+test('codex acp command builder resolves npx.cmd on Windows PATH', () => {
+  const pathDir = mkdtempSync(join(tmpdir(), 'aaa-codex-acp-npx-path-'));
+  try {
+    const npxCmd = join(pathDir, 'npx.cmd');
+    writeFileSync(npxCmd, '@echo off\r\n');
+    assert.equal(resolveNpxCommand({ PATH: pathDir }, 'win32'), 'npx.cmd');
+  } finally {
+    rmSync(pathDir, { recursive: true, force: true });
+  }
 });

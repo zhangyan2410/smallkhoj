@@ -5,7 +5,7 @@ import type { PromptResponse, SessionNotification, SessionUpdate } from '@agentc
 import type { Credential } from '../types.js';
 import { buildSlockSystemPrompt, type ClaudeRuntimeOptions } from './claude-runtime.js';
 import { buildCodexPrompt, buildCodexRuntimeEnv } from './codex-runtime.js';
-import { CodexAcpBridge, translateAcpUpdate } from './codex-acp-bridge.js';
+import { CodexAcpBridge, resolveNpxCommand, translateAcpUpdate } from './codex-acp-bridge.js';
 import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
 
 const DEFAULT_CODEX_ACP_PACKAGE = '@zed-industries/codex-acp@0.16.0';
@@ -27,16 +27,20 @@ export type CodexAcpRuntimeExitEvent = RuntimeExitEvent;
 export type CodexAcpStreamEvent = RuntimeStreamEvent;
 type PendingUserMessage = { text: string; options?: RuntimeSendOptions };
 
-export function resolveCodexAcpLaunchCommand(options: Pick<CodexAcpRuntimeOptions, 'command' | 'commandArgs'> = {}): { command: string; args: string[] } {
-  const command = options.command?.trim() || 'npx';
+export function resolveCodexAcpLaunchCommand(options: Pick<CodexAcpRuntimeOptions, 'command' | 'commandArgs' | 'baseEnv'> = {}): { command: string; args: string[] } {
+  const command = options.command?.trim() || resolveNpxCommand(options.baseEnv);
   const commandArgs = options.commandArgs?.filter((arg) => arg.trim().length > 0);
   if (commandArgs && commandArgs.length > 0) {
     return { command, args: commandArgs };
   }
-  if (command === 'npx' || command.endsWith('/npx')) {
+  if (isNpxCommand(command)) {
     return { command, args: ['-y', DEFAULT_CODEX_ACP_PACKAGE] };
   }
   return { command, args: [] };
+}
+
+function isNpxCommand(command: string): boolean {
+  return /(^|[/\\])npx(\.cmd)?$/i.test(command);
 }
 
 export function buildCodexAcpSlockPrompt(options: Pick<CodexAcpRuntimeOptions, 'credential' | 'workspacePath'>): string {

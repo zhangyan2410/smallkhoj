@@ -1,0 +1,4 @@
+{"file":"backend/tests/test_daemon_control.py","reason":"backend runtime normalization/provider availability/start command tests must encode ACP direction"}
+{"file":"agent/daemon/aaa-daemon/test/daemon-runtime.test.mjs","reason":"daemon runtime tests should cover ACP command resolution and no product codex_cli path"}
+{"file":"frontend/test/runtime-options.test.ts","reason":"frontend should expose one Codex product option and handle legacy records safely"}
+{"file":".trellis/tasks/07-01-codex-acp-product-path-cleanup/prd.md","reason":"acceptance criteria and validation plan for the cleanup"}

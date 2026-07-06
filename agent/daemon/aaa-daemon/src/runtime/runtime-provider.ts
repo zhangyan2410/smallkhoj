@@ -5,7 +5,7 @@ import {
   parseCcSwitchProviderRows,
   parseCcsClaudeListOutput,
 } from './providers/cc-switch-provider.js';
-import { codexCliFallbackProvider, detectClaudeCommand, detectCodexCommand } from './providers/local-command-provider.js';
+import { detectClaudeCommand, detectCodexCommand } from './providers/local-command-provider.js';
 import { loadManualRuntimeProviders, parseManualRuntimeProviders } from './providers/manual-provider.js';
 import type {
   LocalRuntimeProvider,
@@ -39,9 +39,6 @@ export function detectRuntimeProviders(env: NodeJS.ProcessEnv = process.env): Ru
     manualProviders,
     ccSwitchProviders,
     ccsClaude.providers,
-    codexCommand && !hasRuntimeProvider([...manualProviders, ...ccSwitchProviders], 'codex')
-      ? [codexCliFallbackProvider(codexCommand)]
-      : [],
   ]);
 
   return {
@@ -70,7 +67,6 @@ export function detectedRuntimesForInventory(
       provider: provider.name,
       runtimeProvider: provider.id,
       model: provider.model,
-      ...(provider.source === 'codex-cli' ? { command: provider.command } : {}),
       source: provider.source,
     });
   }
@@ -96,15 +92,6 @@ export function resolveRuntimeProviderLaunch(
     return {
       runtimeProvider: provider.id,
       command: provider.command,
-      commandArgs: provider.commandArgs,
-      model: provider.model,
-    };
-  }
-
-  if (provider.runtime === 'codex_cli') {
-    return {
-      runtimeProvider: provider.id,
-      command: provider.command ?? inventory.codexCommand,
       commandArgs: provider.commandArgs,
       model: provider.model,
     };
@@ -154,11 +141,10 @@ export function resolveRuntimeProviderLaunch(
 }
 
 export function resolveDetectedRuntimeCommand(
-  runtime: 'claude_code' | 'codex_cli' | 'codex',
+  runtime: 'claude_code' | 'codex',
   inventory: RuntimeProviderInventory,
 ): string | undefined {
   if (runtime === 'claude_code') return inventory.claudeCommand;
-  if (runtime === 'codex_cli') return inventory.codexCommand;
   return undefined;
 }
 
@@ -177,6 +163,3 @@ function mergeRuntimeProviders(providerGroups: Array<LocalRuntimeProvider[] | fa
   return providers;
 }
 
-function hasRuntimeProvider(providers: LocalRuntimeProvider[], runtime: LocalRuntimeProvider['runtime']): boolean {
-  return providers.some((provider) => provider.runtime === runtime);
-}

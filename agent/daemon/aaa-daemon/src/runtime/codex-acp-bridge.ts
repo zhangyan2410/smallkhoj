@@ -1,5 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
+import { existsSync } from 'fs';
+import { delimiter, join } from 'path';
 import { Readable, Writable } from 'stream';
 import {
   ClientSideConnection,
@@ -14,7 +16,7 @@ import {
   type SessionNotification,
   type SessionUpdate,
 } from '@agentclientprotocol/sdk';
-import { runtimeProcessSpawnOptions, signalRuntimeProcessTree } from './process-tree.js';
+import { runtimeProcessSpawnOptions, runtimeCommandNeedsWindowsShell, signalRuntimeProcessTree } from './process-tree.js';
 
 export interface CodexAcpCommandOptions {
   command?: string;
@@ -39,9 +41,26 @@ export interface CodexAcpTranslatedUpdate {
   raw: SessionUpdate;
 }
 
+export function resolveNpxCommand(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform !== 'win32') return 'npx';
+  return commandAppearsOnPath('npx.cmd', env.PATH ?? '') ? 'npx.cmd' : 'npx';
+}
+
+function commandAppearsOnPath(command: string, pathValue: string): boolean {
+  if (!pathValue) return false;
+  for (const pathDir of pathValue.split(delimiter)) {
+    if (!pathDir) continue;
+    if (existsSync(join(pathDir, command))) return true;
+  }
+  return false;
+}
+
 export function buildCodexAcpCommand(options: CodexAcpCommandOptions = {}): { command: string; args: string[] } {
   if (options.npmPackage) {
-    return { command: 'npx', args: ['-y', options.npmPackage] };
+    return { command: resolveNpxCommand(), args: ['-y', options.npmPackage] };
   }
   return { command: options.command ?? 'codex-acp', args: [] };
 }
@@ -106,6 +125,7 @@ export class CodexAcpBridge extends EventEmitter {
       cwd: this.options.cwd,
       env: { ...process.env, ...(this.options.env ?? {}) },
       stdio: ['pipe', 'pipe', 'pipe'],
+      shell: runtimeCommandNeedsWindowsShell(command),
     }));
     this.child = child;
 

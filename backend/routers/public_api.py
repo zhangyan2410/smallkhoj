@@ -4105,15 +4105,14 @@ async def generate_computer_credential(
 def _normalize_runtime(value: str | None) -> str:
     """Normalize public agent runtime identifiers.
 
-    Product surfaces expose Codex as `codex`; the daemon decides the current
-    implementation mode (ACP by default). Historical `codex_acp` values are
-    accepted only as aliases and normalized away.
+    Product surfaces expose Codex as `codex`; the daemon launches the ACP
+    implementation. Historical `codex_acp` values are accepted only as aliases.
+    The native `codex_cli` runtime is intentionally not a product runtime.
     """
     aliases = {
         "claude": "claude_code",
         "claude_code": "claude_code",
         "codex": "codex",
-        "codex_cli": "codex",
         "codex-acp": "codex",
         "codex_acp": "codex",
     }
@@ -4170,6 +4169,8 @@ async def create_agent(
 
     runtime = _normalize_runtime(body.get("runtime", "claude_code"))
     runtime_command = body.get("runtimeCommand")
+    if runtime == "codex":
+        runtime_command = None
     runtime_model = body.get("runtimeModel")
     raw_runtime_provider = body.get("runtimeProvider")
     runtime_provider = str(raw_runtime_provider).strip() if raw_runtime_provider is not None else None

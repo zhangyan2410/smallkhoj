@@ -10,6 +10,10 @@ export function runtimeProcessSpawnOptions(options: SpawnOptionsWithoutStdio): S
   };
 }
 
+export function runtimeCommandNeedsWindowsShell(command: string): boolean {
+  return process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
+}
+
 export function signalRuntimeProcessTree(
   child: ChildProcessWithoutNullStreams,
   signal: NodeJS.Signals,

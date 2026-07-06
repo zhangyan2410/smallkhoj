@@ -1137,7 +1137,7 @@ async def _upsert_daemon_workspace(
         db.add(workspace)
 
     workspace.runtime = runtime
-    workspace.runtime_command = item.runtimeCommand
+    workspace.runtime_command = None if runtime == "codex" else item.runtimeCommand
     workspace.runtime_model = item.runtimeModel
     workspace.status = item.status
     workspace.session_id = item.sessionId or workspace.session_id

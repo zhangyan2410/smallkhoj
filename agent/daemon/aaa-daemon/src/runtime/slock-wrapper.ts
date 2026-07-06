@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join, resolve } from 'path';
 import type { Credential } from '../types.js';
@@ -24,6 +24,21 @@ export interface SlockWrapperResult {
   psWrapper: string;
 }
 
+const DEFAULT_MEMORY_MD = [
+  '# Runtime Memory',
+  '',
+  '## Role',
+  'New daemon-managed Slock/Raft runtime workspace.',
+  '',
+  '## Key Knowledge',
+  '- No long-lived memory has been recorded yet.',
+  '- Use the generated local Slock/Raft wrapper in `.slock/` for server info, message, task, channel, attachment, and profile operations.',
+  '',
+  '## Active Context',
+  '- First startup. Follow the current Slock event or warmup instruction.',
+  '',
+].join('\n');
+
 function quotePowerShell(value: string): string {
   return value.replace(/'/g, "''");
 }
@@ -46,6 +61,7 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
 
   mkdirSync(wrapperDir, { recursive: true });
   mkdirSync(tokenDir, { recursive: true });
+  seedMemoryFile(options.workspacePath);
   writeFileSync(tokenFile, options.proxyToken, 'utf-8');
 
   const commonEnv = {
@@ -97,6 +113,15 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
   ].join('\n'), 'utf-8');
 
   return { slockHome: wrapperDir, launchId, wrapperDir, tokenFile, bashWrapper, cmdWrapper, psWrapper };
+}
+
+export function seedMemoryFile(workspacePath: string): string {
+  mkdirSync(workspacePath, { recursive: true });
+  const memoryPath = join(workspacePath, 'MEMORY.md');
+  if (!existsSync(memoryPath)) {
+    writeFileSync(memoryPath, DEFAULT_MEMORY_MD, 'utf-8');
+  }
+  return memoryPath;
 }
 
 export function prependPathEnv(wrapperDir: string, basePath = process.env.PATH ?? ''): string {
