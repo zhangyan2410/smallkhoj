@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review database scoping and cursor storage behavior."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Review browser unread/event semantics and runtime-delivery separation."}
+{"file":".trellis/spec/backend/threading-contracts.md","reason":"Review thread cursor root/reply validation semantics."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review API parser and service/database boundary ownership."}

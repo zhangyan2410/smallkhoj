@@ -1,13 +1,9 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ListChecks } from "lucide-react"
 
 import { TaskBoard, type Task } from "@/components/task-board"
-import { StatusPill } from "@/components/product-ui"
-import { statusLabel } from "@/lib/control-plane"
 
 export type TaskDndBoardProps = {
   tasks: Task[]
@@ -61,46 +57,18 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
   }, [router, filterRecord])
 
   return (
-    <div>
-      {view === "board" ? (
-        <TaskBoard
-          key={boardKey}
-          tasks={localTasks}
-          initialView="board"
-          showViewToggle={false}
-          showDetail={false}
-          dragDisabled={false}
-          sessionToken={sessionToken}
-          onTaskMoved={handleTaskMoved}
-          onSelectTask={handleSelectTask}
-        />
-      ) : (
-        <div className="overflow-hidden rounded-none border-2 border-[var(--ink)] bg-card">
-          {localTasks.map((task) => (
-            <Link
-              key={task.id}
-              href={taskHref(task, filterRecord)}
-              className="grid gap-2 border-b px-3 py-3 text-sm last:border-b-0 hover:bg-muted/40 md:grid-cols-[auto_1fr_auto_auto] md:items-center"
-            >
-              <div className="font-mono text-xs text-muted-foreground">{task.channel} #{task.number}</div>
-              <div className="min-w-0">
-                <div className="truncate font-medium">{task.title}</div>
-                <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  {task.creator && <span>by @{task.creator}</span>}
-                  {task.assignee && <span>assigned @{task.assignee}</span>}
-                  {task.data?.source && <span>source message</span>}
-                  <span>updated {new Date(task.updatedAt || task.createdAt || 0).toLocaleString()}</span>
-                </div>
-              </div>
-              <StatusPill status={task.status} label={statusLabel(task.status)} />
-              <ListChecks className="size-4 text-muted-foreground" />
-            </Link>
-          ))}
-          {localTasks.length === 0 && (
-            <div className="py-8 text-center text-sm text-muted-foreground">No tasks match filters</div>
-          )}
-        </div>
-      )}
+    <div data-inkframe-mobile-role="task-board" className="min-w-0 overflow-x-hidden">
+      <TaskBoard
+        key={`${boardKey}:${view}`}
+        tasks={localTasks}
+        initialView={view}
+        showViewToggle={false}
+        showDetail={false}
+        dragDisabled={view !== "board"}
+        sessionToken={sessionToken}
+        onTaskMoved={handleTaskMoved}
+        onSelectTask={handleSelectTask}
+      />
     </div>
   )
 }

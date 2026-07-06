@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Foreground material toggles must fit existing component ownership and slot rules."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser evidence, mobile overflow, and no fake UI proof are central to this task."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Active material state is local UI state while read cursors are backend-owned server state."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Read cursor hardening touches backend persistence and migration safety."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Unread cursor and realtime projection must not break delivery semantics."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"This task spans backend cursors, frontend projection, and browser-visible UI behavior."}
+{"file":".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/quality-gate.md","reason":"Carry over verified state and known browser evidence gap from the previous task."}
+{"file":".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/evidence/2026-07-06-progress.md","reason":"Carry over review fixes, foreground activation fix, and validation results."}

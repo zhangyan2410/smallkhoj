@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review ProductShell ownership, browser-evidence honesty, and overflow contracts."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Review ProductShell three-column/mobile behavior without introducing unrelated redesign."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review stable data-region/data-role contracts and component-layer ownership."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-mobile-shell-drawer-reachability/prd.md","reason":"Task requirements and acceptance criteria."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-mobile-shell-drawer-reachability/design.md","reason":"Expected drawer state machine and DOM contract."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-mobile-shell-drawer-reachability/implement.md","reason":"Implementation and validation plan."}
+{"file":".agents/skills/project-webdriver-cli/SKILL.md","reason":"Review that browser evidence uses ./twd and does not claim acceptance when no tab is connected."}

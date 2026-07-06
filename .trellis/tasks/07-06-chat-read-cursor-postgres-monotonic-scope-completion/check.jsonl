@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/07-06-chat-read-cursor-postgres-monotonic-scope-completion/prd.md", "reason": "Reviewer should verify the narrow acceptance criteria are met without scope drift."}
+{"file": ".trellis/tasks/07-06-chat-read-cursor-postgres-monotonic-scope-completion/design.md", "reason": "Reviewer should check the test boundary and monotonic cursor contract."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-twd-evidence-http-cursor-harness/evidence/backend-http-harness.md", "reason": "Reviewer should compare this follow-up against the previous HTTP/Postgres coverage matrix."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Reviewer should check temporary schema isolation and cleanup expectations."}

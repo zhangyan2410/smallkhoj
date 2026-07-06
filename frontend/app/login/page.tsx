@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 import { LogIn } from "lucide-react"
 import { getTranslations } from "next-intl/server"
 
+import { InkframeObjectSurface } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -141,7 +142,7 @@ export default async function LoginPage({
   const t = await getTranslations("login")
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4">
+    <main data-slot="workbench-desk" className="sk-workbench-desk flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -172,14 +173,14 @@ export default async function LoginPage({
               <Input id="login-display-name" name="displayName" placeholder={t("displayNamePlaceholder")} />
             </div>
             {error && (
-              <p className="border-2 border-[var(--ink)] bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+              <InkframeObjectSurface material="blocked" className="px-2 py-1.5 text-xs text-destructive">
                 {error}
-              </p>
+              </InkframeObjectSurface>
             )}
             {returnTo !== "/" && (
-              <p className="text-xs text-muted-foreground">
+              <InkframeObjectSurface material="dry" className="px-2 py-1.5 text-xs text-muted-foreground">
                 {t("returnToHint")}
-              </p>
+              </InkframeObjectSurface>
             )}
             <div className="grid grid-cols-2 gap-2">
               <Button type="submit" name="mode" value="signin" variant="default">

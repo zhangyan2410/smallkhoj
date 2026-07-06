@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Message Binding Options</title>
+  <style>
+    :root {
+      --paper: #f6f1e2;
+      --paper-soft: #fbf7ea;
+      --paper-deep: #e7dcc2;
+      --ink: #221e16;
+      --ink-soft: #4d4639;
+      --muted: #766e5f;
+      --line: rgba(34, 30, 22, 0.085);
+      --shadow: #241f17;
+      --brass: #d8b968;
+      --steel: #d7d4c8;
+      --thread: #5c5141;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px),
+        linear-gradient(180deg, var(--paper-soft), var(--paper));
+      background-size: 56px 56px, 56px 56px, auto;
+      padding: 38px 42px 60px;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+      line-height: 1.2;
+    }
+
+    .intro {
+      max-width: 760px;
+      margin: 8px 0 28px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 24px;
+    }
+
+    .option {
+      border: 2px solid var(--ink);
+      background: color-mix(in srgb, white 22%, var(--paper));
+      box-shadow: 4px 4px 0 var(--shadow);
+      padding: 18px;
+    }
+
+    .option-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .option-title h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .option-title span {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .sample {
+      position: relative;
+      height: 168px;
+      overflow: visible;
+      padding-top: 34px;
+    }
+
+    .paper {
+      position: relative;
+      height: 118px;
+      border: 2px solid var(--ink);
+      background:
+        linear-gradient(color-mix(in srgb, var(--ink) 10%, transparent) 1px, transparent 1px) 0 46px / 100% 1px no-repeat,
+        linear-gradient(180deg, color-mix(in srgb, white 24%, var(--paper)), var(--paper));
+      box-shadow: 3px 3px 0 var(--shadow);
+    }
+
+    .paper::after {
+      content: "";
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      bottom: 24px;
+      border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+    }
+
+    .gap {
+      position: absolute;
+      z-index: 2;
+      background: color-mix(in srgb, white 22%, var(--paper));
+      pointer-events: none;
+    }
+
+    .ring {
+      position: absolute;
+      z-index: 4;
+      border: 3px solid var(--ink);
+      border-radius: 999px;
+      background: color-mix(in srgb, white 20%, var(--paper));
+      box-shadow: 1px 1px 0 color-mix(in srgb, var(--ink) 30%, transparent);
+    }
+
+    .arc {
+      position: absolute;
+      z-index: 3;
+      border: 3px solid var(--ink);
+      border-radius: 999px;
+      background: transparent;
+    }
+
+    .pin {
+      position: absolute;
+      z-index: 5;
+      border: 2px solid var(--ink);
+      background: var(--brass);
+      box-shadow: 2px 2px 0 color-mix(in srgb, var(--ink) 70%, transparent);
+    }
+
+    .label {
+      position: absolute;
+      left: 16px;
+      bottom: 13px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .a .gap { left: 38px; top: 31px; width: 84px; height: 12px; }
+    .a .ring { left: 50px; top: 12px; width: 42px; height: 42px; }
+    .a .arc {
+      left: 83px;
+      top: 23px;
+      width: 38px;
+      height: 42px;
+      border-left-color: transparent;
+      transform: rotate(8deg);
+    }
+
+    .b .gap { left: 50px; top: 29px; width: 64px; height: 16px; }
+    .b .ring {
+      left: 58px;
+      top: 5px;
+      width: 48px;
+      height: 48px;
+      background:
+        radial-gradient(circle, color-mix(in srgb, white 22%, var(--paper)) 0 48%, transparent 50%),
+        var(--paper);
+    }
+    .b .arc {
+      left: 76px;
+      top: 35px;
+      width: 38px;
+      height: 46px;
+      border-top-color: transparent;
+      transform: rotate(-12deg);
+    }
+
+    .c .gap { left: 50px; top: 29px; width: 70px; height: 12px; }
+    .c .pin {
+      left: 61px;
+      top: 10px;
+      width: 35px;
+      height: 35px;
+      border-radius: 999px;
+    }
+    .c .pin::before,
+    .c .pin::after {
+      content: "";
+      position: absolute;
+      top: 23px;
+      width: 42px;
+      height: 10px;
+      border: 2px solid var(--ink);
+      background: color-mix(in srgb, white 14%, var(--brass));
+    }
+    .c .pin::before {
+      right: 10px;
+      transform: rotate(8deg);
+    }
+    .c .pin::after {
+      left: 10px;
+      transform: rotate(-8deg);
+    }
+
+    .d .gap { left: 46px; top: 27px; width: 88px; height: 20px; }
+    .binder-clip {
+      position: absolute;
+      left: 56px;
+      top: 0;
+      z-index: 5;
+      width: 72px;
+      height: 48px;
+      border: 3px solid var(--ink);
+      background: color-mix(in srgb, #3b3327 86%, var(--ink));
+      clip-path: polygon(8% 0, 92% 0, 78% 100%, 22% 100%);
+      box-shadow: 2px 2px 0 color-mix(in srgb, var(--ink) 52%, transparent);
+    }
+    .binder-clip::before,
+    .binder-clip::after {
+      content: "";
+      position: absolute;
+      top: 12px;
+      width: 25px;
+      height: 25px;
+      border: 3px solid var(--ink);
+      border-bottom-color: transparent;
+      border-radius: 999px;
+      background: transparent;
+    }
+    .binder-clip::before { left: -18px; transform: rotate(-25deg); }
+    .binder-clip::after { right: -18px; transform: rotate(25deg); }
+
+    .e .gap { left: 58px; top: 30px; width: 56px; height: 12px; }
+    .paperclip {
+      position: absolute;
+      left: 68px;
+      top: -2px;
+      z-index: 5;
+      width: 44px;
+      height: 74px;
+      border: 3px solid var(--ink);
+      border-left-color: transparent;
+      border-radius: 999px;
+      transform: rotate(18deg);
+      background: transparent;
+    }
+    .paperclip::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      top: 12px;
+      width: 23px;
+      height: 46px;
+      border: 3px solid var(--ink);
+      border-left-color: transparent;
+      border-radius: 999px;
+    }
+
+    .f .gap { left: 34px; top: 30px; width: 118px; height: 12px; }
+    .thread-loop {
+      position: absolute;
+      left: 45px;
+      top: -1px;
+      z-index: 5;
+      width: 92px;
+      height: 62px;
+      border: 3px solid var(--thread);
+      border-bottom-color: transparent;
+      border-radius: 999px 999px 40px 40px;
+      transform: rotate(-4deg);
+      background: transparent;
+    }
+    .thread-loop::before,
+    .thread-loop::after {
+      content: "";
+      position: absolute;
+      top: 32px;
+      width: 16px;
+      height: 16px;
+      border: 3px solid var(--ink);
+      border-radius: 999px;
+      background: color-mix(in srgb, white 18%, var(--paper));
+    }
+    .thread-loop::before { left: -1px; }
+    .thread-loop::after { right: -1px; }
+
+    .g .gap.one { left: 42px; top: 30px; width: 52px; height: 12px; }
+    .g .gap.two { left: 126px; top: 30px; width: 52px; height: 12px; }
+    .g .ring.one { left: 52px; top: 11px; width: 40px; height: 40px; }
+    .g .ring.two { left: 136px; top: 11px; width: 40px; height: 40px; }
+    .g .wire {
+      position: absolute;
+      left: 79px;
+      top: 26px;
+      z-index: 3;
+      width: 78px;
+      border-top: 3px solid var(--ink);
+    }
+
+    .h .gap { left: 38px; top: 30px; width: 98px; height: 12px; }
+    .button-knot {
+      position: absolute;
+      left: 54px;
+      top: 8px;
+      z-index: 5;
+      width: 44px;
+      height: 44px;
+      border: 3px solid var(--ink);
+      border-radius: 999px;
+      background: color-mix(in srgb, white 18%, var(--paper));
+    }
+    .button-knot::before {
+      content: "";
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--ink);
+      border-radius: 999px;
+    }
+    .string-tail {
+      position: absolute;
+      left: 92px;
+      top: 23px;
+      z-index: 4;
+      width: 58px;
+      height: 38px;
+      border-top: 3px solid var(--thread);
+      border-right: 3px solid var(--thread);
+      border-radius: 0 999px 0 0;
+      transform: rotate(6deg);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Message Binding Options</h1>
+    <p class="intro">
+      只看消息纸片顶部的固定件形态。这里不判断正文排版，只选“这个东西到底怎么固定住纸片”。
+      选中以后再迁回 chat message notebook。
+    </p>
+
+    <section class="options-grid" aria-label="message binding options">
+      <article class="option">
+        <div class="option-title"><h2>A. 活页环扣住纸边</h2><span>ring through edge</span></div>
+        <div class="sample a">
+          <div class="paper"><span class="gap"></span><span class="ring"></span><span class="arc"></span><span class="label">paper edge gap</span></div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-title"><h2>B. 大圆环穿纸</h2><span>single jump ring</span></div>
+        <div class="sample b">
+          <div class="paper"><span class="gap"></span><span class="ring"></span><span class="arc"></span><span class="label">ring enters paper</span></div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-title"><h2>C. 黄铜纸扣钉</h2><span>paper fastener</span></div>
+        <div class="sample c">
+          <div class="paper"><span class="gap"></span><span class="pin"></span><span class="label">pressed fastener</span></div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-title"><h2>D. 黑色夹子</h2><span>binder clip</span></div>
+        <div class="sample d">
+          <div class="paper"><span class="gap"></span><span class="binder-clip"></span><span class="label">clip pressure</span></div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-title"><h2>E. 回形针压住</h2><span>paperclip</span></div>
+        <div class="sample e">
+          <div class="paper"><span class="gap"></span><span class="paperclip"></span><span class="label">wire over paper</span></div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-title"><h2>F. 线绳穿孔</h2><span>thread loop</span></div>
+        <div class="sample f">
+          <div class="paper"><span class="gap"></span><span class="thread-loop"></span><span class="label">soft binding</span></div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-title"><h2>G. 双孔活页</h2><span>two-hole binder</span></div>
+        <div class="sample g">
+          <div class="paper"><span class="gap one"></span><span class="gap two"></span><span class="ring one"></span><span class="wire"></span><span class="ring two"></span><span class="label">more notebook-like</span></div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-title"><h2>H. 圆扣绕线</h2><span>button tie</span></div>
+        <div class="sample h">
+          <div class="paper"><span class="gap"></span><span class="button-knot"></span><span class="string-tail"></span><span class="label">handmade closure</span></div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

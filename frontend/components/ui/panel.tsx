@@ -18,9 +18,9 @@ import { cn } from "@/lib/utils"
  * - flat：墨边 + 透明底（嵌套在已有背景里）
  */
 const panelVariants = {
-  default: "border-2 border-[var(--ink)] bg-sand-card rounded-none",
-  raised: "border-2 border-[var(--ink)] bg-sand-card rounded-none shadow-[2px_2px_0_var(--ink)]",
-  flat: "border-2 border-[var(--ink)] bg-transparent rounded-none",
+  default: "sk-object-panel border-2 border-[var(--ink)] rounded-none",
+  raised: "sk-object-panel sk-object-panel-raised border-2 border-[var(--ink)] rounded-none",
+  flat: "sk-object-panel sk-object-panel-flat border-2 border-[var(--ink)] bg-transparent rounded-none",
 } as const
 
 const Panel = React.forwardRef<

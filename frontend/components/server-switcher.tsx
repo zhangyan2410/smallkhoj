@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
 
 import { createServerAction, logoutAction, switchActiveServerAction } from "@/app/server-actions"
+import { InkframeObjectSurface, ObjectField } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { AccountServerMembership, AccountSession } from "@/lib/control-plane"
@@ -63,7 +64,7 @@ export function ServerSwitcher({ session }: { session: AccountSession }) {
       >
         <span aria-hidden>{accountInitial(accountLabel)}</span>
       </summary>
-      <div className="fixed left-14 top-3 z-50 w-[min(20rem,calc(100vw-4.5rem))] border-2 border-[var(--ink)] bg-sand-card text-sand-ink shadow-[2px_2px_0_var(--ink)]">
+      <InkframeObjectSurface raised className="fixed left-14 top-3 z-50 w-[min(20rem,calc(100vw-4.5rem))] text-sand-ink">
         <div className="border-b-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
           <div className="flex min-w-0 items-center gap-2">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-none border-2 border-[var(--ink)] bg-primary text-sm font-semibold text-primary-foreground">
@@ -81,14 +82,16 @@ export function ServerSwitcher({ session }: { session: AccountSession }) {
         </div>
 
         <div className="px-2.5 py-2">
-          <div className="mb-1 flex items-center justify-between gap-2 text-[0.68rem] font-medium text-muted-foreground">
-            <span>{t("currentServer")}</span>
-            <span>{activeRole}</span>
-          </div>
-          <div className="flex min-w-0 items-center gap-2 border-2 border-[var(--ink)] px-2 py-1.5 sk-accent-mint">
-            <Server className="size-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold">{active.server.name}</span>
-          </div>
+          <ObjectField
+            label={`${t("currentServer")} · ${activeRole}`}
+            mono={false}
+            value={
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <Server className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{active.server.name}</span>
+              </span>
+            }
+          />
         </div>
 
         {switchableServers.length > 0 ? (
@@ -133,7 +136,7 @@ export function ServerSwitcher({ session }: { session: AccountSession }) {
             <span className="min-w-0 flex-1 truncate text-left">{t("signOut")}</span>
           </Button>
         </form>
-      </div>
+      </InkframeObjectSurface>
     </details>
   )
 }

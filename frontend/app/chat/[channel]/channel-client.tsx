@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import {
@@ -14,24 +14,32 @@ import {
   ListChecks,
   MessageCircle,
   Paperclip,
+  Paintbrush,
   Plus,
+  RotateCcw,
+  Save,
   Send,
   Smile,
+  Droplets,
   Trash2,
   Users,
   X,
 } from "lucide-react"
 
-import { MemberAvatar } from "@/components/member-avatar"
 import { MessageFrame } from "@/components/message-frame"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { RuntimeChip } from "@/components/product-ui"
+import { EmptyState, RuntimeChip } from "@/components/product-ui"
 import { MarkdownMessage } from "@/components/markdown-message"
 import { AgentActivityList } from "@/components/agent-activity-list"
+import { AttachmentSheet, AvatarObject, ChannelDivider, ChatComposerSurface, ChatTaskToggle, EventBadge, MemberNameTag, MessageToolStrip } from "@/components/inkframe-object-ui"
 import { TaskBoard } from "@/components/task-board"
 import { ChannelMemorySurface, MemoryProposalQueue } from "@/components/memory-entry-surface"
+import { INKFRAME_DESK_PAPER_TINT, MaterialSurface, type MaterialPointerMode, type MaterialSurfaceMode } from "@/components/inkframe/material-surface"
+import type { MaterialResource } from "@/components/inkframe/material-resource"
+import { resolveAppDeskMaterialAction, type AppDeskMaterialAction } from "@/components/inkframe/app-desk-background"
 import {
   apiGet,
   apiPost,
@@ -52,16 +60,28 @@ import {
   type HighWater,
   type PublicEventEnvelope,
 } from "@/lib/realtime-events"
+import { chatReadCursorRequestForThread, hasUnreadThreadActivity, markChatUnreadScope } from "@/lib/chat-unread-state"
 import { channelMemberAddPayload } from "@/lib/channel-members"
 import { memberForMessageSender } from "@/lib/member-avatar"
 
-type ChannelInfo = { id: string; name: string; type: string; description?: string }
+type ChannelInfo = {
+  id: string
+  name: string
+  type: string
+  description?: string
+  latestSeq?: number
+  unreadCount?: number
+  hasUnread?: boolean
+}
 type DmInfo = {
   id: string
   name: string
   type: "dm"
   displayName: string
   peer?: Member | null
+  latestSeq?: number
+  unreadCount?: number
+  hasUnread?: boolean
 }
 type ThreadSummary = {
   summary?: string | null
@@ -88,6 +108,9 @@ type ChannelMessage = {
   threadShortId?: string | null
   replyCount?: number
   threadSummary?: ThreadSummary | null
+  threadLatestSeq?: number
+  threadUnreadCount?: number
+  hasThreadUnread?: boolean
   reactions?: ReactionItem[]
   reactionCounts?: Record<string, number>
 }
@@ -236,6 +259,14 @@ export function ChannelClient({
   const [input, setInput] = useState("")
   const [threadInput, setThreadInput] = useState("")
   const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null)
+  const [threadUnreadRootIds, setThreadUnreadRootIds] = useState<Set<string>>(() => new Set())
+  const [activeMaterialMessageId, setActiveMaterialMessageId] = useState<string | null>(null)
+  const [activeMaterialPointerMode, setActiveMaterialPointerMode] = useState<MaterialPointerMode>("draw")
+  const [messageMaterialModes, setMessageMaterialModes] = useState<Record<string, MaterialSurfaceMode>>({})
+  const [messageMaterialResources, setMessageMaterialResources] = useState<Record<string, MaterialResource | null>>({})
+  const [chatDeskMaterialMode, setChatDeskMaterialMode] = useState<MaterialSurfaceMode>("static")
+  const [chatDeskPointerMode, setChatDeskPointerMode] = useState<MaterialPointerMode>("none")
+  const [chatDeskMaterialResource, setChatDeskMaterialResource] = useState<MaterialResource | null>(null)
   const [threadData, setThreadData] = useState<ThreadData | null>(null)
   const [threadLoading, setThreadLoading] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
@@ -258,6 +289,8 @@ export function ChannelClient({
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
+  const chatDeskMaterialLayerRef = useRef<HTMLDivElement>(null)
+  const chatDeskPointerForwardingRef = useRef(false)
   const messageEndRef = useRef<HTMLDivElement>(null)
   const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
 
@@ -286,6 +319,34 @@ export function ChannelClient({
     Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
   const memberKindLabel = (kind: string) => kind === "agent" ? tChat("agentKind") : kind === "human" ? tChat("humanKind") : kind
   const messageRoleLabels = { assistant: tChat("agentKind"), member: tChat("members") }
+  const markVisibleThreadRead = useCallback(async (threadId: string, data: ThreadData) => {
+    const replies = data.replies ?? (data.messages || []).filter((msg) => msg.parentId)
+    const visibleMessages = data.thread ? [data.thread, ...replies] : replies
+    const cursorRequest = chatReadCursorRequestForThread({ rootMessageId: threadId, messages: visibleMessages })
+    if (!cursorRequest) return
+    try {
+      await apiPost("/api/v1/chat/read-cursors", cursorRequest, sessionToken)
+      setMessages((previous) =>
+        previous.map((message) => {
+          const rootId = message.threadId || message.id
+          if (rootId !== threadId && message.id !== threadId) return message
+          return {
+            ...message,
+            threadUnreadCount: 0,
+            hasThreadUnread: false,
+          }
+        }),
+      )
+      setThreadUnreadRootIds((previous) => {
+        if (!previous.has(threadId)) return previous
+        const next = new Set(previous)
+        next.delete(threadId)
+        return next
+      })
+    } catch (error) {
+      console.warn("[chat] thread read cursor write failed", error)
+    }
+  }, [sessionToken])
 
   function setPersistentPanelWidth(
     width: number,
@@ -388,7 +449,10 @@ export function ChannelClient({
         setThreadLoading(true)
         try {
           const data = await apiGet<ThreadData>(`/api/v1/threads/${encodeURIComponent(initialThreadId)}`, {}, sessionToken)
-          if (!cancelled) setThreadData(data)
+          if (!cancelled) {
+            setThreadData(data)
+            void markVisibleThreadRead(initialThreadId, data)
+          }
         } finally {
           if (!cancelled) setThreadLoading(false)
         }
@@ -396,7 +460,7 @@ export function ChannelClient({
     }
     void loadChannel()
     return () => { cancelled = true }
-  }, [initialChannel, initialThreadId, sessionToken])
+  }, [initialChannel, initialThreadId, markVisibleThreadRead, sessionToken])
 
   useEffect(() => {
     if (!initialMessageId) return
@@ -593,10 +657,11 @@ export function ChannelClient({
     try {
       const data = await apiGet<ThreadData>(`/api/v1/threads/${encodeURIComponent(threadId)}`, {}, sessionToken)
       setThreadData(data)
+      void markVisibleThreadRead(threadId, data)
     } finally {
       setThreadLoading(false)
     }
-  }, [activeThreadId, sessionToken])
+  }, [activeThreadId, markVisibleThreadRead, sessionToken])
 
   const refreshChannelsAndDms = useCallback(async () => {
     const h = apiHeaders(sessionToken)
@@ -661,6 +726,14 @@ export function ChannelClient({
         if (!shouldHandleRealtimeEvent(event, { channelId, channelName })) {
           // Event belongs to another channel/DM or to a non-chat scope:
           // refresh sidebar lists so unread/new channels are visible.
+          if (event.type === "message.created" && (event.scope.kind === "channel" || event.scope.kind === "dm")) {
+            markChatUnreadScope(
+              typeof window === "undefined" ? undefined : window.localStorage,
+              typeof window === "undefined" ? undefined : window,
+              event.scope,
+              event.seq,
+            )
+          }
           void refreshChannelsAndDms()
           return
         }
@@ -677,7 +750,18 @@ export function ChannelClient({
         if (event.type === "message.created") {
           const message = event.payload.message
           if (message && typeof message === "object" && "id" in message) {
-            setMessages((previous) => mergeMessageById(previous, message as ChannelMessage))
+            const channelMessage = message as ChannelMessage
+            if (channelMessage.parentId) {
+              const rootId = channelMessage.threadId || channelMessage.parentId
+              if (rootId && rootId !== activeThreadId) {
+                setThreadUnreadRootIds((previous) => {
+                  const next = new Set(previous)
+                  next.add(rootId)
+                  return next
+                })
+              }
+            }
+            setMessages((previous) => mergeMessageById(previous, channelMessage))
           } else {
             scheduleCatchUp()
           }
@@ -706,6 +790,13 @@ export function ChannelClient({
   async function openThread(message: ChannelMessage) {
     const threadId = message.threadId || message.id
     setActiveThreadId(threadId)
+    setThreadUnreadRootIds((previous) => {
+      if (!previous.has(threadId) && !previous.has(message.id)) return previous
+      const next = new Set(previous)
+      next.delete(threadId)
+      next.delete(message.id)
+      return next
+    })
     await refreshThread(threadId)
   }
 
@@ -869,12 +960,162 @@ export function ChannelClient({
     }
   }
 
+  function setMessageMaterialResource(messageId: string, resource: MaterialResource | null) {
+    setMessageMaterialResources((previous) => {
+      const next = { ...previous }
+      if (resource) next[messageId] = resource
+      else delete next[messageId]
+      return next
+    })
+  }
+
+  function setMessageMaterialMode(messageId: string, mode: MaterialSurfaceMode) {
+    setMessageMaterialModes((previous) => {
+      const next = { ...previous, [messageId]: mode }
+      if (mode === "static") delete next[messageId]
+      return next
+    })
+    if (mode === "static" || mode === "fallback") {
+      setActiveMaterialMessageId((current) => (current === messageId ? null : current))
+    }
+  }
+
+  function activateMessageMaterial(messageId: string, pointerMode: MaterialPointerMode) {
+    setActiveMaterialMessageId(messageId)
+    setActiveMaterialPointerMode(pointerMode)
+    setMessageMaterialModes((previous) => ({ ...previous, [messageId]: "active" }))
+  }
+
+  function requestMessageMaterialAction(messageId: string, mode: Extract<MaterialSurfaceMode, "keeping" | "discarding">) {
+    setActiveMaterialMessageId(messageId)
+    setActiveMaterialPointerMode("none")
+    setMessageMaterialModes((previous) => ({ ...previous, [messageId]: mode }))
+  }
+
+  function requestChatDeskMaterialAction(action: AppDeskMaterialAction) {
+    const next = resolveAppDeskMaterialAction(action)
+    setChatDeskPointerMode(next.pointerMode)
+    setChatDeskMaterialMode(next.mode)
+  }
+
+  function isChatDeskMaterialCapturing() {
+    return chatDeskMaterialMode === "active" && chatDeskPointerMode !== "none"
+  }
+
+  function forwardChatDeskPointerEvent(event: ReactPointerEvent<HTMLElement>) {
+    const materialSurface = chatDeskMaterialLayerRef.current?.querySelector<HTMLElement>('[data-slot="material-surface"]')
+    if (!materialSurface || typeof window === "undefined") return
+    const PointerCtor = window.PointerEvent ?? window.MouseEvent
+    materialSurface.dispatchEvent(new PointerCtor(event.type, {
+      bubbles: true,
+      cancelable: true,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      screenX: event.screenX,
+      screenY: event.screenY,
+      button: event.button,
+      buttons: event.buttons,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      pressure: event.pressure,
+      movementX: event.movementX,
+      movementY: event.movementY,
+    } as PointerEventInit))
+  }
+
+  function handleChatDeskPointerDownCapture(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!isChatDeskMaterialCapturing()) return
+    event.preventDefault()
+    event.stopPropagation()
+    chatDeskPointerForwardingRef.current = true
+    forwardChatDeskPointerEvent(event)
+  }
+
+  function handleChatDeskPointerMoveCapture(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!chatDeskPointerForwardingRef.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    forwardChatDeskPointerEvent(event)
+  }
+
+  function handleChatDeskPointerUpCapture(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!chatDeskPointerForwardingRef.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    forwardChatDeskPointerEvent(event)
+    chatDeskPointerForwardingRef.current = false
+  }
+
+  function messageMaterialMode(messageId: string): MaterialSurfaceMode {
+    return messageMaterialModes[messageId] ?? (activeMaterialMessageId === messageId ? "active" : "static")
+  }
+
   function renderMessageActions(message: ChannelMessage) {
     const hasReacted = didReact(message, "👍")
     const isSaved = savedMessageIds.has(message.id)
     const isTasked = taskMessageIds.has(message.id)
+    const isMaterialActive = activeMaterialMessageId === message.id
+    const materialMode = messageMaterialMode(message.id)
+    const isDrawing = isMaterialActive && materialMode === "active" && activeMaterialPointerMode === "draw"
+    const isWatering = isMaterialActive && materialMode === "active" && activeMaterialPointerMode === "water"
+    const hasMaterialResource = Boolean(messageMaterialResources[message.id])
     return (
-      <div className="flex items-center gap-0.5">
+      <MessageToolStrip>
+        <button
+          type="button"
+          data-slot="message-material-pen"
+          data-active={isDrawing ? "true" : "false"}
+          onClick={() => {
+            if (isDrawing) setMessageMaterialMode(message.id, "static")
+            else activateMessageMaterial(message.id, "draw")
+          }}
+          aria-label="Annotate message"
+          title="Annotate message"
+          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
+            isDrawing ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Paintbrush className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          data-slot="message-material-water"
+          data-active={isWatering ? "true" : "false"}
+          onClick={() => activateMessageMaterial(message.id, "water")}
+          aria-label="Water annotation"
+          title="Water annotation"
+          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
+            isWatering ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Droplets className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          data-slot="message-material-keep"
+          disabled={!isMaterialActive}
+          onClick={() => requestMessageMaterialAction(message.id, "keeping")}
+          aria-label="Keep annotation"
+          title="Keep annotation"
+          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35"
+        >
+          <Save className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          data-slot="message-material-discard"
+          disabled={!isMaterialActive && !hasMaterialResource}
+          onClick={() => requestMessageMaterialAction(message.id, "discarding")}
+          aria-label="Clear annotation"
+          title="Clear annotation"
+          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35"
+        >
+          <RotateCcw className="size-3.5" />
+        </button>
         <button
           type="button"
           onClick={() => openThread(message)}
@@ -926,7 +1167,7 @@ export function ChannelClient({
         >
           <Clipboard className="size-3.5" />
         </button>
-      </div>
+      </MessageToolStrip>
     )
   }
 
@@ -967,29 +1208,38 @@ export function ChannelClient({
 
   const activeRoot = threadData?.thread
   const activeReplies = threadData?.replies ?? (threadData?.messages || []).filter((msg) => msg.parentId)
+  const headerDmMember = currentDm ? dmAvatarMember(currentDm) : null
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-sand" data-chat-root data-region="chat-main">
-        <header className="shrink-0 border-b px-4 py-2">
-          <div className="flex items-center gap-3">
+    <div className="sk-chat-main flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-chat-root data-region="chat-main" data-inkframe-mobile-role="chat-workspace">
+        <header className="sk-chat-channel-header shrink-0 border-b px-4 py-2">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              {currentDm ? (
-                <MemberAvatar member={dmAvatarMember(currentDm)} size="sm" />
+              {headerDmMember ? (
+                <AvatarObject member={headerDmMember} size="sm" />
               ) : (
-                <Avatar size="sm" name={currentTitle} />
+                <ChannelDivider kind="channel" active>
+                  <Avatar size="sm" name={currentTitle} />
+                </ChannelDivider>
               )}
               <div className="min-w-0">
-                <h1 className="truncate text-sm font-semibold leading-tight">{currentTitle}</h1>
+                <h1 className="truncate text-sm font-semibold leading-tight">
+                  <ChannelDivider kind={currentIsDm ? "dm" : "channel"} active className="min-h-0 py-1 text-sm">
+                    {currentTitle}
+                  </ChannelDivider>
+                </h1>
                 <div className="mt-0.5 flex items-center gap-2 text-xs text-sand-muted">
                   <RuntimeChip>{currentIsDm ? tChat("directMessageChip") : tChat("channel")}</RuntimeChip>
-                  <span>{tChat("rootMessages", { count: messages.length })}</span>
                 </div>
               </div>
             </div>
             {/* Tab strip — each tab carries its functional accent color
                 (blue/rose/mint/green/purple). Active = solid accent + white text,
                 inactive = soft accent + dark text. All combos are contrast-safe. */}
-            <div className="ml-4 flex gap-1 border-l pl-4">
+            <div
+              data-inkframe-mobile-role="chat-tab-strip"
+              className="ml-4 flex min-w-0 flex-1 gap-1 overflow-x-auto border-l pl-4"
+            >
               {conversationTabs.map(({ key, labelKey, icon: Icon, tone }) => {
                 const tabKey = key as "chat" | "tasks" | "memory" | "files" | "activity"
                 const label = tChat(labelKey)
@@ -1023,6 +1273,52 @@ export function ChannelClient({
               })}
             </div>
             <div className="ml-auto flex items-center gap-1">
+              {activeTab === "chat" && (
+                <div className="flex items-center gap-0.5" data-slot="chat-desk-material-controls">
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant={chatDeskMaterialMode === "active" && chatDeskPointerMode === "draw" ? "default" : "outline"}
+                    onClick={() => requestChatDeskMaterialAction("draw")}
+                    aria-label="Draw on chat desk"
+                    title="Draw on chat desk"
+                  >
+                    <Paintbrush className="size-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant={chatDeskMaterialMode === "active" && chatDeskPointerMode === "water" ? "default" : "outline"}
+                    onClick={() => requestChatDeskMaterialAction("water")}
+                    aria-label="Wash chat desk"
+                    title="Wash chat desk"
+                  >
+                    <Droplets className="size-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    disabled={chatDeskMaterialMode !== "active"}
+                    onClick={() => requestChatDeskMaterialAction("keep")}
+                    aria-label="Keep chat desk"
+                    title="Keep chat desk"
+                  >
+                    <Save className="size-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    disabled={chatDeskMaterialMode !== "active" && !chatDeskMaterialResource}
+                    onClick={() => requestChatDeskMaterialAction("discard")}
+                    aria-label="Clear chat desk"
+                    title="Clear chat desk"
+                  >
+                    <RotateCcw className="size-3.5" />
+                  </Button>
+                </div>
+              )}
               {!currentIsDm && (
                 <Button
                   type="button"
@@ -1050,9 +1346,9 @@ export function ChannelClient({
           </div>
         </header>
 
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="sk-chat-content flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div
-            className="flex min-h-0 min-w-0 flex-1 flex-col relative overflow-hidden"
+            className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -1112,70 +1408,72 @@ export function ChannelClient({
                   {!filesLoading && files.length === 0 && (
                     <p className="py-12 text-center text-sm text-muted-foreground">{tChat("noFiles", { channel: currentTitle })}</p>
                   )}
-                  <ul className="divide-y divide-border">
+                  <ul className="space-y-2">
                     {files.map((file) => {
                       const uploader = allMembers.find((m) => m.id === file.uploadedBy) ?? members.find((m) => m.id === file.uploadedBy)
                       const isImage = file.mimeType.startsWith("image/")
                       return (
-                        <li key={file.id} className="group/file flex items-center gap-3 py-2.5">
-                          <div className={`flex size-8 shrink-0 items-center justify-center rounded-none ${isImage ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                            {isImage ? <ImageIcon className="size-4" /> : <Files className="size-4" />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-sm font-medium">{file.originalName}</span>
-                              <span className="shrink-0 text-xs text-sand-muted">{formatFileSize(file.size)}</span>
+                        <li key={file.id} className="group/file">
+                          <AttachmentSheet kind={isImage ? "image" : "file"} className="flex items-center gap-3 px-3 py-2.5">
+                            <div className={`sk-attachment-sheet-icon flex size-8 shrink-0 items-center justify-center rounded-none ${isImage ? "text-accent-green" : "text-sand-muted"}`}>
+                              {isImage ? <ImageIcon className="size-4" /> : <Files className="size-4" />}
                             </div>
-                            <div className="mt-0.5 flex items-center gap-2 text-xs text-sand-muted">
-                              <span>{uploader?.displayName || tChat("unknown")}</span>
-                              {file.createdAt && (
-                                <>
-                                  <span>·</span>
-                                  <span>{new Date(file.createdAt).toLocaleString()}</span>
-                                </>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate text-sm font-medium">{file.originalName}</span>
+                                <span className="shrink-0 text-xs text-sand-muted">{formatFileSize(file.size)}</span>
+                              </div>
+                              <div className="mt-0.5 flex items-center gap-2 text-xs text-sand-muted">
+                                <span>{uploader?.displayName || tChat("unknown")}</span>
+                                {file.createdAt && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{new Date(file.createdAt).toLocaleString()}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              {file.messageId && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab("chat")
+                                    const timer = window.setTimeout(() => {
+                                      const target = document.querySelector<HTMLElement>(`[data-testid="message-${file.messageId}"]`)
+                                      target?.scrollIntoView({ block: "center" })
+                                      target?.focus()
+                                    }, 150)
+                                    window.setTimeout(() => window.clearTimeout(timer), 5000)
+                                  }}
+                                  title={tChat("openMessage")}
+                                  className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                  <MessageCircle className="size-3.5" />
+                                </button>
                               )}
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            {file.messageId && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveTab("chat")
-                                  const timer = window.setTimeout(() => {
-                                    const target = document.querySelector<HTMLElement>(`[data-testid="message-${file.messageId}"]`)
-                                    target?.scrollIntoView({ block: "center" })
-                                    target?.focus()
-                                  }, 150)
-                                  window.setTimeout(() => window.clearTimeout(timer), 5000)
-                                }}
-                                title={tChat("openMessage")}
-                                className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
-                              >
-                                <MessageCircle className="size-3.5" />
-                              </button>
-                            )}
-                            {file.previewUrl && (
+                              {file.previewUrl && (
+                                <a
+                                  href={`${BROWSER_API_BASE}${file.previewUrl}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={tChat("preview")}
+                                  className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                  <ImageIcon className="size-3.5" />
+                                </a>
+                              )}
                               <a
-                                href={`${BROWSER_API_BASE}${file.previewUrl}`}
+                                href={`${BROWSER_API_BASE}${file.url}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                title={tChat("preview")}
+                                title={tChat("download")}
                                 className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
                               >
-                                <ImageIcon className="size-3.5" />
+                                <Files className="size-3.5" />
                               </a>
-                            )}
-                            <a
-                              href={`${BROWSER_API_BASE}${file.url}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={tChat("download")}
-                              className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
-                            >
-                              <Files className="size-3.5" />
-                            </a>
-                          </div>
+                            </div>
+                          </AttachmentSheet>
                         </li>
                       )
                     })}
@@ -1184,28 +1482,74 @@ export function ChannelClient({
               </div>
             ) : (
               <>
-                <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
-                <div className="mr-auto w-full max-w-[1248px] space-y-3">
+                <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" data-inkframe-mobile-role="chat-message-list" className="sk-chat-message-list relative isolate min-h-0 min-w-0 flex-1 overflow-hidden">
+                <div
+                  ref={chatDeskMaterialLayerRef}
+                  data-slot="chat-desk-material-layer"
+                  data-inkframe-purpose="chat-desk-canvas"
+                  data-captures-pointer={chatDeskMaterialMode === "active" && chatDeskPointerMode !== "none" ? "true" : "false"}
+                  className="sk-chat-desk-material-layer pointer-events-none absolute inset-0 z-0 data-[captures-pointer=true]:pointer-events-auto data-[captures-pointer=true]:cursor-crosshair"
+                >
+                  <MaterialSurface
+                    ownerKind="app-background"
+                    ownerId={`chat-desk:${channelName}`}
+                    region="chat-main"
+                    tint="desk"
+                    mode={chatDeskMaterialMode}
+                    pointerMode={chatDeskPointerMode}
+                    waterStyle="wash"
+                    washableFixedInk
+                    paperTint={INKFRAME_DESK_PAPER_TINT}
+                    vignette={0}
+                    cleanPaper
+                    resource={chatDeskMaterialResource}
+                    onResourceChange={setChatDeskMaterialResource}
+                    onModeChange={setChatDeskMaterialMode}
+                    className="sk-chat-desk-material-surface absolute inset-0 min-h-full !border-0 !bg-transparent"
+                  >
+                    <div data-slot="chat-desk-static" className="sk-chat-desk-static absolute inset-0" />
+                  </MaterialSurface>
+                </div>
+                <div
+                  data-slot="chat-message-scroll"
+                  onPointerDownCapture={handleChatDeskPointerDownCapture}
+                  onPointerMoveCapture={handleChatDeskPointerMoveCapture}
+                  onPointerUpCapture={handleChatDeskPointerUpCapture}
+                  onPointerCancelCapture={handleChatDeskPointerUpCapture}
+                  className={`pointer-events-auto relative z-10 h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-4`}
+                >
+                <div className="sk-chat-message-stack pointer-events-none relative mr-auto w-full max-w-[1248px] min-w-0 space-y-3">
                 {messages.map((msg) => {
                   const isSaved = savedMessageIds.has(msg.id)
                   const senderMember = memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)
+                  const hasThreadUnread = hasUnreadThreadActivity(msg, threadUnreadRootIds)
                   return (
                     <div
                       key={msg.id}
                       data-testid={`message-${msg.id}`}
-                      className={`group/message relative -mx-2 min-w-0 px-2 py-1.5 transition-colors ${
+                      className={`group/message relative -mx-2 min-w-0 px-2 py-1.5 pointer-events-none transition-colors ${
                         isSaved ? "sk-accent-rose-soft/40" : ""
                       }`}
                       tabIndex={0}
                     >
+                      <div className={isChatDeskMaterialCapturing() ? "pointer-events-none" : "pointer-events-auto"}>
                       <MessageFrame
                         member={senderMember}
                         senderType={msg.senderType}
                         agentId={senderMember.kind === "agent" ? senderMember.id : undefined}
                         time={msg.time}
+                        contentLength={msg.content.length}
                         avatarSize="lg"
                         showStatus={senderMember.kind === "agent"}
                         roleLabels={messageRoleLabels}
+                        materialSurface={{
+                          ownerId: msg.id,
+                          mode: messageMaterialMode(msg.id),
+                          pointerMode: activeMaterialMessageId === msg.id ? activeMaterialPointerMode : "none",
+                          resource: messageMaterialResources[msg.id] ?? null,
+                          onResourceChange: (resource) => setMessageMaterialResource(msg.id, resource),
+                          onModeChange: (mode) => setMessageMaterialMode(msg.id, mode),
+                        }}
                         badges={
                           <>
                             {isSaved && (
@@ -1222,11 +1566,7 @@ export function ChannelClient({
                             )}
                           </>
                         }
-                        actions={
-                          <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
-                            {renderMessageActions(msg)}
-                          </div>
-                        }
+                        actions={renderMessageActions(msg)}
                       >
                       <MarkdownMessage content={msg.content} />
                       {(msg.replyCount || msg.threadSummary) && (
@@ -1241,6 +1581,9 @@ export function ChannelClient({
                           >
                             <MessageCircle className="size-3" />
                             {msg.replyCount ? tChat("replyCount", { count: msg.replyCount }) : tChat("reply")}
+                            {hasThreadUnread ? (
+                              <EventBadge active label={tChat("unread", { count: 1 })} />
+                            ) : null}
                           </button>
                         </div>
                       )}
@@ -1265,18 +1608,24 @@ export function ChannelClient({
                         </div>
                       )}
                       </MessageFrame>
+                      </div>
                     </div>
                   )
                 })}
                 {messages.length === 0 && (
-                  <p className="py-20 text-center text-muted-foreground">{tChat("noMessages", { channel: currentTitle })}</p>
+                  <EmptyState
+                    title={tChat("noMessages", { channel: currentTitle })}
+                    description={currentDm ? tChat("dmComposePlaceholder", { peer: currentTitle.replace(/^DM @/, "") }) : tChat("composePlaceholder", { channel: currentTitle.replace(/^#/, "") })}
+                    className="sk-chat-empty-note"
+                  />
                 )}
                 <div ref={messageEndRef} data-testid="chat-message-list-end" aria-hidden="true" />
               </div>
+              </div>
             </div>
 
-            <div data-region="composer" className="shrink-0 border-t-2 border-[var(--ink)] bg-sand-deep p-3">
-              <div className="mr-auto flex w-full max-w-[1248px] min-w-0 items-center gap-2">
+            <div data-region="composer" data-inkframe-mobile-role="chat-composer" className="sk-chat-composer min-w-0 shrink-0 overflow-x-hidden border-t-2 border-[var(--ink)] p-3">
+              <ChatComposerSurface className="mr-auto flex w-full max-w-[1248px] min-w-0 flex-wrap items-end gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1306,24 +1655,21 @@ export function ChannelClient({
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={currentDm ? tChat("dmComposePlaceholder", { peer: currentTitle.replace(/^DM @/, "") }) : tChat("composePlaceholder", { channel: currentTitle.replace(/^#/, "") })}
-                  className="flex-1"
+                  className="min-w-0 flex-1"
                   style={{ backgroundColor: "var(--paper)" }}
                 />
-                <button
-                  type="button"
+                <ChatTaskToggle
+                  active={asTask}
                   onClick={() => setAsTask(!asTask)}
                   aria-pressed={asTask}
                   aria-label={tChat("sendAsTask")}
                   title={tChat("asTask")}
-                  className={`inline-flex cursor-pointer items-center gap-1 text-xs select-none ${
-                    asTask ? "text-primary" : "text-muted-foreground hover:text-foreground"
-                  }`}
                 >
-                  <span className={`inline-flex size-4 items-center justify-center border-2 border-[var(--ink)] ${asTask ? "bg-primary text-primary-foreground" : ""}`}>
+                  <span data-slot="chat-task-toggle-mark" className="sk-chat-task-toggle-mark">
                     {asTask && <CheckSquare className="size-3 pointer-events-none" />}
                   </span>
                   {tChat("asTask")}
-                </button>
+                </ChatTaskToggle>
                 <Button
                   type="button"
                   size="icon"
@@ -1333,7 +1679,7 @@ export function ChannelClient({
                 >
                   <Send className="size-3.5" />
                 </Button>
-              </div>
+              </ChatComposerSurface>
             </div>
           </>
           )}
@@ -1343,7 +1689,8 @@ export function ChannelClient({
             <aside
               aria-label={tChat("thread")}
               data-region="thread-panel"
-              className="relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-card p-4"
+              data-inkframe-mobile-role="chat-thread-panel"
+              className="sk-chat-thread-panel relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] p-4"
               style={{ width: threadWidth }}
             >
               <div
@@ -1387,7 +1734,7 @@ export function ChannelClient({
                   </p>
                 )}
 
-                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+                <div className="min-h-0 min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto pr-1">
                   {activeRoot && (
                     <div className="group/message relative -mx-1 px-1 py-1.5 rounded-none" tabIndex={0}>
                       <MessageFrame
@@ -1395,15 +1742,20 @@ export function ChannelClient({
                         senderType={activeRoot.senderType}
                         agentId={activeRoot.senderType === "agent" ? memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers).id : undefined}
                         time={activeRoot.time}
+                        contentLength={activeRoot.content.length}
                         timeVariant="compact"
                         avatarSize="sm"
                         showStatus={activeRoot.senderType === "agent"}
                         roleLabels={messageRoleLabels}
-                        actions={
-                          <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
-                            {renderMessageActions(activeRoot)}
-                          </div>
-                        }
+                        materialSurface={{
+                          ownerId: activeRoot.id,
+                          mode: messageMaterialMode(activeRoot.id),
+                          pointerMode: activeMaterialMessageId === activeRoot.id ? activeMaterialPointerMode : "none",
+                          resource: messageMaterialResources[activeRoot.id] ?? null,
+                          onResourceChange: (resource) => setMessageMaterialResource(activeRoot.id, resource),
+                          onModeChange: (mode) => setMessageMaterialMode(activeRoot.id, mode),
+                        }}
+                        actions={renderMessageActions(activeRoot)}
                       >
                       {taskLinks[activeRoot.id] && (
                         <Link
@@ -1447,15 +1799,20 @@ export function ChannelClient({
                         senderType={msg.senderType}
                         agentId={msg.senderType === "agent" ? memberForMessageSender(msg.sender, msg.senderType, allKnownMembers).id : undefined}
                         time={msg.time}
+                        contentLength={msg.content.length}
                         timeVariant="compact"
                         avatarSize="sm"
                         showStatus={msg.senderType === "agent"}
                         roleLabels={messageRoleLabels}
-                        actions={
-                          <div className="opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 group-focus-within/message:opacity-100">
-                            {renderMessageActions(msg)}
-                          </div>
-                        }
+                        materialSurface={{
+                          ownerId: msg.id,
+                          mode: messageMaterialMode(msg.id),
+                          pointerMode: activeMaterialMessageId === msg.id ? activeMaterialPointerMode : "none",
+                          resource: messageMaterialResources[msg.id] ?? null,
+                          onResourceChange: (resource) => setMessageMaterialResource(msg.id, resource),
+                          onModeChange: (mode) => setMessageMaterialMode(msg.id, mode),
+                        }}
+                        actions={renderMessageActions(msg)}
                       >
                       {taskLinks[msg.id] && (
                         <Link
@@ -1495,14 +1852,14 @@ export function ChannelClient({
                   )}
                 </div>
 
-                <div className="mt-3 flex shrink-0 gap-2 border-t pt-3 min-w-0">
+                <div className="mt-3 flex shrink-0 gap-2 border-t pt-3 min-w-0 overflow-x-hidden">
                   <Input
                     value={threadInput}
                     onChange={(e) => setThreadInput(e.target.value)}
                     onKeyDown={handleThreadKeyDown}
                     placeholder={tChat("replyPlaceholder")}
-                    className="flex-1"
-                  style={{ backgroundColor: "var(--paper)" }}
+                    className="min-w-0 flex-1"
+                    style={{ backgroundColor: "var(--paper)" }}
                   />
                   <Button
                     type="button"
@@ -1522,7 +1879,8 @@ export function ChannelClient({
             <aside
               aria-label={tChat("channelMembers")}
               data-region="members-panel"
-              className="flex h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)] bg-sand-card"
+              data-inkframe-mobile-role="chat-members-panel"
+              className="sk-chat-members-panel flex h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden border-l-2 border-[var(--ink)]"
             >
               {/* drawer header: title + close */}
               <div className="flex shrink-0 items-center justify-between border-b-2 border-[var(--ink)] px-3 py-2">
@@ -1544,22 +1902,18 @@ export function ChannelClient({
                 <div className="shrink-0 space-y-1.5 border-b-2 border-[var(--ink)] p-3">
                   <h4 className="text-xs font-semibold text-sand-muted">{tChat("addMember")}</h4>
                   <div className="flex gap-1">
-                    <select
+                    <Select
+                      id="add-channel-member-select"
                       aria-label={tChat("addChannelMember")}
                       data-testid="add-channel-member-select"
                       name="memberId"
                       ref={addMemberSelectRef}
-                      className="min-w-0 flex-1 rounded-none border-2 border-[var(--ink)] bg-transparent px-1.5 py-1 text-xs outline-none focus-visible:border-ring"
-                    >
-                      <option value="">{tChat("selectMember")}</option>
-                      {allMembers
+                      items={allMembers
                         .filter((m) => !members.some((cm) => cm.id === m.id))
-                        .map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.displayName} ({memberKindLabel(m.kind)})
-                          </option>
-                        ))}
-                    </select>
+                        .map((m) => ({ value: m.id, label: `${m.displayName} (${memberKindLabel(m.kind)})` }))}
+                      emptyLabel={tChat("selectMember")}
+                      className="h-7 min-w-0 flex-1 px-1.5 py-1 text-xs"
+                    />
                     <Button
                       type="button"
                       size="icon-sm"
@@ -1579,20 +1933,22 @@ export function ChannelClient({
                     <li
                       key={m.id}
                       data-testid={`channel-member-${m.displayName}`}
-                      className="group/member flex min-w-0 items-center gap-2 px-1.5 py-1 text-sm hover:bg-muted/60"
+                      className="group/member"
                     >
-                      <MemberAvatar member={m} size="xs" />
-                      <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
-                      <span className="shrink-0 text-xs text-sand-muted">{statusLabel(m.status)}</span>
-                      {m.kind === "agent" && !currentIsDm && (
-                        <button
-                          aria-label={tChat("removeMember", { member: m.displayName || m.name })}
-                          onClick={() => handleRemoveMember(m.id)}
-                          className="size-5 shrink-0 items-center justify-center text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover/member:flex"
-                        >
-                          <Trash2 className="size-3" />
-                        </button>
-                      )}
+                      <MemberNameTag kind={m.kind} status={m.status} className="flex min-w-0 items-center gap-2 px-1.5 py-1 text-sm">
+                        <AvatarObject member={m} size="xs" />
+                        <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
+                        <span className="shrink-0 text-xs text-sand-muted">{statusLabel(m.status)}</span>
+                        {m.kind === "agent" && !currentIsDm && (
+                          <button
+                            aria-label={tChat("removeMember", { member: m.displayName || m.name })}
+                            onClick={() => handleRemoveMember(m.id)}
+                            className="size-5 shrink-0 items-center justify-center text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover/member:flex"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        )}
+                      </MemberNameTag>
                     </li>
                   ))}
                 </ul>

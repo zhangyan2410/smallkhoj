@@ -1,10 +1,11 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { useState, type CSSProperties, type ReactNode } from "react"
 import { Activity } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { LanguageSwitcher } from "@/components/language-switcher"
+import { Button } from "@/components/ui/button"
 import { useResizablePanel } from "@/hooks/use-resizable-panel"
 
 /**
@@ -59,6 +60,8 @@ export function ProductShellBody({
   mainScrollable?: boolean
 }) {
   const isThreeColumn = !!list
+  const mobileDrawerId = "inkframe-mobile-sidebar-drawer"
+  const [mobileListOpen, setMobileListOpen] = useState(false)
 
   const { width: listWidth, onPointerDown, onKeyDown } = useResizablePanel({
     storageKey: listConfig?.storageKey ?? "smallkhoj.list.width",
@@ -67,21 +70,44 @@ export function ProductShellBody({
     max: listConfig?.max ?? 420,
     direction: "right-edge",
   })
+  const listPanelStyle = {
+    "--inkframe-list-width": `${listWidth}px`,
+  } as CSSProperties
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-sand-border bg-sand px-4 py-3 sm:px-6">
+    <div data-slot="workbench-body" className="sk-workbench-body flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <header
+        data-region="workbench-header"
+        data-slot="workbench-header"
+        data-inkframe-contrast-owner="workbench-header"
+        data-inkframe-foreground-surface="header-paper"
+        className="sk-workbench-header shrink-0 px-4 py-3 sm:px-6"
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs font-medium uppercase text-sand-muted">
+            <div className="sk-workbench-kicker flex items-center gap-2 text-xs font-medium uppercase text-sand-muted">
               <Activity className="size-3.5" />
               SmallKhoj
             </div>
             <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight text-sand-ink">{title}</h1>
             {description && <p className="mt-1 max-w-3xl text-sm text-sand-muted">{description}</p>}
           </div>
-          {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
-          <div className="shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {isThreeColumn && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-inkframe-mobile-role="sidebar-drawer-toggle"
+                aria-controls={mobileDrawerId}
+                aria-expanded={mobileListOpen}
+                className="sm:hidden"
+                onClick={() => setMobileListOpen((open) => !open)}
+              >
+                列表
+              </Button>
+            )}
+            {actions}
             <LanguageSwitcher />
           </div>
         </div>
@@ -91,17 +117,40 @@ export function ProductShellBody({
         /* 三栏：可调宽列表栏(深暖沙) + 主区(浅暖沙) + 可选右栏。
            关键：每列 flex flex-col + min-h-0 才能让 overflow-y-auto 真正起作用。
            父级 h-full 让三列共享主区高度。 */
-        <div className="flex min-h-0 flex-1">
+        <div data-slot="workbench-columns" className="flex min-h-0 flex-1">
           <aside
-            className="relative hidden shrink-0 flex-col border-r border-sand-border bg-sand-deep sm:flex"
-            style={{ width: listWidth }}
+            id={mobileDrawerId}
+            data-region="list-panel"
+            data-slot="paper-stack"
+            data-inkframe-contrast-owner="list-panel"
+            data-inkframe-foreground-surface="paper-stack"
+            data-inkframe-mobile-role="sidebar-drawer"
+            data-inkframe-state={mobileListOpen ? "open" : "collapsed"}
+            className={cn(
+              "sk-paper-stack relative shrink-0 flex-col sm:flex sm:w-[var(--inkframe-list-width)]",
+              mobileListOpen ? "absolute inset-x-3 bottom-3 top-3 z-30 flex w-auto sm:inset-auto sm:relative sm:z-auto" : "hidden",
+            )}
+            style={listPanelStyle}
           >
+            <div className="flex shrink-0 justify-end px-3 pt-2 sm:hidden">
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                data-inkframe-mobile-role="sidebar-drawer-close"
+                aria-controls={mobileDrawerId}
+                className="sm:hidden"
+                onClick={() => setMobileListOpen(false)}
+              >
+                关闭
+              </Button>
+            </div>
             {listTitle && (
-              <div className="shrink-0 border-b border-sand-border px-3 py-2.5">
+              <div className="sk-paper-stack-label shrink-0 px-3 py-2.5">
                 <h2 className="text-sm font-semibold text-sand-ink">{listTitle}</h2>
               </div>
             )}
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{list}</div>
+            <div data-slot="paper-stack-content" className="min-h-0 min-w-0 flex-1 overflow-y-auto">{list}</div>
             {/* 拖拽手柄（右边缘）—— 鼠标拖动调宽，键盘左右箭头微调 */}
             <div
               role="separator"
@@ -114,17 +163,29 @@ export function ProductShellBody({
             />
           </aside>
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-sand">
+          <div
+            data-region="main-panel"
+            data-slot="paper-field"
+            data-inkframe-contrast-owner="main-panel"
+            data-inkframe-foreground-surface="paper-field"
+            className="sk-paper-field flex min-h-0 min-w-0 flex-1 flex-col"
+          >
             <div className={cn("min-h-0 min-w-0 flex-1 p-4 sm:p-6", mainScrollable ? "overflow-y-auto" : "flex flex-col overflow-hidden", className)}>
               {children}
             </div>
           </div>
 
           {sidebar && (
-            <aside className="hidden min-h-0 min-w-0 flex-col border-l border-sand-border bg-sand-deep/60 lg:flex lg:w-80">
+            <aside
+              data-region="side-panel"
+              data-slot="side-paper"
+              data-inkframe-contrast-owner="side-panel"
+              data-inkframe-foreground-surface="side-paper"
+              className="sk-side-paper hidden min-h-0 min-w-0 flex-col lg:flex lg:w-80"
+            >
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {sidebarTitle && (
-                  <div className="mb-3">
+                  <div className="sk-side-paper-label mb-3">
                     <h2 className="text-sm font-semibold text-sand-ink">{sidebarTitle}</h2>
                     {sidebarDescription && <p className="mt-1 text-xs text-sand-muted">{sidebarDescription}</p>}
                   </div>
@@ -137,16 +198,27 @@ export function ProductShellBody({
       ) : (
         /* 单栏 dashboard：内容 + 可选右栏（向后兼容旧行为）。
            同样用 min-h-0 + overflow-y-auto 让单列独立滚。 */
-        <div className="grid min-h-0 min-w-0 flex-1 bg-sand lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className={cn("min-h-0 min-w-0 overflow-y-auto bg-sand p-4 sm:p-6", className)}>
+        <div
+          data-slot="workbench-columns"
+          data-inkframe-contrast-owner="main-panel"
+          data-inkframe-foreground-surface="paper-field"
+          className="sk-paper-field grid min-h-0 min-w-0 flex-1 lg:grid-cols-[minmax(0,1fr)_18rem]"
+        >
+          <div data-region="main-panel" data-slot="paper-field-content" className={cn("min-h-0 min-w-0 overflow-y-auto p-4 sm:p-6", className)}>
             {children}
           </div>
 
           {sidebar && (
-            <aside className="hidden min-h-0 min-w-0 flex-col border-l border-sand-border bg-sand-deep/60 lg:flex">
+            <aside
+              data-region="side-panel"
+              data-slot="side-paper"
+              data-inkframe-contrast-owner="side-panel"
+              data-inkframe-foreground-surface="side-paper"
+              className="sk-side-paper hidden min-h-0 min-w-0 flex-col lg:flex"
+            >
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {sidebarTitle && (
-                  <div className="mb-3">
+                  <div className="sk-side-paper-label mb-3">
                     <h2 className="text-sm font-semibold text-sand-ink">{sidebarTitle}</h2>
                     {sidebarDescription && <p className="mt-1 text-xs text-sand-muted">{sidebarDescription}</p>}
                   </div>

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Review no-tab behavior, selector proof strength, and browser evidence honesty."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-proof-runner-app-background-material-surface-contract/prd.md", "reason": "Task requirements and acceptance criteria."}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-proof-runner-app-background-material-surface-contract/design.md", "reason": "Expected inner material surface selector contract."}
+{"file": ".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/evidence/integrated-execution-plan.md", "reason": "Parent guardrail that the product shell background must be material-capable by default."}

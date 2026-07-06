@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>message-cards-ink · resource stress</title>
+<style>
+  body { margin: 0; padding: 16px; background: #151515; color: #eeeeee; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #out { white-space: pre-wrap; }
+  iframe { width: 1200px; height: 820px; border: 1px solid #555; display: block; margin-top: 12px; }
+  .pass { color: #8af58a; }
+  .fail { color: #ff8585; }
+</style>
+</head>
+<body>
+<div id="out">running...</div>
+<iframe id="stage" src="about:blank"></iframe>
+<script>
+'use strict';
+
+const SAME_CARD_CYCLES = 30;
+const ROTATE_ROUNDS = 2;
+const out = document.getElementById('out');
+const stage = document.getElementById('stage');
+const result = {
+  pass: 0,
+  fail: 0,
+  lines: [],
+  config: {
+    sameCardCycles: SAME_CARD_CYCLES,
+    rotateRounds: ROTATE_ROUNDS
+  },
+  samples: [],
+  errors: []
+};
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function assert(condition, name, extra) {
+  if (condition) {
+    result.pass++;
+    result.lines.push('  OK  ' + name);
+  } else {
+    result.fail++;
+    result.lines.push('  BAD ' + name + (extra ? ' -> ' + extra : ''));
+  }
+}
+
+function info(line) {
+  result.lines.push('  .. ' + line);
+}
+
+function flush(done) {
+  const summary = 'PASS ' + result.pass + ' / FAIL ' + result.fail + '\n' + result.lines.join('\n');
+  out.textContent = summary;
+  out.className = result.fail ? 'fail' : 'pass';
+  if (done) window.__perfResult = result;
+}
+
+function getMemory() {
+  if (!performance.memory) return null;
+  return {
+    jsHeapSizeLimit: performance.memory.jsHeapSizeLimit,
+    totalJSHeapSize: performance.memory.totalJSHeapSize,
+    usedJSHeapSize: performance.memory.usedJSHeapSize
+  };
+}
+
+function collectMetrics(win, label) {
+  const api = win.__messageCardsInk;
+  const state = api && api._state;
+  const resources = state ? Array.from(state.perCardImage.entries()).map((entry, index) => {
+    const resource = entry[1];
+    return {
+      index,
+      kind: resource && resource.kind,
+      blobSize: resource && resource.blob ? resource.blob.size : 0,
+      hasObjectUrl: !!(resource && resource.objectUrl)
+    };
+  }) : [];
+  const privateResources = resources.filter((resource) => resource.kind === 'card-private');
+  const backgroundImages = Array.from(win.document.querySelectorAll('.paper')).map((paper) => {
+    const value = win.getComputedStyle(paper).backgroundImage || '';
+    return {
+      hasBlob: value.includes('blob:'),
+      hasDataUrl: value.includes('data:')
+    };
+  });
+  const metric = {
+    label,
+    time: new Date().toISOString(),
+    memory: getMemory(),
+    apiReady: !!api,
+    activeCount: api ? api.activeCount() : null,
+    contextCount: api ? api.contextCount() : null,
+    cardResourceCount: api ? api.cardResourceCount() : null,
+    revokedObjectUrlCount: api ? api.revokedObjectUrlCount() : null,
+    perCardImageSize: state && state.perCardImage ? state.perCardImage.size : null,
+    privateBlobBytes: privateResources.reduce((sum, resource) => sum + resource.blobSize, 0),
+    resourceBlobBytes: resources.reduce((sum, resource) => sum + resource.blobSize, 0),
+    resourceKinds: resources.map((resource) => resource.kind),
+    canvasCount: win.document.querySelectorAll('canvas').length,
+    activeCanvasCount: win.document.querySelectorAll('canvas.is-active').length,
+    blobBackgroundCount: backgroundImages.filter((image) => image.hasBlob).length,
+    dataUrlBackgroundCount: backgroundImages.filter((image) => image.hasDataUrl).length
+  };
+  result.samples.push(metric);
+  return metric;
+}
+
+function drawStroke(surface, cycle, band) {
+  const y = 0.28 + ((band + cycle) % 5) * 0.11;
+  const start = 0.16 + (cycle % 4) * 0.025;
+  for (let i = 0; i < 46; i++) {
+    surface.pen({
+      x: Math.min(0.88, start + i * 0.014),
+      y: Math.min(0.86, y + Math.sin(i / 5) * 0.018),
+      pressure: 0.72 + (i % 3) * 0.07,
+      speed: 0.12
+    });
+  }
+}
+
+async function waitForDemoReady() {
+  stage.src = 'message-cards-ink.html?v=' + encodeURIComponent('perf-' + Date.now());
+  await new Promise((resolve) => {
+    stage.addEventListener('load', () => setTimeout(resolve, 350), { once: true });
+  });
+  const win = stage.contentWindow;
+  const started = Date.now();
+  while (Date.now() - started < 10000) {
+    const api = win.__messageCardsInk;
+    if (api && api.initialPaperImage && api.initialPaperImage()) return win;
+    await sleep(100);
+  }
+  throw new Error('demo API did not become ready');
+}
+
+async function run() {
+  const win = await waitForDemoReady();
+  const doc = win.document;
+  const api = win.__messageCardsInk;
+  const papers = Array.from(doc.querySelectorAll('.paper'));
+  if (!papers.length) throw new Error('no .paper cards found');
+
+  const start = collectMetrics(win, 'start');
+  assert(start.apiReady, 'demo API is ready');
+  assert(start.activeCount === 0, 'start activeCount is 0', 'got ' + start.activeCount);
+  assert(start.contextCount === 0, 'start contextCount is 0', 'got ' + start.contextCount);
+  assert(start.dataUrlBackgroundCount === 0, 'start uses no dataURL backgrounds', 'got ' + start.dataUrlBackgroundCount);
+
+  const sameCard = papers[0];
+  let maxContextDuringSameCard = 0;
+  let maxActiveCanvasAfterKeep = 0;
+  let contextLeakCycle = null;
+  let activeLeakCycle = null;
+  let sameCardCountAfterFirstKeep = null;
+  let sameMapSizeAfterFirstKeep = null;
+  const revokeBeforeSame = api.revokedObjectUrlCount();
+
+  for (let i = 0; i < SAME_CARD_CYCLES; i++) {
+    await api.activate(sameCard);
+    await sleep(120);
+    maxContextDuringSameCard = Math.max(maxContextDuringSameCard, api.contextCount());
+    const surface = api.surfaceOf(sameCard);
+    if (!surface) throw new Error('same-card cycle ' + i + ' did not activate a surface');
+    drawStroke(surface, i, 0);
+    await sleep(140);
+    await api.deactivate(sameCard, true);
+    await sleep(80);
+
+    const activeCanvasCount = doc.querySelectorAll('canvas.is-active').length;
+    maxActiveCanvasAfterKeep = Math.max(maxActiveCanvasAfterKeep, activeCanvasCount);
+    if (api.contextCount() !== 0 && contextLeakCycle === null) contextLeakCycle = i;
+    if (activeCanvasCount !== 0 && activeLeakCycle === null) activeLeakCycle = i;
+    if (i === 0) {
+      sameCardCountAfterFirstKeep = api.cardResourceCount();
+      sameMapSizeAfterFirstKeep = api._state.perCardImage.size;
+    }
+    if (i === 0 || i === 1 || i === 4 || i === 9 || i === 19 || i === SAME_CARD_CYCLES - 1) {
+      collectMetrics(win, 'same-card-cycle-' + (i + 1));
+    }
+  }
+
+  const afterSame = collectMetrics(win, 'after-same-card');
+  assert(maxContextDuringSameCard <= 1, 'same-card phase never has more than one WebGL context', 'max=' + maxContextDuringSameCard);
+  assert(contextLeakCycle === null, 'same-card phase releases WebGL context after each keep', 'first leak cycle=' + contextLeakCycle);
+  assert(activeLeakCycle === null, 'same-card phase clears active canvas after each keep', 'first leak cycle=' + activeLeakCycle);
+  assert(afterSame.cardResourceCount === sameCardCountAfterFirstKeep, 'same-card resource count stays stable after first keep', 'first=' + sameCardCountAfterFirstKeep + ' after=' + afterSame.cardResourceCount);
+  assert(afterSame.perCardImageSize === sameMapSizeAfterFirstKeep, 'same-card perCardImage map size stays stable', 'first=' + sameMapSizeAfterFirstKeep + ' after=' + afterSame.perCardImageSize);
+  assert(afterSame.revokedObjectUrlCount - revokeBeforeSame >= SAME_CARD_CYCLES - 1, 'same-card replacement revokes old private object URLs', 'delta=' + (afterSame.revokedObjectUrlCount - revokeBeforeSame));
+  assert(afterSame.dataUrlBackgroundCount === 0, 'same-card phase leaves no dataURL backgrounds', 'got ' + afterSame.dataUrlBackgroundCount);
+
+  const revokeBeforeRotate = api.revokedObjectUrlCount();
+  let maxContextDuringRotate = 0;
+  for (let round = 0; round < ROTATE_ROUNDS; round++) {
+    for (let i = 0; i < papers.length; i++) {
+      const paper = papers[i];
+      await api.activate(paper);
+      await sleep(120);
+      maxContextDuringRotate = Math.max(maxContextDuringRotate, api.contextCount());
+      const surface = api.surfaceOf(paper);
+      if (!surface) throw new Error('rotate round ' + round + ' card ' + i + ' did not activate a surface');
+      drawStroke(surface, round * papers.length + i, i);
+      await sleep(120);
+      await api.deactivate(paper, true);
+      await sleep(70);
+      if (api.contextCount() !== 0) throw new Error('rotate round ' + round + ' card ' + i + ' leaked context');
+    }
+    collectMetrics(win, 'after-rotate-round-' + (round + 1));
+  }
+
+  const afterRotate = collectMetrics(win, 'after-rotate');
+  assert(maxContextDuringRotate <= 1, 'rotate phase never has more than one WebGL context', 'max=' + maxContextDuringRotate);
+  assert(afterRotate.cardResourceCount === papers.length, 'rotate phase keeps one private resource per card', 'cards=' + papers.length + ' resources=' + afterRotate.cardResourceCount);
+  assert(afterRotate.perCardImageSize === papers.length, 'rotate phase perCardImage map is bounded by card count', 'cards=' + papers.length + ' map=' + afterRotate.perCardImageSize);
+  assert(afterRotate.revokedObjectUrlCount > revokeBeforeRotate, 'rotate replacements revoke old private object URLs', 'before=' + revokeBeforeRotate + ' after=' + afterRotate.revokedObjectUrlCount);
+  assert(afterRotate.contextCount === 0, 'rotate phase ends with contextCount 0', 'got ' + afterRotate.contextCount);
+  assert(afterRotate.activeCanvasCount === 0, 'rotate phase ends with no active canvas', 'got ' + afterRotate.activeCanvasCount);
+  assert(afterRotate.dataUrlBackgroundCount === 0, 'rotate phase leaves no dataURL backgrounds', 'got ' + afterRotate.dataUrlBackgroundCount);
+
+  const revokeBeforeDiscard = api.revokedObjectUrlCount();
+  await api.activate(sameCard);
+  await sleep(120);
+  await api.deactivate(sameCard, false);
+  await sleep(80);
+  const afterDiscard = collectMetrics(win, 'after-discard-one-card');
+  assert(afterDiscard.cardResourceCount === papers.length - 1, 'discard removes that card private resource', 'expected=' + (papers.length - 1) + ' got=' + afterDiscard.cardResourceCount);
+  assert(afterDiscard.revokedObjectUrlCount > revokeBeforeDiscard, 'discard revokes private object URL', 'before=' + revokeBeforeDiscard + ' after=' + afterDiscard.revokedObjectUrlCount);
+  assert(afterDiscard.contextCount === 0, 'discard ends with contextCount 0', 'got ' + afterDiscard.contextCount);
+
+  const heapDelta = afterDiscard.memory && start.memory ? afterDiscard.memory.usedJSHeapSize - start.memory.usedJSHeapSize : null;
+  result.summary = {
+    start,
+    afterSame,
+    afterRotate,
+    afterDiscard,
+    heapDelta,
+    privateBlobDeltaAfterSame: afterSame.privateBlobBytes - start.privateBlobBytes,
+    privateBlobDeltaAfterRotate: afterRotate.privateBlobBytes - start.privateBlobBytes,
+    privateBlobDeltaAfterDiscard: afterDiscard.privateBlobBytes - start.privateBlobBytes
+  };
+  info('heap delta after full run: ' + (heapDelta === null ? 'n/a' : heapDelta + ' bytes'));
+  info('private blob delta after same-card phase: ' + (afterSame.privateBlobBytes - start.privateBlobBytes) + ' bytes');
+  info('private blob delta after rotate phase: ' + (afterRotate.privateBlobBytes - start.privateBlobBytes) + ' bytes');
+  flush(true);
+}
+
+run().catch((error) => {
+  result.fail++;
+  result.errors.push(error && error.stack ? error.stack : String(error));
+  result.lines.push('  BAD unhandled error: ' + (error && error.message ? error.message : String(error)));
+  flush(true);
+});
+</script>
+</body>
+</html>

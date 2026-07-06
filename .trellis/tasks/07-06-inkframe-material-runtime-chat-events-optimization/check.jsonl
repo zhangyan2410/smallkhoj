@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review component boundaries and single-source visual primitives."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Review local UI state, durable preferences, and backend-owned server state separation."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review browser evidence, mobile overflow, and ProductShell ownership gates."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review read cursor schema and migration safety."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Review realtime/unread event semantics and delivery safety."}
+{"file":".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/prd.md","reason":"Review against the planned acceptance criteria."}
+{"file":".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/design.md","reason":"Review architecture and contracts."}
+{"file":".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/implement.md","reason":"Review execution and validation coverage."}

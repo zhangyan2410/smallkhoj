@@ -11,9 +11,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { AttachmentSheet, InkframeObjectSurface, ObjectField } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Panel, PanelTitle } from "@/components/ui/panel"
 import { apiPost, type ServerInviteResponse } from "@/lib/control-plane"
 
 export type InviteMemberDialogCopy = {
@@ -101,19 +101,24 @@ export function InviteMemberDialog({
           <DialogDescription>{copy.inviteMemberDesc}</DialogDescription>
         </DialogHeader>
 
-        <Panel className="p-3">
-          <PanelTitle className="flex items-center gap-2">
-            <LinkIcon className="size-3.5" />
-            {copy.serverLabel}
-          </PanelTitle>
-          <p className="mt-1 text-sm text-muted-foreground">{serverName}</p>
+        <InkframeObjectSurface material="dry" className="p-3">
+          <ObjectField
+            label={
+              <span className="inline-flex items-center gap-2">
+                <LinkIcon className="size-3.5" />
+                {copy.serverLabel}
+              </span>
+            }
+            value={serverName}
+            mono={false}
+          />
           <p className="mt-2 text-xs text-muted-foreground">{copy.manualCopyHint}</p>
-        </Panel>
+        </InkframeObjectSurface>
 
         {error && (
-          <p className="text-sm text-destructive" role="alert">
+          <InkframeObjectSurface material="blocked" className="px-2 py-1.5 text-sm text-destructive" role="alert">
             {error}
-          </p>
+          </InkframeObjectSurface>
         )}
 
         <form onSubmit={generateInvite} className="grid gap-4">
@@ -135,7 +140,9 @@ export function InviteMemberDialog({
                 {copy.inviteLinkLabel}
               </label>
               <div className="flex gap-2">
-                <Input id="invite-member-link" value={joinUrl} readOnly />
+                <AttachmentSheet kind="proof" className="min-w-0 flex-1 p-0">
+                  <Input id="invite-member-link" value={joinUrl} readOnly className="border-0 focus-visible:ring-0" />
+                </AttachmentSheet>
                 <Button type="button" variant="outline" size="sm" onClick={copyInviteLink}>
                   {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
                   {copied ? copy.copiedInviteLink : copy.copyInviteLink}

@@ -19,7 +19,7 @@ export function LanguageSwitcher() {
       <label htmlFor="locale-select" className="sr-only">
         {t("label")}
       </label>
-      <span className="inline-flex items-center gap-1.5 rounded-none border border-border bg-background px-2 py-1 text-xs">
+      <span data-slot="language-switcher" className="sk-object-surface inline-flex items-center gap-1.5 px-2 py-1 text-xs">
         <Languages className="size-3.5 text-muted-foreground" />
         <select
           id="locale-select"

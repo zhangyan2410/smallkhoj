@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Frontend component contract and composition rules for DOM markers"}
+{"file": ".trellis/spec/frontend/product-ui-style.md", "reason": "Inkframe visual/product guardrails that DOM contracts must reflect"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend test and verification expectations"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Prevent marker-only tests from drifting away from actual runtime behavior"}
+{"file": ".trellis/tasks/07-05-inkframe-product-ui-refactor/prd.md", "reason": "Parent acceptance surface for Inkframe product UI"}
+{"file": ".trellis/tasks/07-05-inkframe-product-ui-refactor/evidence/merged-scope-lock.md", "reason": "Merged 07-02 and 07-04 scope lock"}

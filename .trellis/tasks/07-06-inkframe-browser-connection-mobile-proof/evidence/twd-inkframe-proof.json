@@ -1,0 +1,870 @@
+{
+  "status": "failed_route",
+  "timestamp": "2026-07-06T01:41:13.217Z",
+  "tabsResult": {
+    "ok": true,
+    "tabs": [
+      {
+        "id": "1617512414",
+        "url": "http://127.0.0.1:8771/message-cards-ink-variant-c.html?vc_v2=1783189759",
+        "title": "message cards · ink-material 按需渲染",
+        "connected_at": 1783302038.68381,
+        "type": "ext_ws"
+      },
+      {
+        "id": "1617512415",
+        "url": "https://shigureni.com/illust/112",
+        "title": "いろんな猫のイラスト │ shigureni free illust",
+        "connected_at": 1783302038.683805,
+        "type": "ext_ws"
+      },
+      {
+        "id": "1617512424",
+        "url": "https://vectorshelf.com/page/2/",
+        "title": "ベクターシェルフ | ページ 2 | 無料・商用利用OKのイラスト素材サイト",
+        "connected_at": 1783302038.683808,
+        "type": "ext_ws"
+      },
+      {
+        "id": "1617512412",
+        "url": "https://linux.do/latest",
+        "title": "LINUX DO",
+        "connected_at": 1783302038.6838,
+        "type": "ext_ws"
+      },
+      {
+        "id": "1617512443",
+        "url": "https://drive.google.com/file/d/1_3OJQGHvl5m0CJU-8KMz88IpuHom6lNE/view",
+        "title": "112.png - Google 云端硬盘",
+        "connected_at": 1783302038.683807,
+        "type": "ext_ws"
+      },
+      {
+        "id": "1617512466",
+        "url": "http://127.0.0.1:3000/chat/gate-lab",
+        "title": "Chat - SmallKhoj",
+        "connected_at": 1783302038.6838112,
+        "type": "ext_ws"
+      },
+      {
+        "id": "1617512470",
+        "url": "https://www.krill-ai.com/app",
+        "title": "Krill AI",
+        "connected_at": 1783302038.6838121,
+        "type": "ext_ws"
+      },
+      {
+        "id": "1617512471",
+        "url": "http://127.0.0.1:3000/tasks",
+        "title": "SmallKhoj",
+        "connected_at": 1783302038.683813,
+        "type": "ext_ws"
+      }
+    ],
+    "count": 8
+  },
+  "routeResults": [
+    {
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "route": "/tasks",
+      "status": "checked",
+      "tabUrl": "http://127.0.0.1:3000/tasks",
+      "viewport": {
+        "clientWidth": 1920,
+        "hasHorizontalOverflow": false,
+        "innerHeight": 845,
+        "innerWidth": 1920,
+        "scrollWidth": 1920
+      }
+    },
+    {
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    }
+  ],
+  "checks": [
+    {
+      "group": "product-shell",
+      "label": "chat shell background surface",
+      "selector": "[data-inkframe-surface=\"app-background\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat shell background owner",
+      "selector": "[data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat dry desk tint",
+      "selector": "[data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat shell background does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat shell background starts without an imported source image",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-background-source-mode=\"none\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat workbench header owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"workbench-header\"][data-inkframe-foreground-surface=\"header-paper\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat main panel owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"main-panel\"][data-inkframe-foreground-surface=\"paper-field\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat app background material owner",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat app background material desk tint",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat app background material starts static",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-mode=\"static\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "chat app background material does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat workspace",
+      "selector": "[data-inkframe-mobile-role=\"chat-workspace\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat sidebar drawer collapsed state marker",
+      "selector": "[data-inkframe-mobile-role=\"sidebar-drawer\"][data-inkframe-state=\"collapsed\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat message list",
+      "selector": "[data-inkframe-mobile-role=\"chat-message-list\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat composer",
+      "selector": "[data-inkframe-mobile-role=\"chat-composer\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat messages",
+      "selector": "[data-inkframe-object=\"message\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat message actions default hidden",
+      "selector": "[data-inkframe-object=\"message-actions\"][data-inkframe-state=\"toolbar-hidden\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat message material surfaces",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-owner-kind=\"message\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-mobile",
+      "label": "chat mobile workspace marker",
+      "selector": "[data-inkframe-mobile-role=\"chat-workspace\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "mobile",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-mobile",
+      "label": "chat mobile message list marker",
+      "selector": "[data-inkframe-mobile-role=\"chat-message-list\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "mobile",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-mobile",
+      "label": "chat mobile composer marker",
+      "selector": "[data-inkframe-mobile-role=\"chat-composer\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "mobile",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-unread",
+      "label": "sidebar entities carry unread contract",
+      "selector": "[data-inkframe-object=\"sidebar-entity\"][data-inkframe-unread]",
+      "minCount": 0,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "chat-unread",
+      "label": "active unread event badges",
+      "selector": "[data-inkframe-object=\"event-badge\"][data-inkframe-unread=\"true\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "material-state",
+      "label": "static material surfaces",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-mode=\"static\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "material-state",
+      "label": "static material surfaces do not capture pointer",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "status": "failed",
+      "error": "Expected /chat, but browser is at /chat/gate-lab"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks shell background surface",
+      "selector": "[data-inkframe-surface=\"app-background\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks shell background owner",
+      "selector": "[data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 2,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks dry desk tint",
+      "selector": "[data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 2,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks shell background does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks shell background starts without an imported source image",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-background-source-mode=\"none\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks workbench header owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"workbench-header\"][data-inkframe-foreground-surface=\"header-paper\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks main panel owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"main-panel\"][data-inkframe-foreground-surface=\"paper-field\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks app background material owner",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks app background material desk tint",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks app background material starts static",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-mode=\"static\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "tasks app background material does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "task-desktop",
+      "label": "task workspace",
+      "selector": "[data-inkframe-mobile-role=\"task-workspace\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "task-desktop",
+      "label": "task controls",
+      "selector": "[data-inkframe-mobile-role=\"task-controls\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "actualCount": 0,
+      "status": "failed"
+    },
+    {
+      "group": "task-desktop",
+      "label": "task board",
+      "selector": "[data-inkframe-mobile-role=\"task-board\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "task-desktop",
+      "label": "task tickets",
+      "selector": "[data-inkframe-object=\"task-ticket\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "actualCount": 7,
+      "status": "passed"
+    },
+    {
+      "group": "task-desktop",
+      "label": "task evidence objects",
+      "selector": "[data-inkframe-object=\"evidence\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "actualCount": 3,
+      "status": "passed"
+    },
+    {
+      "group": "task-desktop",
+      "label": "task review objects",
+      "selector": "[data-inkframe-object=\"review\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "task-mobile",
+      "label": "task mobile workspace marker",
+      "selector": "[data-inkframe-mobile-role=\"task-workspace\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "task-mobile",
+      "label": "task mobile controls marker",
+      "selector": "[data-inkframe-mobile-role=\"task-controls\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "actualCount": 0,
+      "status": "failed"
+    },
+    {
+      "group": "task-mobile",
+      "label": "task mobile board marker",
+      "selector": "[data-inkframe-mobile-role=\"task-board\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "task-mobile",
+      "label": "task detail marker",
+      "selector": "[data-inkframe-mobile-role=\"task-detail\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "task-mobile",
+      "label": "task evidence marker",
+      "selector": "[data-inkframe-mobile-role=\"task-evidence\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "task-mobile",
+      "label": "task review marker",
+      "selector": "[data-inkframe-mobile-role=\"task-review\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "actualCount": 1,
+      "status": "passed"
+    },
+    {
+      "group": "material-state",
+      "label": "task static material surfaces",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-mode=\"static\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "actualCount": 8,
+      "status": "passed"
+    },
+    {
+      "group": "product-shell",
+      "label": "members shell background surface",
+      "selector": "[data-inkframe-surface=\"app-background\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members shell background owner",
+      "selector": "[data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members dry desk tint",
+      "selector": "[data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members shell background does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members shell background starts without an imported source image",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-background-source-mode=\"none\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members workbench header owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"workbench-header\"][data-inkframe-foreground-surface=\"header-paper\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members main panel owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"main-panel\"][data-inkframe-foreground-surface=\"paper-field\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members app background material owner",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members app background material desk tint",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members app background material starts static",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-mode=\"static\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "members app background material does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/members",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers shell background surface",
+      "selector": "[data-inkframe-surface=\"app-background\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers shell background owner",
+      "selector": "[data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers dry desk tint",
+      "selector": "[data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers shell background does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers shell background starts without an imported source image",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-background-source-mode=\"none\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers workbench header owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"workbench-header\"][data-inkframe-foreground-surface=\"header-paper\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers main panel owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"main-panel\"][data-inkframe-foreground-surface=\"paper-field\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers app background material owner",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers app background material desk tint",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers app background material starts static",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-mode=\"static\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "computers app background material does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/computers",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings shell background surface",
+      "selector": "[data-inkframe-surface=\"app-background\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings shell background owner",
+      "selector": "[data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings dry desk tint",
+      "selector": "[data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings shell background does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings shell background starts without an imported source image",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-background-source-mode=\"none\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings workbench header owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"workbench-header\"][data-inkframe-foreground-surface=\"header-paper\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings main panel owns foreground contrast",
+      "selector": "[data-inkframe-contrast-owner=\"main-panel\"][data-inkframe-foreground-surface=\"paper-field\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings app background material owner",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings app background material desk tint",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings app background material starts static",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-mode=\"static\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    },
+    {
+      "group": "product-shell",
+      "label": "settings app background material does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-region=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/settings",
+      "status": "failed",
+      "error": "Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+    }
+  ],
+  "notes": [
+    "Selector assertions ran through the project WebDriver guard wrappers.",
+    "Mobile selectors are DOM contract checks; viewport resizing is recorded as pending unless the local twd bridge exposes viewport control.",
+    "/chat route proof failed: Expected /chat, but browser is at /chat/gate-lab",
+    "/members route proof failed: Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks",
+    "/computers route proof failed: Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks",
+    "/settings route proof failed: Ambiguous local frontend tabs; use or close one before guarded verification:\n1617512466 http://127.0.0.1:3000/chat/gate-lab\n1617512471 http://127.0.0.1:3000/tasks"
+  ]
+}

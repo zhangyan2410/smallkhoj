@@ -1,0 +1,7 @@
+{"path":".trellis/tasks/07-06-07-06-inkframe-chat-mobile-composer-message-containment/prd.md","reason":"Reviewer should verify scope and acceptance criteria."}
+{"path":".trellis/tasks/07-06-07-06-inkframe-chat-mobile-composer-message-containment/design.md","reason":"Reviewer should verify source-contract approach and honesty around browser proof."}
+{"path":".trellis/tasks/07-06-07-06-inkframe-chat-mobile-composer-message-containment/implement.md","reason":"Reviewer should verify validation plan."}
+{"path":"frontend/app/chat/[channel]/channel-client.tsx","reason":"Changed route source for composer/message/thread containment."}
+{"path":"frontend/components/message-frame.tsx","reason":"Changed shared message prefab containment."}
+{"path":"frontend/test/material-surface.test.tsx","reason":"Changed source contract tests."}
+{"path":".trellis/tasks/07-06-07-06-inkframe-chat-mobile-composer-message-containment/evidence/source-contract-validation.md","reason":"Reviewer should inspect command evidence and twd status honesty."}

@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "tabId": "1617512436",
+  "result": {
+    "activeCanvasCount": 0,
+    "activeCount": 0,
+    "apiReady": true,
+    "bodyBackgroundImageLen": 0,
+    "canvasCount": 6,
+    "cardResourceCount": 4,
+    "contextCount": 0,
+    "deskBackgroundUrl": null,
+    "href": "http://127.0.0.1:8771/message-cards-ink.html?v=manual",
+    "imageBackgroundCount": 5,
+    "initialPaperImagePrefix": "blob:http://127.0.0.1:8771/ac7c2",
+    "memory": {
+      "jsHeapSizeLimit": 4294967296,
+      "totalJSHeapSize": 23477203,
+      "usedJSHeapSize": 22594163
+    },
+    "perCardImageSize": 5,
+    "privateBlobBytes": 2649707,
+    "resourceBlobBytes": 9684181,
+    "resources": [
+      {
+        "blobSize": 7034474,
+        "index": 0,
+        "kind": "shared-paper",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      },
+      {
+        "blobSize": 1140856,
+        "index": 1,
+        "kind": "card-private",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      },
+      {
+        "blobSize": 358978,
+        "index": 2,
+        "kind": "card-private",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      },
+      {
+        "blobSize": 846552,
+        "index": 3,
+        "kind": "card-private",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      },
+      {
+        "blobSize": 303321,
+        "index": 4,
+        "kind": "card-private",
+        "objectUrlPrefix": "blob:http://127.0.0.1:87"
+      }
+    ],
+    "revokedObjectUrlCount": 23,
+    "time": "2026-07-04T17:13:32.257Z"
+  },
+  "comparisonAgainst": "perf-baseline-before-manual.json",
+  "notes": {
+    "summary": "After manual render/keep/collapse operations, retained-card count stayed stable and active WebGL contexts returned to zero.",
+    "watch": "JS heap rose by about 3.16 MB, which is not enough by itself to call a leak because browser GC is nondeterministic and the private retained Blob total only rose by about 0.24 MB."
+  }
+}

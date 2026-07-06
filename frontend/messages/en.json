@@ -46,6 +46,12 @@
     "agents": "Agents",
     "computersOnline": "Computers online",
     "savedItems": "Saved items",
+    "quickStart": "Quick Start",
+    "quickStartDesc": "Create a channel or start a DM without leaving the workbench.",
+    "newChannel": "New Channel",
+    "channelPlaceholder": "channel-name",
+    "startDmWith": "Start DM with",
+    "selectMember": "Select member...",
     "noRecentMessages": "No recent messages",
     "noRecentMessagesDesc": "Messages will appear here as conversations happen."
   },
@@ -388,6 +394,8 @@
     "title": "Appearance",
     "description": "Choose the interface theme. Changes apply instantly and persist across reloads.",
     "appearance": {
+      "title": "Theme",
+      "description": "Switch the workbench paper, ink lines, and night display.",
       "label": "Theme",
       "water": "Water & Sand",
       "dark": "Deep Sea",

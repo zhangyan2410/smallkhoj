@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review component ownership, slots, and interaction composition."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review browser/mobile evidence and no-overflow requirements."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Review local material activation state versus backend cursor state."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review cursor persistence and migration correctness."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Review unread/realtime projection correctness."}
+{"file":".trellis/tasks/07-06-inkframe-runtime-browser-proof-product-polish/prd.md","reason":"Review against this task's requirements and acceptance criteria."}
+{"file":".trellis/tasks/07-06-inkframe-runtime-browser-proof-product-polish/design.md","reason":"Review architecture and interaction contracts."}
+{"file":".trellis/tasks/07-06-inkframe-runtime-browser-proof-product-polish/implement.md","reason":"Review execution and validation plan."}

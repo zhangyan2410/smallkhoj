@@ -3,9 +3,9 @@ import { AlertTriangle, CheckCircle2, LogIn, Users } from "lucide-react"
 import { getTranslations } from "next-intl/server"
 
 import { acceptServerInviteAction } from "@/app/server-actions"
+import { InkframeObjectSurface, ObjectField } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Panel } from "@/components/ui/panel"
 import {
   API_BASE,
   apiHeaders,
@@ -61,7 +61,7 @@ export default async function JoinServerPage({
   const loginHref = `/login?returnTo=${encodeURIComponent(`/join/${token}`)}`
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4">
+    <main data-slot="workbench-desk" className="sk-workbench-desk flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -72,32 +72,23 @@ export default async function JoinServerPage({
         </CardHeader>
         <CardContent className="space-y-4">
           {(error || !invite) && (
-            <Panel className="p-3">
+            <InkframeObjectSurface material="blocked" className="p-3">
               <div className="flex items-center gap-2 text-sm font-medium text-destructive">
                 <AlertTriangle className="size-4" />
                 {t("invalidInvite")}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{error || t("invalidInvite")}</p>
-            </Panel>
+            </InkframeObjectSurface>
           )}
 
           {invite && (
-            <Panel className="grid gap-3 p-3">
-              <div>
-                <div className="text-xs text-muted-foreground">{t("serverLabel")}</div>
-                <div className="mt-1 text-base font-semibold">{invite.serverName}</div>
-              </div>
+            <InkframeObjectSurface material="dry" raised className="grid gap-3 p-3">
+              <ObjectField label={t("serverLabel")} value={invite.serverName} mono={false} />
               <div className="grid gap-2 sm:grid-cols-2">
-                <div>
-                  <div className="text-xs text-muted-foreground">{t("roleLabel")}</div>
-                  <div className="mt-1 text-sm">{invite.role}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">{t("expiresLabel")}</div>
-                  <div className="mt-1 text-sm">{formatInviteDate(invite.expiresAt, t("unknownExpiry"))}</div>
-                </div>
+                <ObjectField label={t("roleLabel")} value={invite.role} mono={false} />
+                <ObjectField label={t("expiresLabel")} value={formatInviteDate(invite.expiresAt, t("unknownExpiry"))} mono={false} />
               </div>
-            </Panel>
+            </InkframeObjectSurface>
           )}
 
           {actionError && (
@@ -108,13 +99,13 @@ export default async function JoinServerPage({
 
           {invite && !session && (
             <div className="space-y-3">
-              <Panel className="p-3">
+              <InkframeObjectSurface material="drying" className="p-3">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <LogIn className="size-4" />
                   {t("loginRequiredTitle")}
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{t("loginRequiredDesc")}</p>
-              </Panel>
+              </InkframeObjectSurface>
               <Link href={loginHref}>
                 <Button className="w-full">
                   <LogIn className="size-4" />
@@ -126,12 +117,12 @@ export default async function JoinServerPage({
 
           {invite && session && invite.alreadyMember && (
             <div className="space-y-3">
-              <Panel className="p-3">
+              <InkframeObjectSurface material="fixed" className="p-3">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <CheckCircle2 className="size-4" />
                   {t("alreadyMember")}
                 </div>
-              </Panel>
+              </InkframeObjectSurface>
               <Link href="/members">
                 <Button className="w-full">{t("openMembers")}</Button>
               </Link>

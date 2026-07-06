@@ -1,0 +1,336 @@
+{
+  "status": "blocked_no_tab",
+  "timestamp": "2026-07-05T20:56:21.485Z",
+  "tabsResult": {
+    "ok": true,
+    "tabs": [],
+    "count": 0
+  },
+  "routeResults": [],
+  "checks": [
+    {
+      "group": "product-shell",
+      "label": "chat shell background surface",
+      "selector": "[data-inkframe-surface=\"app-background\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "product-shell",
+      "label": "chat shell background owner",
+      "selector": "[data-inkframe-owner-kind=\"app-background\"][data-inkframe-owner-id=\"global-desk\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "product-shell",
+      "label": "chat dry desk tint",
+      "selector": "[data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "product-shell",
+      "label": "chat shell background does not capture pointer by default",
+      "selector": "[data-inkframe-surface=\"app-background\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "product-shell",
+      "label": "task shell background surface",
+      "selector": "[data-inkframe-surface=\"app-background\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "product-shell",
+      "label": "task dry desk tint",
+      "selector": "[data-inkframe-region=\"app-background\"][data-inkframe-tint=\"desk\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat workspace",
+      "selector": "[data-inkframe-mobile-role=\"chat-workspace\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat sidebar drawer collapsed state marker",
+      "selector": "[data-inkframe-mobile-role=\"sidebar-drawer\"][data-inkframe-state=\"collapsed\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat message list",
+      "selector": "[data-inkframe-mobile-role=\"chat-message-list\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat composer",
+      "selector": "[data-inkframe-mobile-role=\"chat-composer\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat messages",
+      "selector": "[data-inkframe-object=\"message\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat message actions default hidden",
+      "selector": "[data-inkframe-object=\"message-actions\"][data-inkframe-state=\"toolbar-hidden\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-desktop",
+      "label": "chat message material surfaces",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-owner-kind=\"message\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-mobile",
+      "label": "chat mobile workspace marker",
+      "selector": "[data-inkframe-mobile-role=\"chat-workspace\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "mobile",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-mobile",
+      "label": "chat mobile message list marker",
+      "selector": "[data-inkframe-mobile-role=\"chat-message-list\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "mobile",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-mobile",
+      "label": "chat mobile composer marker",
+      "selector": "[data-inkframe-mobile-role=\"chat-composer\"]",
+      "minCount": 1,
+      "route": "/chat",
+      "viewport": "mobile",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-unread",
+      "label": "sidebar entities carry unread contract",
+      "selector": "[data-inkframe-object=\"sidebar-entity\"][data-inkframe-unread]",
+      "minCount": 0,
+      "route": "/chat",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "chat-unread",
+      "label": "active unread event badges",
+      "selector": "[data-inkframe-object=\"event-badge\"][data-inkframe-unread=\"true\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-desktop",
+      "label": "task workspace",
+      "selector": "[data-inkframe-mobile-role=\"task-workspace\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-desktop",
+      "label": "task controls",
+      "selector": "[data-inkframe-mobile-role=\"task-controls\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-desktop",
+      "label": "task board",
+      "selector": "[data-inkframe-mobile-role=\"task-board\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-desktop",
+      "label": "task tickets",
+      "selector": "[data-inkframe-object=\"task-ticket\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-desktop",
+      "label": "task evidence objects",
+      "selector": "[data-inkframe-object=\"evidence\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-desktop",
+      "label": "task review objects",
+      "selector": "[data-inkframe-object=\"review\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "desktop",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-mobile",
+      "label": "task mobile workspace marker",
+      "selector": "[data-inkframe-mobile-role=\"task-workspace\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-mobile",
+      "label": "task mobile controls marker",
+      "selector": "[data-inkframe-mobile-role=\"task-controls\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-mobile",
+      "label": "task mobile board marker",
+      "selector": "[data-inkframe-mobile-role=\"task-board\"]",
+      "minCount": 1,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-mobile",
+      "label": "task detail marker",
+      "selector": "[data-inkframe-mobile-role=\"task-detail\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-mobile",
+      "label": "task evidence marker",
+      "selector": "[data-inkframe-mobile-role=\"task-evidence\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "task-mobile",
+      "label": "task review marker",
+      "selector": "[data-inkframe-mobile-role=\"task-review\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "viewport": "mobile",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "material-state",
+      "label": "static material surfaces",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-mode=\"static\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "material-state",
+      "label": "static material surfaces do not capture pointer",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-pointer-capture=\"false\"]",
+      "minCount": 0,
+      "route": "/chat",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    },
+    {
+      "group": "material-state",
+      "label": "task static material surfaces",
+      "selector": "[data-inkframe-surface=\"material\"][data-inkframe-mode=\"static\"]",
+      "minCount": 0,
+      "route": "/tasks",
+      "status": "skipped",
+      "error": "No connected tab. Browser/mobile proof not claimed."
+    }
+  ],
+  "notes": [
+    "No connected tab was visible to ./twd.",
+    "Browser and mobile acceptance remain pending.",
+    "The runner did not launch a browser."
+  ]
+}

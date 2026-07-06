@@ -32,7 +32,10 @@ export function TaskDetailDialog({
         if (!next) router.push(closeHref)
       }}
     >
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto">
+      <DialogContent
+        data-inkframe-mobile-role="task-detail-dialog"
+        className="w-[calc(100vw-1rem)] max-w-4xl max-h-[calc(100svh-1rem)] overflow-x-hidden overflow-y-auto p-3 sm:p-6"
+      >
         {children}
       </DialogContent>
     </Dialog>

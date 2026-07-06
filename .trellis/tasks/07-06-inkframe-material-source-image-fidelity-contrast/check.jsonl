@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review whether hooks and components remain in the correct layer."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Review Inkframe background/image direction and foreground readability constraints."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review evidence quality, proof-runner hooks, and no false browser claims."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Review that no image/blob persistence is introduced."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review resource ownership and backend boundary risks."}

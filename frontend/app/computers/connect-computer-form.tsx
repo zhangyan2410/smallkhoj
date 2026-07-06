@@ -5,6 +5,7 @@ import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 
+import { AttachmentSheet, InkframeObjectSurface, ObjectField } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -66,39 +67,26 @@ export function ConnectComputerForm({
         </form>
 
         {credential && (
-          <div className="space-y-2 rounded-none border-2 border-[var(--ink)] bg-muted/40 p-3">
+          <InkframeObjectSurface material="drying" className="space-y-2 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs font-medium uppercase text-muted-foreground">{t("pendingConnection")}</div>
               <div className="text-xs text-muted-foreground">{t("waitingFor", { name: credential.name })}</div>
             </div>
             <div className="text-xs font-medium uppercase text-muted-foreground">{t("connectionCommand")}</div>
-            <code
-              data-testid="daemon-connect-command"
-              className="block whitespace-pre-wrap break-all rounded-none border-2 border-[var(--ink)] bg-sand-card p-2 text-xs"
-            >
-              {credential.command}
-            </code>
+            <AttachmentSheet kind="proof" className="p-2">
+              <code
+                data-testid="daemon-connect-command"
+                className="block whitespace-pre-wrap break-all text-xs"
+              >
+                {credential.command}
+              </code>
+            </AttachmentSheet>
             <div className="grid gap-2 sm:grid-cols-3">
-              <div className="min-w-0">
-                <div className="text-[11px] font-medium uppercase text-muted-foreground">{t("computerName")}</div>
-                <div data-testid="pending-computer-name" className="truncate font-mono text-xs">
-                  {credential.name}
-                </div>
-              </div>
-              <div className="min-w-0">
-                <div className="text-[11px] font-medium uppercase text-muted-foreground">{t("server")}</div>
-                <div data-testid="pending-server-name" className="truncate font-mono text-xs">
-                  {credential.serverName || credential.serverId || "-"}
-                </div>
-              </div>
-              <div className="min-w-0">
-                <div className="text-[11px] font-medium uppercase text-muted-foreground">{t("expires")}</div>
-                <div className="truncate font-mono text-xs">
-                  {credential.expiresAt}
-                </div>
-              </div>
+              <ObjectField label={t("computerName")} value={<span data-testid="pending-computer-name">{credential.name}</span>} />
+              <ObjectField label={t("server")} value={<span data-testid="pending-server-name">{credential.serverName || credential.serverId || "-"}</span>} />
+              <ObjectField label={t("expires")} value={credential.expiresAt} />
             </div>
-          </div>
+          </InkframeObjectSurface>
         )}
 
         {connectedComputerName && (

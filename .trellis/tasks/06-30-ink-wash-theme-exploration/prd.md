@@ -1,80 +1,130 @@
-# Explore switchable Shui-mo ink theme
+# Inkframe Object Desk Product UI Refactor
 
 ## Goal
 
-为 SmallKhoj 增加一套可切换的「水墨（Shui-mo）」主题，作为现有「水与沙 /
-手作墨边」风格之外的**第三主题**。不替换、不覆盖现有 water 主题与 dark
-主题；三套主题并存，用户可在设置页自由切换并持久化。
+Replace the default SmallKhoj product surface with the Inkframe object-desk
+language explored in the local demos. This is no longer a token-only experiment
+or a third optional Shui-mo theme. The target product scene is:
 
-> 本 PRD 经 2026-06-30 design grilling 重写，以讨论定论为准，覆盖早期
-> agent 生成的草稿描述。
+> a working desk with xuan paper, inkstone, cinnabar seal, handwritten notes,
+> evidence sheets, task tickets, and small desk tools arranged as reusable UI
+> objects.
+
+The branch should make the real frontend closer to the demo direction while
+leaving enough component structure and tests that later agents cannot easily
+drift back to route-local SaaS cards, dirty wet backgrounds, or decorative
+one-off effects.
 
 ## Requirements
 
-- **R1: 保留现有风格。** water（水与沙 / 手作墨边，默认）与 dark（深海蓝暗
-  色）两套主题必须保持可用且零回归。shuimo 是纯新增，不改 `:root` 与
-  `.dark` 任何 token 值。
-- **R2: 显式主题切换。** 三套主题通过 `/settings` 页「外观 / Appearance」
-  Card 里的真实切换器选择，不是隐藏 CSS fallback 或一次性替换。
-- **R3: 持久化。** 复用现有 `localStorage.theme`，取值从 `'dark' | null`
-  扩展为 `'dark' | 'shuimo' | null`（null = water）。reload 后保持。hydration
-  安全（先渲染默认 water，挂载后再读 localStorage，避免闪烁/不一致）。
-- **R4: 水墨骨架 = 松烟墨 + 朱砂印章，不是黑白。** 骨架层（背景、文字、
-  边框、阴影、nav/tab 选中态、主按钮）使用**松烟墨中性灰黑**（几乎无色相，
-  例如 `oklch(0.20 0.015 260)`），不用蓝黑、不用纯灰阶。**朱砂红仅作「选中
-  印章」**（当前 nav/tab 选中项的强调点），不大面积填充。背景为生宣白（偏白
-  微黄），靠明度分层（rail 深 → 主区 → 卡片 → 气泡）。
-- **R5: 实用优先。** 应用仍是工作工具；水墨材质语言服务扫描与操作，不做
-  装饰性泼墨。
-- **R6: 保留结构语言。** 2px 方角墨边 + 硬偏移阴影保留；但边框色用松烟墨
-  （区别于 water/dark 的蓝灰墨）。表面是生宣/淡墨薄染，非通用灰阶 UI。
-- **R7: 真实 app 表面可用。** settings（切换器）、chat（密集气泡）、members
-  （agent 列表 + 状态点）等页面在 shuimo 下仍可读可操作。
-- **R8: 不丢主题。** 三主题可循环切换且 reload 持久化；water/dark 零回归。
-  lint 与 typecheck 通过即视为机制层达标；视觉对比由人验收（截图对 LLM 无
-  判断价值，不作为强制证据）。
-- **R9: 点缀边界。** 水墨骨架走墨阶 + 朱砂印章；以下元素**保留 water 色系
-  作为点缀**，不压墨：头像底色（`--avatar-tint-*`）、@提及高亮、category
-  dot（`--cat-*`）、status badge（`--success/--warning/--danger/--info`，含
-  info 蓝）、agent 类型标签、任务优先级标签。
+- **R1: Default product language changes.** The dry paper object-desk style must
+  be present in the default app state. It must not depend on selecting a hidden
+  or experimental theme first.
+- **R2: Clean dry paper background.** The app background is a bright xuan-paper
+  desk field. It must not be pink, dark, dirty, or a full-page wet ink wash.
+- **R3: Shared primitives.** Object language belongs in reusable primitives and
+  `globals.css` utilities, not route-local hand-rolled cards. Chat messages,
+  tasks, evidence, reviews, memory notes, identity tags, runtime/computer
+  surfaces, and entry surfaces must expose stable `data-slot` contracts.
+- **R4: Page scope.** User-facing product pages are in scope: home, chat/DM,
+  tasks, members, computers, settings, login, and join. Internal operator pages
+  `/daemon` and `/control` are out of scope for this product-language pass.
+- **R5: Rotation is local.** Only deliberately hand-placed micro objects may
+  rotate: short chat slips, review stamps, and similar small accents. Long
+  messages, sidebars, lists, task panels, composer, forms, and runtime/computer
+  bases stay square and stable.
+- **R6: Physical object metaphors.** Components should map to tangible desk
+  objects rather than generic cards:
+  - chat message = paper slip; short slips may tilt slightly, long slips stay
+    stable.
+  - message actions = small tools attached near the message, not a row pushed to
+    the far right.
+  - task = task ticket or working docket.
+  - evidence = attached proof sheet.
+  - review = cinnabar seal/markup stamp.
+  - memory = fixed note.
+  - member identity = name tag/signature card; agent identity = identity frame
+    around the existing avatar, not a cinnabar stamp on the avatar.
+  - computer/runtime = local inkstone/tool base, not a full-width bottom rail.
+- **R7: Material restraint.** Cinnabar is reserved for seals or critical accents,
+  not page tint. Wet/WebGL material effects are future local enhancements only;
+  they must not flood the whole app background.
+- **R8: Product usability.** The UI remains a practical workbench: readable text,
+  stable layouts, accessible controls, no hidden action bars clipped by paper
+  edges, no text overflow, and no decorative motion that obscures state.
+- **R9: Guardrails.** Tests must protect the key contracts: one shell background
+  owner, no broad rotation, no universal message clips, no legacy route-local
+  Tailwind color blocks on user-facing product surfaces, and `/daemon`/`/control`
+  excluded from the object-desk pass.
+- **R10: Avatar state semantics.** Agent avatars already have a top-right status
+  dot whose color changes with runtime/member state. The avatar frame must not
+  place a cinnabar stamp, clip, or decoration over that status location.
+  Structural paper-frame details such as a folded corner may exist only when
+  they avoid the status corner, with left-top preferred for the fold. Review/
+  approval stamps remain separate `ReviewStamp` objects, not identity decoration.
+- **R11: Avatar prefab consistency.** Agent and human avatars must use the same
+  `AvatarObject` prefab with different frame/content variants. The avatar body
+  is not required to be a blue circle; fallback initials and generated avatars
+  should fill the avatar tile/frame instead of appearing as a colored ball inside
+  another box. Agent examples should use the real generated/avatar face content
+  when available, not human-style initials as the default representation. Legacy
+  blue avatar tint should be treated as replaceable visual debt, not as brand
+  truth.
+- **R12: Avatar content shape.** The avatar component is not constrained to a
+  circular face. The current generated agent avatar uses a rounded-square SVG
+  container (`rect` with radius), while some avatar art styles may draw a
+  round/organic face blob inside it. The product target should avoid a default
+  "square frame containing a separate round face/ball" look; agent face art
+  should feel integrated with the avatar tile.
+- **R13: Default avatar frame.** The default agent identity frame is option B
+  from `evidence/avatar-border-options.html`: `identity-thin` / 轻身份框. It is
+  a light identity frame, not a stamp. More expressive variants may be explored
+  later, but they should start from this default unless the task explicitly asks
+  for a different object metaphor.
 
-## Design Intent（水墨骨架）
+## Non-Goals
 
-- 生宣白底（偏白微黄），非纯白；rail/侧栏最深，靠明度分层。
-- 松烟墨文字（中性灰黑、几乎无色相），非浏览器纯黑、非蓝黑。
-- 分层靠 token 明度差异，**零位图纹理**（rail 也用纯墨色填充，不生成水墨
-  png）。
-- nav/tab 选中 = 浓墨填充 + 白字 + 朱砂印章；不再 chat=蓝 tasks=玫红。
-- 朱砂红仅做选中印章，不扩展到确认/危险（避免与 danger 红混淆）。
-
-## Forbidden
-
-- 纯黑白 / 通用 dark mode / 去饱和灰阶主题 / 缺 CSS fallback。
-- 蓝黑墨、mineral blue-green 强调色（与「水墨无蓝绿」冲突）。
-- 装饰泼墨、SVG 涂鸦、对角条纹、渐变色块、玻璃面板、圆角卡片重设计。
-- 把 status/category/avatar 点缀色也压成墨阶（会丢识别度，违背 R9）。
+- Do not spend design time polishing `/daemon` or `/control`; they are internal
+  control/observability pages.
+- Do not build a landing page or marketing hero.
+- Do not reproduce the reference ink engine across the full app background.
+  Engine/material work should remain local to future runtime/evidence objects.
+- Do not keep the old "third Shui-mo theme" PRD as the source of truth. Existing
+  theme mechanics may remain temporarily while the branch is in flight, but they
+  do not define success for this refactor.
 
 ## Acceptance Criteria
 
-- [ ] water 与 dark 主题仍可渲染且可选，且 `:root`/`.dark` token 零改动。
-- [ ] shuimo 可通过 settings「外观」Card 选择。
-- [ ] 主题选择 reload 后保持（localStorage.theme 3 值）。
-- [ ] shuimo 用刻意的水墨调色板：生宣白底、松烟墨文字/边框、明度分层表面、
-      朱砂仅做选中印章；点缀色保留 water 色系。
-- [ ] shuimo 不是纯灰阶 / 通用暗色 / 缺 token fallback。
-- [ ] 复用现有 token/组件系统；不为每页 fork route-local 视觉原语。
-- [ ] nav/tab 选中在 shuimo 下为浓墨 + 朱砂印章（统一，不再多色）。
-- [ ] `pnpm lint` 与 typecheck 通过；三主题可循环切换且 reload 持久化。
+- [ ] The branch exists and isolates the broad frontend refactor from `main`.
+- [ ] Default app state renders the dry paper object-desk background.
+- [ ] Home, chat/DM, tasks, members, computers, settings, login, and join use the
+      shared object primitives where the object language applies.
+- [ ] `/daemon` and `/control` do not import the object-desk primitives and are
+      not used as acceptance evidence.
+- [ ] Short chat messages may tilt, long messages and structural surfaces do not.
+- [ ] Chat actions stay visually clustered with their message object.
+- [ ] Task/evidence/review/memory surfaces are separate components/slots.
+- [ ] Agent avatar frames preserve the existing status dot, do not cover it, and
+      do not use cinnabar stamp marks as identity decoration.
+- [ ] Agent and human avatar examples use the same `AvatarObject` path, and
+      avatars do not render as a blue circular ball inside a square frame unless
+      a real uploaded image is circular by itself.
+- [ ] Agent avatar examples render generated/avatar face content rather than
+      initials-only placeholders, except in explicit fallback/error examples.
+- [ ] Avatar examples do not present "square frame + inner round face/ball" as
+      the default target shape; agent face content fills or integrates with the
+      avatar tile.
+- [ ] The default agent avatar frame uses the `identity-thin` direction from the
+      avatar border options reference.
+- [ ] Computer/runtime surfaces read as local inkstone/tool bases, with no
+      product-wide bottom bar.
+- [ ] Browser smoke evidence confirms the real local app, not only static files.
+- [ ] `npm run lint`, `npx tsc --noEmit`, and focused frontend tests pass.
 
-## Implementation Notes
+## Current Reference Files
 
-- 在 `<html>` 上加 `.shuimo` class（与现有 `.dark` 同模式）；water = 不加任何
-  class。layout 的 `beforeInteractive` inline 脚本从识别 2 值扩为 3 值。
-- `.shuimo {}` 块只重定义骨架 token（surface/ink/text/`--accent-*`），**不**
-  重定义 `--success/--warning/--info/--danger/--cat-*/--avatar-tint-*`（继承
-  water 做点缀）。
-- `--accent-*` 在 `.shuimo` 下压成墨阶变体（solid=浓墨+白字，soft=淡墨+深
-  字），唯独 `--accent-rose` 保留朱砂做印章。
-- 切换器 = 自定义客户端组件 `ThemeSwitcher`（~40 行，零依赖），不引入
-  next-themes（其始终加 class 的模型与「water=无类」别扭）。
-- rail 用纯墨色 token 填充，不生成水墨位图。
+- `design.md` is the detailed product/design source of truth for this branch.
+- `/Users/code/project/inkframe-demo/index.html`
+- `/Users/code/project/inkframe-demo/task.html`
+- `/Users/code/project/inkframe-demo/chat.html`
+- `/Users/code/project/inkframe-demo/interactive-material-demo.html`

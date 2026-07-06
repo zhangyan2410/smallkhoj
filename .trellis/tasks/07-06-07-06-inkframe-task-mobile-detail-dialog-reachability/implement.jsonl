@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend browser-evidence honesty, ProductShell ownership, and overflow/scroll-owner contracts."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Inkframe product style, task surface constraints, and mobile workspace expectations."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Component ownership, stable data-region/data-role contracts, and no route-local primitive drift."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Boundary discipline for source tests versus browser evidence while the browser gate is blocked."}
+{"file":".trellis/tasks/07-05-inkframe-product-ui-refactor/prd.md","reason":"Parent Inkframe product acceptance context."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-mobile-shell-drawer-reachability/evidence/source-contract-validation.md","reason":"Previous mobile shell drawer hardening and evidence style."}
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/evidence/browser-recovery.md","reason":"Current no-tab browser gate status and proof-runner behavior."}
+{"file":".agents/skills/project-webdriver-cli/SKILL.md","reason":"Project WebDriver CLI rules: use ./twd, no Playwright substitution."}

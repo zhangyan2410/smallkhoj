@@ -17,13 +17,15 @@ import {
 
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
-import { EmptyState, RuntimeChip, StatusPill, Toolbar } from "@/components/product-ui"
+import { EmptyState, StatusPill, Toolbar } from "@/components/product-ui"
+import { EvidenceSurface, InkframeObjectSurface, MemoryFixedNote, ObjectToggleField, ReviewStamp, TaskTicket } from "@/components/inkframe-object-ui"
 import { TaskRecoveryCockpit, type TaskRecoveryCopy } from "@/components/memory-entry-surface"
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { FieldLabel, Select, Textarea } from "@/components/ui/form"
 import { TaskListPanel } from "@/components/task-list-panel"
+import { TaskMaterialStateProvider, TaskRouteDetailMaterialFrame } from "@/components/task-material-state"
 import { TaskFormDialogs } from "@/components/task-form-dialogs"
 import { API_BASE, apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
@@ -403,7 +405,7 @@ function entryLabel(type: EvidenceEntry["type"], copy: TasksCopy) {
 
 function EvidenceEntryRow({ entry, copy }: { entry: EvidenceEntry; copy: TasksCopy }) {
   return (
-    <div className="flex items-start gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
+    <EvidenceSurface kind={entry.type} className="flex items-start gap-2 px-2.5 py-2">
       <EvidenceIcon type={entry.type} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -420,17 +422,12 @@ function EvidenceEntryRow({ entry, copy }: { entry: EvidenceEntry; copy: TasksCo
         )}
         {entry.decision && (
           <div className="mt-1">
-            <RuntimeChip
-              tone={
-                entry.decision === "approved" || entry.decision === "pass"
-                  ? "success"
-                  : entry.decision === "rejected" || entry.decision === "fail"
-                    ? "danger"
-                    : "neutral"
-              }
+            <ReviewStamp
+              tone={entry.decision === "approved" || entry.decision === "pass" ? "approved" : entry.decision === "rejected" || entry.decision === "fail" ? "blocked" : "review"}
+              className="text-[0.65rem]"
             >
               {entry.decision}
-            </RuntimeChip>
+            </ReviewStamp>
           </div>
         )}
         {entry.note && (
@@ -440,7 +437,7 @@ function EvidenceEntryRow({ entry, copy }: { entry: EvidenceEntry; copy: TasksCo
           <div className="mt-1 text-[0.65rem] text-muted-foreground">{copy.byReviewer(entry.reviewer)}</div>
         )}
       </div>
-    </div>
+    </EvidenceSurface>
   )
 }
 
@@ -464,7 +461,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
   const entries = evidence?.entries ?? []
   const sourceLink = source ? sourceHref(source) : null
   return (
-    <div className="space-y-4">
+    <TaskRouteDetailMaterialFrame taskId={task.id} status={task.status}>
       <div>
         <div className="font-mono text-xs text-muted-foreground">
           {task.channel} #{task.number}
@@ -486,7 +483,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           <span>{task.creator ? `@${task.creator}` : copy.unknown}</span>
         </div>
       </div>
-      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
+      <EvidenceSurface kind="activity" className="px-3 py-3">
         <h3 className="text-sm font-medium">{copy.activity}</h3>
         {activity.length > 0 ? (
           <div className="mt-2 space-y-2">
@@ -507,8 +504,8 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
         ) : (
           <p className="mt-2 text-xs text-muted-foreground">{copy.noActivity}</p>
         )}
-      </div>
-      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
+      </EvidenceSurface>
+      <EvidenceSurface kind="source" className="px-3 py-3">
         <h3 className="text-sm font-medium">{copy.source}</h3>
         {source ? (
           <div className="mt-2 space-y-2 text-xs text-muted-foreground">
@@ -526,30 +523,27 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
               </div>
             )}
             {source.channel && sourceLink && (
-              <Link
-                href={sourceLink}
-                className="inline-flex items-center gap-1 rounded-none border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/15"
-              >
+              <TaskTicket href={sourceLink} status="source" className="text-xs">
                 <MessageSquare className="size-3" />
                 {copy.openSourceChannel(source.channel)}
-              </Link>
+              </TaskTicket>
             )}
           </div>
         ) : (
           <p className="mt-2 text-xs text-muted-foreground">{copy.noSource}</p>
         )}
-      </div>
-      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
+      </EvidenceSurface>
+      <div data-inkframe-mobile-role="task-evidence" className="space-y-2">
         <h3 className="text-sm font-medium">{copy.evidence}</h3>
         <div className="mt-2 space-y-2 text-xs text-muted-foreground">
           {(evidence?.notes || []).map((note) => (
-            <div key={note} className="rounded-none border border-dashed bg-muted/30 px-2 py-1.5">{note}</div>
+            <EvidenceSurface key={note} kind="note" className="px-2 py-1.5">{note}</EvidenceSurface>
           ))}
           {(evidence?.links || []).map((link) => (
-            <div key={`${link.label}-${link.href}`} className="flex items-center gap-1.5 rounded-none border border-dashed bg-muted/30 px-2 py-1.5">
+            <EvidenceSurface key={`${link.label}-${link.href}`} kind="link" className="flex items-center gap-1.5 px-2 py-1.5">
               <ExternalLink className="size-3" />
               {link.label || link.href || copy.evidenceLink}
-            </div>
+            </EvidenceSurface>
           ))}
           {entries.length > 0 && (
             <div className="space-y-1.5">
@@ -562,23 +556,26 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
             <p className="text-muted-foreground">{copy.noEvidence}</p>
           )}
         </div>
-        <form action={addEvidenceAction} className="mt-3 space-y-2 border-t pt-3">
+        <form action={addEvidenceAction} className="mt-3 min-w-0 space-y-2 border-t pt-3">
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="currentData" value={JSON.stringify(task.data ?? {})} />
-          <div className="flex gap-2">
-            <select
+          <div className="flex min-w-0 gap-2">
+            <Select
+              id={`evidence-entry-type-${task.id}`}
               name="entryType"
-              className="h-7 shrink-0 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
+              items={[
+                `note|${copy.evidenceTypeNote}`,
+                `screenshot|${copy.evidenceTypeScreenshot}`,
+                `trace|${copy.evidenceTypeTrace}`,
+                `api_proof|${copy.evidenceTypeApiProof}`,
+              ]}
+              splitValue
               defaultValue="note"
-            >
-              <option value="note">{copy.evidenceTypeNote}</option>
-              <option value="screenshot">{copy.evidenceTypeScreenshot}</option>
-              <option value="trace">{copy.evidenceTypeTrace}</option>
-              <option value="api_proof">{copy.evidenceTypeApiProof}</option>
-            </select>
-            <Input name="entryPath" placeholder={copy.evidencePathPlaceholder} className="h-7 text-xs" />
+              className="h-7 w-auto shrink-0 text-xs"
+            />
+            <Input name="entryPath" placeholder={copy.evidencePathPlaceholder} className="h-7 min-w-0 text-xs" />
           </div>
-          <Input name="entryContent" placeholder={copy.evidenceContentPlaceholder} className="h-7 text-xs" />
+          <Input name="entryContent" placeholder={copy.evidenceContentPlaceholder} className="h-7 min-w-0 text-xs" />
           <Button type="submit" size="sm" variant="outline" className="w-full text-xs">
             <Plus className="size-3" />
             {copy.addEvidence}
@@ -586,7 +583,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
         </form>
       </div>
       <TaskRecoveryCockpit entries={memoryEntries} copy={copy.taskRecovery} />
-      <div className="rounded-none border border-dashed bg-muted/30 p-2.5">
+      <MemoryFixedNote fixed={memoryEntries.length > 0} className="p-2.5">
         <div className="flex items-start gap-2">
           <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
@@ -604,7 +601,7 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
           />
           <div className="flex flex-wrap gap-1.5" aria-label={copy.outputDirections}>
             {MEMORY_OUTPUT_DIRECTIONS.map((direction) => (
-              <label key={direction} className="cursor-pointer">
+              <ObjectToggleField key={direction} className="cursor-pointer px-0 py-0 text-[0.68rem]">
                 <input
                   type="checkbox"
                   name="outputDirection"
@@ -612,39 +609,45 @@ function TaskDetail({ task, activity = [], memoryEntries = [], copy }: { task?: 
                   defaultChecked={direction === "final_summary" || direction === "evidence"}
                   className="peer sr-only"
                 />
-                <span className="inline-flex rounded-none border-2 border-[var(--ink)] bg-sand-card px-2 py-1 text-[0.68rem] text-muted-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary">
+                <span className="inline-flex px-2 py-1 text-muted-foreground peer-checked:text-primary">
                   {outputDirectionLabel(direction, copy)}
                 </span>
-              </label>
+              </ObjectToggleField>
             ))}
           </div>
           <Button type="submit" size="sm" variant="outline" className="h-7 w-full text-xs">
             {copy.triggerMemoryRequest}
           </Button>
         </form>
-      </div>
-      <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
-        <h3 className="text-sm font-medium">{copy.review}</h3>
+      </MemoryFixedNote>
+      <EvidenceSurface kind="review" data-inkframe-mobile-role="task-review" className="px-3 py-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-medium">{copy.review}</h3>
+          <ReviewStamp tone="review">{copy.review}</ReviewStamp>
+        </div>
         <form action={addReviewNoteAction} className="mt-2 space-y-2">
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="currentData" value={JSON.stringify(task.data ?? {})} />
-          <select
+          <Select
+            id={`review-decision-${task.id}`}
             name="reviewDecision"
-            className="h-7 w-full rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
-          >
-            <option value="">{copy.selectDecision}</option>
-            <option value="approved">{copy.approved}</option>
-            <option value="rejected">{copy.rejected}</option>
-            <option value="needs_work">{copy.needsWork}</option>
-            <option value="reopened">{copy.reopened}</option>
-          </select>
-          <Input name="reviewNote" placeholder={copy.reviewNotePlaceholder} className="h-7 text-xs" />
+            items={[
+              `approved|${copy.approved}`,
+              `rejected|${copy.rejected}`,
+              `needs_work|${copy.needsWork}`,
+              `reopened|${copy.reopened}`,
+            ]}
+            emptyLabel={copy.selectDecision}
+            splitValue
+            className="h-7 text-xs"
+          />
+          <Input name="reviewNote" placeholder={copy.reviewNotePlaceholder} className="h-7 min-w-0 text-xs" />
           <Button type="submit" size="sm" variant="outline" className="w-full text-xs">
             {copy.submitReview}
           </Button>
         </form>
-      </div>
-    </div>
+      </EvidenceSurface>
+    </TaskRouteDetailMaterialFrame>
   )
 }
 
@@ -698,6 +701,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   const tasksBaseHref = `/tasks?${new URLSearchParams(filterRecord).toString()}`
 
   return (
+    <TaskMaterialStateProvider>
     <ProductShell
       active="tasks"
       title={copy.title}
@@ -756,8 +760,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
       }
     >
       <RealtimeRefresh eventTypes={["task.created", "task.updated"]} />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto pr-1">
-        <Toolbar>
+      <div data-inkframe-mobile-role="task-workspace" className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto pr-1">
+        <Toolbar data-inkframe-mobile-role="task-controls">
           <ListChecks className="size-4 text-primary" />
           <span className="text-sm font-medium">{copy.boardListSurface}</span>
           <span className="text-xs text-muted-foreground">{copy.visibleCount(visibleTasks.length, tasks.length)}</span>
@@ -800,9 +804,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
 
         {/* 创建/更新表单已收进顶部对话框（TaskFormDialogs），主区只保留看板主体 */}
 
-        <form action="/tasks" className="grid gap-3 rounded-none border-2 border-[var(--ink)] bg-card p-3 sm:grid-cols-2 xl:grid-cols-5">
+        <InkframeObjectSurface
+          material="dry"
+          data-inkframe-mobile-role="task-filters"
+          className="grid min-w-0 grid-cols-1 gap-3 overflow-x-hidden p-3 sm:grid-cols-2 xl:grid-cols-5"
+        >
+        <form action="/tasks" className="contents">
           <input type="hidden" name="view" value={view} />
-          <div className="xl:col-span-5 flex items-center gap-2 text-sm font-medium">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-medium xl:col-span-5">
             <Filter className="size-4 text-primary" />
             {copy.filters}
           </div>
@@ -822,8 +831,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
             <FieldLabel htmlFor="filter-status">{copy.status}</FieldLabel>
             <Select id="filter-status" name="status" items={TASK_STATUS_OPTIONS} defaultValue={filters.status} emptyLabel={copy.anyStatus} splitValue />
           </div>
-          <div className="flex items-end gap-2">
-            <Button type="submit" size="sm" className="flex-1">
+          <div className="flex min-w-0 items-end gap-2">
+            <Button type="submit" size="sm" className="min-w-0 flex-1">
               {copy.apply}
             </Button>
             <Link href={`/tasks?view=${view}`}>
@@ -833,6 +842,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
             </Link>
           </div>
         </form>
+        </InkframeObjectSurface>
 
         <TaskDndBoard
           tasks={visibleTasks}
@@ -845,5 +855,6 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
         <TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} copy={copy} />
       </TaskDetailDialog>
     </ProductShell>
+    </TaskMaterialStateProvider>
   )
 }
