@@ -46,6 +46,12 @@
     "agents": "智能体",
     "computersOnline": "在线电脑",
     "savedItems": "收藏项",
+    "quickStart": "快速开始",
+    "quickStartDesc": "不用离开工作台即可创建频道或开始私信。",
+    "newChannel": "新频道",
+    "channelPlaceholder": "channel-name",
+    "startDmWith": "开始私信",
+    "selectMember": "选择成员...",
     "noRecentMessages": "暂无近期消息",
     "noRecentMessagesDesc": "对话发生后消息会显示在这里。"
   },
@@ -385,8 +391,16 @@
     "roleMember": "成员"
   },
   "settings": {
-    "title": "设置",
-    "description": "本地产品的 Server、账号、运行时默认值、API Key 和安全控制。",
+    "title": "外观",
+    "description": "选择界面主题。切换即时生效，并在重新加载后保持。",
+    "appearance": {
+      "title": "主题",
+      "description": "切换工作台的纸面、墨线和夜间显示。",
+      "label": "主题",
+      "water": "水与沙",
+      "dark": "深海",
+      "shuimo": "水墨"
+    },
     "sidebarTitle": "管理链接",
     "sidebarDescription": "次级界面保持可访问，不占用主工作台。",
     "apiDocs": "API 文档",

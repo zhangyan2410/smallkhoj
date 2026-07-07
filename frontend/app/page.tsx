@@ -16,12 +16,14 @@ import {
   User,
 } from "lucide-react"
 
+import { AgentSealMark, EvidenceSurface, MemberNameTag, ObjectMetric, TaskTicket } from "@/components/inkframe-object-ui"
 import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, RuntimeChip, Toolbar } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { API_BASE, apiGet, formatTime, type Computer, type Member } from "@/lib/control-plane"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
@@ -193,19 +195,17 @@ function SearchResults({ query, results }: {
           const Icon = resultIcon(result.type)
           const href = result.href || result.downloadUrl || "/"
           return (
-            <Link
-              key={`${result.type}-${result.id}`}
-              href={href}
-              className="flex items-start gap-2 rounded-none px-3 py-2 text-sm hover:bg-accent"
-            >
-              <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{result.title}</span>
-                {(result.content || result.description) && (
-                  <span className="block truncate text-xs text-muted-foreground">{result.content || result.description}</span>
-                )}
-              </span>
-              <span className="max-w-[14rem] truncate text-xs text-muted-foreground">{resultMeta(result)}</span>
+            <Link key={`${result.type}-${result.id}`} href={href} className="block text-sm">
+              <EvidenceSurface kind={result.type} className="flex items-start gap-2 p-2">
+                <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{result.title}</span>
+                  {(result.content || result.description) && (
+                    <span className="block truncate text-xs text-muted-foreground">{result.content || result.description}</span>
+                  )}
+                </span>
+                <span className="max-w-[14rem] truncate text-xs text-muted-foreground">{resultMeta(result)}</span>
+              </EvidenceSurface>
             </Link>
           )
         })}
@@ -259,19 +259,19 @@ export default async function Home({
       title={t("brand")}
       description={t("recentMessagesDesc")}
       session={session}
-      sidebarTitle="Quick Start"
-      sidebarDescription="Create a channel or start a DM without leaving the workbench."
+      sidebarTitle={t("quickStart")}
+      sidebarDescription={t("quickStartDesc")}
       sidebar={
         <div className="space-y-4">
           <form action={createChannelAction} className="flex items-end gap-2">
             <div className="min-w-0 flex-1">
               <label htmlFor="channel-name" className="mb-1 block text-xs font-medium text-muted-foreground">
-                New Channel
+                {t("newChannel")}
               </label>
               <Input
                 id="channel-name"
                 name="channelName"
-                placeholder="channel-name"
+                placeholder={t("channelPlaceholder")}
                 required
               />
             </div>
@@ -282,14 +282,15 @@ export default async function Home({
           <form action={createDmAction} className="flex items-end gap-2">
             <div className="min-w-0 flex-1">
               <label htmlFor="dm-peer" className="mb-1 block text-xs font-medium text-muted-foreground">
-                Start DM with
+                {t("startDmWith")}
               </label>
-              <select id="dm-peer" name="peer" required className="h-8 w-full rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
-                <option value="">Select member...</option>
-                {agents.map((m) => (
-                  <option key={m.id} value={m.displayName}>{m.displayName}</option>
-                ))}
-              </select>
+              <Select
+                id="dm-peer"
+                name="peer"
+                required
+                items={agents.map((member) => member.displayName || member.name)}
+                emptyLabel={t("selectMember")}
+              />
             </div>
             <Button type="submit" size="icon" aria-label="Start DM">
               <MessageSquare className="size-4" />
@@ -372,20 +373,18 @@ export default async function Home({
                       const channelName = (item.details?.channelName as string) || (item.details?.channel as string) || item.description?.split(/\s+/).find((w) => w.startsWith("#")) || null
                       const channelHref = channelName ? `/chat/${channelPathSegment(channelName)}` : "/chat"
                       return (
-                        <Link
-                          key={item.id}
-                          href={channelHref}
-                          className="flex items-start gap-2.5 rounded-none px-2 py-2 text-sm transition-colors hover:bg-accent"
-                        >
-                          <Hash className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate font-medium">{item.agentName || "system"}</span>
-                              {channelName && <span className="truncate text-xs text-muted-foreground">#{channelName.replace(/^#/, "")}</span>}
+                        <Link key={item.id} href={channelHref} className="block text-sm">
+                          <EvidenceSurface kind="message" className="flex items-start gap-2.5 p-2">
+                            <Hash className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate font-medium">{item.agentName || "system"}</span>
+                                {channelName && <span className="truncate text-xs text-muted-foreground">#{channelName.replace(/^#/, "")}</span>}
+                              </div>
+                              <div className="line-clamp-1 text-xs text-muted-foreground">{item.description}</div>
                             </div>
-                            <div className="line-clamp-1 text-xs text-muted-foreground">{item.description}</div>
-                          </div>
-                          <span className="shrink-0 text-[11px] text-muted-foreground">{formatTime(item.timestamp)}</span>
+                            <span className="shrink-0 text-[11px] text-muted-foreground">{formatTime(item.timestamp)}</span>
+                          </EvidenceSurface>
                         </Link>
                       )
                     })
@@ -400,23 +399,24 @@ export default async function Home({
                     <Bot className="size-4 text-accent-mint" />
                     {t("activeAgents")}
                   </CardTitle>
-                  <span className="rounded-none border border-[var(--ink)] sk-accent-mint-soft px-2 py-0.5 text-[11px] font-semibold">
+                  <RuntimeChip tone="paper" className="min-h-0 gap-1 px-1.5 py-0.5 text-[11px]">
+                    <span className="size-1.5 shrink-0 rounded-full bg-success" />
                     {activeAgents.length}
-                  </span>
+                  </RuntimeChip>
                 </CardHeader>
                 <CardContent className="space-y-1">
                   {activeAgents.length === 0 ? (
                     <EmptyState title={t("noActiveAgents")} description={t("noActiveAgentsDesc")} />
                   ) : (
                     activeAgents.map((agent) => (
-                      <Link
-                        key={agent.id}
-                        href={`/chat/${encodeURIComponent(agent.displayName || agent.name)}`}
-                        className="flex items-center gap-2.5 rounded-none px-2 py-1.5 text-sm transition-colors hover:bg-accent"
-                      >
-                        <MemberAvatar member={agent} size="sm" showStatus />
-                        <span className="min-w-0 flex-1 truncate font-medium">{agent.displayName || agent.name}</span>
-                        <span className="shrink-0 text-[11px] text-muted-foreground">{getStatusLabel(agent.status)}</span>
+                      <Link key={agent.id} href={`/chat/${encodeURIComponent(agent.displayName || agent.name)}`} className="block text-sm">
+                        <MemberNameTag kind="agent" status={agent.status} className="flex items-center gap-2.5 px-2 py-1.5">
+                          <AgentSealMark status={agent.status}>
+                            <MemberAvatar member={agent} size="sm" showStatus />
+                          </AgentSealMark>
+                          <span className="min-w-0 flex-1 truncate font-medium">{agent.displayName || agent.name}</span>
+                          <span className="shrink-0 text-[11px] text-muted-foreground">{getStatusLabel(agent.status)}</span>
+                        </MemberNameTag>
                       </Link>
                     ))
                   )}
@@ -441,12 +441,12 @@ export default async function Home({
                 </CardHeader>
                 <CardContent>
                   <div className="mb-3 flex gap-2">
-                    <RuntimeChip tone="warning" className="gap-1 py-1">
-                      <span className="size-1.5 rounded-full bg-[var(--cat-warning-fg)]" />
+                    <RuntimeChip tone="paper" className="gap-1 py-1">
+                      <span className="size-1.5 shrink-0 rounded-full bg-warning" />
                       {t("openCount", { count: openTasks.length })}
                     </RuntimeChip>
-                    <RuntimeChip tone="info" className="gap-1 py-1">
-                      <span className="size-1.5 rounded-full bg-[var(--cat-info-fg)]" />
+                    <RuntimeChip tone="paper" className="gap-1 py-1">
+                      <span className="size-1.5 shrink-0 rounded-full bg-info" />
                       {t("inProgressCount", { count: inProgressTasks.length })}
                     </RuntimeChip>
                   </div>
@@ -455,15 +455,14 @@ export default async function Home({
                   ) : (
                     <div className="space-y-1">
                       {pendingTasks.slice(0, 6).map((task) => (
-                        <Link
-                          key={task.id}
-                          href="/tasks"
-                          className="flex items-center gap-2 rounded-none px-2 py-1.5 text-sm transition-colors hover:bg-accent"
-                        >
+                        <TaskTicket key={task.id} href="/tasks" status={task.status} className="w-full justify-start">
                           <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
                           <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                          <span className="shrink-0 rounded-none bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">{task.status}</span>
-                        </Link>
+                          <RuntimeChip tone="paper" className="gap-1 uppercase">
+                            <span className={`size-1.5 shrink-0 rounded-full ${task.status === "in_progress" ? "bg-info" : "bg-warning"}`} />
+                            {task.status}
+                          </RuntimeChip>
+                        </TaskTicket>
                       ))}
                     </div>
                   )}
@@ -478,24 +477,12 @@ export default async function Home({
                     {t("workspace")}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">{t("channels")}</span>
-                    <span className="font-semibold">{channels.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">{t("agents")}</span>
-                    <span className="font-semibold">{agents.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">{t("computersOnline")}</span>
-                    <span className="font-semibold">{onlineComputers.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">{t("savedItems")}</span>
-                    <span className="font-semibold">{saved.length}</span>
-                  </div>
-                  <Link href="/computers" className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                <CardContent className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-1">
+                  <ObjectMetric label={t("channels")} value={channels.length} />
+                  <ObjectMetric label={t("agents")} value={agents.length} />
+                  <ObjectMetric label={t("computersOnline")} value={onlineComputers.length} />
+                  <ObjectMetric label={t("savedItems")} value={saved.length} />
+                  <Link href="/computers" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-paper-ink hover:underline sm:col-span-2 lg:col-span-1">
                     <Bookmark className="size-3" /> {tCommon("manageComputers")} <ArrowRight className="size-3" />
                   </Link>
                 </CardContent>

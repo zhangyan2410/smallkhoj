@@ -8,10 +8,19 @@ import {
   Terminal,
 } from "lucide-react"
 
-import { EmptyState } from "@/components/product-ui"
+import { EmptyState, RuntimeChip, type CategoryTone } from "@/components/product-ui"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ActivityEventCard, type ActivityItem } from "@/components/agent-activity-list"
-import { apiGet, badgeClass, dotClass, findMemberWorkspace, formatTime, statusLabel, shortId, type Member, type Computer, type AgentWorkspace } from "@/lib/control-plane"
+import { InkframeObjectSurface, ObjectField } from "@/components/inkframe-object-ui"
+import { apiGet, dotClass, findMemberWorkspace, formatTime, statusLabel, shortId, type Member, type Computer, type AgentWorkspace } from "@/lib/control-plane"
+
+function lifecycleTone(key: string, active: boolean): CategoryTone {
+  if (!active) return "neutral"
+  if (key === "failed") return "danger"
+  if (key === "stopped") return "warning"
+  if (key === "running" || key === "idle") return "success"
+  return "info"
+}
 
 function RuntimeStateSummary({ member, workspace }: { member: Member; workspace?: AgentWorkspace }) {
   const lifecycleStates = [
@@ -29,17 +38,14 @@ function RuntimeStateSummary({ member, workspace }: { member: Member; workspace?
       <div className="text-xs font-medium uppercase text-muted-foreground">Runtime Lifecycle</div>
       <div className="flex flex-wrap gap-1.5">
         {lifecycleStates.map(({ key, label, active }) => (
-          <span
+          <RuntimeChip
             key={key}
-            className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs font-medium ${
-              active
-                ? badgeClass(key)
-                : "border-border bg-muted text-muted-foreground opacity-60"
-            }`}
+            tone={lifecycleTone(key, active)}
+            className={!active ? "opacity-60" : undefined}
           >
             <span className={`size-1.5 rounded-full ${active ? dotClass(key) : "bg-muted-foreground"}`} />
             {label}
-          </span>
+          </RuntimeChip>
         ))}
       </div>
     </div>
@@ -112,32 +118,17 @@ export default function ActivityTab({ member, computers }: { member: Member; com
       {member.kind === "agent" && workspace && (
         <div className="space-y-2">
           <div className="text-xs font-medium uppercase text-muted-foreground">Session Timeline</div>
-          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
+          <InkframeObjectSurface material="dry" className="p-3">
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Launched</span>
-                <span className="font-mono text-xs">{formatTime(workspace.startedAt)}</span>
-              </div>
+              <ObjectField label="Launched" value={formatTime(workspace.startedAt)} />
               {workspace.stoppedAt && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Stopped</span>
-                  <span className="font-mono text-xs">{formatTime(workspace.stoppedAt)}</span>
-                </div>
+                <ObjectField label="Stopped" value={formatTime(workspace.stoppedAt)} />
               )}
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">PID</span>
-                <span className="font-mono text-xs">{workspace.pid ?? "none"}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Provider</span>
-                <span className="font-mono text-xs">{workspace.runtimeProvider ?? "default"}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Model</span>
-                <span className="font-mono text-xs">{workspace.runtimeModel ?? "default"}</span>
-              </div>
+              <ObjectField label="PID" value={workspace.pid?.toString() ?? "none"} />
+              <ObjectField label="Provider" value={workspace.runtimeProvider ?? "default"} />
+              <ObjectField label="Model" value={workspace.runtimeModel ?? "default"} />
             </div>
-          </div>
+          </InkframeObjectSurface>
         </div>
       )}
 

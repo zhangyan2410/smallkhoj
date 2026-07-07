@@ -35,11 +35,15 @@ export default async function RootLayout({
               (function() {
                 try {
                   var theme = localStorage.getItem('theme');
+                  /* 三主题：'dark' | 'shuimo' | null(=water，默认，不加任何 class)。
+                     只加一个 class，避免 .dark/.shuimo 叠加。 */
                   if (theme === 'dark') {
                     document.documentElement.classList.add('dark');
+                  } else if (theme === 'shuimo') {
+                    document.documentElement.classList.add('shuimo');
                   }
                 } catch(e) {
-                  /* default to light */
+                  /* default to water (no class) */
                 }
               })();
             `,

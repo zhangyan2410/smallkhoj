@@ -27,7 +27,7 @@ export function StatusPill({
   )
 }
 
-export type CategoryTone = "primary" | "info" | "success" | "warning" | "danger" | "neutral"
+export type CategoryTone = "primary" | "info" | "success" | "warning" | "danger" | "neutral" | "paper"
 
 /**
  * 分类标签（≠ 状态）。颜色走单一真源 sk-cat-* token，改分类色只改 globals.css。
@@ -41,6 +41,7 @@ const chipToneClass: Record<CategoryTone, string> = {
   warning: "border-[var(--ink)] sk-cat-warning",
   danger: "border-[var(--ink)] sk-cat-danger",
   neutral: "border-[var(--ink)] sk-cat-neutral",
+  paper: "border-[var(--ink)] bg-[var(--paper)] text-[var(--paper-ink)]",
 }
 
 export function RuntimeChip({
@@ -54,6 +55,7 @@ export function RuntimeChip({
 }) {
   return (
     <span
+      data-slot="runtime-chip"
       className={cn(
         "inline-flex min-h-6 max-w-full items-center rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs font-medium",
         chipToneClass[tone],
@@ -75,7 +77,7 @@ export function ProductRow({
   return (
     <div
       className={cn(
-        "grid gap-2 border-b px-3 py-3 last:border-b-0 md:items-center",
+        "sk-product-row grid gap-2 border-b px-3 py-3 last:border-b-0 md:items-center",
         className
       )}
     >
@@ -94,8 +96,8 @@ export function EmptyState({
   className?: string
 }) {
   return (
-    <div className={cn("py-10 text-center", className)}>
-      <div className="text-sm font-medium text-foreground">{title}</div>
+    <div data-slot="empty-state" className={cn("sk-empty-note", className)}>
+      <div className="sk-empty-note-title text-sm font-medium text-foreground">{title}</div>
       {description && <div className="mt-1 text-sm text-muted-foreground">{description}</div>}
     </div>
   )
@@ -110,8 +112,9 @@ export function Toolbar({
 }) {
   return (
     <div
+      data-slot="toolbar"
       className={cn(
-        "flex min-h-10 flex-wrap items-center gap-2 rounded-none border-2 border-[var(--ink)] bg-card px-3 py-2",
+        "sk-object-toolbar flex min-h-10 flex-wrap items-center gap-2 rounded-none border-2 border-[var(--ink)] px-3 py-2",
         className
       )}
     >

@@ -24,14 +24,21 @@ import { InviteMemberDialog } from "./invite-member-dialog"
 import { RestoreMemberSelection } from "./restore-member-selection"
 import { MembersList } from "./members-list"
 
-import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
+import {
+  AvatarObject,
+  ComputerInkstone,
+  InkframeObjectSurface,
+  MemberNameTag,
+  ObjectField,
+  ObjectMetric,
+} from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Panel } from "@/components/ui/panel"
 import {
   API_BASE,
   apiGet,
@@ -91,15 +98,6 @@ function memberDetailHref(memberId: string, tab?: TabKey) {
   return `/members?${params.toString()}`
 }
 
-function Field({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div className="min-w-0 rounded-none border-2 border-[var(--ink)] bg-sand-card p-2">
-      <div className="text-sm font-medium text-foreground">{label}</div>
-      <div className="mt-1 truncate font-mono text-xs">{value || "none"}</div>
-    </div>
-  )
-}
-
 async function updateHumanAvatarUrlAction(formData: FormData) {
   "use server"
   const memberId = String(formData.get("memberId") || "")
@@ -122,7 +120,7 @@ async function updateHumanAvatarUrlAction(formData: FormData) {
 
 function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }) {
   return (
-    <div className="flex gap-1 overflow-x-auto border-b pb-px">
+    <div data-inkframe-mobile-role="member-tab-bar" className="flex min-w-0 gap-1 overflow-x-auto border-b pb-px">
       {memberTabs.map(({ key, label, icon: Icon }) => {
         const isActive = key === activeTab
         return (
@@ -151,8 +149,13 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-4">
-        <MemberAvatar member={member} size="xl" />
+      <MemberNameTag
+        kind={member.kind}
+        status={member.status}
+        data-inkframe-mobile-role="member-profile"
+        className="flex min-w-0 items-start gap-4 overflow-x-hidden border-[var(--ink)] bg-[var(--paper)] p-3 shadow-[2px_2px_0_var(--ink)]"
+      >
+        <AvatarObject member={member} size="xl" />
         <div className="min-w-0">
           <div className="text-lg font-semibold">{profileName(member)}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -160,17 +163,17 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
             <StatusPill status={member.status} label={statusLabel(member.status)} />
             <RuntimeChip tone="neutral">{member.kind}</RuntimeChip>
             {(member.config?.provider || member.runtimeProvider || member.backend) && (
-              <span className="rounded-none bg-muted px-2 py-0.5 text-xs">
+              <RuntimeChip tone="neutral" className="min-h-5 px-2 py-0 text-xs">
                 {member.config?.provider || member.runtimeProvider || member.backend}
-              </span>
+              </RuntimeChip>
             )}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">{description || "No profile description."}</p>
         </div>
-      </div>
+      </MemberNameTag>
 
       {member.kind === "human" && (
-        <form action={updateHumanAvatarUrlAction} className="rounded-none border-2 border-[var(--ink)] bg-muted/20 p-3">
+        <form action={updateHumanAvatarUrlAction} className="sk-object-surface p-3">
           <input type="hidden" name="memberId" value={member.id} />
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <UserRound className="size-3" />
@@ -192,9 +195,9 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
       )}
 
       <div className="grid gap-2 sm:grid-cols-3">
-        <Field label="memberId" value={shortId(member.id)} />
-        <Field label="computerId" value={shortId(member.computerId)} />
-        <Field label="workspaceId" value={shortId(member.workspaceId)} />
+        <ObjectField label="memberId" value={shortId(member.id)} />
+        <ObjectField label="computerId" value={shortId(member.computerId)} />
+        <ObjectField label="workspaceId" value={shortId(member.workspaceId)} />
       </div>
 
       {member.kind === "agent" && computer && (
@@ -203,16 +206,22 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
             <Cpu className="size-3" />
             Runtime Binding
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Field label="computer" value={computer.name} />
-            <Field label="computer status" value={computer.status} />
-            <Field label="runtime" value={workspace?.runtime ?? "unbound"} />
-            <Field label="provider" value={workspace?.runtimeProvider ?? member.config?.provider ?? member.runtimeProvider ?? "default"} />
-            <Field label="pid" value={workspace?.pid?.toString() ?? "none"} />
-            <Field label="session" value={shortId(workspace?.sessionId)} />
-          </div>
+          <ComputerInkstone
+            status={computer.status}
+            data-inkframe-mobile-role="member-workspace-binding"
+            className="min-w-0 overflow-x-hidden"
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              <ObjectField label="computer" value={computer.name} />
+              <ObjectField label="computer status" value={computer.status} />
+              <ObjectField label="runtime" value={workspace?.runtime ?? "unbound"} />
+              <ObjectField label="provider" value={workspace?.runtimeProvider ?? member.config?.provider ?? member.runtimeProvider ?? "default"} />
+              <ObjectField label="pid" value={workspace?.pid?.toString() ?? "none"} />
+              <ObjectField label="session" value={shortId(workspace?.sessionId)} />
+            </div>
+          </ComputerInkstone>
           {workspace?.cwd && (
-            <Field label="cwd" value={workspace.cwd} />
+            <ObjectField label="cwd" value={workspace.cwd} />
           )}
         </div>
       )}
@@ -293,12 +302,12 @@ function PermissionsTab({ member }: { member: Member }) {
           {Object.keys(permissions).length > 0 ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {Object.entries(permissions).map(([key, enabled]) => (
-                <div key={key} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
-                  <span className="text-sm">{key}</span>
-                  <span className={`text-xs font-medium ${enabled ? "text-emerald-600" : "text-muted-foreground"}`}>
-                    {enabled ? "enabled" : "disabled"}
-                  </span>
-                </div>
+                <ObjectField
+                  key={key}
+                  label={key}
+                  mono={false}
+                  value={<RuntimeChip tone={enabled ? "success" : "neutral"}>{enabled ? "enabled" : "disabled"}</RuntimeChip>}
+                />
               ))}
             </div>
           ) : (
@@ -319,12 +328,12 @@ function PermissionsTab({ member }: { member: Member }) {
           {Object.keys(actions).length > 0 ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {Object.entries(actions).map(([key, enabled]) => (
-                <div key={key} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
-                  <span className="text-sm">{key}</span>
-                  <span className={`text-xs font-medium ${enabled ? "text-emerald-600" : "text-muted-foreground"}`}>
-                    {enabled ? "on" : "off"}
-                  </span>
-                </div>
+                <ObjectField
+                  key={key}
+                  label={key}
+                  mono={false}
+                  value={<RuntimeChip tone={enabled ? "success" : "neutral"}>{enabled ? "on" : "off"}</RuntimeChip>}
+                />
               ))}
             </div>
           ) : (
@@ -340,7 +349,7 @@ function PermissionsTab({ member }: { member: Member }) {
           <Shield className="size-3" />
           Enforcement status
         </div>
-        <div className="rounded-none border-2 border-[var(--ink)] bg-muted/30 p-3 space-y-2">
+        <InkframeObjectSurface material="drying" className="space-y-2 p-3">
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-warning" />
             <span className="text-sm">Config persisted but not enforced at runtime</span>
@@ -350,7 +359,7 @@ function PermissionsTab({ member }: { member: Member }) {
             (blocking unauthorized actions at the daemon/runtime level) is not yet implemented.
             Changes will propagate on the next agent session refresh.
           </p>
-        </div>
+        </InkframeObjectSurface>
       </div>
     </div>
   )
@@ -424,35 +433,31 @@ function AddPermissionForm({ memberId, permissions, actions }: {
         {Object.keys(permissions).length > 0 && (
           <div className="space-y-1">
             {Object.entries(permissions).map(([key, enabled]) => (
-              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
+              <form key={key} action={togglePermissionEntryAction} data-inkframe-mobile-role="member-permission-entry" className="sk-object-surface flex min-w-0 items-center justify-between gap-3 overflow-x-hidden px-3 py-2">
                 <input type="hidden" name="memberId" value={memberId} />
                 <input type="hidden" name="type" value="permissions" />
                 <input type="hidden" name="key" value={key} />
                 <input type="hidden" name="currentValue" value={String(enabled)} />
                 <input type="hidden" name="existing" value={JSON.stringify(permissions)} />
-                <span className="text-sm font-mono">{key}</span>
+                <span className="min-w-0 truncate text-sm font-mono">{key}</span>
                 <div className="flex items-center gap-2">
                   <Button type="submit" size="sm" variant={enabled ? "default" : "outline"}>
                     {enabled ? "enabled" : "disabled"}
                   </Button>
-                  <button formAction={removePermissionEntryAction} className="text-xs text-destructive hover:opacity-80" title="Remove">
+                  <Button type="submit" formAction={removePermissionEntryAction} size="xs" variant="destructive" title="Remove">
                     remove
-                  </button>
-                  <input type="hidden" formAction={undefined} name="existing" value={JSON.stringify(permissions)} />
+                  </Button>
                 </div>
               </form>
             ))}
           </div>
         )}
-        <form action={addPermissionEntryAction} className="flex items-end gap-2">
+        <form action={addPermissionEntryAction} className="flex min-w-0 flex-wrap items-end gap-2 overflow-x-hidden">
           <input type="hidden" name="memberId" value={memberId} />
           <input type="hidden" name="type" value="permissions" />
           <input type="hidden" name="existing" value={JSON.stringify(permissions)} />
-          <Input name="key" placeholder="permission key" className="max-w-[200px]" />
-          <select name="value" className="h-9 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
-            <option value="true">enabled</option>
-            <option value="false">disabled</option>
-          </select>
+          <Input name="key" placeholder="permission key" className="min-w-0 max-w-[200px] flex-1" />
+          <Select id="permission-entry-value" name="value" items={["true|enabled", "false|disabled"]} splitValue className="h-9 w-auto min-w-28 shrink-0" />
           <Button type="submit" size="sm" variant="outline">Add</Button>
         </form>
       </div>
@@ -465,35 +470,31 @@ function AddPermissionForm({ memberId, permissions, actions }: {
         {Object.keys(actions).length > 0 && (
           <div className="space-y-1">
             {Object.entries(actions).map(([key, enabled]) => (
-              <form key={key} action={togglePermissionEntryAction} className="flex items-center justify-between rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2">
+              <form key={key} action={togglePermissionEntryAction} data-inkframe-mobile-role="member-permission-entry" className="sk-object-surface flex min-w-0 items-center justify-between gap-3 overflow-x-hidden px-3 py-2">
                 <input type="hidden" name="memberId" value={memberId} />
                 <input type="hidden" name="type" value="actions" />
                 <input type="hidden" name="key" value={key} />
                 <input type="hidden" name="currentValue" value={String(enabled)} />
                 <input type="hidden" name="existing" value={JSON.stringify(actions)} />
-                <span className="text-sm font-mono">{key}</span>
+                <span className="min-w-0 truncate text-sm font-mono">{key}</span>
                 <div className="flex items-center gap-2">
                   <Button type="submit" size="sm" variant={enabled ? "default" : "outline"}>
                     {enabled ? "on" : "off"}
                   </Button>
-                  <button formAction={removePermissionEntryAction} className="text-xs text-destructive hover:opacity-80" title="Remove">
+                  <Button type="submit" formAction={removePermissionEntryAction} size="xs" variant="destructive" title="Remove">
                     remove
-                  </button>
-                  <input type="hidden" formAction={undefined} name="existing" value={JSON.stringify(actions)} />
+                  </Button>
                 </div>
               </form>
             ))}
           </div>
         )}
-        <form action={addPermissionEntryAction} className="flex items-end gap-2">
+        <form action={addPermissionEntryAction} className="flex min-w-0 flex-wrap items-end gap-2 overflow-x-hidden">
           <input type="hidden" name="memberId" value={memberId} />
           <input type="hidden" name="type" value="actions" />
           <input type="hidden" name="existing" value={JSON.stringify(actions)} />
-          <Input name="key" placeholder="action key" className="max-w-[200px]" />
-          <select name="value" className="h-9 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset">
-            <option value="true">on</option>
-            <option value="false">off</option>
-          </select>
+          <Input name="key" placeholder="action key" className="min-w-0 max-w-[200px] flex-1" />
+          <Select id="action-entry-value" name="value" items={["true|on", "false|off"]} splitValue className="h-9 w-auto min-w-28 shrink-0" />
           <Button type="submit" size="sm" variant="outline">Add</Button>
         </form>
       </div>
@@ -508,9 +509,9 @@ function DmTab({ member }: { member: Member }) {
         title={`Direct messages with ${profileName(member)}`}
         description="Agent DM history and conversation threads will appear here."
       />
-      <div className="rounded-none border border-dashed bg-muted/30 p-3">
+      <InkframeObjectSurface material="dry" className="p-3">
         <p className="text-xs text-muted-foreground">
-          DM channel for this member is <code className="rounded-none bg-muted px-1 font-mono">dm:&lt;your-id&gt;-&lt;member-id&gt;</code>.
+          DM channel for this member is <code className="font-mono">dm:&lt;your-id&gt;-&lt;member-id&gt;</code>.
           Use the Chat page to view conversation history.
         </p>
         <div className="mt-2">
@@ -521,7 +522,7 @@ function DmTab({ member }: { member: Member }) {
             </Button>
           </Link>
         </div>
-      </div>
+      </InkframeObjectSurface>
     </div>
   )
 }
@@ -533,12 +534,12 @@ function RemindersTab({ member }: { member: Member }) {
         title={`Reminders for ${profileName(member)}`}
         description="Active and pending reminders assigned to this member."
       />
-      <div className="rounded-none border border-dashed bg-muted/30 p-3">
+      <InkframeObjectSurface material="dry" className="p-3">
         <p className="text-xs text-muted-foreground">
           Scheduled reminders for this {member.kind} are managed through the Control Plane dispatch.
           Reminders fire based on the configured delay and channel.
         </p>
-      </div>
+      </InkframeObjectSurface>
     </div>
   )
 }
@@ -561,47 +562,47 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
+      <div data-inkframe-mobile-role="member-workspace-binding" className="min-w-0 space-y-2 overflow-x-hidden">
         <div className="text-sm font-medium text-foreground">Bound Computer</div>
-        <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
+        <ComputerInkstone status={computer.status}>
           <div className="flex items-center gap-2">
             <HardDrive className="size-4 text-accent-green" />
             <span className="text-sm font-medium">{computer.name}</span>
             <StatusPill status={computer.status} label={statusLabel(computer.status)} />
           </div>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
-            <Field label="os" value={computer.os} />
-            <Field label="daemon" value={computer.daemonVersion} />
-            <Field label="heartbeat" value={formatTime(computer.lastHeartbeatAt)} />
+            <ObjectField label="os" value={computer.os} />
+            <ObjectField label="daemon" value={computer.daemonVersion} />
+            <ObjectField label="heartbeat" value={formatTime(computer.lastHeartbeatAt)} />
           </div>
-        </div>
+        </ComputerInkstone>
       </div>
 
       {workspace && (
         <div className="space-y-2">
           <div className="text-sm font-medium text-foreground">Agent Workspace</div>
-          <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
+          <InkframeObjectSurface raised data-inkframe-mobile-role="member-workspace-binding" className="min-w-0 overflow-x-hidden p-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              <Field label="status" value={workspace.status} />
-              <Field label="pid" value={workspace.pid?.toString() ?? "none"} />
-              <Field label="runtime" value={workspace.runtime ?? "default"} />
-              <Field label="provider" value={workspace.runtimeProvider ?? "default"} />
-              <Field label="model" value={workspace.runtimeModel ?? "default"} />
-              <Field label="started" value={formatTime(workspace.startedAt)} />
-              <Field label="stopped" value={formatTime(workspace.stoppedAt)} />
+              <ObjectField label="status" value={workspace.status} />
+              <ObjectField label="pid" value={workspace.pid?.toString() ?? "none"} />
+              <ObjectField label="runtime" value={workspace.runtime ?? "default"} />
+              <ObjectField label="provider" value={workspace.runtimeProvider ?? "default"} />
+              <ObjectField label="model" value={workspace.runtimeModel ?? "default"} />
+              <ObjectField label="started" value={formatTime(workspace.startedAt)} />
+              <ObjectField label="stopped" value={formatTime(workspace.stoppedAt)} />
             </div>
-            {workspace.cwd && <div className="mt-2"><Field label="cwd" value={workspace.cwd} /></div>}
-          </div>
+            {workspace.cwd && <div className="mt-2"><ObjectField label="cwd" value={workspace.cwd} /></div>}
+          </InkframeObjectSurface>
         </div>
       )}
 
       {!workspace && member.kind === "agent" && (
-        <div className="rounded-none border border-dashed bg-muted/30 p-3">
+        <InkframeObjectSurface material="drying" className="p-3">
           <p className="text-xs text-muted-foreground">
-            This agent is bound to <code className="rounded-none bg-muted px-1 font-mono">{computer.name}</code> but has no
+            This agent is bound to <code className="font-mono">{computer.name}</code> but has no
             active workspace. The workspace is created when the daemon launches a runtime session for this agent.
           </p>
-        </div>
+        </InkframeObjectSurface>
       )}
 
       <div className="space-y-2">
@@ -628,12 +629,12 @@ function AppsTab({ member }: { member: Member }) {
         title={`Apps for ${profileName(member)}`}
         description="Integrations and connected apps will appear here."
       />
-      <div className="rounded-none border border-dashed bg-muted/30 p-3">
+      <InkframeObjectSurface material="dry" className="p-3">
         <p className="text-xs text-muted-foreground">
           App integrations are configured per agent through the runtime provider settings.
           Available integrations depend on the agent&apos;s runtime capabilities.
         </p>
-      </div>
+      </InkframeObjectSurface>
     </div>
   )
 }
@@ -648,7 +649,7 @@ function MemberDetail({
   activeTab: TabKey
 }) {
   return (
-    <Card>
+    <Card data-inkframe-mobile-role="member-detail" className="min-w-0 overflow-x-hidden">
       <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2 text-base">
           {member.kind === "agent" ? <Bot className="size-4" /> : <UserRound className="size-4" />}
@@ -722,24 +723,12 @@ export default async function MembersPage({
       sidebarDescription={t("selectMember")}
       sidebar={
         <div className="space-y-2">
-          <Panel className="p-3">
-            <div className="text-xs text-muted-foreground">{t("humans")}</div>
-            <div className="mt-1 text-2xl font-semibold">{humansList.length}</div>
-          </Panel>
-          <Panel className="p-3">
-            <div className="text-xs text-muted-foreground">{t("agents")}</div>
-            <div className="mt-1 text-2xl font-semibold">{agentsList.length}</div>
-          </Panel>
-          <Panel className="p-3">
-            <div className="text-xs text-muted-foreground">{t("boundAgents")}</div>
-            <div className="mt-1 text-2xl font-semibold">{boundAgents}</div>
-          </Panel>
+          <ObjectMetric label={t("humans")} value={humansList.length} />
+          <ObjectMetric label={t("agents")} value={agentsList.length} />
+          <ObjectMetric label={t("boundAgents")} value={boundAgents} />
           {canInviteMembers && (
-            <Panel className="space-y-3 p-3">
-              <div>
-                <div className="text-xs text-muted-foreground">{t("inviteServerLabel")}</div>
-                <div className="mt-1 truncate text-sm font-medium">{session.server.name}</div>
-              </div>
+            <InkframeObjectSurface material="dry" className="space-y-3 p-3">
+              <ObjectField label={t("inviteServerLabel")} value={session.server.name} mono={false} />
               <InviteMemberDialog
                 serverName={session.server.name}
                 copy={{
@@ -757,7 +746,7 @@ export default async function MembersPage({
                   close: t("closeInviteDialog"),
                 }}
               />
-            </Panel>
+            </InkframeObjectSurface>
           )}
         </div>
       }
@@ -789,9 +778,9 @@ export default async function MembersPage({
         )}
 
         {error && (
-          <div className="rounded-none border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <InkframeObjectSurface material="blocked" className="p-3 text-sm text-destructive">
             {error}
-          </div>
+          </InkframeObjectSurface>
         )}
 
         {/* No agent card gallery or humans list here — the sidebar lists both

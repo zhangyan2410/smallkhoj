@@ -320,6 +320,72 @@ Required evidence:
 
 If the real browser behavior disagrees with automated tests, treat the task as failing and keep fixing.
 
+#### Scenario: `./twd` No-Tab Gate Classification
+
+##### 1. Scope / Trigger
+- Trigger: any browser-facing task that uses `./twd --compact tabs` as the
+  first evidence gate, especially reusable proof runners or scripts.
+
+##### 2. Signatures
+- Command: `./twd --compact tabs`
+- No-tab payload:
+
+```json
+{"ok": true, "tabs": [], "count": 0}
+```
+
+##### 3. Contracts
+- A connected-tab proof may proceed only when the parsed payload contains at
+  least one tab.
+- A no-tab payload must be classified as `blocked_no_tab` or equivalent
+  pending/blocker status.
+- The no-tab state must not be classified as browser acceptance, and must not
+  be collapsed into a generic WebDriver failure if the payload itself is valid.
+- Automation may use a distinct nonzero exit code for blocked/no-tab, but the
+  evidence file must preserve the parsed payload and state that no
+  browser/mobile acceptance is claimed.
+
+##### 4. Validation & Error Matrix
+- `tabs.length === 0` or `count === 0` -> blocked/no-tab; write evidence and
+  stop browser acceptance.
+- `ok === false` with `code: "NO_TAB"` -> blocked/no-tab; write evidence and
+  stop browser acceptance.
+- command exits nonzero but stdout contains the valid no-tab JSON above ->
+  parse stdout first and classify as blocked/no-tab.
+- stdout/stderr contains no parseable JSON -> failed WebDriver/tool execution.
+
+##### 5. Good/Base/Bad Cases
+- Good: a proof runner writes JSON/Markdown evidence with status
+  `blocked_no_tab` and exits with a documented nonzero code such as `2`.
+- Base: an operator records the exact `./twd --compact tabs` output in task
+  evidence and leaves browser/mobile proof pending.
+- Bad: a script treats any nonzero exit as a generic tool failure before
+  parsing the JSON payload, or claims UI acceptance from static tests after
+  no-tab output.
+
+##### 6. Tests Required
+- Unit test no-tab payload -> blocked/no-tab classification.
+- Unit test nonzero command result with valid no-tab stdout -> blocked/no-tab.
+- Evidence test or assertion that no browser/mobile acceptance claim is written
+  in blocked/no-tab mode.
+
+##### 7. Wrong vs Correct
+###### Wrong
+
+```js
+if (result.status !== 0) throw new Error("twd failed")
+```
+
+###### Correct
+
+```js
+const payload = parseLastJson(result.stdout)
+if (payload.ok === true && (payload.count === 0 || payload.tabs?.length === 0)) {
+  return { status: "blocked_no_tab", tabsResult: payload }
+}
+if (result.status !== 0) return { status: "failed_twd" }
+```
+
 ### Event/Activity UI Token-Safety Gate
 
 When frontend work touches Activity, Events, agent timelines, daemon status, runtime state, or trace/debug views:

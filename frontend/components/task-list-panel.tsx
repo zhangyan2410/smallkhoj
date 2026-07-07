@@ -5,6 +5,7 @@ import { CheckSquare, Plus } from "lucide-react"
 
 import type { Task } from "@/components/task-board"
 import { StatusPill } from "@/components/product-ui"
+import { TaskMaterialSurface } from "@/components/inkframe-object-ui"
 import { statusLabel, badgeClass } from "@/lib/control-plane"
 import { cn } from "@/lib/utils"
 
@@ -41,7 +42,7 @@ export function TaskListPanel({
           <button
             type="button"
             onClick={onOpenCreate}
-            className="flex w-full items-center justify-center gap-1.5 rounded-none border-2 border-[var(--ink)] bg-sand-card px-3 py-2 text-sm font-medium text-sand-ink sk-hard-shadow-sm transition-colors hover:bg-white"
+            className="sk-list-action flex w-full items-center justify-center gap-1.5 rounded-none border-2 border-[var(--ink)] px-3 py-2 text-sm font-medium text-sand-ink transition-colors"
           >
             <Plus className="size-4" />
             {createLabel ?? "New task"}
@@ -51,7 +52,7 @@ export function TaskListPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tasks.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 p-6 text-center">
+          <div className="sk-list-empty mx-3 mt-4 flex flex-col gap-2 p-4">
             <CheckSquare className="size-5 text-sand-muted" />
             <p className="text-xs text-sand-muted">{emptyLabel ?? "No tasks"}</p>
           </div>
@@ -65,36 +66,37 @@ export function TaskListPanel({
                 <li key={task.id}>
                   <Link
                     href={`/tasks?${q.toString()}`}
-                    className={cn(
-                      "block rounded-none px-2.5 py-2 transition-colors",
-                      isActive
-                        ? "bg-white sk-hard-shadow-sm ring-1 ring-sand-border"
-                        : "hover:bg-white/60",
-                    )}
+                    className="block"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="shrink-0 text-xs font-mono text-sand-muted">
-                        #{task.number}
-                      </span>
-                      <StatusPill
-                        status={task.status}
-                        label={statusLabel(task.status)}
-                        className={cn("shrink-0", badgeClass(task.status))}
-                      />
-                    </div>
-                    <p
-                      className={cn(
-                        "mt-1 line-clamp-2 text-sm",
-                        isActive ? "font-medium text-sand-ink" : "text-sand-ink/85",
-                      )}
+                    <TaskMaterialSurface
+                      status={task.status}
+                      materialSurface={{ ownerId: task.id, mode: "static" }}
+                      className={cn("px-2.5 py-2 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5", isActive && "ring-2 ring-[var(--cinnabar)]/35")}
                     >
-                      {task.title}
-                    </p>
-                    {task.assigneeMember?.displayName && (
-                      <p className="mt-0.5 truncate text-xs text-sand-muted">
-                        @ {task.assigneeMember.displayName}
+                      <div className="flex items-center gap-2">
+                        <span className="shrink-0 text-xs font-mono text-sand-muted">
+                          #{task.number}
+                        </span>
+                        <StatusPill
+                          status={task.status}
+                          label={statusLabel(task.status)}
+                          className={cn("shrink-0", badgeClass(task.status))}
+                        />
+                      </div>
+                      <p
+                        className={cn(
+                          "mt-1 line-clamp-2 text-sm",
+                          isActive ? "font-medium text-sand-ink" : "text-sand-ink/85",
+                        )}
+                      >
+                        {task.title}
                       </p>
-                    )}
+                      {task.assigneeMember?.displayName && (
+                        <p className="mt-0.5 truncate text-xs text-sand-muted">
+                          @ {task.assigneeMember.displayName}
+                        </p>
+                      )}
+                    </TaskMaterialSurface>
                   </Link>
                 </li>
               )

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl"
 import { Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Select } from "@/components/ui/form"
 import { apiPost, type Member } from "@/lib/control-plane"
 
 export function DmStarter({ agents }: { agents: Member[] }) {
@@ -32,19 +33,16 @@ export function DmStarter({ agents }: { agents: Member[] }) {
 
   return (
     <div className="flex items-center gap-2">
-      <select
+      <Select
+        id="chat-dm-agent"
+        name="chat-dm-agent"
         aria-label={t("selectAgentToDm")}
         value={selected}
         onChange={(e) => setSelected(e.target.value)}
-        className="flex-1 rounded-none border-2 border-[var(--ink)] bg-transparent px-2 py-1.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset"
-      >
-        <option value="">{t("selectAgent")}</option>
-        {agents.map((agent) => (
-          <option key={agent.id} value={agent.displayName}>
-            {agent.displayName}
-          </option>
-        ))}
-      </select>
+        items={agents.map((agent) => agent.displayName || agent.name)}
+        emptyLabel={t("selectAgent")}
+        className="flex-1"
+      />
       <Button
         variant="outline"
         size="sm"

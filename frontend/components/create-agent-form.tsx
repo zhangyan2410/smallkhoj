@@ -4,7 +4,9 @@ import { useState } from "react"
 import { Bot } from "lucide-react"
 
 import { ProviderSelect } from "@/app/members/provider-select"
+import { InkframeObjectSurface } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
+import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import {
   apiPost,
@@ -97,9 +99,9 @@ export function CreateAgentForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {error && (
-        <p className="text-sm text-destructive" role="alert">
+        <InkframeObjectSurface material="blocked" className="px-2 py-1.5 text-sm text-destructive" role="alert">
           {error}
-        </p>
+        </InkframeObjectSurface>
       )}
       <div className="flex items-center gap-2 text-sm font-medium">
         <Bot className="size-4" />
@@ -116,35 +118,29 @@ export function CreateAgentForm({
           <label htmlFor="agent-computer" className="text-xs font-medium text-muted-foreground">
             Computer
           </label>
-          <select
+          <Select
             id="agent-computer"
             name="computerId"
             required
             value={computerId}
+            items={computers.map((computer) => `${computer.id}|${computer.name}`)}
+            splitValue
+            emptyLabel="Select..."
             onChange={(event) => setComputerId(event.target.value)}
-            className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset dark:bg-input/30"
-          >
-            <option value="">Select...</option>
-            {computers.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="agent-runtime" className="text-xs font-medium text-muted-foreground">
             Runtime
           </label>
-          <select
+          <Select
             id="agent-runtime"
             name="runtime"
             value={runtime}
             onChange={(event) => setRuntime(event.target.value)}
-            className="h-8 rounded-none border-2 border-[var(--ink)] bg-transparent px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset dark:bg-input/30"
-          >
-            <option value="claude_code">Claude Code</option>
-            <option value="codex">Codex</option>
-            <option value="custom">Custom</option>
-          </select>
+            items={["claude_code|Claude Code", "codex|Codex", "custom|Custom"]}
+            splitValue
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="agent-provider" className="text-xs font-medium text-muted-foreground">

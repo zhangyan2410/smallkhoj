@@ -14,6 +14,9 @@ import {
   Sparkles,
 } from "lucide-react"
 
+import { AttachmentSheet, InkframeObjectSurface, MemoryFixedNote, ReviewStamp } from "@/components/inkframe-object-ui"
+import { Button } from "@/components/ui/button"
+import { RuntimeChip } from "@/components/product-ui"
 import {
   BROWSER_API_BASE,
   formatTime,
@@ -128,30 +131,36 @@ function MemoryArtifactPreview({ view, compact = false }: { view: MemoryArtifact
   const src = artifactUrl(view.href)
   if (view.viewer === "image" && src) {
     return (
-      <a href={src} target="_blank" rel="noreferrer" className="mt-2 block overflow-hidden rounded-none border-2 border-[var(--ink)] bg-muted">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={view.label} className={compact ? "max-h-28 w-full object-cover" : "max-h-48 w-full object-cover"} />
-      </a>
+      <AttachmentSheet kind="image" className="mt-2 overflow-hidden p-0">
+        <a href={src} target="_blank" rel="noreferrer" className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt={view.label} className={compact ? "max-h-28 w-full object-cover" : "max-h-48 w-full object-cover"} />
+        </a>
+      </AttachmentSheet>
     )
   }
   if (view.viewer === "video" && src) {
     return (
-      <video
-        suppressHydrationWarning
-        className={compact ? "mt-2 max-h-28 w-full rounded-none border-2 border-[var(--ink)] bg-black" : "mt-2 max-h-48 w-full rounded-none border-2 border-[var(--ink)] bg-black"}
-        controls
-        src={src}
-      >
-        <a href={src}>Open video</a>
-      </video>
+      <AttachmentSheet kind="video" className="mt-2 overflow-hidden p-0">
+        <video
+          suppressHydrationWarning
+          className={compact ? "max-h-28 w-full bg-black" : "max-h-48 w-full bg-black"}
+          controls
+          src={src}
+        >
+          <a href={src}>Open video</a>
+        </video>
+      </AttachmentSheet>
     )
   }
   if (src) {
     return (
-      <a href={src} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-1 text-[0.7rem] text-accent-mint hover:bg-muted">
-        <ExternalLink className="size-3" />
-        Open output
-      </a>
+      <AttachmentSheet kind="proof" className="mt-2 inline-flex p-0">
+        <a href={src} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] text-accent-mint hover:bg-muted">
+          <ExternalLink className="size-3" />
+          Open output
+        </a>
+      </AttachmentSheet>
     )
   }
   return null
@@ -161,12 +170,12 @@ export function MemoryEntryRow({ entry, compact = false, showPreview = true }: {
   const view = artifactViewForEntry(entry)
   const text = entry.contentText?.trim()
   return (
-    <div className="flex items-start gap-2 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
+    <MemoryFixedNote fixed={Boolean(entry.contentSha256 || entry.version)} className="flex items-start gap-2 px-2.5 py-2">
       <MemoryEntryIcon entry={entry} />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className={compact ? "truncate text-xs font-medium" : "truncate text-sm font-medium"}>{entry.title || entry.path}</span>
-          <span className="shrink-0 rounded-none bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">{entry.entryKind || view.viewer}</span>
+          <RuntimeChip tone="neutral" className="min-h-5 shrink-0 px-1.5 py-0 text-[0.65rem]">{entry.entryKind || view.viewer}</RuntimeChip>
         </div>
         <div className="mt-1 truncate font-mono text-[0.7rem] text-accent-mint">{entry.path}</div>
         {text && <p className={compact ? "mt-1 whitespace-pre-wrap text-xs text-muted-foreground line-clamp-3" : "mt-1 whitespace-pre-wrap text-xs text-muted-foreground line-clamp-5"}>{text}</p>}
@@ -184,7 +193,7 @@ export function MemoryEntryRow({ entry, compact = false, showPreview = true }: {
           )}
         </div>
       </div>
-    </div>
+    </MemoryFixedNote>
   )
 }
 
@@ -194,7 +203,7 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
   const scoreLabel = copy.scoreLabel(completeness.score)
   const primaryEntries = [model.brief, model.plan, model.progress, model.finalSummary].filter((entry): entry is MemoryEntry => Boolean(entry))
   return (
-    <div className="rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
+    <InkframeObjectSurface material={completeness.score >= 3 ? "fixed" : "drying"} className="p-3">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-medium">{copy.title}</h3>
@@ -207,9 +216,9 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
             [copy.progress, completeness.hasProgress],
             [copy.output, completeness.hasOutput],
           ].map(([label, active]) => (
-            <span key={String(label)} className={active ? "rounded-none bg-primary/10 px-1.5 py-0.5 text-accent-mint" : "rounded-none bg-muted px-1.5 py-0.5"}>
+            <RuntimeChip key={String(label)} tone={active ? "success" : "neutral"} className="min-h-5 px-1.5 py-0 text-[0.62rem]">
               {label}
-            </span>
+            </RuntimeChip>
           ))}
         </div>
       </div>
@@ -218,7 +227,7 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
       ) : (
         <div className="mt-3 space-y-3">
           {model.subtasks.length > 0 && (
-            <div className="rounded-none bg-muted/50 p-2">
+            <InkframeObjectSurface material="dry" className="p-2">
               <div className="mb-1 text-xs font-medium">{copy.taskBreakdown}</div>
               <div className="space-y-1">
                 {model.subtasks.slice(0, compact ? 4 : 8).map((item) => (
@@ -228,7 +237,7 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
                   </div>
                 ))}
               </div>
-            </div>
+            </InkframeObjectSurface>
           )}
           {primaryEntries.length > 0 && (
             <div className="space-y-2">
@@ -252,7 +261,7 @@ export function TaskRecoveryCockpit({ entries, compact = false, copy = defaultTa
           )}
         </div>
       )}
-    </div>
+    </InkframeObjectSurface>
   )
 }
 
@@ -270,10 +279,10 @@ export function ChannelMemorySurface({ entries, loading, channelTitle, copy = de
       {loading ? (
         <p className="py-12 text-center text-sm text-muted-foreground">{copy.loading}</p>
       ) : entries.length === 0 ? (
-        <div className="rounded-none border border-dashed py-12 text-center">
+        <InkframeObjectSurface material="dry" className="py-12 text-center">
           <Database className="mx-auto size-8 text-muted-foreground/50" />
           <p className="mt-2 text-sm text-muted-foreground">{copy.empty}</p>
-        </div>
+        </InkframeObjectSurface>
       ) : (
         <div className="space-y-4">
           {groups.knowledge.length > 0 && (
@@ -312,72 +321,77 @@ export function MemoryProposalQueue({
 }) {
   if (loading && proposals.length === 0) {
     return (
-      <section className="mb-4 rounded-none border-2 border-[var(--ink)] bg-muted/30 p-3">
+      <InkframeObjectSurface material="drying" className="mb-4 p-3">
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.reviewQueue}</h3>
         <p className="mt-2 text-xs text-muted-foreground">{copy.loading}</p>
-      </section>
+      </InkframeObjectSurface>
     )
   }
   if (proposals.length === 0) return null
   return (
-    <section className="mb-4 rounded-none border-2 border-[var(--ink)] bg-sand-card p-3">
+    <InkframeObjectSurface material="drying" raised className="mb-4 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.reviewQueue}</h3>
           <p className="text-xs text-muted-foreground">{copy.openProposals}</p>
         </div>
-        <span className="rounded-none bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-accent-mint">{proposals.length}</span>
+        <ReviewStamp tone="review" className="text-[0.65rem]">{proposals.length}</ReviewStamp>
       </div>
       <div className="space-y-2">
         {proposals.map((proposal) => (
-          <div key={proposal.id} className="rounded-none border-2 border-[var(--ink)] bg-muted/20 p-2">
+          <MemoryFixedNote key={proposal.id} className="p-2">
             <div className="flex min-w-0 items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
                   <Sparkles className="size-3.5 shrink-0 text-accent-mint" />
                   <span className="truncate text-sm font-medium">{proposal.path}</span>
-                  <span className="shrink-0 rounded-none bg-background px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">{proposal.status}</span>
+                  <ReviewStamp tone="review" className="shrink-0 text-[0.65rem]">{proposal.status}</ReviewStamp>
                 </div>
                 {proposal.reason && <p className="mt-1 text-xs text-muted-foreground">{proposal.reason}</p>}
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {onAccept && (
-                  <button
+                  <Button
                     type="button"
+                    size="xs"
+                    variant="outline"
                     onClick={() => onAccept(proposal)}
-                    className="inline-flex h-7 items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-cat-success px-2 text-[0.7rem] hover:opacity-85"
+                    className="sk-cat-success hover:opacity-85"
                     aria-label={copy.acceptAria(proposal.path)}
                   >
                     <CheckCircle2 className="size-3.5" />
                     {copy.accept}
-                  </button>
+                  </Button>
                 )}
                 {onReject && (
-                  <button
+                  <Button
                     type="button"
+                    size="xs"
+                    variant="destructive"
                     onClick={() => onReject(proposal)}
-                    className="inline-flex h-7 items-center gap-1 rounded-none border-2 border-[var(--ink)] bg-sand-card px-2 text-[0.7rem] text-destructive hover:bg-destructive/10"
                     aria-label={copy.rejectAria(proposal.path)}
                   >
                     <XCircle className="size-3.5" />
                     {copy.reject}
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
             {proposal.proposedContentText && (
-              <pre className="mt-2 max-h-32 overflow-auto rounded-none bg-background p-2 text-xs whitespace-pre-wrap text-muted-foreground">
-                {proposal.proposedContentText}
-              </pre>
+              <AttachmentSheet kind="proof" className="mt-2 p-2">
+                <pre className="max-h-32 overflow-auto text-xs whitespace-pre-wrap text-muted-foreground">
+                  {proposal.proposedContentText}
+                </pre>
+              </AttachmentSheet>
             )}
             <div className="mt-2 flex flex-wrap gap-2 text-[0.65rem] text-muted-foreground">
               {proposal.baseSha256 && <span className="font-mono">{copy.base} {proposal.baseSha256.slice(0, 8)}</span>}
               <span>{formatTime(proposal.updatedAt || proposal.createdAt)}</span>
             </div>
-          </div>
+          </MemoryFixedNote>
         ))}
       </div>
-    </section>
+    </InkframeObjectSurface>
   )
 }
 

@@ -1,7 +1,7 @@
-import Link from "next/link"
 import { Play, RotateCcw, Square } from "lucide-react"
 
-import { MemberAvatar } from "@/components/member-avatar"
+import { AvatarObject, SidebarEntityItem } from "@/components/inkframe-object-ui"
+import { Button } from "@/components/ui/button"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import type { Computer, Member } from "@/lib/control-plane"
 import { controlMemberLifecycleAction as lifecycleAction } from "./actions"
@@ -16,7 +16,7 @@ function memberHref(member: Member) {
 
 /**
  * 选中 agent 时，在列表项下方展开 start/stop/restart 控制（server action form）。
- * 跟随 section tone 着色：start=success 绿、stop=danger 红、restart=neutral。
+ * 使用统一的墨边纸质按钮；状态颜色留给 badge，不让操作按钮变成大色块。
  */
 function LifecycleControls({ member }: { member: Member }) {
   const workspaceId = member.workspaceId
@@ -25,26 +25,26 @@ function LifecycleControls({ member }: { member: Member }) {
   const canStart = bucket === "OFFLINE" || bucket === "ERROR"
   const canStop = bucket === "ACTIVE" || bucket === "THINKING" || bucket === "STARTING"
 
-  const btn = (action: "start" | "stop" | "restart", Icon: typeof Play, show: boolean, cls: string) => {
+  const btn = (action: "start" | "stop" | "restart", Icon: typeof Play, show: boolean) => {
     if (!show) return null
     return (
       <form action={lifecycleAction} className="flex-1">
         <input type="hidden" name="memberId" value={member.id} />
         <input type="hidden" name="workspaceId" value={workspaceId} />
         <input type="hidden" name="action" value={action} />
-        <button type="submit" className={`inline-flex w-full items-center justify-center gap-1 rounded-none border-2 border-[var(--ink)] px-1.5 py-1 text-[10px] font-medium transition-colors ${cls}`}>
+        <Button type="submit" variant="outline" size="xs" className="w-full bg-[var(--paper)] text-[10px]">
           <Icon className="size-2.5" />
           {action === "start" ? "启动" : action === "stop" ? "停止" : "重启"}
-        </button>
+        </Button>
       </form>
     )
   }
 
   return (
-    <div className="flex w-full items-stretch gap-1 pb-1 pl-9 pr-1 pt-0.5">
-      {btn("start", Play, canStart, "sk-status-success")}
-      {btn("stop", Square, canStop, "sk-status-danger")}
-      {btn("restart", RotateCcw, canStop, "sk-cat-neutral")}
+    <div className="flex min-w-0 w-full items-stretch gap-1 overflow-x-hidden pb-1 pl-9 pr-1 pt-0.5">
+      {btn("start", Play, canStart)}
+      {btn("stop", Square, canStop)}
+      {btn("restart", RotateCcw, canStop)}
     </div>
   )
 }
@@ -88,24 +88,18 @@ export function MembersList({
     const selected = member.id === selectedMemberId
     const activeSoft = tone === "green" ? "sk-accent-green-soft" : tone === "yellow" ? "sk-accent-yellow-soft" : "sk-accent-mint-soft"
     return (
-      <div key={member.id} className="flex flex-col">
-        <Link
+      <div key={member.id} className="flex min-w-0 flex-col overflow-x-hidden">
+        <SidebarEntityItem
           href={memberHref(member)}
           aria-current={selected ? "page" : undefined}
-          className={`group/member flex items-center gap-2.5 rounded-none border-2 px-2 py-1.5 text-sm transition-colors hover:bg-muted/60 ${
-            selected ? `border-[var(--ink)] ${activeSoft} font-semibold` : "border-transparent"
-          }`}
-        >
-          <MemberAvatar member={member} size="sm" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-foreground">
-              {profileName(member)}
-            </div>
-            <div className="truncate text-[10px] text-sand-muted">
-              {getStatusLabel(member.status)}
-            </div>
-          </div>
-        </Link>
+          data-inkframe-mobile-role="member-entity-item"
+          active={selected}
+          tone={tone}
+          avatar={<AvatarObject member={member} size="sm" />}
+          title={profileName(member)}
+          subtitle={getStatusLabel(member.status)}
+          className={`group/member text-sm ${selected ? activeSoft : ""}`}
+        />
         {selected && member.kind === "agent" && member.workspaceId && (
           <LifecycleControls member={member} />
         )}
@@ -127,7 +121,7 @@ export function MembersList({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-2">
+    <div data-inkframe-mobile-role="members-list" className="flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden p-2">
       {computerGroups.map(({ computer, agents: groupAgents }) => (
         <section key={computer.id}>
           {sectionTitle(computer.name, groupAgents.length, "green")}
