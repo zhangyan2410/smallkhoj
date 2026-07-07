@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Credential } from '../types.js';
 import { prependPathEnv } from './slock-wrapper.js';
-import { runtimeProcessSpawnOptions, runtimeCommandNeedsWindowsShell, scheduleRuntimeProcessTreeKill, signalRuntimeProcessTree } from './process-tree.js';
+import { runtimeCommandSpawnSpec, runtimeProcessSpawnOptions, scheduleRuntimeProcessTreeKill, signalRuntimeProcessTree } from './process-tree.js';
 import {
   buildSlockSystemPrompt,
   type ClaudeRuntimeOptions,
@@ -249,11 +249,12 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
       ...(this.options.commandArgs ?? []),
       ...baseArgs,
     ];
-    const child = spawn(command, args, runtimeProcessSpawnOptions({
+    const spawnSpec = runtimeCommandSpawnSpec(command, args);
+    const child = spawn(spawnSpec.command, spawnSpec.args, runtimeProcessSpawnOptions({
       cwd: this.options.workspacePath,
       env: buildCodexRuntimeEnv(this.options, this.options.baseEnv ?? process.env),
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: runtimeCommandNeedsWindowsShell(command),
+      shell: spawnSpec.shell,
     }));
 
     this.child = child;

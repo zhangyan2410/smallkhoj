@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Credential } from '../types.js';
-import { runtimeCommandNeedsWindowsShell, runtimeProcessSpawnOptions, signalRuntimeProcessTree } from './process-tree.js';
+import { runtimeCommandSpawnSpec, runtimeProcessSpawnOptions, signalRuntimeProcessTree } from './process-tree.js';
 import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
 
 export interface OpenCodeServerRuntimeOptions {
@@ -314,7 +314,8 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
   private spawnServer(): void {
     if (this.child) return;
     const { command, args } = resolveOpenCodeServeLaunchCommand(this.options);
-    const child = spawn(command, args, runtimeProcessSpawnOptions({
+    const spawnSpec = runtimeCommandSpawnSpec(command, args);
+    const child = spawn(spawnSpec.command, spawnSpec.args, runtimeProcessSpawnOptions({
       cwd: this.options.workspacePath,
       env: {
         ...(this.options.baseEnv ?? process.env),
@@ -322,7 +323,7 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
         OPENCODE_SERVER_PASSWORD: this.serverPassword,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: runtimeCommandNeedsWindowsShell(command),
+      shell: spawnSpec.shell,
     }));
     this.child = child;
     child.stdout.setEncoding('utf-8');

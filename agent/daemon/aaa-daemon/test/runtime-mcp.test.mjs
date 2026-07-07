@@ -107,7 +107,7 @@ test('claude args and prompt force slock CLI communication', () => {
 
   const prompt = buildSlockSystemPrompt({ credential, workspacePath: 'D:/workspace', wrapperDir: 'D:/workspace/.slock' });
   assert.match(prompt, /slock CLI ONLY/);
-  assert.match(prompt, /D:\/workspace\/\.slock\/slock/);
+  assert.ok(prompt.includes(`\`${join('D:/workspace/.slock', 'slock')}\``));
   assert.match(prompt, /slock message check/);
   assert.match(prompt, /Use freely during work/);
   assert.match(prompt, /slock message resolve/);

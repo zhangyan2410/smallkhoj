@@ -68,7 +68,7 @@ export function loadCcSwitchProviders(env: NodeJS.ProcessEnv, homeDir = env.USER
   const dbPath = env.SLOCK_CC_SWITCH_DB || env.CC_SWITCH_DB || (homeDir ? join(homeDir, '.cc-switch', 'cc-switch.db') : '');
   if (!dbPath || !existsSync(dbPath)) return [];
   const sqliteCommand = env.SLOCK_SQLITE_COMMAND || env.SQLITE_COMMAND || 'sqlite3';
-  const result = spawnSync(sqliteCommand, [
+  const queryArgs = [
     '-json',
     dbPath,
     [
@@ -77,10 +77,16 @@ export function loadCcSwitchProviders(env: NodeJS.ProcessEnv, homeDir = env.USER
       "where app_type in ('claude', 'codex', 'opencode')",
       'order by coalesce(sort_index, 999999), name',
     ].join(' '),
-  ], {
+  ];
+  const command = process.platform === 'win32' && /\.(mjs|cjs|js)$/i.test(sqliteCommand)
+    ? process.execPath
+    : sqliteCommand;
+  const args = command === process.execPath ? [sqliteCommand, ...queryArgs] : queryArgs;
+  const result = spawnSync(command, args, {
     encoding: 'utf-8',
     env,
     windowsHide: true,
+    shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(sqliteCommand),
   });
   if (result.status !== 0) return [];
   try {

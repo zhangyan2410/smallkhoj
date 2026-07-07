@@ -16,7 +16,7 @@ import {
   type SessionNotification,
   type SessionUpdate,
 } from '@agentclientprotocol/sdk';
-import { runtimeProcessSpawnOptions, runtimeCommandNeedsWindowsShell, signalRuntimeProcessTree } from './process-tree.js';
+import { runtimeCommandSpawnSpec, runtimeProcessSpawnOptions, signalRuntimeProcessTree } from './process-tree.js';
 
 export interface CodexAcpCommandOptions {
   command?: string;
@@ -121,11 +121,12 @@ export class CodexAcpBridge extends EventEmitter {
   async start(): Promise<void> {
     if (this.child) return;
     const { command, args } = buildCodexAcpCommand({ command: this.options.command });
-    const child = spawn(command, [...(this.options.args ?? args)], runtimeProcessSpawnOptions({
+    const spawnSpec = runtimeCommandSpawnSpec(command, [...(this.options.args ?? args)]);
+    const child = spawn(spawnSpec.command, spawnSpec.args, runtimeProcessSpawnOptions({
       cwd: this.options.cwd,
       env: { ...process.env, ...(this.options.env ?? {}) },
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: runtimeCommandNeedsWindowsShell(command),
+      shell: spawnSpec.shell,
     }));
     this.child = child;
 

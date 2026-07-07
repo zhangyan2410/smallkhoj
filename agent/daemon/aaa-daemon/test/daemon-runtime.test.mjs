@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
@@ -35,6 +35,11 @@ function startServer(handler) {
       handler(req, res, body);
     });
   });
+  const sockets = new Set();
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
 
   return new Promise(resolveServer => {
     server.listen(0, '127.0.0.1', () => {
@@ -42,7 +47,10 @@ function startServer(handler) {
       resolveServer({
         url: `http://127.0.0.1:${address.port}`,
         requests,
-        close: () => new Promise(resolveClose => server.close(resolveClose)),
+        close: () => new Promise(resolveClose => {
+          for (const socket of sockets) socket.destroy();
+          server.close(resolveClose);
+        }),
       });
     });
   });
@@ -69,7 +77,16 @@ function waitFor(predicate, timeoutMs = 10_000) {
 function waitForExit(child, timeoutMs = 5_000) {
   if (child.exitCode !== null) return Promise.resolve();
   return new Promise((resolveWait) => {
-    const timer = setTimeout(resolveWait, timeoutMs);
+    const timer = setTimeout(() => {
+      if (child.exitCode === null && child.pid) {
+        if (process.platform === 'win32') {
+          spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
+        } else {
+          child.kill('SIGKILL');
+        }
+      }
+      resolveWait(undefined);
+    }, timeoutMs);
     child.once('exit', () => {
       clearTimeout(timer);
       resolveWait(undefined);
@@ -244,6 +261,32 @@ process.stdin.on('end', () => {
 }
 
 function writeVersionCommand(path, output) {
+  if (/\.(mjs|cjs|js)$/i.test(path)) {
+    writeFileSync(path, `if (process.argv.includes('--version')) {
+  process.stdout.write(${JSON.stringify(output)});
+  process.exit(0);
+}
+process.exit(0);
+`, 'utf-8');
+    chmodSync(path, 0o755);
+    return;
+  }
+  if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(path)) {
+    writeFileSync(path, `@echo off\r
+setlocal\r
+:args\r
+if "%~1"=="" goto done\r
+if "%~1"=="--version" (\r
+  <nul set /p dummy=${output.replace(/\r?\n$/, '')}\r
+  exit /b 0\r
+)\r
+shift\r
+goto args\r
+:done\r
+exit /b 0\r
+`, 'utf-8');
+    return;
+  }
   writeFileSync(path, `#!/bin/sh
 case " $* " in
   *" --version "*) printf '%s' ${JSON.stringify(output)}; exit 0 ;;
@@ -375,7 +418,7 @@ test('daemon detects Claude command through env override, PATH lookup, and Windo
       SLOCK_CLAUDE_COMMAND: '',
       CLAUDE_COMMAND: '',
       PATH: [binDir, process.env.PATH ?? ''].filter(Boolean).join(delimiter),
-    }), 'claude');
+    }), process.platform === 'win32' ? 'claude.cmd' : 'claude');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -402,7 +445,7 @@ test('daemon detects Codex command through env override, PATH lookup, and Window
       SLOCK_CODEX_COMMAND: '',
       CODEX_COMMAND: '',
       PATH: [binDir, process.env.PATH ?? ''].filter(Boolean).join(delimiter),
-    }), 'codex');
+    }), process.platform === 'win32' ? 'codex.cmd' : 'codex');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -429,7 +472,7 @@ test('daemon detects OpenCode command through env override, PATH lookup, and Win
       SLOCK_OPENCODE_COMMAND: '',
       OPENCODE_COMMAND: '',
       PATH: [binDir, process.env.PATH ?? ''].filter(Boolean).join(delimiter),
-    }), 'opencode');
+    }), process.platform === 'win32' ? 'opencode.cmd' : 'opencode');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1066,7 +1109,12 @@ test('daemon machine-token startup does not imply runtime write opt-in', async (
     daemon.kill('SIGTERM');
     await waitForExit(daemon);
     await upstream.close();
-    rmSync(root, { recursive: true, force: true });
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
   }
 });
 
@@ -1147,7 +1195,12 @@ test('daemon write opt-in and target allowlist are explicit runtime startup opti
     daemon.kill('SIGTERM');
     await waitForExit(daemon);
     await upstream.close();
-    rmSync(root, { recursive: true, force: true });
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
   }
 });
 

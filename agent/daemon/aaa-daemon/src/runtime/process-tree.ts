@@ -2,6 +2,12 @@ import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'c
 
 const DEFAULT_RUNTIME_KILL_GRACE_MS = 2_000;
 
+export interface RuntimeCommandSpawnSpec {
+  command: string;
+  args: string[];
+  shell: boolean;
+}
+
 export function runtimeProcessSpawnOptions(options: SpawnOptionsWithoutStdio): SpawnOptionsWithoutStdio {
   return {
     ...options,
@@ -12,6 +18,21 @@ export function runtimeProcessSpawnOptions(options: SpawnOptionsWithoutStdio): S
 
 export function runtimeCommandNeedsWindowsShell(command: string): boolean {
   return process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
+}
+
+export function runtimeCommandSpawnSpec(command: string, args: string[] = []): RuntimeCommandSpawnSpec {
+  if (process.platform === 'win32' && /\.(mjs|cjs|js)$/i.test(command)) {
+    return {
+      command: process.execPath,
+      args: [command, ...args],
+      shell: false,
+    };
+  }
+  return {
+    command,
+    args,
+    shell: runtimeCommandNeedsWindowsShell(command),
+  };
 }
 
 export function signalRuntimeProcessTree(

@@ -43,7 +43,12 @@ function detectRuntimeCommand(options: RuntimeCommandDetectionOptions): string |
   const candidates = runtimeCommandCandidates(options);
   for (const candidate of candidates) {
     if (!candidateMayExist(candidate, options.env)) continue;
-    const result = spawnSync(candidate, options.probeArgs ?? ['--version'], {
+    const probeArgs = options.probeArgs ?? ['--version'];
+    const command = process.platform === 'win32' && /\.(mjs|cjs|js)$/i.test(candidate)
+      ? process.execPath
+      : candidate;
+    const args = command === process.execPath ? [candidate, ...probeArgs] : probeArgs;
+    const result = spawnSync(command, args, {
       encoding: 'utf-8',
       env: options.env,
       windowsHide: true,
