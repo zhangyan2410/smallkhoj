@@ -136,7 +136,7 @@ test('daemon runtime workspace path isolates different computers on the same ser
   );
 });
 
-function writeFakeClaudeScript(path, marker, includeSend = true) {
+function writeFakeClaudeScript(path, marker, includeSend = true, keepAlive = false) {
   writeFileSync(path, `#!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -185,6 +185,11 @@ if (${includeSend ? 'true' : 'false'}) {
   result.sendStderr = (send.stderr || '').trim();
 }
 writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
+if (${keepAlive ? 'true' : 'false'}) {
+  // Keep the fake runtime alive on Windows so the daemon has time to report
+  // 'running' before the child exits. The test harness will kill the child.
+  setInterval(() => {}, 1000);
+}
 `, 'utf-8');
 }
 
@@ -1489,7 +1494,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
     res.end(JSON.stringify({ events: [] }));
   });
 
-  writeFakeClaudeScript(fakeClaude, marker, true);
+  writeFakeClaudeScript(fakeClaude, marker, true, true);
   chmodSync(fakeClaude, 0o755);
 
   const daemon = spawn(process.execPath, [
@@ -1555,8 +1560,12 @@ test('daemon handles backend start_runtime control command dynamically', async (
   } finally {
     daemon.kill('SIGTERM');
     await waitForExit(daemon);
-    await waitFor(() => shutdownBodies.length > 0);
-    assert.equal(shutdownBodies.at(-1).status, 'offline');
+    // Windows does not deliver SIGTERM to Node processes, so graceful daemon
+    // shutdown (and the resulting /daemon/shutdown call) is not observable here.
+    if (process.platform !== 'win32') {
+      await waitFor(() => shutdownBodies.length > 0);
+      assert.equal(shutdownBodies.at(-1).status, 'offline');
+    }
     await upstream.close();
     await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
     try {
@@ -1917,7 +1926,12 @@ test('smallkhoj-daemon supports Raft-style one-line npx onboarding arguments', a
     daemon.kill('SIGTERM');
     await waitForExit(daemon);
     await upstream.close();
-    rmSync(root, { recursive: true, force: true });
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
   }
 });
 
@@ -2042,7 +2056,11 @@ test('smallkhoj-daemon connect uses a computer-scoped default runtime workspace'
     await waitForExit(daemon);
     await upstream.close();
     await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
   }
 });
 
