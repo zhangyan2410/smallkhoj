@@ -267,7 +267,8 @@ process.stdin.on('end', () => {
 
 function writeVersionCommand(path, output) {
   if (/\.(mjs|cjs|js)$/i.test(path)) {
-    writeFileSync(path, `if (process.argv.includes('--version')) {
+    writeFileSync(path, `#!/usr/bin/env node
+if (process.argv.includes('--version')) {
   process.stdout.write(${JSON.stringify(output)});
   process.exit(0);
 }
