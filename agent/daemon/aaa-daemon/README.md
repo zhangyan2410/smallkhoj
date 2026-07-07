@@ -77,6 +77,8 @@ $env:SLOCK_ALLOW_WRITES = "1"
 .slock/slock task update --channel "#all" --number 2 --status done
 ```
 
+Daemon-managed runtimes also default to fail-closed for writes. Starting the daemon with a connect or machine token does not automatically enable write-capable wrapper commands; use `SLOCK_ALLOW_WRITES=1` / `AAA_DAEMON_ALLOW_WRITES=1`, or pass `--allow-writes` explicitly. Add `SLOCK_WRITE_TARGET_ALLOWLIST`, `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`, or `--write-target-allowlist "#all,dm:@owner"` to constrain allowed targets.
+
 Import an existing Slock runtime and start Claude Code through aaa-daemon:
 
 ```powershell

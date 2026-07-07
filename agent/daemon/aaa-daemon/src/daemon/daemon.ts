@@ -24,6 +24,7 @@ import { SessionManager } from './session-manager.js';
 import { type SlockWrapperResult, writeSlockWrapper } from '../runtime/slock-wrapper.js';
 import { ClaudeRuntimeDriver, getContentBlocks } from '../runtime/claude-runtime.js';
 import { CodexAcpRuntimeDriver } from '../runtime/codex-acp-runtime.js';
+import { OpenCodeServerRuntimeDriver } from '../runtime/opencode-server-runtime.js';
 import type { ManagedRuntimeDriver } from '../runtime/runtime-driver.js';
 import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
 import {
@@ -119,9 +120,12 @@ export interface DaemonControlCommand {
     runtimeCommand?: string;
     runtimeCommandArgs?: string[];
     runtimeProvider?: string;
+    runtimeAgent?: string;
     workspacePath?: string;
     workspaceId?: string;
     backend?: string;
+    allowWrites?: boolean;
+    writeTargetAllowlist?: string;
   };
 }
 
@@ -139,6 +143,7 @@ interface RuntimeRecord {
   runtimeCommandArgs?: string[];
   runtimeModel?: string;
   runtimeProvider?: string;
+  runtimeAgent?: string;
   sessionId: string | null;
   activeSessionScope?: RuntimeSessionScope;
   sessionScopesByKey: Map<string, RuntimeSessionScope>;
@@ -181,11 +186,22 @@ interface RuntimeRecord {
   };
 }
 
-type DaemonRuntimeImplementation = 'claude_code' | 'codex';
+type DaemonRuntimeImplementation = 'claude_code' | 'codex' | 'opencode';
 
 export function workspacePathSegment(value: string | undefined, fallback: string): string {
   const segment = (value || fallback).trim().replace(/[^A-Za-z0-9_.-]/g, '_');
   return segment || fallback;
+}
+
+function writeOpenCodeRuntimeConfig(workspacePath: string, config: Record<string, unknown>): string {
+  const configHome = join(workspacePath, '.slock', 'opencode-config-home');
+  const configDir = join(configHome, 'opencode');
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(join(configDir, 'opencode.json'), `${JSON.stringify(config, null, 2)}\n`, {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  return configHome;
 }
 
 export function defaultDaemonWorkspaceRoot(env: NodeJS.ProcessEnv = process.env): string {
@@ -510,6 +526,8 @@ export class DaemonCore extends EventEmitter {
         proxyToken: this.proxyToken,
         credential: this.credential,
         activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+        allowWrites: this.config.allowWrites,
+        writeTargetAllowlist: this.config.writeTargetAllowlist,
       });
       this.log(`slock wrapper generated in ${this.wrapper.wrapperDir}`, 'info');
     }
@@ -519,14 +537,17 @@ export class DaemonCore extends EventEmitter {
       this.startDaemonHeartbeat();
     }
 
-    if ((this.config.runtime === 'claude_code' || this.config.runtime === 'codex' || this.config.runtime === 'codex_acp') && this.credential.agentId) {
+    if ((this.config.runtime === 'claude_code' || this.config.runtime === 'codex' || this.config.runtime === 'codex_acp' || this.config.runtime === 'opencode') && this.credential.agentId) {
       this.startRuntimeForAgent(this.credential.agentId, {
         runtime: this.config.runtime,
         runtimeCommand: this.config.runtimeCommand,
         runtimeCommandArgs: this.config.runtimeCommandArgs,
         runtimeModel: this.config.runtimeModel,
+        runtimeAgent: this.config.runtimeAgent,
         runtimeProvider: this.config.runtimeProvider,
         workspacePath: this.config.workspacePath,
+        allowWrites: this.config.allowWrites,
+        writeTargetAllowlist: this.config.writeTargetAllowlist,
       });
     }
 
@@ -784,6 +805,7 @@ export class DaemonCore extends EventEmitter {
       ?? this.defaultRuntimeWorkspacePath(agentId, runtimeConfig.workspaceId);
     const resumeSessionId = this.runtimeSessionIds.get(agentId) ?? this.config.runtimeResumeSessionId;
     const model = runtimeConfig.runtimeModel ?? providerLaunch.model ?? this.config.runtimeModel;
+    const agent = runtimeConfig.runtimeAgent ?? providerLaunch.agent ?? this.config.runtimeAgent;
     let command: string | undefined;
     let commandArgs: string[] | undefined;
     if (runtimeConfigCommand) {
@@ -806,6 +828,18 @@ export class DaemonCore extends EventEmitter {
       ...this.credential,
       agentId,
     };
+    const runtimeAllowWrites = runtimeConfig.allowWrites === true || this.config.allowWrites === true;
+    const baseEnv = { ...process.env };
+    if (runtimeAllowWrites) {
+      baseEnv.SLOCK_ALLOW_WRITES = '1';
+    }
+    const writeTargetAllowlist = runtimeConfig.writeTargetAllowlist ?? this.config.writeTargetAllowlist;
+    if (writeTargetAllowlist) {
+      baseEnv.SLOCK_WRITE_TARGET_ALLOWLIST = writeTargetAllowlist;
+    }
+    if (runtimeType === 'opencode' && providerLaunch.opencodeConfig) {
+      baseEnv.XDG_CONFIG_HOME = writeOpenCodeRuntimeConfig(workspacePath, providerLaunch.opencodeConfig);
+    }
     const proxyToken = generateProxyToken();
     this.proxy.register({
       token: proxyToken,
@@ -818,9 +852,11 @@ export class DaemonCore extends EventEmitter {
       proxyToken,
       credential,
       activeCapabilities: 'send,read,mentions,tasks,reactions,server,channels',
+      allowWrites: runtimeAllowWrites,
+      writeTargetAllowlist,
     });
     const driver: ManagedRuntimeDriver = runtimeType === 'codex'
-        ? new CodexAcpRuntimeDriver({
+      ? new CodexAcpRuntimeDriver({
           credential,
           workspacePath,
           wrapperDir: wrapper.wrapperDir,
@@ -829,6 +865,21 @@ export class DaemonCore extends EventEmitter {
           command,
           commandArgs,
           resumeSessionId: resumeSessionId ?? undefined,
+          baseEnv,
+        })
+      : runtimeType === 'opencode'
+        ? new OpenCodeServerRuntimeDriver({
+          credential,
+          workspacePath,
+          wrapperDir: wrapper.wrapperDir,
+          slockHome: wrapper.slockHome,
+          launchId: wrapper.launchId,
+          command,
+          commandArgs,
+          resumeSessionId: resumeSessionId ?? undefined,
+          model,
+          agent,
+          baseEnv,
         })
         : new ClaudeRuntimeDriver({
         credential,
@@ -840,6 +891,7 @@ export class DaemonCore extends EventEmitter {
         model,
         command,
         commandArgs,
+        baseEnv,
       });
     const runtime: RuntimeRecord = {
       agentId,
@@ -855,6 +907,7 @@ export class DaemonCore extends EventEmitter {
       runtimeCommandArgs: commandArgs,
       runtimeModel: model,
       runtimeProvider: providerLaunch.runtimeProvider ?? runtimeProvider,
+      runtimeAgent: agent,
       sessionId: resumeSessionId ?? null,
       sessionScopesByKey: new Map(),
       activeTraceId: undefined,
@@ -1159,12 +1212,12 @@ export class DaemonCore extends EventEmitter {
         agentId,
         status: 'active',
         cwd: workspacePath,
-        command: runtime.runtimeCommand ?? (runtime.runtime === 'codex' ? 'npx @zed-industries/codex-acp@0.16.0' : 'claude'),
+        command: runtime.runtimeCommand ?? (runtime.runtime === 'codex' ? 'npx @zed-industries/codex-acp@0.16.0' : runtime.runtime === 'opencode' ? 'opencode serve' : 'claude'),
         createdAt: now,
         updatedAt: now,
       });
-      if (runtime.runtime === 'codex') {
-        this.markRuntimeReady(runtime, 'codex_acp_session_ready');
+      if (runtime.runtime === 'codex' || runtime.runtime === 'opencode') {
+        this.markRuntimeReady(runtime, runtime.runtime === 'codex' ? 'codex_acp_session_ready' : 'opencode_session_ready');
       }
       this.emitRuntimeTrace({ type: 'session', agentId, sessionId, sessionScope: activeSessionScope?.key });
       this.emit('runtime_session', { agentId, sessionId, sessionScope: activeSessionScope?.key });
@@ -1483,6 +1536,7 @@ export class DaemonCore extends EventEmitter {
       runtimeCommand: runtime.runtime === 'codex' || runtime.runtimeProvider ? undefined : runtime.runtimeCommand ?? runtimeCommand,
       runtimeModel: runtime.runtimeProvider ? undefined : runtime.runtimeModel ?? this.config.runtimeModel,
       runtimeProvider: runtime.runtimeProvider,
+      runtimeAgent: runtime.runtimeAgent,
       status: runtime.status,
       sessionId: runtime.sessionId,
       scopedSessions: this.scopedProviderSessions.snapshot(runtime.agentId).map((item) => ({
@@ -1731,6 +1785,7 @@ export class DaemonCore extends EventEmitter {
           runtimeCommandArgs: runtime.runtimeCommandArgs,
           runtimeModel: runtime.runtimeModel,
           runtimeProvider: runtime.runtimeProvider,
+          runtimeAgent: runtime.runtimeAgent,
           workspacePath: runtime.workspacePath,
           workspaceId: runtime.workspaceId,
         });
@@ -2148,11 +2203,21 @@ export function parseDaemonControlCommand(input: unknown): DaemonControlCommand 
   const runtimeConfig: NonNullable<DaemonControlCommand['config']> = {};
   assignDefined(runtimeConfig, 'runtime', firstString(config.runtime, value.runtime));
   assignDefined(runtimeConfig, 'runtimeModel', firstString(config.runtimeModel, config.runtime_model, value.runtimeModel, value.runtime_model));
+  assignDefined(runtimeConfig, 'runtimeAgent', firstString(config.runtimeAgent, config.runtime_agent, value.runtimeAgent, value.runtime_agent, value.agent));
   assignDefined(runtimeConfig, 'runtimeCommand', firstString(config.runtimeCommand, config.runtime_command, value.runtimeCommand, value.runtime_command));
   assignDefined(runtimeConfig, 'runtimeProvider', firstString(config.runtimeProvider, config.runtime_provider, config.provider, value.runtimeProvider, value.runtime_provider, value.provider));
   assignDefined(runtimeConfig, 'workspacePath', firstString(config.workspacePath, config.workspace_path, value.workspacePath, value.cwd));
   assignDefined(runtimeConfig, 'workspaceId', command.workspaceId);
   assignDefined(runtimeConfig, 'backend', firstString(config.backend, value.backend));
+  if (config.allowWrites === true || config.allow_writes === true || value.allowWrites === true || value.allow_writes === true) {
+    runtimeConfig.allowWrites = true;
+  }
+  assignDefined(runtimeConfig, 'writeTargetAllowlist', firstString(
+    config.writeTargetAllowlist,
+    config.write_target_allowlist,
+    value.writeTargetAllowlist,
+    value.write_target_allowlist,
+  ));
   const runtimeCommandArgs = arrayOfStrings(config.runtimeCommandArgs ?? config.runtime_command_args ?? value.runtimeCommandArgs);
   if (runtimeCommandArgs.length > 0) {
     runtimeConfig.runtimeCommandArgs = runtimeCommandArgs;
@@ -2177,6 +2242,7 @@ function unwrapControlPayload(input: unknown): unknown {
 function normalizeDaemonRuntimeType(runtime: string | undefined): DaemonRuntimeImplementation | undefined {
   if (!runtime || runtime === 'claude' || runtime === 'claude_code') return 'claude_code';
   if (runtime === 'codex' || runtime === 'codex_acp') return 'codex';
+  if (runtime === 'opencode') return 'opencode';
   return undefined;
 }
 
@@ -2201,12 +2267,15 @@ function isCodexAcpLaunchCommand(command: string, commandArgs: string[] | undefi
 }
 
 function requiresDetectedRuntimeCommand(runtime: DaemonRuntimeImplementation): boolean {
-  return runtime === 'claude_code';
+  return runtime === 'claude_code' || runtime === 'opencode';
 }
 
 function runtimeCommandDetectionError(runtime: DaemonRuntimeImplementation): string {
   if (runtime === 'claude_code') {
     return 'Cannot start claude_code runtime: no Claude Code command was detected. Install Claude Code or set SLOCK_CLAUDE_COMMAND/CLAUDE_COMMAND.';
+  }
+  if (runtime === 'opencode') {
+    return 'Cannot start opencode runtime: no OpenCode command was detected. Install OpenCode or set SLOCK_OPENCODE_COMMAND/OPENCODE_COMMAND.';
   }
   return `Cannot start ${runtime} runtime: no launch command was detected.`;
 }

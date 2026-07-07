@@ -98,6 +98,8 @@ test('writeSlockWrapper writes wrappers and proxy token', () => {
     const bashWrapper = readFileSync(result.bashWrapper, 'utf-8');
     assert.doesNotMatch(bashWrapper, /^export SLOCK_AGENT_PROXY_URL=/m);
     assert.doesNotMatch(bashWrapper, /^export SLOCK_AGENT_PROXY_TOKEN_FILE=/m);
+    assert.doesNotMatch(bashWrapper, /SLOCK_ALLOW_WRITES='1'/);
+    assert.doesNotMatch(bashWrapper, /SLOCK_WRITE_TARGET_ALLOWLIST=/);
     assert.match(bashWrapper, /SLOCK_AGENT_PROXY_URL='http:\/\/127\.0\.0\.1:3456'/);
     assert.match(bashWrapper, /SLOCK_AGENT_PROXY_TOKEN_FILE='[^']+' \\/);
     assert.match(bashWrapper, /exec '.*node(\.exe)?' 'D:\/repo\/dist\/slock-cli\.js' "\$@"/);
@@ -105,6 +107,50 @@ test('writeSlockWrapper writes wrappers and proxy token', () => {
     assert.match(readFileSync(result.psWrapper, 'utf-8'), /\$env:SLOCK_SERVER_URL='https:\/\/api\.slock\.ai'/);
     assert.match(readFileSync(join(workspace, 'MEMORY.md'), 'utf-8'), /New daemon-managed Slock\/Raft runtime workspace/);
     assert.equal(prependPathEnv(result.wrapperDir, 'BASE'), `${result.wrapperDir}${process.platform === 'win32' ? ';' : ':'}BASE`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('writeSlockWrapper bakes explicit write gate policy into wrappers', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-wrapper-write-gate-'));
+  try {
+    const workspace = join(root, 'workspace');
+    const result = writeSlockWrapper({
+      workspacePath: workspace,
+      tokenHome: join(root, 'tokens'),
+      launchId: 'pid-test',
+      proxyUrl: 'http://127.0.0.1:3456',
+      proxyToken: 'sap_test_token',
+      activeCapabilities: 'send,read',
+      cliPath: 'D:/repo/dist/slock-cli.js',
+      allowWrites: true,
+      writeTargetAllowlist: "#slock-fk,dm:@owner's",
+      credential: {
+        agentId: 'agent-123',
+        serverId: 'server-123',
+        token: 'fake_machine_secret',
+        serverUrl: 'https://api.slock.ai',
+      },
+    });
+
+    const bashWrapper = readFileSync(result.bashWrapper, 'utf-8');
+    assert.match(bashWrapper, /SLOCK_ALLOW_WRITES='1' \\/);
+    assert.match(bashWrapper, /AAA_DAEMON_ALLOW_WRITES='1' \\/);
+    assert.match(bashWrapper, /SLOCK_WRITE_TARGET_ALLOWLIST='#slock-fk,dm:@owner'\\''s' \\/);
+    assert.match(bashWrapper, /AAA_DAEMON_WRITE_TARGET_ALLOWLIST='#slock-fk,dm:@owner'\\''s' \\/);
+
+    const cmdWrapper = readFileSync(result.cmdWrapper, 'utf-8');
+    assert.match(cmdWrapper, /set "SLOCK_ALLOW_WRITES=1"/);
+    assert.match(cmdWrapper, /set "AAA_DAEMON_ALLOW_WRITES=1"/);
+    assert.match(cmdWrapper, /set "SLOCK_WRITE_TARGET_ALLOWLIST=#slock-fk,dm:@owner's"/);
+    assert.match(cmdWrapper, /set "AAA_DAEMON_WRITE_TARGET_ALLOWLIST=#slock-fk,dm:@owner's"/);
+
+    const psWrapper = readFileSync(result.psWrapper, 'utf-8');
+    assert.match(psWrapper, /\$env:SLOCK_ALLOW_WRITES='1'/);
+    assert.match(psWrapper, /\$env:AAA_DAEMON_ALLOW_WRITES='1'/);
+    assert.match(psWrapper, /\$env:SLOCK_WRITE_TARGET_ALLOWLIST='#slock-fk,dm:@owner''s'/);
+    assert.match(psWrapper, /\$env:AAA_DAEMON_WRITE_TARGET_ALLOWLIST='#slock-fk,dm:@owner''s'/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

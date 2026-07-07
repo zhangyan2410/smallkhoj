@@ -2,7 +2,7 @@ import { existsSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { delimiter, isAbsolute, join } from 'path';
 
-type RuntimeCommandName = 'claude' | 'codex';
+type RuntimeCommandName = 'claude' | 'codex' | 'opencode';
 
 interface RuntimeCommandDetectionOptions {
   env: NodeJS.ProcessEnv;
@@ -27,6 +27,15 @@ export function detectCodexCommand(env: NodeJS.ProcessEnv = process.env): string
     envNames: ['SLOCK_CODEX_COMMAND', 'CODEX_COMMAND'],
     commandNames: commandNamesForRuntime('codex'),
     homeSubpaths: commonHomeSubpaths('codex', env),
+  });
+}
+
+export function detectOpenCodeCommand(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return detectRuntimeCommand({
+    env,
+    envNames: ['SLOCK_OPENCODE_COMMAND', 'OPENCODE_COMMAND'],
+    commandNames: commandNamesForRuntime('opencode'),
+    homeSubpaths: commonHomeSubpaths('opencode', env),
   });
 }
 
@@ -110,4 +119,3 @@ function commandAppearsOnPath(command: string, pathValue: string): boolean {
   }
   return false;
 }
-

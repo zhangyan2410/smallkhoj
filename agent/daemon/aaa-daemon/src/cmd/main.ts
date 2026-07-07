@@ -55,6 +55,7 @@ type StartOptions = {
   runtimeCommand?: string;
   runtimeCommandArg: string[];
   runtimeModel?: string;
+  runtimeAgent?: string;
   runtimeProvider?: string;
   runtimeResumeSessionId?: string;
   runtimeRestartOnCrash?: boolean;
@@ -65,6 +66,8 @@ type StartOptions = {
   verbose?: boolean;
   machineToken?: string;
   connectToken?: string;
+  allowWrites?: boolean;
+  writeTargetAllowlist?: string;
 };
 
 type ProductConnectOptions = {
@@ -93,11 +96,9 @@ async function runStart(options: StartOptions): Promise<void> {
   }
   if (options.connectToken) {
     process.env.SLOCK_CONNECT_TOKEN = options.connectToken;
-    process.env.SLOCK_ALLOW_WRITES = process.env.SLOCK_ALLOW_WRITES || '1';
   }
   if (options.machineToken) {
     process.env.SLOCK_AGENT_TOKEN = options.machineToken;
-    process.env.SLOCK_ALLOW_WRITES = process.env.SLOCK_ALLOW_WRITES || '1';
   }
 
   const wsUrl = options.ws === 'auto'
@@ -119,12 +120,15 @@ async function runStart(options: StartOptions): Promise<void> {
     runtimeCommand: options.runtimeCommand,
     runtimeCommandArgs: options.runtimeCommandArg.length > 0 ? options.runtimeCommandArg : undefined,
     runtimeModel: options.runtimeModel,
+    runtimeAgent: options.runtimeAgent,
     runtimeProvider: options.runtimeProvider,
     runtimeResumeSessionId: options.runtimeResumeSessionId,
     runtimeRestartOnCrash: options.runtimeRestartOnCrash === true,
     runtimeStallTimeoutMs: options.runtimeStallTimeoutMs ? parseInt(options.runtimeStallTimeoutMs, 10) : undefined,
     runtimeWarmupTimeoutMs: options.runtimeWarmupTimeoutMs ? parseInt(options.runtimeWarmupTimeoutMs, 10) : undefined,
     daemonRegister: options.registerDaemon === true,
+    allowWrites: options.allowWrites === true,
+    writeTargetAllowlist: options.writeTargetAllowlist,
   };
 
   const daemon = new DaemonCore(config);
@@ -190,6 +194,7 @@ program
   .option('--runtime-command <command>', 'Runtime executable command')
   .option('--runtime-command-arg <arg>', 'Runtime executable argument (repeatable)', collect, [])
   .option('--runtime-model <model>', 'Runtime model')
+  .option('--runtime-agent <agent>', 'Runtime agent/persona name')
   .option('--runtime-provider <provider>', 'Local runtime provider/profile name resolved by the daemon')
   .option('--runtime-resume-session-id <id>', 'Resume an existing Claude Code session id')
   .option('--runtime-restart-on-crash', 'Restart supported runtimes once after an unexpected exit')
@@ -197,6 +202,8 @@ program
   .option('--runtime-warmup-timeout-ms <ms>', 'Startup warmup timeout before degrading runtime to ready')
   .option('--register-daemon', 'Register daemon computer/workspace lifecycle with the backend')
   .option('--machine-token <token>', 'Machine token returned by a previous daemon connect')
+  .option('--allow-writes', 'Explicitly allow daemon-managed runtime write-capable Slock/Raft CLI commands')
+  .option('--write-target-allowlist <targets>', 'Comma-separated write target allowlist for daemon-managed runtime Slock/Raft CLI commands')
   .option('--mcp', 'Enable MCP stdio bridge')
   .option('-v, --verbose', 'Verbose logging')
   .action(async (options: StartOptions) => runStart(options));
@@ -211,6 +218,8 @@ program
   .option('--pid-file <path>', 'PID file path', './aaa-daemon.pid')
   .option('--log-file <path>', 'Log file path')
   .option('--workspace <path>', 'Workspace root for managed runtime files (default: ~/.smallkhoj/daemon/workspaces)')
+  .option('--allow-writes', 'Explicitly allow daemon-managed runtime write-capable Slock/Raft CLI commands')
+  .option('--write-target-allowlist <targets>', 'Comma-separated write target allowlist for daemon-managed runtime Slock/Raft CLI commands')
   .option('-v, --verbose', 'Verbose logging')
   .action(async (options) => runStart({
     ...options,

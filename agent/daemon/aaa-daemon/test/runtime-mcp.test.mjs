@@ -28,7 +28,7 @@ import {
   sanitizeRuntimeCommandPreview,
   selectRuntimeSessionScope,
 } from '../dist/daemon/daemon.js';
-import { appendDaemonConnectionParams, buildAckPayload, buildActivityPayload, parseWebSocketPayload } from '../dist/websocket.js';
+import { appendDaemonConnectionParams, buildAckPayload, buildActivityPayload, buildWebSocketHeaders, parseWebSocketPayload } from '../dist/websocket.js';
 
 const credential = {
   agentId: 'agent-123',
@@ -914,6 +914,20 @@ test('websocket helper appends daemon id and event cursor to connection URL', ()
     appendDaemonConnectionParams('ws://127.0.0.1:8000/internal/agent-api/ws', 42, 'daemon-123'),
     'ws://127.0.0.1:8000/internal/agent-api/ws?eventLogCursor=42&daemonId=daemon-123',
   );
+});
+
+test('websocket headers include computer id for machine-token daemon auth', () => {
+  assert.deepEqual(buildWebSocketHeaders({
+    agentId: 'agent-123',
+    serverId: 'server-123',
+    computerId: 'computer-123',
+    token: 'fake_machine_secret',
+    serverUrl: 'https://api.slock.ai',
+  }), {
+    Authorization: 'Bearer fake_machine_secret',
+    'X-Agent-Id': 'agent-123',
+    'X-Computer-Id': 'computer-123',
+  });
 });
 
 test('websocket helpers accept dotted message and task event names', () => {

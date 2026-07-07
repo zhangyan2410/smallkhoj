@@ -12,10 +12,13 @@ import {
 import {
   detectClaudeCommand,
   detectCodexCommand,
+  detectOpenCodeCommand,
   detectRuntimeProviders,
   detectedRuntimesForInventory,
   loadCcSwitchProviders,
+  parseCcSwitchOpenCodeProviderRows,
   parseManualRuntimeProviders,
+  parseOpenCodeConfigProviders,
   parseCcSwitchProviderRows,
   parseCcsClaudeListOutput,
   resolveRuntimeProviderLaunch,
@@ -149,6 +152,8 @@ const result = {
   agentId: process.env.SLOCK_AGENT_ID,
   currentWorkspacePath: process.env.SLOCK_CURRENT_WORKSPACE_PATH,
   launchId: process.env.SLOCK_AGENT_LAUNCH_ID,
+  allowWrites: process.env.SLOCK_ALLOW_WRITES ?? null,
+  writeTargetAllowlist: process.env.SLOCK_WRITE_TARGET_ALLOWLIST ?? null,
 };
 const promptFlagIndex = result.argv.indexOf('--append-system-prompt-file');
 result.systemPromptFile = promptFlagIndex >= 0 ? result.argv[promptFlagIndex + 1] : null;
@@ -403,6 +408,107 @@ test('daemon detects Codex command through env override, PATH lookup, and Window
   }
 });
 
+test('daemon detects OpenCode command through env override, PATH lookup, and Windows-style command shim', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-opencode-command-'));
+  const fakeOpenCodeCmd = join(root, 'opencode.cmd');
+  const binDir = join(root, 'bin');
+  const pathOpenCode = join(binDir, 'opencode');
+  mkdirSync(binDir, { recursive: true });
+  writeVersionCommand(fakeOpenCodeCmd, 'opencode 1.0.0-fake\n');
+  writeVersionCommand(pathOpenCode, 'opencode 1.0.0-path\n');
+
+  try {
+    assert.equal(detectOpenCodeCommand({
+      ...process.env,
+      SLOCK_OPENCODE_COMMAND: fakeOpenCodeCmd,
+      OPENCODE_COMMAND: '',
+      PATH: '',
+    }), fakeOpenCodeCmd);
+    assert.equal(detectOpenCodeCommand({
+      ...process.env,
+      SLOCK_OPENCODE_COMMAND: '',
+      OPENCODE_COMMAND: '',
+      PATH: [binDir, process.env.PATH ?? ''].filter(Boolean).join(delimiter),
+    }), 'opencode');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('daemon reads OpenCode provider and model inventory from opencode.json without auth credentials', () => {
+  const rawConfig = JSON.stringify({
+    provider: {
+      'kimi-for-coding': {
+        options: { apiKey: 'fake_should_not_escape' },
+        models: {
+          k2p5: {},
+          'kimi-for-coding': {},
+        },
+      },
+      'zai-coding-plan': {
+        models: {
+          'glm-5.2': {},
+        },
+      },
+    },
+  });
+
+  const providers = parseOpenCodeConfigProviders(rawConfig);
+  assert.deepEqual(providers.map(provider => ({
+    id: provider.id,
+    name: provider.name,
+    runtime: provider.runtime,
+    model: provider.model,
+    source: provider.source,
+    command: provider.command,
+  })), [
+    {
+      id: 'opencode-kimi-for-coding-k2p5',
+      name: 'OpenCode kimi-for-coding/k2p5',
+      runtime: 'opencode',
+      model: 'kimi-for-coding/k2p5',
+      source: 'opencode-config',
+      command: undefined,
+    },
+    {
+      id: 'opencode-kimi-for-coding-kimi-for-coding',
+      name: 'OpenCode kimi-for-coding/kimi-for-coding',
+      runtime: 'opencode',
+      model: 'kimi-for-coding/kimi-for-coding',
+      source: 'opencode-config',
+      command: undefined,
+    },
+    {
+      id: 'opencode-zai-coding-plan-glm-5.2',
+      name: 'OpenCode zai-coding-plan/glm-5.2',
+      runtime: 'opencode',
+      model: 'zai-coding-plan/glm-5.2',
+      source: 'opencode-config',
+      command: undefined,
+    },
+  ]);
+  assert.equal(JSON.stringify(providers).includes('fake_should_not_escape'), false);
+
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-opencode-config-'));
+  try {
+    const configDir = join(root, 'opencode');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'opencode.json'), rawConfig);
+    writeFileSync(join(configDir, 'auth.json'), JSON.stringify({ credentials: [] }));
+    const inventory = detectRuntimeProviders({
+      HOME: root,
+      XDG_CONFIG_HOME: root,
+      PATH: '',
+      SLOCK_RUNTIME_PROVIDERS_JSON: '',
+    });
+    const detected = detectedRuntimesForInventory({ runtime: 'opencode' }, inventory);
+    assert.ok(detected.some(item => item.runtimeProvider === 'opencode-kimi-for-coding-k2p5' && item.model === 'kimi-for-coding/k2p5'));
+    assert.equal(JSON.stringify(detected).includes('credentials'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('daemon does not implicitly discover Windows cc-switch.ps1 as a Claude provider launcher', () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-no-ps1-'));
   const claudeDir = join(root, '.claude');
@@ -473,6 +579,94 @@ test('cc-switch provider rows are parsed into sanitized public Claude and Codex 
   assert.equal(serialized.includes('OTHER_SECRET'), false);
   assert.equal(serialized.includes('api_key'), false);
   assert.equal(serialized.includes('settings_config'), false);
+});
+
+test('cc-switch Claude providers can launch OpenCode with non-enumerable provider config', () => {
+  const rows = [
+    {
+      id: 'claude-kimi',
+      app_type: 'claude',
+      name: 'Kimi',
+      settings_config: JSON.stringify({
+        env: {
+          ANTHROPIC_AUTH_TOKEN: 'FAKE_KIMI_SECRET',
+          ANTHROPIC_BASE_URL: 'https://api.kimi.com/coding/',
+          ANTHROPIC_MODEL: 'kimi-for-coding',
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'kimi-for-coding',
+        },
+      }),
+    },
+    {
+      id: 'claude-minimax',
+      app_type: 'claude',
+      name: 'MiniMax',
+      settings_config: JSON.stringify({
+        env: {
+          ANTHROPIC_AUTH_TOKEN: 'FAKE_MINIMAX_SECRET',
+          ANTHROPIC_BASE_URL: 'https://api.minimaxi.com/anthropic',
+          ANTHROPIC_MODEL: 'MiniMax-M3',
+        },
+      }),
+    },
+    {
+      id: 'claude-glm',
+      app_type: 'claude',
+      name: 'Zhipu GLM',
+      settings_config: JSON.stringify({
+        env: {
+          ANTHROPIC_AUTH_TOKEN: 'FAKE_GLM_SECRET',
+          ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/anthropic',
+          ANTHROPIC_MODEL: 'glm-5.2',
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-5.2[1M]',
+        },
+      }),
+    },
+  ];
+
+  const providers = parseCcSwitchOpenCodeProviderRows(rows);
+  assert.deepEqual(providers.map(provider => ({
+    id: provider.id,
+    name: provider.name,
+    runtime: provider.runtime,
+    model: provider.model,
+    source: provider.source,
+  })), [
+    {
+      id: 'opencode-cc-switch-kimi-for-coding-k2p5',
+      name: 'Kimi (OpenCode)',
+      runtime: 'opencode',
+      model: 'kimi-for-coding/k2p5',
+      source: 'cc-switch',
+    },
+    {
+      id: 'opencode-cc-switch-minimax-cn-coding-plan-MiniMax-M2.7',
+      name: 'MiniMax (OpenCode)',
+      runtime: 'opencode',
+      model: 'minimax-cn-coding-plan/MiniMax-M2.7',
+      source: 'cc-switch',
+    },
+    {
+      id: 'opencode-cc-switch-zai-coding-plan-glm-5.2',
+      name: 'Zhipu GLM (OpenCode)',
+      runtime: 'opencode',
+      model: 'zai-coding-plan/glm-5.2',
+      source: 'cc-switch',
+    },
+  ]);
+
+  const publicJson = JSON.stringify(providers);
+  assert.equal(publicJson.includes('SECRET_'), false);
+  assert.equal(publicJson.includes('ANTHROPIC_AUTH_TOKEN'), false);
+
+  const launch = resolveRuntimeProviderLaunch('opencode-cc-switch-kimi-for-coding-k2p5', {
+    opencodeCommand: 'opencode',
+    providers,
+  });
+  assert.equal(launch.runtimeProvider, 'opencode-cc-switch-kimi-for-coding-k2p5');
+  assert.equal(launch.model, 'kimi-for-coding/k2p5');
+  assert.equal(JSON.stringify(launch.opencodeConfig).includes('FAKE_KIMI_SECRET'), true);
+  assert.equal(JSON.stringify(launch.opencodeConfig).includes('https://api.kimi.com/coding/v1'), true);
+  assert.equal(JSON.stringify(detectedRuntimesForInventory({ runtime: 'opencode' }, { providers })).includes('SECRET_'), false);
 });
 
 test('daemon loads Claude and Codex providers from the local CC Switch database command', () => {
@@ -561,27 +755,52 @@ test('manual runtime provider JSON is parsed into local launch-only provider con
       command: '/Users/me/bin/codex-acp-wrapper',
       commandArgs: ['--profile', 'krill'],
     },
+    {
+      id: 'local-opencode-kimi',
+      name: 'Local OpenCode Kimi',
+      runtime: 'opencode',
+      model: 'kimi-for-coding/k2p5',
+      agent: 'sisyphus',
+      command: '/Users/me/bin/opencode',
+      commandArgs: ['serve', '--hostname', '127.0.0.1', '--port', '0'],
+    },
   ]));
 
-  assert.deepEqual(providers, [{
-    id: 'local-codex-krill',
-    name: 'Local Codex Krill',
-    runtime: 'codex',
-    model: 'gpt-5.3-codex',
-    command: '/Users/me/bin/codex-acp-wrapper',
-    commandArgs: ['--profile', 'krill'],
-    source: 'manual',
-  }]);
+  assert.deepEqual(providers, [
+    {
+      id: 'local-codex-krill',
+      name: 'Local Codex Krill',
+      runtime: 'codex',
+      model: 'gpt-5.3-codex',
+      command: '/Users/me/bin/codex-acp-wrapper',
+      commandArgs: ['--profile', 'krill'],
+      source: 'manual',
+    },
+    {
+      id: 'local-opencode-kimi',
+      name: 'Local OpenCode Kimi',
+      runtime: 'opencode',
+      model: 'kimi-for-coding/k2p5',
+      agent: 'sisyphus',
+      command: '/Users/me/bin/opencode',
+      commandArgs: ['serve', '--hostname', '127.0.0.1', '--port', '0'],
+      source: 'manual',
+    },
+  ]);
 
   const detected = detectedRuntimesForInventory({ runtime: 'codex' }, { providers });
   const providerRuntime = detected.find(item => item.runtimeProvider === 'local-codex-krill');
   assert.equal(providerRuntime?.source, 'manual');
   assert.equal('command' in providerRuntime, false);
   assert.equal('commandArgs' in providerRuntime, false);
+  const openCodeRuntime = detected.find(item => item.runtimeProvider === 'local-opencode-kimi');
+  assert.equal(openCodeRuntime?.type, 'opencode');
+  assert.equal(openCodeRuntime?.model, 'kimi-for-coding/k2p5');
+  assert.equal(openCodeRuntime?.agent, 'sisyphus');
 });
 
 test('daemon resolves manual provider command without exposing it as CC Switch config', () => {
-  const launch = resolveRuntimeProviderLaunch('local-codex-krill', {
+  const inventory = {
     providers: [{
       id: 'local-codex-krill',
       name: 'Local Codex Krill',
@@ -590,14 +809,31 @@ test('daemon resolves manual provider command without exposing it as CC Switch c
       command: '/Users/me/bin/codex-acp-wrapper',
       commandArgs: ['--profile', 'krill'],
       source: 'manual',
+    }, {
+      id: 'local-opencode-kimi',
+      name: 'Local OpenCode Kimi',
+      runtime: 'opencode',
+      model: 'kimi-for-coding/k2p5',
+      agent: 'sisyphus',
+      command: '/Users/me/bin/opencode',
+      commandArgs: ['serve', '--hostname', '127.0.0.1', '--port', '0'],
+      source: 'manual',
     }],
-  });
+  };
+  const launch = resolveRuntimeProviderLaunch('local-codex-krill', inventory);
 
   assert.deepEqual(launch, {
     runtimeProvider: 'local-codex-krill',
     command: '/Users/me/bin/codex-acp-wrapper',
     commandArgs: ['--profile', 'krill'],
     model: 'gpt-5.3-codex',
+  });
+  assert.deepEqual(resolveRuntimeProviderLaunch('local-opencode-kimi', inventory), {
+    runtimeProvider: 'local-opencode-kimi',
+    command: '/Users/me/bin/opencode',
+    commandArgs: ['serve', '--hostname', '127.0.0.1', '--port', '0'],
+    model: 'kimi-for-coding/k2p5',
+    agent: 'sisyphus',
   });
 });
 
@@ -751,6 +987,167 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
     } catch {
       // Windows can briefly keep spawned script directories locked after process exit.
     }
+  }
+});
+
+test('daemon machine-token startup does not imply runtime write opt-in', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-runtime-write-gate-'));
+  const marker = join(root, 'runtime-marker.json');
+  const fakeClaude = join(root, 'fake-claude.mjs');
+  let sendRequests = 0;
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/server') {
+      res.end(JSON.stringify({ id: 'server-1', channels: [{ name: 'general' }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      sendRequests += 1;
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeFakeClaudeScript(fakeClaude, marker, true);
+  const env = { ...process.env, SLOCK_AGENT_TOKEN: 'fake_machine_env_should_be_replaced' };
+  delete env.AAA_DAEMON_ALLOW_WRITES;
+  delete env.AAA_DAEMON_WRITE_TARGET_ALLOWLIST;
+  delete env.SLOCK_ALLOW_WRITES;
+  delete env.SLOCK_WRITE_TARGET_ALLOWLIST;
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'ws://127.0.0.1:9',
+    '--agent-id', 'agent-1',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'claude',
+    '--runtime-command', process.execPath,
+    '--runtime-command-arg', fakeClaude,
+    '--machine-token', 'fake_machine_cli_only',
+  ], {
+    cwd: resolve('.'),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => existsSync(marker));
+    const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
+
+    assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
+    assert.match(runtime.serverStdout, /"server-1"/);
+    assert.notEqual(runtime.sendStatus, 0);
+    assert.match(runtime.sendStderr, /WRITES_NOT_ALLOWED/);
+    assert.equal(runtime.allowWrites, null);
+    assert.equal(runtime.writeTargetAllowlist, null);
+    assert.equal(sendRequests, 0);
+
+    await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
+    const serverRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/server');
+    assert.equal(serverRequest.req.headers.authorization, 'Bearer fake_machine_cli_only');
+  } catch (err) {
+    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('daemon write opt-in and target allowlist are explicit runtime startup options', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-runtime-write-opt-in-'));
+  const marker = join(root, 'runtime-marker.json');
+  const fakeClaude = join(root, 'fake-claude.mjs');
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/server') {
+      res.end(JSON.stringify({ id: 'server-1', channels: [{ name: 'general' }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeFakeClaudeScript(fakeClaude, marker, true);
+  const env = { ...process.env };
+  delete env.AAA_DAEMON_ALLOW_WRITES;
+  delete env.AAA_DAEMON_WRITE_TARGET_ALLOWLIST;
+  delete env.SLOCK_ALLOW_WRITES;
+  delete env.SLOCK_WRITE_TARGET_ALLOWLIST;
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'ws://127.0.0.1:9',
+    '--agent-id', 'agent-1',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'claude',
+    '--runtime-command', process.execPath,
+    '--runtime-command-arg', fakeClaude,
+    '--machine-token', 'fake_machine_cli_only',
+    '--allow-writes',
+    '--write-target-allowlist', '#general',
+  ], {
+    cwd: resolve('.'),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => existsSync(marker));
+    const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
+
+    assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
+    assert.equal(runtime.sendStatus, 0, runtime.sendStderr);
+    assert.match(runtime.sendStdout, /"sent"/);
+    assert.equal(runtime.allowWrites, '1');
+    assert.equal(runtime.writeTargetAllowlist, '#general');
+
+    await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/send'));
+    const sendRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/send');
+    assert.deepEqual(JSON.parse(sendRequest.body), {
+      target: '#general',
+      content: 'hello from runtime',
+    });
+  } catch (err) {
+    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

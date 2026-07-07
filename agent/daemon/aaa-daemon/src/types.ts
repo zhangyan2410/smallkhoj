@@ -670,6 +670,8 @@ export interface DaemonConfig {
   runtimeCommandArgs?: string[];
   /** Optional model alias/name for Claude runtime */
   runtimeModel?: string;
+  /** Optional agent/persona name for runtimes that support it */
+  runtimeAgent?: string;
   /** Local runtime provider/profile selection. Resolved by the daemon, not the server. */
   runtimeProvider?: string;
   /** Resume an existing Claude Code session id */
@@ -682,6 +684,10 @@ export interface DaemonConfig {
   runtimeWarmupTimeoutMs?: number;
   /** Register this daemon/computer/workspace with a local Slock-compatible backend */
   daemonRegister?: boolean;
+  /** Explicitly allow daemon-managed runtimes to run write-capable Slock/Raft CLI commands */
+  allowWrites?: boolean;
+  /** Optional comma-separated target allowlist for daemon-managed runtime writes */
+  writeTargetAllowlist?: string;
   /** Unix socket path (unused on Windows; falls back to TCP) */
   socketPath?: string;
 }

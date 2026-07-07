@@ -2,11 +2,13 @@ import type { DaemonConfig, DetectedRuntime } from '../types.js';
 import {
   detectCcsClaudeProviders,
   loadCcSwitchProviders,
+  parseCcSwitchOpenCodeProviderRows,
   parseCcSwitchProviderRows,
   parseCcsClaudeListOutput,
 } from './providers/cc-switch-provider.js';
-import { detectClaudeCommand, detectCodexCommand } from './providers/local-command-provider.js';
+import { detectClaudeCommand, detectCodexCommand, detectOpenCodeCommand } from './providers/local-command-provider.js';
 import { loadManualRuntimeProviders, parseManualRuntimeProviders } from './providers/manual-provider.js';
+import { loadOpenCodeConfigProviders, parseOpenCodeConfigProviders } from './providers/opencode-config-provider.js';
 import type {
   LocalRuntimeProvider,
   RuntimeProviderInventory,
@@ -22,21 +24,27 @@ export type {
 export {
   detectClaudeCommand,
   detectCodexCommand,
+  detectOpenCodeCommand,
   loadCcSwitchProviders,
+  parseCcSwitchOpenCodeProviderRows,
   parseCcSwitchProviderRows,
   parseCcsClaudeListOutput,
   parseManualRuntimeProviders,
+  parseOpenCodeConfigProviders,
 };
 
 export function detectRuntimeProviders(env: NodeJS.ProcessEnv = process.env): RuntimeProviderInventory {
   const homeDir = env.USERPROFILE || env.HOME || '';
   const claudeCommand = detectClaudeCommand(env);
   const codexCommand = detectCodexCommand(env);
+  const opencodeCommand = detectOpenCodeCommand(env);
   const manualProviders = loadManualRuntimeProviders(env);
+  const opencodeConfigProviders = loadOpenCodeConfigProviders(env);
   const ccSwitchProviders = loadCcSwitchProviders(env, homeDir);
   const ccsClaude = detectCcsClaudeProviders(env);
   const providers = mergeRuntimeProviders([
     manualProviders,
+    opencodeConfigProviders,
     ccSwitchProviders,
     ccsClaude.providers,
   ]);
@@ -45,6 +53,7 @@ export function detectRuntimeProviders(env: NodeJS.ProcessEnv = process.env): Ru
     ccsClaudeCommand: ccsClaude.command,
     claudeCommand,
     codexCommand,
+    opencodeCommand,
     providers,
   };
 }
@@ -67,6 +76,7 @@ export function detectedRuntimesForInventory(
       provider: provider.name,
       runtimeProvider: provider.id,
       model: provider.model,
+      ...(provider.agent ? { agent: provider.agent } : {}),
       source: provider.source,
     });
   }
@@ -94,15 +104,18 @@ export function resolveRuntimeProviderLaunch(
       command: provider.command,
       commandArgs: provider.commandArgs,
       model: provider.model,
+      ...(provider.agent ? { agent: provider.agent } : {}),
     };
   }
 
-  if (provider.runtime === 'codex') {
+  if (provider.runtime === 'codex' || provider.runtime === 'opencode') {
     return {
       runtimeProvider: provider.id,
       ...(provider.command ? { command: provider.command } : {}),
       ...(provider.commandArgs ? { commandArgs: provider.commandArgs } : {}),
       model: provider.model,
+      ...(provider.agent ? { agent: provider.agent } : {}),
+      ...(provider.opencodeConfig ? { opencodeConfig: provider.opencodeConfig } : {}),
     };
   }
 
@@ -141,10 +154,11 @@ export function resolveRuntimeProviderLaunch(
 }
 
 export function resolveDetectedRuntimeCommand(
-  runtime: 'claude_code' | 'codex',
+  runtime: 'claude_code' | 'codex' | 'opencode',
   inventory: RuntimeProviderInventory,
 ): string | undefined {
   if (runtime === 'claude_code') return inventory.claudeCommand;
+  if (runtime === 'opencode') return inventory.opencodeCommand;
   return undefined;
 }
 
@@ -162,4 +176,3 @@ function mergeRuntimeProviders(providerGroups: Array<LocalRuntimeProvider[] | fa
   }
   return providers;
 }
-

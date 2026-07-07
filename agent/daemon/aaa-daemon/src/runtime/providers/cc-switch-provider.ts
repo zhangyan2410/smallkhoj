@@ -10,6 +10,22 @@ interface CcSwitchProviderRow {
   settings_config?: unknown;
 }
 
+interface CcSwitchSettingsConfig {
+  config?: unknown;
+  env?: unknown;
+  model?: unknown;
+  provider?: unknown;
+  models?: unknown;
+  npm?: unknown;
+  options?: unknown;
+}
+
+interface OpenCodeBridgeSpec {
+  providerId: string;
+  displayName: string;
+  extraModels?: string[];
+}
+
 export interface CcsClaudeProviderDetection {
   command?: string;
   providers: LocalRuntimeProvider[];
@@ -58,7 +74,7 @@ export function loadCcSwitchProviders(env: NodeJS.ProcessEnv, homeDir = env.USER
     [
       'select id, app_type, name, settings_config',
       'from providers',
-      "where app_type in ('claude', 'codex')",
+      "where app_type in ('claude', 'codex', 'opencode')",
       'order by coalesce(sort_index, 999999), name',
     ].join(' '),
   ], {
@@ -69,7 +85,12 @@ export function loadCcSwitchProviders(env: NodeJS.ProcessEnv, homeDir = env.USER
   if (result.status !== 0) return [];
   try {
     const rows = JSON.parse(result.stdout || '[]');
-    return Array.isArray(rows) ? parseCcSwitchProviderRows(rows, ['claude', 'codex']) : [];
+    return Array.isArray(rows)
+      ? [
+          ...parseCcSwitchProviderRows(rows, ['claude', 'codex']),
+          ...parseCcSwitchOpenCodeProviderRows(rows),
+        ]
+      : [];
   } catch {
     return [];
   }
@@ -126,17 +147,207 @@ export function parseCcSwitchProviderRows(rows: unknown[], appType: 'codex' | 'c
   return providers;
 }
 
+export function parseCcSwitchOpenCodeProviderRows(rows: unknown[]): LocalRuntimeProvider[] {
+  const providers: LocalRuntimeProvider[] = [];
+  const seen = new Set<string>();
+  const push = (provider: LocalRuntimeProvider) => {
+    const key = `${provider.runtime}:${provider.id}`.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    providers.push(provider);
+  };
+
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const provider = row as CcSwitchProviderRow;
+    if (typeof provider.id !== 'string' || typeof provider.name !== 'string') continue;
+    const id = provider.id.trim();
+    const name = provider.name.trim();
+    if (!id || !name) continue;
+
+    const settings = parseSettingsConfig(provider.settings_config);
+    if (!settings) continue;
+
+    if (provider.app_type === 'opencode') {
+      for (const item of opencodeProvidersFromOpenCodeSettings(id, name, settings)) {
+        push(item);
+      }
+      continue;
+    }
+
+    if (provider.app_type === 'claude') {
+      const item = opencodeProviderFromClaudeSettings(id, name, settings);
+      if (item) push(item);
+    }
+  }
+
+  return providers;
+}
+
 function readProviderModel(settingsConfig: unknown): string | undefined {
+  const parsed = parseSettingsConfig(settingsConfig);
+  if (!parsed || !isRecord(parsed.config)) return undefined;
+  const model = (parsed.config as { model?: unknown; default_model?: unknown }).model
+    ?? (parsed.config as { model?: unknown; default_model?: unknown }).default_model;
+  return typeof model === 'string' && model.trim() ? model.trim() : undefined;
+}
+
+function opencodeProvidersFromOpenCodeSettings(rowId: string, name: string, settings: CcSwitchSettingsConfig): LocalRuntimeProvider[] {
+  const fullConfig: Record<string, unknown> | undefined = isRecord(settings.provider)
+    ? settings as Record<string, unknown>
+    : buildOpenCodeConfig(rowId, stringField(settings, 'model'), settings);
+  if (!fullConfig || !isRecord(fullConfig.provider)) return [];
+
+  const providers: LocalRuntimeProvider[] = [];
+  for (const [providerId, providerConfig] of Object.entries(fullConfig.provider)) {
+    if (!isRecord(providerConfig) || !isRecord(providerConfig.models)) continue;
+    for (const modelId of Object.keys(providerConfig.models)) {
+      const model = `${providerId}/${modelId}`;
+      providers.push(withOpenCodeConfig({
+        id: `opencode-cc-switch-${safeId(providerId)}-${safeId(modelId)}`,
+        name: `${name} (OpenCode ${model})`,
+        runtime: 'opencode',
+        model,
+        source: 'cc-switch',
+      }, fullConfig));
+    }
+  }
+  return providers;
+}
+
+function opencodeProviderFromClaudeSettings(rowId: string, name: string, settings: CcSwitchSettingsConfig): LocalRuntimeProvider | undefined {
+  if (!isRecord(settings.env)) return undefined;
+  const token = stringField(settings.env, 'ANTHROPIC_AUTH_TOKEN');
+  const baseUrl = stringField(settings.env, 'ANTHROPIC_BASE_URL');
+  if (!token || !baseUrl) return undefined;
+
+  const spec = opencodeBridgeSpec(rowId, name);
+  if (!spec) return undefined;
+
+  const models = uniqueStrings([
+    ...spec.extraModels ?? [],
+    stringField(settings.env, 'ANTHROPIC_MODEL'),
+    stringField(settings.env, 'ANTHROPIC_DEFAULT_HAIKU_MODEL'),
+    stringField(settings.env, 'ANTHROPIC_DEFAULT_SONNET_MODEL'),
+    stringField(settings.env, 'ANTHROPIC_DEFAULT_OPUS_MODEL'),
+  ]);
+  if (models.length === 0) return undefined;
+
+  const selectedModel = models[0];
+  const providerConfig = {
+    npm: '@ai-sdk/anthropic',
+    options: {
+      apiKey: token,
+      baseURL: normalizeAnthropicBaseUrl(baseUrl),
+    },
+    models: Object.fromEntries(models.map((model) => [model, { name: model }])),
+  };
+  const config = {
+    $schema: 'https://opencode.ai/config.json',
+    model: `${spec.providerId}/${selectedModel}`,
+    provider: {
+      [spec.providerId]: providerConfig,
+    },
+  };
+
+  return withOpenCodeConfig({
+    id: `opencode-cc-switch-${safeId(spec.providerId)}-${safeId(selectedModel)}`,
+    name: `${spec.displayName} (OpenCode)`,
+    runtime: 'opencode',
+    model: `${spec.providerId}/${selectedModel}`,
+    source: 'cc-switch',
+  }, config);
+}
+
+function opencodeBridgeSpec(rowId: string, name: string): OpenCodeBridgeSpec | undefined {
+  const normalized = `${rowId} ${name}`.toLowerCase();
+  if (normalized.includes('kimi')) {
+    return {
+      providerId: 'kimi-for-coding',
+      displayName: 'Kimi',
+      extraModels: ['k2p5'],
+    };
+  }
+  if (normalized.includes('minimax') || normalized.includes('mini max')) {
+    return {
+      providerId: 'minimax-cn-coding-plan',
+      displayName: 'MiniMax',
+      extraModels: ['MiniMax-M2.7'],
+    };
+  }
+  if (normalized.includes('zhipu') || normalized.includes('glm')) {
+    return {
+      providerId: 'zai-coding-plan',
+      displayName: 'Zhipu GLM',
+    };
+  }
+  return undefined;
+}
+
+function buildOpenCodeConfig(providerId: string, model: string | undefined, settings: CcSwitchSettingsConfig): Record<string, unknown> | undefined {
+  if (!isRecord(settings.models)) return undefined;
+  const configProvider = {
+    npm: typeof settings.npm === 'string' ? settings.npm : undefined,
+    options: isRecord(settings.options) ? settings.options : undefined,
+    models: settings.models,
+  };
+  return {
+    $schema: 'https://opencode.ai/config.json',
+    ...(model ? { model: `${providerId}/${model}` } : {}),
+    provider: {
+      [providerId]: configProvider,
+    },
+  };
+}
+
+function parseSettingsConfig(settingsConfig: unknown): CcSwitchSettingsConfig | undefined {
   if (typeof settingsConfig !== 'string' || !settingsConfig.trim()) return undefined;
   try {
     const parsed = JSON.parse(settingsConfig);
-    if (!parsed || typeof parsed !== 'object') return undefined;
-    const config = (parsed as { config?: unknown }).config;
-    if (!config || typeof config !== 'object') return undefined;
-    const model = (config as { model?: unknown; default_model?: unknown }).model
-      ?? (config as { model?: unknown; default_model?: unknown }).default_model;
-    return typeof model === 'string' && model.trim() ? model.trim() : undefined;
+    return isRecord(parsed) ? parsed as CcSwitchSettingsConfig : undefined;
   } catch {
     return undefined;
   }
+}
+
+function stringField(source: unknown, key: string): string | undefined {
+  if (!isRecord(source)) return undefined;
+  const value = source[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeAnthropicBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`;
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const item = value?.trim();
+    if (!item || seen.has(item)) continue;
+    seen.add(item);
+    result.push(item);
+  }
+  return result;
+}
+
+function safeId(value: string): string {
+  const id = value.trim().replace(/[^A-Za-z0-9_.-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return id || 'local';
+}
+
+function withOpenCodeConfig(provider: LocalRuntimeProvider, config: Record<string, unknown>): LocalRuntimeProvider {
+  Object.defineProperty(provider, 'opencodeConfig', {
+    value: config,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return provider;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

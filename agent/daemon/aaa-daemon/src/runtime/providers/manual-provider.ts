@@ -5,6 +5,7 @@ interface ManualRuntimeProviderInput {
   name?: unknown;
   runtime?: unknown;
   model?: unknown;
+  agent?: unknown;
   command?: unknown;
   commandArgs?: unknown;
 }
@@ -13,6 +14,7 @@ const SUPPORTED_MANUAL_RUNTIMES = new Set<LocalRuntimeProviderRuntime>([
   'claude_code',
   'codex',
   'codex_acp',
+  'opencode',
 ]);
 
 export function loadManualRuntimeProviders(env: NodeJS.ProcessEnv): LocalRuntimeProvider[] {
@@ -54,6 +56,7 @@ function parseManualRuntimeProvider(input: unknown): LocalRuntimeProvider | unde
     name,
     runtime,
     model: typeof item.model === 'string' && item.model.trim() ? item.model.trim() : undefined,
+    ...(typeof item.agent === 'string' && item.agent.trim() ? { agent: item.agent.trim() } : {}),
     command: typeof item.command === 'string' && item.command.trim() ? item.command.trim() : undefined,
     commandArgs,
     source: 'manual',

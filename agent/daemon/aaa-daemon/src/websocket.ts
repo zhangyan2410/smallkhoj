@@ -53,10 +53,7 @@ export class WebSocketManager extends EventEmitter {
     console.log(`[WS] Connecting to ${connectUrl}...`);
 
     this.ws = new WebSocket(connectUrl, {
-      headers: {
-        'Authorization': `Bearer ${this.credential.token}`,
-        'X-Agent-Id': this.credential.agentId,
-      },
+      headers: buildWebSocketHeaders(this.credential),
     });
 
     this.ws.on('open', () => {
@@ -86,6 +83,17 @@ export class WebSocketManager extends EventEmitter {
       this.stopActivityHeartbeat();
       console.log(`[WS] Closed: ${code} ${reason.toString()}`);
       this.emit('event', { type: 'disconnected', reason: `${code}: ${reason.toString()}` });
+      this.scheduleReconnect();
+    });
+
+    this.ws.on('unexpected-response', (_request, response) => {
+      const reason = `HTTP ${response.statusCode ?? 'unknown'} ${response.statusMessage ?? ''}`.trim();
+      this._connected = false;
+      this.stopActivityHeartbeat();
+      console.error(`[WS] Unexpected response: ${reason}`);
+      response.resume();
+      this.emit('event', { type: 'error', error: `Unexpected response: ${reason}` });
+      this.emit('event', { type: 'disconnected', reason: `unexpected-response ${reason}` });
       this.scheduleReconnect();
     });
 
@@ -162,6 +170,14 @@ export function parseWebSocketPayload(text: string): WebSocketManagerEvent[] {
 
 export function buildActivityPayload(status: string): WebSocketActivityPayload {
   return { type: 'activity', status, at: new Date().toISOString() };
+}
+
+export function buildWebSocketHeaders(credential: Credential): Record<string, string> {
+  return {
+    'Authorization': `Bearer ${credential.token}`,
+    'X-Agent-Id': credential.agentId,
+    ...(credential.computerId ? { 'X-Computer-Id': credential.computerId } : {}),
+  };
 }
 
 export function buildAckPayload(message: unknown): Record<string, unknown> | null {

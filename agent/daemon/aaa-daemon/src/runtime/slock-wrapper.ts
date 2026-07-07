@@ -12,6 +12,8 @@ export interface SlockWrapperOptions {
   cliPath?: string;
   tokenHome?: string;
   launchId?: string;
+  allowWrites?: boolean;
+  writeTargetAllowlist?: string;
 }
 
 export interface SlockWrapperResult {
@@ -64,6 +66,18 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
   seedMemoryFile(options.workspacePath);
   writeFileSync(tokenFile, options.proxyToken, 'utf-8');
 
+  const writeTargetAllowlist = options.writeTargetAllowlist?.trim();
+  const writeGateEnv = {
+    ...(options.allowWrites ? {
+      SLOCK_ALLOW_WRITES: '1',
+      AAA_DAEMON_ALLOW_WRITES: '1',
+    } : {}),
+    ...(writeTargetAllowlist ? {
+      SLOCK_WRITE_TARGET_ALLOWLIST: writeTargetAllowlist,
+      AAA_DAEMON_WRITE_TARGET_ALLOWLIST: writeTargetAllowlist,
+    } : {}),
+  };
+
   const commonEnv = {
     SLOCK_AGENT_PROXY_URL: options.proxyUrl,
     SLOCK_AGENT_PROXY_TOKEN_FILE: tokenFile,
@@ -71,46 +85,49 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
     SLOCK_AGENT_ID: options.credential.agentId,
     SLOCK_SERVER_URL: options.credential.serverUrl,
     SLOCK_CURRENT_WORKSPACE_PATH: options.workspacePath,
+    ...writeGateEnv,
   };
 
   const bashWrapper = join(wrapperDir, 'slock');
-  writeFileSync(bashWrapper, [
+  const bashEnvLines = Object.entries(commonEnv).map(([name, value]) => (
+    `${name}=${quotePosix(value)} \\`
+  ));
+  const bashWrapperContent = [
     '#!/usr/bin/env bash',
-    `SLOCK_AGENT_PROXY_URL=${quotePosix(commonEnv.SLOCK_AGENT_PROXY_URL)} \\`,
-    `SLOCK_AGENT_PROXY_TOKEN_FILE=${quotePosix(commonEnv.SLOCK_AGENT_PROXY_TOKEN_FILE)} \\`,
-    `SLOCK_AGENT_ACTIVE_CAPABILITIES=${quotePosix(commonEnv.SLOCK_AGENT_ACTIVE_CAPABILITIES)} \\`,
-    `SLOCK_AGENT_ID=${quotePosix(commonEnv.SLOCK_AGENT_ID)} \\`,
-    `SLOCK_SERVER_URL=${quotePosix(commonEnv.SLOCK_SERVER_URL)} \\`,
-    `SLOCK_CURRENT_WORKSPACE_PATH=${quotePosix(commonEnv.SLOCK_CURRENT_WORKSPACE_PATH)} \\`,
+    ...bashEnvLines,
     `exec ${quotePosix(process.execPath)} ${quotePosix(cliPath)} "$@"`,
     '',
-  ].join('\n'), 'utf-8');
+  ].join('\n');
+  writeFileSync(bashWrapper, bashWrapperContent, 'utf-8');
   chmodSync(bashWrapper, 0o755);
+  const raftBashWrapper = join(wrapperDir, 'raft');
+  writeFileSync(raftBashWrapper, bashWrapperContent, 'utf-8');
+  chmodSync(raftBashWrapper, 0o755);
 
   const cmdWrapper = join(wrapperDir, 'slock.cmd');
-  writeFileSync(cmdWrapper, [
+  const cmdEnvLines = Object.entries(commonEnv).map(([name, value]) => (
+    `set "${name}=${value}"`
+  ));
+  const cmdWrapperContent = [
     '@echo off',
-    `set "SLOCK_AGENT_PROXY_URL=${commonEnv.SLOCK_AGENT_PROXY_URL}"`,
-    `set "SLOCK_AGENT_PROXY_TOKEN_FILE=${commonEnv.SLOCK_AGENT_PROXY_TOKEN_FILE}"`,
-    `set "SLOCK_AGENT_ACTIVE_CAPABILITIES=${commonEnv.SLOCK_AGENT_ACTIVE_CAPABILITIES}"`,
-    `set "SLOCK_AGENT_ID=${commonEnv.SLOCK_AGENT_ID}"`,
-    `set "SLOCK_SERVER_URL=${commonEnv.SLOCK_SERVER_URL}"`,
-    `set "SLOCK_CURRENT_WORKSPACE_PATH=${commonEnv.SLOCK_CURRENT_WORKSPACE_PATH}"`,
+    ...cmdEnvLines,
     `"${process.execPath}" "${cliPath}" %*`,
     '',
-  ].join('\r\n'), 'utf-8');
+  ].join('\r\n');
+  writeFileSync(cmdWrapper, cmdWrapperContent, 'utf-8');
+  writeFileSync(join(wrapperDir, 'raft.cmd'), cmdWrapperContent, 'utf-8');
 
   const psWrapper = join(wrapperDir, 'slock.ps1');
-  writeFileSync(psWrapper, [
-    `$env:SLOCK_AGENT_PROXY_URL='${quotePowerShell(commonEnv.SLOCK_AGENT_PROXY_URL)}'`,
-    `$env:SLOCK_AGENT_PROXY_TOKEN_FILE='${quotePowerShell(commonEnv.SLOCK_AGENT_PROXY_TOKEN_FILE)}'`,
-    `$env:SLOCK_AGENT_ACTIVE_CAPABILITIES='${quotePowerShell(commonEnv.SLOCK_AGENT_ACTIVE_CAPABILITIES)}'`,
-    `$env:SLOCK_AGENT_ID='${quotePowerShell(commonEnv.SLOCK_AGENT_ID)}'`,
-    `$env:SLOCK_SERVER_URL='${quotePowerShell(commonEnv.SLOCK_SERVER_URL)}'`,
-    `$env:SLOCK_CURRENT_WORKSPACE_PATH='${quotePowerShell(commonEnv.SLOCK_CURRENT_WORKSPACE_PATH)}'`,
+  const psEnvLines = Object.entries(commonEnv).map(([name, value]) => (
+    `$env:${name}='${quotePowerShell(value)}'`
+  ));
+  const psWrapperContent = [
+    ...psEnvLines,
     `& '${quotePowerShell(process.execPath)}' '${quotePowerShell(cliPath)}' @args`,
     '',
-  ].join('\n'), 'utf-8');
+  ].join('\n');
+  writeFileSync(psWrapper, psWrapperContent, 'utf-8');
+  writeFileSync(join(wrapperDir, 'raft.ps1'), psWrapperContent, 'utf-8');
 
   return { slockHome: wrapperDir, launchId, wrapperDir, tokenFile, bashWrapper, cmdWrapper, psWrapper };
 }
