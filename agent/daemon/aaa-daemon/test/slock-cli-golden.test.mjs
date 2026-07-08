@@ -445,3 +445,183 @@ test('golden: --format json before command enters MVP path', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ===========================================================================
+// 8. Batch 2 canonical text golden tests
+// ===========================================================================
+
+test('golden: server info canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      id: 'srv-1', name: 'My Server',
+      channels: [{ name: 'general', joined: true, private: false, description: 'General chat' }],
+      agents: [{ name: 'bot', status: 'online', description: 'Helper' }],
+      humans: [{ name: 'alice', role: 'owner' }],
+    }));
+  });
+  try {
+    const result = await runCli(['server', 'info'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Server: My Server/);
+    assert.match(result.stdout, /#general \[public, joined\]/);
+    assert.match(result.stdout, /General chat/);
+    assert.match(result.stdout, /@bot \(online\)/);
+    assert.match(result.stdout, /@alice \[owner\]/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: message search canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      results: [
+        { target: '#general', msg: 'abc12345', time: '2026-07-08T10:00:00Z', sender: '@alice', content: 'hello world' },
+      ],
+    }));
+  });
+  try {
+    const result = await runCli(['message', 'search', '--query', 'hello'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /\[target=#general msg=abc12345 time=2026-07-08T10:00:00Z\] @alice: hello world/);
+    assert.doesNotMatch(result.stdout, /"results"/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: message resolve canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ target: '#general:abc12345', channel: '#general', threadId: 'abc12345' }));
+  });
+  try {
+    const result = await runCli(['message', 'resolve', '--message-id', 'abc12345'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Target: #general:abc12345/);
+    assert.match(result.stdout, /Channel: #general/);
+    assert.match(result.stdout, /Thread ID: abc12345/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: channel members canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      members: [
+        { name: 'alice', role: 'owner' },
+        { name: 'bot', type: 'agent', status: 'online' },
+      ],
+    }));
+  });
+  try {
+    const result = await runCli(['channel', 'members', '--channel', '#general'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /@alice \[owner\]/);
+    assert.match(result.stdout, /@bot.*\(online\)/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: thread read canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      messages: [
+        { target: '#general:abc12345', msg: 'def67890', time: '2026-07-08T11:00:00Z', sender: '@bob', content: 'reply' },
+      ],
+    }));
+  });
+  try {
+    const result = await runCli(['thread', 'read', '--thread-id', 'abc12345'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /\[target=#general:abc12345 msg=def67890 time=2026-07-08T11:00:00Z\] @bob: reply/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: message react --remove outputs removed not added', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ reacted: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['message', 'react', '--message-id', 'msg-1', '--reaction', '+1', '--remove'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Reaction removed\./);
+    assert.doesNotMatch(result.stdout, /Reaction added/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: channel join canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ joined: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['channel', 'join', '--target', '#general'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Joined channel\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: write-gate denial for message react', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(['message', 'react', '--message-id', 'msg-1', '--reaction', '+1'], baseEnv(root, server.url));
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: legacy short aliases work for migrated commands', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ results: [{ target: '#general', msg: 'x', time: 't', sender: '@a', content: 'hi' }] }));
+  });
+  try {
+    // -q alias for --query, -c alias for --channel
+    const result = await runCli(['message', 'search', '-q', 'hello', '-c', '#general', '--format', 'json'], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.ok(parsed.results);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

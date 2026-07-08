@@ -120,14 +120,16 @@ export function formatServerInfo(json: unknown): string {
   const data = json as {
     serverId?: string;
     serverName?: string;
+    name?: string;
+    id?: string;
     channels?: ChannelInfo[];
     agents?: AgentInfo[];
     humans?: HumanInfo[];
   };
   const lines: string[] = [];
 
-  if (data.serverName) {
-    lines.push(`Server: ${data.serverName}`);
+  if (data.serverName ?? data.name) {
+    lines.push(`Server: ${data.serverName ?? data.name}`);
   }
 
   if (data.channels && data.channels.length > 0) {

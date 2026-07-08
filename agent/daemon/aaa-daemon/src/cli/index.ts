@@ -89,7 +89,7 @@ function buildProgram(): Command {
 
   messageCmd.command('read').description('Read message history')
     .option('--channel <target>', 'Channel to read').option('--target <target>', 'Alias for --channel')
-    .option('--limit <n>', 'Max messages to fetch').action(async () => {});
+    .option('-c <target>', 'Short for --channel').option('--limit <n>', 'Max messages to fetch').action(async () => {});
 
   messageCmd.command('send').description('Send a message')
     .requiredOption('--target <target>', 'Message target (channel or dm:@user)')
@@ -97,23 +97,23 @@ function buildProgram(): Command {
     .action(async () => {});
 
   messageCmd.command('search').description('Search messages')
-    .option('--query <text>', 'Search query').option('--channel <target>', 'Filter by channel').option('--target <target>', 'Alias for --channel')
-    .option('--limit <n>', 'Max results').action(async () => {});
+    .option('--query <text>', 'Search query').option('-q <text>', 'Short for --query')
+    .option('--channel <target>', 'Filter by channel').option('--target <target>', 'Alias for --channel')
+    .option('-c <target>', 'Short for --channel').option('--limit <n>', 'Max results').action(async () => {});
 
   messageCmd.command('resolve').description('Resolve a message target')
-    .option('--message-id <id>', 'Message ID').option('--id <id>', 'Alias for --message-id').action(async () => {});
+    .option('--message-id <id>', 'Message ID').option('--message <id>', 'Alias for --message-id')
+    .option('-m <id>', 'Short for --message-id').option('--id <id>', 'Alias for --message-id').action(async () => {});
 
   messageCmd.command('react').description('Add or remove a reaction')
-    .option('--message-id <id>', 'Message ID').option('--id <id>', 'Alias for --message-id')
-    .option('--reaction <value>', 'Reaction emoji or value')
-    .option('--remove', 'Remove reaction instead of adding')
+    .option('--message-id <id>', 'Message ID').option('--message <id>', 'Alias for --message-id')
+    .option('-m <id>', 'Short for --message-id').option('--id <id>', 'Alias for --message-id')
+    .option('--reaction <value>', 'Reaction emoji or value').option('--emoji <value>', 'Alias for --reaction')
+    .option('-r <value>', 'Short for --reaction').option('--remove', 'Remove reaction instead of adding')
+    .option('--delete', 'Alias for --remove')
     .action(async () => {});
 
   // ── server ───────────────────────────────────────────────────
-  program.command('info').description('Server / workspace introspection')
-    .action(async () => {});
-  // server info is under 'server' group
-
   const serverCmd = program.command('server').description('Server operations');
   serverCmd.command('info').description('Server / workspace introspection').action(async () => {});
 
@@ -121,7 +121,8 @@ function buildProgram(): Command {
   const channelCmd = program.command('channel').description('Channel operations');
 
   channelCmd.command('members').description('List channel members')
-    .requiredOption('--channel <target>', 'Channel name').action(async () => {});
+    .requiredOption('--channel <target>', 'Channel name')
+    .option('--target <target>', 'Alias for --channel').option('-c <target>', 'Short for --channel').action(async () => {});
 
   channelCmd.command('join').description('Join a channel')
     .option('--target <target>', 'Channel to join')
@@ -159,7 +160,7 @@ function collectArray(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
-/** Metadata for each MVP command. */
+/** Metadata for each migrated command. */
 interface CommandMeta {
   /** Builds the proxy request from commander options + stdin. */
   buildRequest: (opts: Record<string, unknown>, config: ProxyConfig, env: NodeJS.ProcessEnv) => Promise<{
@@ -167,9 +168,10 @@ interface CommandMeta {
     path: string;
     body?: unknown;
     writeScope?: WriteScope;
+    [key: string]: unknown;
   }>;
   /** Formats the successful proxy response for text mode. */
-  formatText: (json: unknown) => string;
+  formatText: (json: unknown, opts?: Record<string, unknown>, request?: Record<string, unknown>) => string;
 }
 
 /** Shared memory scope validator (matches legacy requireMemoryScope). */
@@ -209,7 +211,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
   },
   'message read': {
     async buildRequest(opts, config) {
-      const channel = (opts.channel as string) ?? (opts.target as string);
+      const channel = (opts.channel as string) ?? (opts.target as string) ?? (opts.c as string);
       const limit = opts.limit as string | undefined;
       const query = new URLSearchParams();
       if (channel) query.set('channel', channel);
@@ -257,7 +259,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
     async buildRequest(opts, config) {
       const q = (opts.query as string) ?? (opts.q as string) ?? ((opts._positionals as string[]) ?? []).join(' ').trim();
       if (!q) throw new CliError('Missing --query', ErrorCodes.MISSING_QUERY.code, ErrorCodes.MISSING_QUERY.nextAction);
-      const channel = (opts.channel as string) ?? (opts.target as string);
+      const channel = (opts.channel as string) ?? (opts.target as string) ?? (opts.c as string);
       const limit = opts.limit as string | undefined;
       const query = new URLSearchParams();
       query.set('q', q);
@@ -269,7 +271,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
   },
   'message resolve': {
     async buildRequest(opts, config) {
-      const messageId = (opts.messageId as string) ?? (opts.id as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      const messageId = (opts.messageId as string) ?? (opts.message as string) ?? (opts.id as string) ?? (opts.m as string) ?? ((opts._positionals as string[]) ?? [])[0];
       if (!messageId) throw new CliError('Missing --message-id', ErrorCodes.MISSING_MESSAGE_ID.code, ErrorCodes.MISSING_MESSAGE_ID.nextAction);
       return { method: 'GET', path: `${agentPrefix(config.agentId)}/messages/${encodeURIComponent(messageId)}/resolve` };
     },
@@ -278,19 +280,23 @@ const COMMAND_META: Record<string, CommandMeta> = {
   'message react': {
     async buildRequest(opts, config) {
       const pos = (opts._positionals as string[]) ?? [];
-      const messageId = (opts.messageId as string) ?? (opts.id as string) ?? pos[0];
+      const messageId = (opts.messageId as string) ?? (opts.message as string) ?? (opts.id as string) ?? (opts.m as string) ?? pos[0];
       if (!messageId) throw new CliError('Missing --message-id', ErrorCodes.MISSING_MESSAGE_ID.code, ErrorCodes.MISSING_MESSAGE_ID.nextAction);
-      const reaction = (opts.reaction as string) ?? pos[1];
+      const reaction = (opts.reaction as string) ?? (opts.emoji as string) ?? (opts.r as string) ?? pos[1];
       if (!reaction) throw new CliError('Missing --reaction', ErrorCodes.MISSING_REACTION.code, ErrorCodes.MISSING_REACTION.nextAction);
-      const remove = opts.remove === true;
+      const remove = opts.remove === true || opts.delete === true;
       return {
         method: remove ? 'DELETE' : 'POST',
         path: `${agentPrefix(config.agentId)}/messages/${encodeURIComponent(messageId)}/reactions`,
         body: { reaction },
         writeScope: writeScope(messageId),
+        _isRemove: remove,
       };
     },
-    formatText: formatReact,
+    formatText: (json, _opts, request) => {
+      const isRemove = (request as Record<string, unknown>)?._isRemove === true;
+      return isRemove ? 'Reaction removed.\n' : 'Reaction added.\n';
+    },
   },
   // ── Batch 2: server info ──
   'server info': {
@@ -302,7 +308,8 @@ const COMMAND_META: Record<string, CommandMeta> = {
   // ── Batch 2: channel members/join/leave ──
   'channel members': {
     async buildRequest(opts, config) {
-      const channel = opts.channel as string;
+      const channel = (opts.channel as string) ?? (opts.target as string) ?? (opts.c as string);
+      if (!channel) throw new CliError('Missing --channel', ErrorCodes.MISSING_CHANNEL.code, ErrorCodes.MISSING_CHANNEL.nextAction);
       const query = new URLSearchParams();
       query.set('channel', channel);
       return { method: 'GET', path: `${agentPrefix(config.agentId)}/channel-members?${query}` };
@@ -363,7 +370,8 @@ const COMMAND_META: Record<string, CommandMeta> = {
 const VALUE_OPTIONS = new Set([
   '--format', '--limit', '--channel', '--target', '--scope', '--id', '--path',
   '--attachment-id', '--content', '--query', '--message-id', '--reaction',
-  '--thread-id', '--channel-id', '-t', '-c', '-q', '-s', '-m', '-r',
+  '--thread-id', '--channel-id', '--message', '--emoji',
+  '-t', '-c', '-q', '-s', '-m', '-r',
 ]);
 
 /** Check if argv matches a migrated command. Returns the meta key or null. */
@@ -526,7 +534,7 @@ async function handleMigratedCommand(
       // Try to parse JSON for canonical formatting
       try {
         const json = JSON.parse(response.text);
-        out.write(meta.formatText(json));
+        out.write(meta.formatText(json, commandOpts, req as Record<string, unknown>));
       } catch {
         // Non-JSON response, passthrough
         out.write(formatPassthrough(response.text));
