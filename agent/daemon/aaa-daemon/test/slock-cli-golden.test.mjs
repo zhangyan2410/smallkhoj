@@ -1049,15 +1049,17 @@ test('golden: reminder list canonical text output', async () => {
   const server = await startServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ reminders: [
-      { title: 'Standup', fireAt: '2026-07-09T09:00:00Z', repeat: 'daily', channel: '#general' },
-      { title: 'Review', done: true },
+      { title: 'Standup', fireAt: '2026-07-09T09:00:00Z', repeat: { cadence: 'daily' }, channel: '#general' },
+      { title: 'Review', status: 'done' },
     ]}));
   });
   try {
     const result = await runCli(['reminder', 'list'], baseEnv(root, server.url));
     assert.equal(result.code, 0);
-    assert.match(result.stdout, /Standup @ 2026-07-09T09:00:00Z \(daily\)/);
+    assert.match(result.stdout, /Standup @ 2026-07-09T09:00:00Z \(daily\) #general/);
     assert.match(result.stdout, /Review.*\[done\]/);
+    // Must NOT have ## (double hash)
+    assert.doesNotMatch(result.stdout, /##/);
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });
@@ -1145,6 +1147,25 @@ test('golden: integration login write-gate denial', async () => {
     const result = await runCli(['integration', 'login', '--service', 'github'], baseEnv(root, server.url));
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: reminder schedule invalid --delay-seconds returns INVALID_NUMBER', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['reminder', 'schedule', '--title', 'Bad', '--delay-seconds', 'abc'], env);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: INVALID_NUMBER/);
+    // Must NOT hit server
     assert.equal(server.requests.length, 0);
   } finally {
     await server.close();

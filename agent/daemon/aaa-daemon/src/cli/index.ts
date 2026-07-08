@@ -320,11 +320,14 @@ function parseJsonOptionValue(raw: string | undefined, name: string): unknown | 
   }
 }
 
-/** Convert a string to number or undefined. */
+/** Convert a string to number or undefined. Throws INVALID_NUMBER for non-numeric values. */
 function maybeNumberOpt(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const num = Number(value);
-  return Number.isFinite(num) ? num : undefined;
+  if (!Number.isFinite(num)) {
+    throw new CliError(`Expected numeric value, got ${value}`, 'INVALID_NUMBER');
+  }
+  return num;
 }
 
 /** Shared builder for reminder schedule/create. */

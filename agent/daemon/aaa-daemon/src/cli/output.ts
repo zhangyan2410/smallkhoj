@@ -370,8 +370,9 @@ interface ReminderInfo {
   id?: string;
   title?: string;
   fireAt?: string;
-  repeat?: string;
+  repeat?: string | { cadence?: string };
   channel?: string;
+  status?: string;
   done?: boolean;
 }
 
@@ -390,10 +391,15 @@ export function formatReminderList(json: unknown): string {
   const lines = reminders.map((r) => {
     const title = r.title ?? '(no title)';
     const fire = r.fireAt ? ` @ ${r.fireAt}` : '';
-    const repeat = r.repeat ? ` (${r.repeat})` : '';
-    const done = r.done ? ' [done]' : '';
-    const channel = r.channel ? ` #${r.channel}` : '';
-    return `  ${title}${fire}${repeat}${channel}${done}`;
+    // repeat can be string or { cadence: "daily" }
+    const repeatRaw = r.repeat;
+    const repeatStr = typeof repeatRaw === 'string' ? repeatRaw : repeatRaw?.cadence;
+    const repeat = repeatStr ? ` (${repeatStr})` : '';
+    // channel already includes # from backend
+    const channel = r.channel ? ` ${r.channel}` : '';
+    // status takes priority over done boolean
+    const status = r.status ? ` [${r.status}]` : r.done ? ' [done]' : '';
+    return `  ${title}${fire}${repeat}${channel}${status}`;
   });
   return lines.join('\n') + '\n';
 }
