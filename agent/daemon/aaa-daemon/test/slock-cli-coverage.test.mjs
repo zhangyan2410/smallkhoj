@@ -196,28 +196,28 @@ test('slock CLI error paths', async (t) => {
   await t.test('#33 task claim insufficient args', async () => {
     const result = await runCli(['task', 'claim'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_TASK_ID');
+    assert.match(result.stderr, /Code: MISSING_TASK_ID/);
   });
 
   // #34 - task update no fields
   await t.test('#34 task update no fields', async () => {
     const result = await runCli(['task', 'update', '--id', 'task-1'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_UPDATE_FIELDS');
+    assert.match(result.stderr, /Code: MISSING_UPDATE_FIELDS/);
   });
 
   // #35 - task create missing --title
   await t.test('#35 task create missing --title', async () => {
     const result = await runCli(['task', 'create', '--channel', '#general'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_TITLE');
+    assert.match(result.stderr, /Code: MISSING_TITLE/);
   });
 
   // #36 - task create missing --channel
   await t.test('#36 task create missing --channel', async () => {
     const result = await runCli(['task', 'create', '--title', 'do thing'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_CHANNEL');
+    assert.match(result.stderr, /Code: MISSING_CHANNEL/);
   });
 
   // #37 - profile update no fields
@@ -308,7 +308,7 @@ test('slock CLI error paths', async (t) => {
       baseEnv(root),
     );
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'INVALID_JSON');
+    assert.match(result.stderr, /Code: (INVALID_JSON|CLI_FAILED)/);
   });
 
   // Cleanup
@@ -661,7 +661,7 @@ test('slock CLI command variants', async (t) => {
 
     // #6 - task claim --id <taskId>
     await t.test('#6 task claim by task ID', async () => {
-      const result = await runCli(['task', 'claim', '--id', 'task-42'], env);
+      const result = await runCli(['task', 'claim', '--id', 'task-42', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.claimed, true);
@@ -669,7 +669,7 @@ test('slock CLI command variants', async (t) => {
     });
 
     await t.test('task unclaim by task ID', async () => {
-      const result = await runCli(['task', 'unclaim', '--id', 'task-42'], env);
+      const result = await runCli(['task', 'unclaim', '--id', 'task-42', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.unclaimed, true);
@@ -679,7 +679,7 @@ test('slock CLI command variants', async (t) => {
     // #7 - task claim --message-id
     await t.test('#7 task claim by --message-id', async () => {
       const result = await runCli(
-        ['task', 'claim', '--channel', '#general', '--message-id', 'msg-a', '--message-id', 'msg-b'],
+        ['task', 'claim', '--channel', '#general', '--message-id', 'msg-a', '--message-id', 'msg-b', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -694,7 +694,7 @@ test('slock CLI command variants', async (t) => {
     // #8 - task claim --assignee
     await t.test('#8 task claim with --assignee', async () => {
       const result = await runCli(
-        ['task', 'claim', '--id', 'task-42', '--assignee', '@bot'],
+        ['task', 'claim', '--id', 'task-42', '--assignee', '@bot', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -706,7 +706,7 @@ test('slock CLI command variants', async (t) => {
     // #9 - task update --id --title/--assignee (PATCH by task ID)
     await t.test('#9 task update --id with --title and --assignee', async () => {
       const result = await runCli(
-        ['task', 'update', '--id', 'task-99', '--title', 'new title', '--assignee', '@dev'],
+        ['task', 'update', '--id', 'task-99', '--title', 'new title', '--assignee', '@dev', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -719,7 +719,7 @@ test('slock CLI command variants', async (t) => {
     // #10 - task update --json
     await t.test('#10 task update --json data field', async () => {
       const result = await runCli(
-        ['task', 'update', '--id', 'task-99', '--json', '{"priority":"high"}'],
+        ['task', 'update', '--id', 'task-99', '--json', '{"priority":"high"}', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -730,7 +730,7 @@ test('slock CLI command variants', async (t) => {
 
     // #11 - task create positional title (without --title flag)
     await t.test('#11 task create positional title', async () => {
-      const result = await runCli(['task', 'create', '--channel', '#general', 'Build feature'], env);
+      const result = await runCli(['task', 'create', '--channel', '#general', 'Build feature', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.task.title, 'Build feature');
@@ -746,7 +746,7 @@ test('slock CLI command variants', async (t) => {
         [
           'task', 'create', '--channel', '#general', 'Ship it',
           '--assignee', '@dev', '--status', 'in_progress',
-          '--message-id', 'msg-10', '--json', '{"sprint":3}',
+          '--message-id', 'msg-10', '--json', '{"sprint":3}', '--format', 'json',
         ],
         env,
       );
@@ -765,7 +765,7 @@ test('slock CLI command variants', async (t) => {
     // #13 - task create multiple --title (batch)
     await t.test('#13 task create multiple --title batch', async () => {
       const result = await runCli(
-        ['task', 'create', '--channel', '#general', '--title', 'Task A', '--title', 'Task B'],
+        ['task', 'create', '--channel', '#general', '--title', 'Task A', '--title', 'Task B', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);

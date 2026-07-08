@@ -181,7 +181,7 @@ test('slock CLI parity commands map to canonical local proxy endpoints', async (
 
     assert.equal((await runCli(['message', 'resolve', 'msg-1'], env)).code, 0);
     assert.equal((await runCli(['thread', 'unfollow', '--target', '#general:msg-1'], env)).code, 0);
-    assert.equal((await runCli(['task', 'unclaim', '--id', 'task-1'], env)).code, 0);
+    assert.equal((await runCli(['task', 'unclaim', '--id', 'task-1', '--format', 'json'], env)).code, 0);
     assert.equal((await runCli(['profile', 'show', '--handle', '@alice'], env)).code, 0);
     assert.equal((await runCli(['reminder', 'snooze', '--id', 'rem-1', '--delay-seconds', '300'], env)).code, 0);
     assert.equal((await runCli(['reminder', 'log', '--id', 'rem-1'], env)).code, 0);
@@ -1503,7 +1503,7 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(check.code, 0, check.stderr);
     assert.deepEqual(JSON.parse(check.stdout), { events: [], since: 'latest', limit: '5' });
 
-    const tasks = await runCli(['task', 'list', '--channel', '#general'], env);
+    const tasks = await runCli(['task', 'list', '--channel', '#general', '--format', 'json'], env);
     assert.equal(tasks.code, 0, tasks.stderr);
     assert.deepEqual(JSON.parse(tasks.stdout), { tasks: [], channel: '#general' });
 
@@ -1527,15 +1527,15 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(reminders.code, 0, reminders.stderr);
     assert.deepEqual(JSON.parse(reminders.stdout), { reminders: [] });
 
-    const createTask = await runCli(['task', 'create', '--channel', '#general', '--title', 'Ship CLI'], env);
+    const createTask = await runCli(['task', 'create', '--channel', '#general', '--title', 'Ship CLI', '--format', 'json'], env);
     assert.equal(createTask.code, 0, createTask.stderr);
     assert.deepEqual(JSON.parse(createTask.stdout), { task: { channel: '#general', tasks: [{ title: 'Ship CLI' }] } });
 
-    const claimTask = await runCli(['task', 'claim', '--channel', '#general', '--number', '1'], env);
+    const claimTask = await runCli(['task', 'claim', '--channel', '#general', '--number', '1', '--format', 'json'], env);
     assert.equal(claimTask.code, 0, claimTask.stderr);
     assert.deepEqual(JSON.parse(claimTask.stdout), { claimed: true, body: { channel: '#general', task_numbers: [1] } });
 
-    const updateTask = await runCli(['task', 'update', '--channel', '#general', '--number', '1', '--status', 'done'], env);
+    const updateTask = await runCli(['task', 'update', '--channel', '#general', '--number', '1', '--status', 'done', '--format', 'json'], env);
     assert.equal(updateTask.code, 0, updateTask.stderr);
     assert.deepEqual(JSON.parse(updateTask.stdout), { updated: true, body: { channel: '#general', task_number: 1, status: 'done' } });
 

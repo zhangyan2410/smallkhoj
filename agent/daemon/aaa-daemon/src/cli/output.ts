@@ -285,6 +285,51 @@ export function formatThreadUnfollow(_json: unknown): string {
   return 'Thread unfollowed.\n';
 }
 
+// ─── Task formatting ────────────────────────────────────────────
+
+interface TaskInfo {
+  number?: number;
+  title?: string;
+  status?: string;
+  assignee?: string;
+  channel?: string;
+}
+
+/** Format task list response. */
+export function formatTaskList(json: unknown): string {
+  let tasks: TaskInfo[];
+  if (Array.isArray(json)) {
+    tasks = json as TaskInfo[];
+  } else {
+    const data = json as { tasks?: TaskInfo[] };
+    tasks = data.tasks ?? [];
+  }
+  if (tasks.length === 0) {
+    return 'No tasks.\n';
+  }
+  const lines = tasks.map((t) => {
+    const num = t.number ?? '?';
+    const status = t.status ? ` [${t.status}]` : '';
+    const assigneeRaw = t.assignee ?? '';
+    const assignee = assigneeRaw ? ` ${assigneeRaw.startsWith('@') ? assigneeRaw : '@' + assigneeRaw}` : '';
+    return `  #${num}${status}${assignee} — ${t.title ?? ''}`;
+  });
+  return lines.join('\n') + '\n';
+}
+
+/** Format generic task action response. */
+export function formatTaskAction(_json: unknown, action: string): string {
+  const messages: Record<string, string> = {
+    claim: 'Task claimed.\n',
+    unclaim: 'Task unclaimed.\n',
+    update: 'Task updated.\n',
+    create: 'Task created.\n',
+    summary: 'Task summary written.\n',
+    promote: 'Task memory promoted.\n',
+  };
+  return messages[action] ?? 'Done.\n';
+}
+
 /** For commands not yet migrated to canonical formatting, pass through raw JSON. */
 export function formatPassthrough(text: string): string {
   return text.endsWith('\n') ? text : text + '\n';

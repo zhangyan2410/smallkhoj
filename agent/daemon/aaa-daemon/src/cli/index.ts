@@ -40,6 +40,8 @@ import {
   formatChannelAction,
   formatThreadRead,
   formatThreadUnfollow,
+  formatTaskList,
+  formatTaskAction,
   formatPassthrough,
 } from './output.js';
 import { readDaemonPackageVersion } from '../version.js';
@@ -155,11 +157,69 @@ function buildProgram(): Command {
     .requiredOption('--path <path>', 'Memory path')
     .action(async () => {});
 
+  // ── task ─────────────────────────────────────────────────────
+  const taskCmd = program.command('task').description('Task board operations');
+
+  taskCmd.command('list').description('List tasks')
+    .option('--channel <target>', 'Filter by channel').option('--status <status>', 'Filter by status')
+    .action(async () => {});
+
+  taskCmd.command('create').description('Create a task')
+    .option('--title <title>', 'Task title (repeatable for batch)', collectArray, [])
+    .option('--channel <target>', 'Channel').option('--assignee <id>', 'Assignee').option('-a <id>', 'Short for --assignee')
+    .option('--status <status>', 'Initial status').option('--message-id <id>', 'Source message ID')
+    .option('--json <data>', 'JSON data payload')
+    .action(async () => {});
+
+  taskCmd.command('claim').description('Claim a task')
+    .option('--channel <target>', 'Channel').option('--number <n>', 'Task number (repeatable)', collectArray, [])
+    .option('--message-id <id>', 'Message ID (repeatable)', collectArray, [])
+    .option('--id <id>', 'Task ID').option('--task-id <id>', 'Alias for --id')
+    .option('--assignee <id>', 'Assignee').option('-a <id>', 'Short for --assignee')
+    .action(async () => {});
+
+  taskCmd.command('unclaim').description('Unclaim a task')
+    .option('--channel <target>', 'Channel').option('--number <n>', 'Task number')
+    .option('--id <id>', 'Task ID').option('--task-id <id>', 'Alias for --id')
+    .action(async () => {});
+
+  taskCmd.command('update').description('Update a task')
+    .option('--channel <target>', 'Channel').option('--number <n>', 'Task number')
+    .option('--id <id>', 'Task ID').option('--task-id <id>', 'Alias for --id')
+    .option('--status <status>', 'New status').option('--title <title>', 'New title')
+    .option('--assignee <id>', 'New assignee').option('-a <id>', 'Short for --assignee')
+    .option('--json <data>', 'JSON data payload')
+    .action(async () => {});
+
+  taskCmd.command('summary').description('Write task memory summary (smallkhoj extension)')
+    .option('--id <id>', 'Task ID').option('--task-id <id>', 'Alias for --id')
+    .option('--summary <text>', 'Summary text').option('--final-summary <text>', 'Alias for --summary')
+    .option('--text <text>', 'Alias for --summary').option('--progress <text>', 'Progress description')
+    .option('--evidence <text>', 'Evidence (repeatable)', collectArray, [])
+    .option('--artifact <text>', 'Artifact (repeatable)', collectArray, [])
+    .option('--next-step <text>', 'Next step (repeatable)', collectArray, [])
+    .action(async () => {});
+
+  taskCmd.command('promote').description('Promote task memory to channel (smallkhoj extension)')
+    .option('--id <id>', 'Task ID').option('--task-id <id>', 'Alias for --id')
+    .option('--source-path <path>', 'Source memory path').option('--path <path>', 'Alias for --source-path')
+    .option('--channel-path <path>', 'Channel memory path').option('--reason <text>', 'Promotion reason')
+    .option('--proposal', 'Create as proposal')
+    .action(async () => {});
+
   return program;
 }
 
 function collectArray(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function requirePositiveInteger(raw: string, name: string): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+    throw new CliError(`${name} must be a positive integer; got ${raw}`, 'INVALID_NUMBER');
+  }
+  return value;
 }
 
 /** Metadata for each migrated command. */
@@ -366,6 +426,162 @@ const COMMAND_META: Record<string, CommandMeta> = {
     },
     formatText: formatThreadUnfollow,
   },
+  // ── Batch 3: task commands ──
+  'task list': {
+    async buildRequest(opts, config) {
+      const channel = opts.channel as string | undefined;
+      const status = opts.status as string | undefined;
+      const query = new URLSearchParams();
+      if (channel) query.set('channel', channel);
+      if (status) query.set('status', status);
+      const suffix = query.toString();
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/tasks${suffix ? `?${suffix}` : ''}` };
+    },
+    formatText: formatTaskList,
+  },
+  'task create': {
+    async buildRequest(opts, config) {
+      const titles = (opts.title as string[]) ?? [];
+      const pos = (opts._positionals as string[]) ?? [];
+      const title = titles[0] ?? pos.join(' ').trim();
+      const channel = opts.channel as string;
+      if (!title) throw new CliError('Missing --title', ErrorCodes.MISSING_TITLE.code, ErrorCodes.MISSING_TITLE.nextAction);
+      if (!channel) throw new CliError('Missing --channel', ErrorCodes.MISSING_CHANNEL.code, ErrorCodes.MISSING_CHANNEL.nextAction);
+      const body = titles.length > 0
+        ? { channel, tasks: titles.map((item) => ({ title: item })) }
+        : compactBody({
+            title,
+            channel,
+            assignee: (opts.assignee as string) ?? (opts.a as string),
+            status: opts.status as string,
+            messageId: opts.messageId as string,
+            data: opts.json ? JSON.parse(opts.json as string) : undefined,
+          });
+      return { method: 'POST', path: `${agentPrefix(config.agentId)}/tasks`, body, writeScope: writeScope(channel) };
+    },
+    formatText: (json) => formatTaskAction(json, 'create'),
+  },
+  'task claim': {
+    async buildRequest(opts, config) {
+      const channel = opts.channel as string | undefined;
+      const numbers = ((opts.number as string[]) ?? []).map((raw) => requirePositiveInteger(raw, '--number'));
+      const messageIds = (opts.messageId as string[]) ?? [];
+      if (channel && (numbers.length > 0 || messageIds.length > 0)) {
+        return {
+          method: 'POST',
+          path: `${agentPrefix(config.agentId)}/tasks/claim`,
+          body: compactBody({ channel, task_numbers: numbers.length > 0 ? numbers : undefined, message_ids: messageIds.length > 0 ? messageIds : undefined }),
+          writeScope: writeScope(channel),
+        };
+      }
+      const taskId = (opts.id as string) ?? (opts.taskId as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!taskId) throw new CliError('Missing --id or --channel with --number/--message-id', ErrorCodes.MISSING_TASK_ID.code, ErrorCodes.MISSING_TASK_ID.nextAction);
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/tasks/${encodeURIComponent(taskId)}/claim`,
+        body: compactBody({ assignee: (opts.assignee as string) ?? (opts.a as string) }),
+        writeScope: writeScope(taskId),
+      };
+    },
+    formatText: (json) => formatTaskAction(json, 'claim'),
+  },
+  'task unclaim': {
+    async buildRequest(opts, config) {
+      const channel = opts.channel as string | undefined;
+      const number = opts.number as string | undefined;
+      if (channel && number && !opts.id && !opts.taskId) {
+        return {
+          method: 'POST',
+          path: `${agentPrefix(config.agentId)}/tasks/update-status`,
+          body: { channel, task_number: requirePositiveInteger(number, '--number'), status: 'todo' },
+          writeScope: writeScope(channel),
+        };
+      }
+      const taskId = (opts.id as string) ?? (opts.taskId as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!taskId) throw new CliError('Missing --id or --channel with --number', ErrorCodes.MISSING_TASK_ID.code, ErrorCodes.MISSING_TASK_ID.nextAction);
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/tasks/${encodeURIComponent(taskId)}/unclaim`,
+        writeScope: writeScope(taskId),
+      };
+    },
+    formatText: (json) => formatTaskAction(json, 'unclaim'),
+  },
+  'task update': {
+    async buildRequest(opts, config) {
+      const channel = opts.channel as string | undefined;
+      const number = opts.number as string | undefined;
+      const status = opts.status as string | undefined;
+      if (channel && number && status && !opts.id && !opts.taskId) {
+        return {
+          method: 'POST',
+          path: `${agentPrefix(config.agentId)}/tasks/update-status`,
+          body: { channel, task_number: requirePositiveInteger(number, '--number'), status },
+          writeScope: writeScope(channel),
+        };
+      }
+      const taskId = (opts.id as string) ?? (opts.taskId as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!taskId) throw new CliError('Missing --id', 'MISSING_TASK_ID', 'Specify the task with --id <id> or --channel with --number');
+      const body = compactBody({
+        title: opts.title as string,
+        status,
+        assignee: (opts.assignee as string) ?? (opts.a as string),
+        channel,
+        data: opts.json ? JSON.parse(opts.json as string) : undefined,
+      });
+      if (Object.keys(body).length === 0) throw new CliError('Missing task update fields', 'MISSING_UPDATE_FIELDS', 'Provide at least one of --status, --title, --assignee, --json');
+      return {
+        method: 'PATCH',
+        path: `${agentPrefix(config.agentId)}/tasks/${encodeURIComponent(taskId)}`,
+        body,
+        writeScope: writeScope(taskId, channel),
+      };
+    },
+    formatText: (json) => formatTaskAction(json, 'update'),
+  },
+  'task summary': {
+    async buildRequest(opts, config) {
+      const taskId = (opts.id as string) ?? (opts.taskId as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!taskId) throw new CliError('Missing task id', ErrorCodes.MISSING_TASK_ID.code, ErrorCodes.MISSING_TASK_ID.nextAction);
+      const inline = (opts.summary as string) ?? (opts.finalSummary as string) ?? (opts.text as string);
+      const finalSummary = inline || await readStdinText();
+      if (!finalSummary) throw new CliError('Missing --summary', 'MISSING_SUMMARY', 'Provide summary via --summary or stdin');
+      const evidence = (opts.evidence as string[]) ?? [];
+      const artifacts = (opts.artifact as string[]) ?? [];
+      const nextSteps = (opts.nextStep as string[]) ?? [];
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/tasks/${encodeURIComponent(taskId)}/memory/summary`,
+        body: compactBody({
+          finalSummary,
+          progress: opts.progress as string,
+          evidence: evidence.length > 0 ? evidence : undefined,
+          artifacts: artifacts.length > 0 ? artifacts : undefined,
+          nextSteps: nextSteps.length > 0 ? nextSteps : undefined,
+        }),
+        writeScope: writeScope(`task:${taskId}:memory`),
+      };
+    },
+    formatText: (json) => formatTaskAction(json, 'summary'),
+  },
+  'task promote': {
+    async buildRequest(opts, config) {
+      const taskId = (opts.id as string) ?? (opts.taskId as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!taskId) throw new CliError('Missing task id', ErrorCodes.MISSING_TASK_ID.code, ErrorCodes.MISSING_TASK_ID.nextAction);
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/tasks/${encodeURIComponent(taskId)}/memory/promote`,
+        body: compactBody({
+          sourcePath: (opts.sourcePath as string) ?? (opts.path as string),
+          channelPath: opts.channelPath as string,
+          reason: opts.reason as string,
+          proposal: opts.proposal === true || undefined,
+        }),
+        writeScope: writeScope(`task:${taskId}:memory`, opts.channelPath as string),
+      };
+    },
+    formatText: (json) => formatTaskAction(json, 'promote'),
+  },
 };
 
 /** Known options that take a value (to skip the value when scanning positionals). */
@@ -373,7 +589,10 @@ const VALUE_OPTIONS = new Set([
   '--format', '--limit', '--channel', '--target', '--scope', '--id', '--path',
   '--attachment-id', '--content', '--query', '--message-id', '--reaction',
   '--thread-id', '--channel-id', '--message', '--emoji',
-  '-t', '-c', '-q', '-s', '-m', '-r',
+  '--task-id', '--number', '--status', '--title', '--assignee', '--json',
+  '--summary', '--final-summary', '--text', '--progress', '--source-path',
+  '--channel-path', '--reason',
+  '-t', '-c', '-q', '-s', '-m', '-r', '-a',
 ]);
 
 /** Check if argv matches a migrated command. Returns the meta key or null. */

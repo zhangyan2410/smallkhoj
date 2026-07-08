@@ -691,3 +691,115 @@ test('golden: channel leave -c alias works', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ===========================================================================
+// 9. Batch 3: Task domain canonical text golden tests
+// ===========================================================================
+
+test('golden: task list canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ tasks: [
+      { number: 1, title: 'Fix bug', status: 'in_progress', assignee: '@alice' },
+      { number: 2, title: 'Write docs', status: 'todo' },
+    ]}));
+  });
+  try {
+    const result = await runCli(['task', 'list'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /#1 \[in_progress\] @alice — Fix bug/);
+    assert.match(result.stdout, /#2 \[todo\] — Write docs/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: task create canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ task: { title: 'New task' } }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['task', 'create', '--channel', '#general', '--title', 'New task'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Task created\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: task claim canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ claimed: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['task', 'claim', '--id', 'task-1'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Task claimed\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: task update canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ updated: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['task', 'update', '--id', 'task-1', '--status', 'done'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Task updated\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: task write-gate denial', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(['task', 'claim', '--id', 'task-1'], baseEnv(root, server.url));
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: task claim by channel+number canonical text', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ claimed: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['task', 'claim', '--channel', '#general', '--number', '3'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Task claimed\./);
+    // Verify proxy received correct request
+    assert.equal(server.requests[0].req.method, 'POST');
+    assert.equal(server.requests[0].req.url, '/internal/agent/agent-test/tasks/claim');
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
