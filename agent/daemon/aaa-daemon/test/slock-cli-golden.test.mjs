@@ -1277,3 +1277,48 @@ test('golden: memory write --scope bogus rejected locally', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('golden: memory search real backend shape (entries + contentText)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      scope: 'agent',
+      entries: [
+        { path: 'notes.md', contentText: 'Important notes about the project' },
+        { path: 'todo.md', contentText: 'Remember to fix the bug' },
+      ],
+    }));
+  });
+  try {
+    const result = await runCli(
+      ['memory', 'search', '--scope', 'agent', '--id', 'me', '--query', 'notes'],
+      baseEnv(root, server.url),
+    );
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /notes\.md: Important notes/);
+    assert.match(result.stdout, /todo\.md: Remember to fix/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: memory list-proposals alias works', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ proposals: [{ id: 'p1', path: 'notes.md', status: 'pending' }] }));
+  });
+  try {
+    const result = await runCli(
+      ['memory', 'list-proposals', '--scope', 'channel', '--id', 'ch-1'],
+      baseEnv(root, server.url),
+    );
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /p1 notes\.md \[pending\]/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

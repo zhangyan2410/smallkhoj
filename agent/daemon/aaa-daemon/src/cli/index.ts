@@ -199,6 +199,9 @@ function buildProgram(): Command {
   memoryCmd.command('proposals').description('List proposals (alias: list-proposals)')
     .requiredOption('--scope <type>', 'Memory scope').requiredOption('--id <scopeId>', 'Scope ID')
     .option('--status <status>', 'Filter by status').action(async () => {});
+  memoryCmd.command('list-proposals').description('Alias for proposals')
+    .requiredOption('--scope <type>', 'Memory scope').requiredOption('--id <scopeId>', 'Scope ID')
+    .option('--status <status>', 'Filter by status').action(async () => {});
 
   memoryCmd.command('accept-proposal').description('Accept a proposal')
     .option('--id <id>', 'Proposal ID').option('--proposal-id <id>', 'Alias for --id')
@@ -989,6 +992,16 @@ const COMMAND_META: Record<string, CommandMeta> = {
     formatText: formatMemoryPropose,
   },
   'memory proposals': {
+    async buildRequest(opts, config) {
+      const scope = validateMemoryScope(opts.scope as string);
+      const query = new URLSearchParams();
+      if (opts.status) query.set('status', opts.status as string);
+      const suffix = query.toString() ? `?${query}` : '';
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/memory/scopes/${scope}/${encodeURIComponent(opts.id as string)}/proposals${suffix}` };
+    },
+    formatText: formatMemoryProposals,
+  },
+  'memory list-proposals': {
     async buildRequest(opts, config) {
       const scope = validateMemoryScope(opts.scope as string);
       const query = new URLSearchParams();

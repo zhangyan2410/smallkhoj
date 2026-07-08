@@ -456,12 +456,19 @@ export function formatIntegrationLogin(_json: unknown): string {
 
 /** Format memory search response. */
 export function formatMemorySearch(json: unknown): string {
-  const data = json as { results?: Array<{ path?: string; content?: string; score?: number }> };
-  const results = data.results ?? [];
-  if (results.length === 0) {
+  // Backend returns { entries: [{ path, contentText, ... }] } or { results: [...] }
+  const data = json as {
+    entries?: Array<{ path?: string; contentText?: string; content?: string }>;
+    results?: Array<{ path?: string; contentText?: string; content?: string }>;
+  };
+  const items = data.entries ?? data.results ?? [];
+  if (items.length === 0) {
     return 'No results found.\n';
   }
-  const lines = results.map((r) => `  ${r.path ?? '?'}: ${(r.content ?? '').slice(0, 100)}`);
+  const lines = items.map((r) => {
+    const content = r.contentText ?? r.content ?? '';
+    return `  ${r.path ?? '?'}: ${content.slice(0, 100)}`;
+  });
   return lines.join('\n') + '\n';
 }
 
