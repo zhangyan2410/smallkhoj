@@ -314,7 +314,7 @@ After:  Attachment uploaded (id: att-new).
 
 ### 高影响（必须改 prompt）
 
-1. **所有使用 CLI 输出的地方**：默认输出从 JSON 变成文本。
+1. **所有使用 CLI 输出的地方**：默认输出从 JSON 变成文本（除 §1.5 三个特殊输出外）。
    如果 prompt 指示模型 `JSON.parse(slock output)`，必须改为 `--format json`
    或让模型按文本理解。
 
