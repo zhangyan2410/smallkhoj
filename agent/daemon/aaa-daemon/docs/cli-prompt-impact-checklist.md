@@ -13,7 +13,7 @@
 
 | 模式 | Before | After |
 |------|--------|-------|
-| 默认 | raw JSON passthrough | canonical 人类可读文本 |
+| 默认 | raw JSON passthrough | canonical 人类可读文本（见 §1.5 例外） |
 | `--format json` | — | raw JSON passthrough（兼容旧行为） |
 
 **Prompt 影响**：如果 runtime prompt 里解析 CLI 输出的 JSON，现在默认输出
@@ -46,6 +46,18 @@ After:  Error: Write-capable slock commands require SLOCK_ALLOW_WRITES=1
 
 所有错误输出中的 `sk_agent_*`、`sk_machine_*`、`sap_*`、`Bearer` token、
 credential 文件路径都会被替换为 `<redacted>`。
+
+### 1.5 例外：仍然 passthrough / 特殊输出的命令
+
+以下命令不走 canonical 文本格式，即使不加 `--format json` 也是特殊输出：
+
+| 命令 | 输出方式 | 原因 |
+|------|----------|------|
+| `memory context` | raw JSON passthrough | 返回复杂的 context-manifest 结构，不适合简化为文本 |
+| `reminder log` | raw JSON passthrough | 返回 lifecycle entries 列表，保持 JSON |
+| `attachment download` | 二进制文件 + `{ok, output}` JSON | `--output` 时写文件并输出 JSON 状态；无 `--output` 时返回原始内容 |
+
+**Prompt 影响**：这三个命令的输出仍然需要按 JSON/二进制处理，不能假设是 canonical 文本。
 
 ---
 
@@ -189,6 +201,13 @@ Before: {"scope":"agent","entries":[{"path":"notes.md","contentText":"Important 
 After:    notes.md: Important notes
 ```
 
+### memory context
+
+```
+Before: {"scopeType":"agent","scopeId":"me","prompt":"...","topK":5,...}
+After:  （raw JSON passthrough — 见 §1.5）
+```
+
 ### memory write / propose / delete
 
 ```
@@ -236,6 +255,13 @@ After:    Standup @ 2026-07-09T09:00:00Z (daily) #general [pending]
 
 **注意**：status 现在显示 backend 的 label（pending/fired/cancelled），不只是 done。
 
+### reminder log
+
+```
+Before: {"reminderId":"rem-1","entries":[]}
+After:  （raw JSON passthrough — 见 §1.5）
+```
+
 ### reminder schedule / create / update / snooze / cancel
 
 ```
@@ -266,6 +292,13 @@ After:  ID: att-1
         Filename: report.pdf
         Type: application/pdf
         Size: 1024
+```
+
+### attachment download
+
+```
+Before: （二进制内容 + {ok:true, output:"file.bin"}）
+After:  （同 Before — 见 §1.5。--output 时写文件并输出 {ok, output} JSON）
 ```
 
 ### attachment upload
@@ -322,8 +355,10 @@ After:  Attachment uploaded (id: att-new).
 ## 五、测试验证状态
 
 - 245 tests pass, 0 fail
-- 65 golden tests 覆盖所有命令的 canonical 输出
-- `--format json` 在所有命令上验证 backward compatibility
+- 65 golden tests 覆盖主要已 canonical 化命令的成功/错误/写门输出
+- `--format json` 在主要命令上验证 backward compatibility
 - write-gate denial 在所有写命令上验证
 - credential redaction 验证
 - INVALID_JSON/INVALID_SCOPE/INVALID_PATH 本地校验验证
+
+> 注：alias 去重后 46 条产品命令；含 alias（如 remove、list-proposals、create 等）共 48 个 COMMAND_META key。
