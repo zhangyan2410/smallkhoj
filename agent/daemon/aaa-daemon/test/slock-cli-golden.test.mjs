@@ -803,3 +803,106 @@ test('golden: task claim by channel+number canonical text', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ===========================================================================
+// 10. Batch 3 fix: task unclaim/summary/promote golden + INVALID_JSON
+// ===========================================================================
+
+test('golden: task unclaim canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ unclaimed: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['task', 'unclaim', '--id', 'task-1'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Task unclaimed\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: task summary canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(
+      ['task', 'summary', '--id', 'task-1', '--summary', 'Work completed successfully.'],
+      env,
+    );
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Task summary written\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: task promote canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ promoted: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(
+      ['task', 'promote', '--id', 'task-1', '--source-path', 'progress.md', '--channel-path', 'shared.md'],
+      env,
+    );
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Task memory promoted\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: task summary write-gate denial (task:memory scope)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(
+      ['task', 'summary', '--id', 'task-1', '--summary', 'test'],
+      baseEnv(root, server.url),
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: task update --json invalid returns INVALID_JSON not CLI_FAILED', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(
+      ['task', 'update', '--id', 'task-1', '--json', '{invalid'],
+      env,
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: INVALID_JSON/);
+    assert.doesNotMatch(result.stderr, /CLI_FAILED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

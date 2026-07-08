@@ -222,6 +222,16 @@ function requirePositiveInteger(raw: string, name: string): number {
   return value;
 }
 
+/** Parse a --json option value, throwing INVALID_JSON on failure (matches legacy contract). */
+function parseJsonOptionValue(raw: string | undefined, name: string): unknown | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new CliError(`Invalid ${name} JSON: ${raw}`, 'INVALID_JSON', `Provide valid JSON for ${name}`);
+  }
+}
+
 /** Metadata for each migrated command. */
 interface CommandMeta {
   /** Builds the proxy request from commander options + stdin. */
@@ -455,7 +465,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
             assignee: (opts.assignee as string) ?? (opts.a as string),
             status: opts.status as string,
             messageId: opts.messageId as string,
-            data: opts.json ? JSON.parse(opts.json as string) : undefined,
+            data: parseJsonOptionValue(opts.json as string, '--json'),
           });
       return { method: 'POST', path: `${agentPrefix(config.agentId)}/tasks`, body, writeScope: writeScope(channel) };
     },
@@ -527,7 +537,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
         status,
         assignee: (opts.assignee as string) ?? (opts.a as string),
         channel,
-        data: opts.json ? JSON.parse(opts.json as string) : undefined,
+        data: parseJsonOptionValue(opts.json as string, '--json'),
       });
       if (Object.keys(body).length === 0) throw new CliError('Missing task update fields', 'MISSING_UPDATE_FIELDS', 'Provide at least one of --status, --title, --assignee, --json');
       return {

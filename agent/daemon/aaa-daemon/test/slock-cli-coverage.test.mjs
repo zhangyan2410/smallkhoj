@@ -308,7 +308,7 @@ test('slock CLI error paths', async (t) => {
       baseEnv(root),
     );
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /Code: (INVALID_JSON|CLI_FAILED)/);
+    assert.match(result.stderr, /Code: INVALID_JSON/);
   });
 
   // Cleanup
