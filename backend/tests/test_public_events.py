@@ -20,6 +20,7 @@ from services.public_events import (
 def _record(*, seq=7, event_type="message.created", channel_id=None, task_id=None, message_id=None, payload=None):
     return SimpleNamespace(
         id=uuid.uuid4(),
+        server_id=uuid.uuid4(),
         seq=seq,
         event_type=event_type,
         actor_id=uuid.uuid4(),
@@ -341,10 +342,15 @@ async def test_postgres_notify_does_not_commit_or_rollback_caller_session(monkey
 
 
 @pytest.mark.asyncio
-async def test_public_events_stream_endpoint_returns_sse_response():
+async def test_public_events_stream_endpoint_returns_sse_response(monkeypatch):
     class _DisconnectedRequest:
         async def is_disconnected(self):
             return True
+
+    async def fake_resolve_active_server_context(db, request):
+        return SimpleNamespace(server=SimpleNamespace(id=uuid.uuid4()))
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_resolve_active_server_context)
 
     response = await public_api.stream_public_events(
         _DisconnectedRequest(),

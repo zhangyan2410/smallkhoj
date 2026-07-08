@@ -72,6 +72,13 @@ class _JsonRequest:
         return self._body
 
 
+def _patch_active_server_context(monkeypatch, server, *, member=None):
+    async def fake_resolve_active_server_context(db, request):
+        return SimpleNamespace(server=server, member=member)
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_resolve_active_server_context)
+
+
 class _SeedConn:
     def __init__(self):
         self.statements = []
@@ -375,7 +382,9 @@ async def test_task_run_template_service_validates_structured_role_presets():
 
 
 @pytest.mark.asyncio
-async def test_public_task_run_template_routes_create_update_disable_and_list():
+async def test_public_task_run_template_routes_create_update_disable_and_list(monkeypatch):
+    _patch_active_server_context(monkeypatch, SimpleNamespace(id=uuid.uuid4()))
+
     create_db = _FakeSession()
     created = await public_api.create_task_run_template(
         _JsonRequest(
@@ -414,12 +423,12 @@ async def test_public_task_run_template_routes_create_update_disable_and_list():
     assert update_db.committed is True
 
     list_db = _FakeSession(_ExecuteResult(scalar_rows=[template]))
-    listed = await public_api.list_task_run_templates(db=list_db)
+    listed = await public_api.list_task_run_templates(_JsonRequest({}), db=list_db)
 
     assert listed["templates"][0]["slug"] == "qa-runner"
 
     disable_db = _FakeSession(_ExecuteResult(template))
-    disabled = await public_api.disable_task_run_template(str(template.id), db=disable_db)
+    disabled = await public_api.disable_task_run_template(str(template.id), _JsonRequest({}), db=disable_db)
 
     assert disabled["template"]["status"] == "disabled"
     assert disable_db.committed is True
@@ -557,7 +566,7 @@ async def test_public_task_assignment_endpoint_auto_starts_with_template_snapsho
     async def fake_serialize_task(_db, task_arg):
         return {"id": str(task_arg.id), "assigneeId": str(task_arg.assignee_id)}
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    _patch_active_server_context(monkeypatch, server)
     monkeypatch.setattr(public_api, "_resolve_task_by_id_or_number", fake_resolve_task)
     monkeypatch.setattr(public_api, "_resolve_member", fake_resolve_member)
     monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
@@ -1367,7 +1376,6 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
         updated_at=None,
     )
     db = _FakeSession(
-        _ExecuteResult(server),
         _ExecuteResult(channel),
         _ExecuteResult(creator),
         _ExecuteResult(assignee),
@@ -1391,6 +1399,7 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
 
     monkeypatch.setattr(public_api, "create_task_assignment_and_run", fake_create_task_assignment_and_run)
     monkeypatch.setattr(public_api, "_push_committed_events", fake_push)
+    _patch_active_server_context(monkeypatch, server)
 
     response = await public_api.create_task(
         _JsonRequest({"channel": "#work", "creator": "@zy-ean", "assignee": "@minimax", "title": "Run it"}),

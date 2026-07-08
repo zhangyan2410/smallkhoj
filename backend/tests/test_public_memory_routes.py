@@ -45,6 +45,13 @@ class _FakeTaskSession(_FakeSession):
         return _ScalarResult(self.assignee)
 
 
+def _patch_active_server_context(monkeypatch, server):
+    async def fake_resolve_active_server_context(db, request):
+        return SimpleNamespace(server=server)
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_resolve_active_server_context)
+
+
 @pytest.mark.asyncio
 async def test_public_memory_route_resolves_scope_with_current_viewer(monkeypatch):
     server = SimpleNamespace(id=uuid.uuid4())
@@ -69,7 +76,7 @@ async def test_public_memory_route_resolves_scope_with_current_viewer(monkeypatc
         assert resolved_context is context
         return []
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    _patch_active_server_context(monkeypatch, server)
     monkeypatch.setattr(public_api, "_resolve_memory_viewer", fake_resolve_memory_viewer)
     monkeypatch.setattr(public_api, "resolve_memory_scope", fake_resolve_memory_scope)
     monkeypatch.setattr(public_api, "list_memory_entries", fake_list_memory_entries)
@@ -114,7 +121,7 @@ async def test_public_task_memory_alias_resolves_scope_with_current_viewer(monke
         assert resolved_context is context
         return []
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    _patch_active_server_context(monkeypatch, server)
     monkeypatch.setattr(public_api, "_resolve_memory_viewer", fake_resolve_memory_viewer)
     monkeypatch.setattr(public_api, "resolve_memory_scope", fake_resolve_memory_scope)
     monkeypatch.setattr(public_api, "list_memory_entries", fake_list_memory_entries)
@@ -178,7 +185,7 @@ async def test_public_task_memory_request_route_queues_targeted_reminder(monkeyp
         seen["push_server_id"] = server_id
         return 1
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    _patch_active_server_context(monkeypatch, server)
     monkeypatch.setattr(public_api, "_resolve_task_by_id_or_number", fake_resolve_task)
     monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
     monkeypatch.setattr(public_api, "add_task_memory_request_event", fake_add_task_memory_request_event)
@@ -275,7 +282,7 @@ async def test_public_task_update_to_in_review_queues_memory_request(monkeypatch
     async def fake_serialize_task(session, resolved_task):
         return {"id": str(resolved_task.id), "status": resolved_task.status}
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    _patch_active_server_context(monkeypatch, server)
     monkeypatch.setattr(public_api, "_resolve_task_by_id_or_number", fake_resolve_task)
     monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
     monkeypatch.setattr(public_api, "_record_activity", fake_record_activity)
@@ -360,7 +367,7 @@ async def test_public_memory_proposal_routes_list_and_resolve_with_current_viewe
         seen["push_server_id"] = server_id
         return 1
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    _patch_active_server_context(monkeypatch, server)
     monkeypatch.setattr(public_api, "_resolve_memory_viewer", fake_resolve_memory_viewer)
     monkeypatch.setattr(public_api, "resolve_memory_scope", fake_resolve_memory_scope)
     monkeypatch.setattr(public_api, "list_memory_proposals", fake_list_memory_proposals)
@@ -424,7 +431,7 @@ async def test_public_memory_delete_route_soft_deletes_with_current_viewer(monke
         seen["push_server_id"] = server_id
         return 1
 
-    monkeypatch.setattr(public_api, "_get_server", fake_get_server)
+    _patch_active_server_context(monkeypatch, server)
     monkeypatch.setattr(public_api, "_resolve_memory_viewer", fake_resolve_memory_viewer)
     monkeypatch.setattr(public_api, "resolve_memory_scope", fake_resolve_memory_scope)
     monkeypatch.setattr(public_api, "delete_memory_entry", fake_delete_memory_entry)
