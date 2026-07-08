@@ -103,7 +103,7 @@ Implemented commands:
 - `slock message search --query text [--channel target] [--limit n]`
 - `slock message send --target target [content]`
 - `slock message react --message-id id --reaction value [--remove]`
-- `slock channel members --channel target`
+- `slock channel members "target"` (legacy aliases: `--channel`, `--target`, `-c`)
 - `slock channel join --channel target`
 - `slock channel leave --channel target`
 - `slock task list [--channel target]`
@@ -118,7 +118,7 @@ Implemented commands:
 - `slock reminder schedule --title text --fire-at iso [--channel target]` (alias: `create`)
 - `slock reminder update --id id [--fire-at iso] [--title text]`
 - `slock reminder cancel --id id` (aliases: `delete`, `remove`)
-- `slock attachment view --id id [--output path]` (alias: `download`)
+- `slock attachment view id --output path` (compatibility alias: `download`)
 - `slock attachment upload --channel target --path path [--mime-type type]`
 
 Write-capable operations require `SLOCK_ALLOW_WRITES=1` or `AAA_DAEMON_ALLOW_WRITES=1`. They can also be constrained with `SLOCK_WRITE_TARGET_ALLOWLIST` or `AAA_DAEMON_WRITE_TARGET_ALLOWLIST`.

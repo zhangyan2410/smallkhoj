@@ -93,8 +93,8 @@ function compactBody(values: Record<string, unknown>): Record<string, unknown> {
 function buildProgram(): Command {
   const program = new Command();
   program
-    .name('slock')
-    .description('Agent-facing CLI for Slock communication')
+    .name('raft')
+    .description('Agent-facing CLI for Raft communication')
     .version(readDaemonPackageVersion())
     .addOption(new Option('--format <mode>', 'Output format').choices(['text', 'json']).default('text'))
     // Suppress commander's own error/help output — we format errors ourselves
@@ -160,9 +160,11 @@ function buildProgram(): Command {
   // ── channel ──────────────────────────────────────────────────
   const channelCmd = program.command('channel').description('Channel operations');
 
-  channelCmd.command('members [target]').description('List channel members')
-    .option('--channel <target>', 'Channel name')
-    .option('--target <target>', 'Alias for --channel').option('-c <target>', 'Short for --channel').action(async () => {});
+  channelCmd.command('members [target]').usage('[options] <target>')
+    .description('List agents and humans who are members of a channel, DM, or thread')
+    .addOption(new Option('--channel <target>', 'Legacy alias for positional <target>').hideHelp())
+    .addOption(new Option('--target <target>', 'Legacy alias for positional <target>').hideHelp())
+    .addOption(new Option('-c <target>', 'Legacy alias for positional <target>').hideHelp()).action(async () => {});
 
   channelCmd.command('join').description('Join a channel')
     .option('--target <target>', 'Channel to join')
@@ -178,15 +180,15 @@ function buildProgram(): Command {
 
   channelCmd.command('mute [target]').description('Mute ordinary Activity delivery for a regular channel')
     .option('--target <target>', 'Channel to mute')
-    .option('--channel <target>', 'Alias for --target')
-    .option('-c <target>', 'Short for --target')
-    .option('--channel-id <id>', 'Channel ID').action(async () => {});
+    .addOption(new Option('--channel <target>', 'Legacy alias for --target').hideHelp())
+    .addOption(new Option('-c <target>', 'Legacy alias for --target').hideHelp())
+    .addOption(new Option('--channel-id <id>', 'Channel ID').hideHelp()).action(async () => {});
 
   channelCmd.command('unmute [target]').description('Unmute ordinary Activity delivery for a regular channel')
     .option('--target <target>', 'Channel to unmute')
-    .option('--channel <target>', 'Alias for --target')
-    .option('-c <target>', 'Short for --target')
-    .option('--channel-id <id>', 'Channel ID').action(async () => {});
+    .addOption(new Option('--channel <target>', 'Legacy alias for --target').hideHelp())
+    .addOption(new Option('-c <target>', 'Legacy alias for --target').hideHelp())
+    .addOption(new Option('--channel-id <id>', 'Channel ID').hideHelp()).action(async () => {});
 
   // ── thread ───────────────────────────────────────────────────
   const threadCmd = program.command('thread').description('Thread operations');
@@ -338,8 +340,9 @@ function buildProgram(): Command {
   // ── attachment ───────────────────────────────────────────────
   const attachmentCmd = program.command('attachment').description('Attachment operations');
 
-  attachmentCmd.command('view [attachmentId]').description('View attachment metadata or download with --output')
-    .option('--id <id>', 'Attachment ID').option('--attachment-id <id>', 'Alias for --id')
+  attachmentCmd.command('view [attachmentId]').usage('[options] <attachmentId>')
+    .description('Download an attachment by id and save it to a local path')
+    .option('--id <id>', 'Attachment ID').addOption(new Option('--attachment-id <id>', 'Alias for --id').hideHelp())
     .option('--output <path>', 'Output file path')
     .action(async () => {});
 
@@ -547,11 +550,24 @@ function resolveTargetInput(
     throw new CliError(
       'Invalid channel target',
       'INVALID_TARGET',
-      'Use a regular channel target like #general; DMs and threads cannot be muted.',
+      'Use a regular channel target like "#general"; DMs and threads cannot be muted.',
     );
   }
 
   return target;
+}
+
+function validateManualReason(reason: unknown): string | undefined {
+  if (reason === undefined) return undefined;
+  const text = String(reason);
+  if (text.trim().length < 12) {
+    throw new CliError(
+      'Manual reason is too short',
+      'knowledge_reason_invalid',
+      'Provide --reason with at least 12 characters, or omit --reason.',
+    );
+  }
+  return text;
 }
 
 const COMMAND_META: Record<string, CommandMeta> = {
@@ -589,7 +605,8 @@ const COMMAND_META: Record<string, CommandMeta> = {
       if (!topic) throw new CliError('Missing topic', 'MISSING_TOPIC', 'Provide a manual topic, e.g. manual get index');
       const query = new URLSearchParams();
       query.set('topic', topic);
-      if (opts.reason) query.set('reason', opts.reason as string);
+      const reason = validateManualReason(opts.reason);
+      if (reason) query.set('reason', reason);
       if (opts.turnId) query.set('turn_id', opts.turnId as string);
       if (opts.traceId) query.set('trace_id', opts.traceId as string);
       return { method: 'GET', path: `${agentPrefix(config.agentId)}/knowledge?${query}` };
@@ -604,7 +621,8 @@ const COMMAND_META: Record<string, CommandMeta> = {
       const query = new URLSearchParams();
       query.set('query', keywords);
       if (opts.scope) query.set('scope', opts.scope as string);
-      if (opts.reason) query.set('reason', opts.reason as string);
+      const reason = validateManualReason(opts.reason);
+      if (reason) query.set('reason', reason);
       return { method: 'GET', path: `${agentPrefix(config.agentId)}/knowledge/search?${query}` };
     },
     formatText: formatManualSearch,
@@ -720,7 +738,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
     async buildRequest(opts, config) {
       const channel = resolveTargetInput(opts, {
         missingMessage: 'Missing target',
-        nextAction: 'Specify the target, e.g. channel members #general',
+        nextAction: 'Specify the target, e.g. channel members "#general"',
       });
       const query = new URLSearchParams();
       query.set('channel', channel);
@@ -758,7 +776,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
     async buildRequest(opts, config) {
       const channel = resolveTargetInput(opts, {
         missingMessage: 'Missing target',
-        nextAction: 'Specify the channel to mute, e.g. channel mute #general',
+        nextAction: 'Specify the channel to mute, e.g. channel mute "#general"',
         regularChannelOnly: true,
       });
       const channelId = opts.channelId as string | undefined;
@@ -774,7 +792,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
     async buildRequest(opts, config) {
       const channel = resolveTargetInput(opts, {
         missingMessage: 'Missing target',
-        nextAction: 'Specify the channel to unmute, e.g. channel unmute #general',
+        nextAction: 'Specify the channel to unmute, e.g. channel unmute "#general"',
         regularChannelOnly: true,
       });
       const channelId = opts.channelId as string | undefined;
@@ -1265,6 +1283,13 @@ const COMMAND_META: Record<string, CommandMeta> = {
       const id = (opts.id as string) ?? (opts.attachmentId as string) ?? pos[0];
       if (!id) throw new CliError('Missing --id', ErrorCodes.MISSING_ATTACHMENT_ID.code, ErrorCodes.MISSING_ATTACHMENT_ID.nextAction);
       const output = opts.output as string | undefined;
+      if (!output) {
+        throw new CliError(
+          'Missing --output',
+          'INVALID_ARG',
+          'Specify the local path to write with --output <path>.',
+        );
+      }
       return { method: 'GET', path: `/api/attachments/${encodeURIComponent(id)}`, rawOutputFile: output };
     },
     formatText: formatAttachmentView,
@@ -1360,9 +1385,6 @@ async function handleMigratedCommand(
     }
     const format = parseFormat(formatVal);
 
-    // Resolve proxy config
-    const config = resolveProxyConfig(cliEnv);
-
     // Parse command-specific options using commander
     const program = buildProgram();
     // We need to extract positional args (message content for send) before commander parses
@@ -1375,6 +1397,9 @@ async function handleMigratedCommand(
       // Commander throws for missing required options, unknown commands, etc.
       // Convert to CliError with appropriate code.
       const cmdErrCode = cmdErr?.code as string | undefined;
+      if (cmdErrCode?.includes('helpDisplayed') || cmdErrCode?.includes('version')) {
+        return 0;
+      }
       if (cmdErrCode?.includes('missingMandatoryOption')) {
         // Extract option name from message like "error: required option '--target <target>' not specified"
         const msg = cmdErr.message || '';
@@ -1406,6 +1431,9 @@ async function handleMigratedCommand(
       // For other commander errors, convert generically
       throw toCliError(cmdErr);
     }
+
+    // Resolve proxy config after parsing so help/version never require auth env.
+    const config = resolveProxyConfig(cliEnv);
 
     // Extract options from the matched command
     const matchedCmd = findCommand(program, metaKey);
@@ -1563,6 +1591,26 @@ function extractPositionals(argv: string[]): string[] {
  * Preserves the same signature as the original runSlockCli.
  */
 export async function runSlockCli(argv: string[], io: CliIo = {}): Promise<number> {
+  const explicitHelpOrVersion = argv.includes('--help')
+    || argv.includes('--version')
+    || argv.includes('-V')
+    || (argv.length === 1 && argv[0] === '-h');
+  if (explicitHelpOrVersion) {
+    const program = buildProgram();
+    try {
+      await program.parseAsync(['node', 'slock', ...argv], { from: 'node' });
+      return 0;
+    } catch (cmdErr: any) {
+      const cmdErrCode = cmdErr?.code as string | undefined;
+      if (cmdErrCode?.includes('helpDisplayed') || cmdErrCode?.includes('version')) {
+        return 0;
+      }
+      const err = io.stderr ?? stderr;
+      err.write(formatError(toCliError(cmdErr)));
+      return 1;
+    }
+  }
+
   const migratedKey = matchMigratedCommand(argv);
   if (migratedKey) {
     return handleMigratedCommand(migratedKey, argv, io);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -1581,9 +1581,11 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(uploadData.attachment.multipart, true);
     assert.ok(uploadData.attachment.size > 0);
 
-    const downloadAttachment = await runCli(['attachment', 'view', '--id', 'file-1', '--format', 'json'], env);
+    const outputFile = join(root, 'file-1.bin');
+    const downloadAttachment = await runCli(['attachment', 'view', '--id', 'file-1', '--output', outputFile, '--format', 'json'], env);
     assert.equal(downloadAttachment.code, 0, downloadAttachment.stderr);
-    assert.deepEqual(JSON.parse(downloadAttachment.stdout), { file: 'file-1' });
+    assert.deepEqual(JSON.parse(downloadAttachment.stdout), { ok: true, output: outputFile });
+    assert.deepEqual(JSON.parse(readFileSync(outputFile, 'utf-8')), { file: 'file-1' });
 
     const upstreamRequests = upstream.requests.map(({ req, body }) => ({
       method: req.method,

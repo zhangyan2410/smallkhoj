@@ -227,14 +227,27 @@ export function formatChannelMembers(json: unknown): string {
   const data = json as { members?: MemberInfo[] };
   const members = data.members ?? [];
   if (members.length === 0) {
-    return 'No members.\n';
+    return '## Channel Members\n\nNo members.\n';
   }
-  const lines = members.map((m) => {
+  const formatMember = (m: MemberInfo): string => {
     const role = m.role ? ` [${m.role}]` : '';
     const status = m.status ? ` (${m.status})` : '';
     const desc = m.description ? ` — ${m.description}` : '';
     return `  @${m.name}${role}${status}${desc}`;
-  });
+  };
+  const agents = members.filter((m) => m.type === 'agent');
+  const humans = members.filter((m) => m.type === 'human' || !m.type);
+  const others = members.filter((m) => m.type && m.type !== 'agent' && m.type !== 'human');
+  const lines = ['## Channel Members'];
+  if (agents.length > 0) {
+    lines.push('', 'Agents:', ...agents.map(formatMember));
+  }
+  if (humans.length > 0) {
+    lines.push('', 'Humans:', ...humans.map(formatMember));
+  }
+  if (others.length > 0) {
+    lines.push('', 'Members:', ...others.map(formatMember));
+  }
   return lines.join('\n') + '\n';
 }
 
@@ -312,16 +325,20 @@ export function formatAuthWhoami(json: unknown): string {
 /** Format manual search response. */
 export function formatManualSearch(json: unknown): string {
   const data = json as {
-    results?: Array<{ topic?: string; title?: string; summary?: string; description?: string }>;
-    topics?: Array<{ topic?: string; title?: string; summary?: string; description?: string }>;
+    results?: Array<{ topic?: string; title?: string; summary?: string; description?: string; snippet?: string; content?: string }>;
+    topics?: Array<{ topic?: string; title?: string; summary?: string; description?: string; snippet?: string; content?: string }>;
   };
   const results = data.results ?? data.topics ?? [];
   if (results.length === 0) return 'No manual topics found.\n';
-  return results.map((result) => {
+  const lines = ['Manual search results:'];
+  for (const [idx, result] of results.entries()) {
     const topic = result.topic ?? result.title ?? '(unknown topic)';
     const summary = result.summary ?? result.description;
-    return summary ? `  ${topic} — ${summary}` : `  ${topic}`;
-  }).join('\n') + '\n';
+    const snippet = result.snippet ?? result.content;
+    lines.push(`${idx + 1}. ${summary ? `${topic} — ${summary}` : topic}`);
+    if (snippet) lines.push(`   ${snippet}`);
+  }
+  return lines.join('\n') + '\n';
 }
 
 // ─── Thread formatting ──────────────────────────────────────────

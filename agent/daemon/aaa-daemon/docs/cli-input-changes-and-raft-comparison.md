@@ -21,10 +21,10 @@
 | 长选项 `--target "#general"` | ✅ 不变 | |
 | 短选项 `-t "#general"` | ✅ 不变 | |
 | 别名 `--channel` / `-c` | ✅ 不变 | |
-| positional 参数 | ✅ 不变 | `message send --target #general hello world` |
+| positional 参数 | ✅ 不变 | `message send --target "#general" hello world` |
 | `--json` body data | ✅ 不变（不与 `--format` 冲突） | `task update --id 1 --json '{"k":"v"}'` |
-| stdin 输入 | ✅ 不变 | `echo "content" | slock message send --target #general` |
-| 多值选项 | ✅ 不变 | `task claim --channel #general --number 1 --number 2` |
+| stdin 输入 | ✅ 不变 | `echo "content" | slock message send --target "#general"` |
+| 多值选项 | ✅ 不变 | `task claim --channel "#general" --number 1 --number 2` |
 
 ### 1.3 输入校验变化（新增强，不放松）
 
@@ -111,7 +111,7 @@
 
 | 优先级 | 命令 | 差异 | 对齐方向 |
 |--------|------|------|----------|
-| **P0** | `attachment view/download` | Raft `view <id> --output` 是下载保存；smallkhoj `view=metadata`、`download=file` | 当前批次已实现：`view` 支持 `--output` 下载；`download` 保留兼容 alias |
+| **P0** | `attachment view/download` | Raft `view <id> --output` 是下载保存；smallkhoj 原先 `view=metadata`、`download=file` | 当前批次已实现：`view` 要求 `--output` 下载；`download` 保留兼容 alias |
 | **P0** | `channel members` | Raft 支持 positional target（channel/DM/thread）；smallkhoj 是 `--channel/--target/-c` | 当前批次已实现：支持 positional target，并保留旧 alias |
 | **P1** | `server info` | Raft 输出更丰富（runtime/model/computer 信息） | 补齐重要字段 |
 | **P1** | `profile show/update` | 大体接近，需复核 positional target、字段名、avatar 参数 | 确认与 Raft 一致 |

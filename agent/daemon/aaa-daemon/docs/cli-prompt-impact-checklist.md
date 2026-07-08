@@ -129,8 +129,13 @@ After:  Server: My Server
 
 ```
 Before: {"members":[{"name":"alice","role":"owner"}]}
-After:    @alice [owner]
+After:  ## Channel Members
+
+        Agents:
           @bot (online) — Helper
+
+        Humans:
+          @alice [owner]
 ```
 
 输入兼容：优先使用 Raft 形态 `channel members <target>`，其中 target 可以是 channel、DM 或 thread；旧形态 `--channel` / `--target` / `-c` 仍可用。
@@ -148,7 +153,7 @@ After:  Joined channel.    (or "Left channel.")
 After:  Channel muted.    (or "Channel unmuted.")
 ```
 
-输入边界：只接受 regular channel target，例如 `channel mute #general`；DM 和 thread target 会以 `INVALID_TARGET` 本地失败。写门仍然适用。
+输入边界：只接受 regular channel target，例如 `channel mute "#general"`；DM 和 thread target 会以 `INVALID_TARGET` 本地失败。写门仍然适用。
 
 ### inbox check
 
@@ -308,7 +313,8 @@ After:  Login ready.
 ```
 After:  Manual content text...
 
-After:    recipes/preview-env — Create preview environments
+After:  Manual search results:
+        1. recipes/preview-env — Create preview environments
 ```
 
 用途：读取或搜索 Raft agent manual / recipes，减少 prompt 内硬编码操作规则。
@@ -327,13 +333,10 @@ After:  Agent ID: agent-1
 
 ```
 Before: {"id":"att-1","filename":"report.pdf","mimeType":"application/pdf","size":1024}
-After:  ID: att-1
-        Filename: report.pdf
-        Type: application/pdf
-        Size: 1024
+After:  Downloaded to: /tmp/report.pdf
 ```
 
-带 `--output` 时对齐 Raft：`attachment view <id> --output <path>` 会下载附件并输出 `Downloaded to: <path>`；需要 JSON 状态时加 `--format json`。
+对齐 Raft：`attachment view <id> --output <path>` 会下载附件并输出 `Downloaded to: <path>`；裸 `attachment view <id>` 会以 `INVALID_ARG` 失败，不再返回 metadata；需要 JSON 状态时加 `--format json`。
 
 ### attachment download
 

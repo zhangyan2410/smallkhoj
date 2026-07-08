@@ -234,11 +234,43 @@ test('golden: manual search canonical text output', async () => {
   try {
     const result = await runCli(['manual', 'search', 'preview', '--scope', 'recipes'], baseEnv(root, server.url));
     assert.equal(result.code, 0, result.stderr);
-    assert.match(result.stdout, /recipes\/preview-env — Create preview environments/);
+    assert.match(result.stdout, /Manual search results:/);
+    assert.match(result.stdout, /1\. recipes\/preview-env — Create preview environments/);
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('golden: manual short reason matches production validation', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(500, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'should not be called' }));
+  });
+  try {
+    const result = await runCli(['manual', 'get', 'index', '--reason', 'short'], baseEnv(root, server.url));
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: knowledge_reason_invalid/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: global and subcommand help exit cleanly without proxy env', async () => {
+  const global = await runCli(['--help'], {});
+  assert.equal(global.code, 0, global.stderr);
+  assert.match(global.stdout, /Usage: raft/);
+  assert.match(global.stdout, /message/);
+  assert.equal(global.stderr, '');
+
+  const sub = await runCli(['channel', 'members', '--help'], {});
+  assert.equal(sub.code, 0, sub.stderr);
+  assert.match(sub.stdout, /Usage: raft channel members \[options\] <target>/);
+  assert.doesNotMatch(sub.stdout, /--channel/);
+  assert.equal(sub.stderr, '');
 });
 
 // ===========================================================================
@@ -614,6 +646,9 @@ test('golden: channel members canonical text output', async () => {
   try {
     const result = await runCli(['channel', 'members', '--channel', '#general'], baseEnv(root, server.url));
     assert.equal(result.code, 0);
+    assert.match(result.stdout, /## Channel Members/);
+    assert.match(result.stdout, /Agents:/);
+    assert.match(result.stdout, /Humans:/);
     assert.match(result.stdout, /@alice \[owner\]/);
     assert.match(result.stdout, /@bot.*\(online\)/);
   } finally {
@@ -1507,19 +1542,18 @@ test('golden: memory list-proposals alias works', async () => {
 // 14. Batch 7: Attachment domain golden tests
 // ===========================================================================
 
-test('golden: attachment view canonical text output', async () => {
+test('golden: attachment view requires --output for Raft parity', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
   const server = await startServer((_req, res) => {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ id: 'att-1', filename: 'report.pdf', mimeType: 'application/pdf', size: 1024 }));
+    res.writeHead(500, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'should not be called' }));
   });
   try {
     const result = await runCli(['attachment', 'view', '--id', 'att-1'], baseEnv(root, server.url));
-    assert.equal(result.code, 0);
-    assert.match(result.stdout, /ID: att-1/);
-    assert.match(result.stdout, /Filename: report\.pdf/);
-    assert.match(result.stdout, /Type: application\/pdf/);
-    assert.match(result.stdout, /Size: 1024/);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: INVALID_ARG/);
+    assert.match(result.stderr, /Missing --output/);
+    assert.equal(server.requests.length, 0);
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });
