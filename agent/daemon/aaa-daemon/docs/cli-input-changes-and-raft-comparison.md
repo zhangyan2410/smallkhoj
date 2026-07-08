@@ -55,81 +55,86 @@
 
 ### 2.1 Raft 有但我们没有的命令
 
-| Raft 命令 | 说明 | 我们是否需要 |
-|-----------|------|-------------|
-| `raft auth whoami` | 认证自省 | ❌ 我们走 daemon proxy，不需要 agent 自行认证 |
-| `raft agent login` | 设备码登录 → sk_agent | ❌ 我们通过 daemon 注册，不需要 CLI 登录 |
-| `raft agent list` | 列出本地 profiles | ❌ 同上 |
-| `raft agent bridge` | Agent 桥接 | ❌ daemon 管理 |
-| `raft channel create` | 创建频道 | ⚠️ 可能需要 |
-| `raft channel update` | 更新频道设置 | ⚠️ 可能需要 |
-| `raft channel add-member` | 添加成员 | ⚠️ 可能需要 |
-| `raft channel remove-member` | 移除成员 | ⚠️ 可能需要 |
-| `raft channel mute` | 静音频道 | ⚠️ 可能需要 |
-| `raft channel unmute` | 取消静音 | ⚠️ 可能需要 |
-| `raft server update` | 更新服务器设置 | ❌ 低优先级 |
-| `raft manual get` | Raft 操作手册 | ❌ 我们用自己的 prompt 体系 |
-| `raft inbox check` | 收件箱摘要 | ⚠️ 可能需要 |
-| `raft attachment comments` | 附件评论 | ❌ 低优先级 |
-| `raft mention` | 发送侧 @mention 操作 | ⚠️ 可能需要 |
-| `raft integration env` | 集成环境变量 | ❌ 我们走 daemon 管理 |
-| `raft integration invoke` | 调用集成 API | ⚠️ 可能需要 |
-| `raft integration app` | 应用注册 | ❌ 低优先级 |
-| `raft action prepare` | 动作卡片 | ❌ 我们不做这个 |
-| `raft --profile <slug>` | Profile 凭证 | ❌ 我们走 daemon wrapper |
+> 全部标为「需要」。按 @codex-m-krill 优先级排序。标「后置」的不阻塞当前迭代。
+
+| 优先级 | Raft 命令 | 说明 | 状态 |
+|--------|-----------|------|------|
+| **P0** | `raft inbox check` | 收件箱摘要（不 drain 内容，只看 pending targets） | 需要 |
+| **P0** | `raft channel mute` | 静音频道 | 需要 |
+| **P0** | `raft channel unmute` | 取消静音 | 需要 |
+| **P0** | `raft manual get` | 获取操作手册/运行规则，可缩短 prompt | 需要 |
+| **P0** | `raft auth whoami` | 认证自省/运行上下文诊断 | 需要 |
+| **P1** | `raft channel create` | 创建频道 | 需要 |
+| **P1** | `raft channel update` | 更新频道设置 | 需要 |
+| **P1** | `raft channel add-member` | 添加成员 | 需要 |
+| **P1** | `raft channel remove-member` | 移除成员 | 需要 |
+| **P1** | `raft server update` | 更新服务器设置 | 需要（后置）|
+| **P1** | `raft integration env` | 集成环境变量 | 需要（后置）|
+| **P1** | `raft integration invoke` | 调用集成 API | 需要 |
+| **P1** | `raft mention` | 发送侧 @mention 操作 | 需要 |
+| **P2** | `raft attachment comments` | 附件评论 | 需要（后置）|
+| **P2** | `raft action prepare` | 动作卡片/quick-commit | 需要（后置）|
+| **P2** | `raft integration app` | 第三方 app 注册 | 需要（后置）|
+| **P3** | `raft agent login` | 设备码登录 → sk_agent | 需要（后置）— 外部 agent onboarding |
+| **P3** | `raft agent list` | 列出本地 profiles | 需要（后置）— 诊断 |
+| **P3** | `raft agent bridge` | Agent 桥接 | 需要（后置）— 跨 daemon 协作 |
+| **P3** | `raft --profile <slug>` | Profile 凭证 | 需要（后置）— 外部 agent 场景 |
 
 ### 2.2 我们有但 Raft 没有的命令（smallkhoj 扩展）
 
-| 我们的命令 | 说明 | Raft 是否有对应 |
-|-----------|------|----------------|
-| `memory read` | 读取记忆内容 | ❌ Raft 无 memory 系统 |
-| `memory search` | 搜索记忆 | ❌ |
-| `memory context` | 获取上下文清单 | ❌ |
-| `memory write` | 写入记忆 | ❌ |
-| `memory propose` | 提议记忆变更 | ❌ |
-| `memory proposals` | 列出提议 | ❌ |
-| `memory accept-proposal` | 接受提议 | ❌ |
-| `memory reject-proposal` | 拒绝提议 | ❌ |
-| `memory delete` | 删除记忆 | ❌ |
-| `task summary` | 写任务总结到记忆 | ❌ |
-| `task promote` | 将任务记忆提升到频道 | ❌ |
-| `thread read` | 读取线程消息 | ⚠️ Raft 通过 message read --target thread 实现 |
-| `thread summary` | 写线程总结 | ❌ |
-| `attachment download` | 下载附件到文件 | ⚠️ Raft 的 attachment view 可能包含 |
+> **后置，暂不进 prompt。** 后续等产品确定 memory/summary 体系是正式主路径，再单独纳入 prompt。
+
+| 我们的命令 | 说明 | 状态 |
+|-----------|------|------|
+| `memory read` | 读取记忆内容 | 后置，暂不进 prompt |
+| `memory search` | 搜索记忆 | 后置，暂不进 prompt |
+| `memory context` | 获取上下文清单 | 后置，暂不进 prompt |
+| `memory write` | 写入记忆 | 后置，暂不进 prompt |
+| `memory propose` | 提议记忆变更 | 后置，暂不进 prompt |
+| `memory proposals` | 列出提议 | 后置，暂不进 prompt |
+| `memory accept-proposal` | 接受提议 | 后置，暂不进 prompt |
+| `memory reject-proposal` | 拒绝提议 | 后置，暂不进 prompt |
+| `memory delete` | 删除记忆 | 后置，暂不进 prompt |
+| `task summary` | 写任务总结到记忆 | 后置，暂不进 prompt |
+| `task promote` | 将任务记忆提升到频道 | 后置，暂不进 prompt |
+| `thread read` | 读取线程消息 | 后置 — Raft 用 `message read --target <thread>` |
+| `thread summary` | 写线程总结 | 后置，暂不进 prompt |
+| `attachment download` | 下载附件到文件 | 后置 — Raft 用 `attachment view --output` |
 
 ### 2.3 两边都有但实现不同的命令
 
-| 命令 | Raft | 我们 | 差异 |
-|------|------|------|------|
-| `message check` | 有 | 有 | 输出格式不同（Raft canonical text, 我们也做了 canonical text） |
-| `message send` | 有 | 有 | 基本一致 |
-| `message read` | 有 | 有 | 基本一致 |
-| `message search` | 有 | 有 | 基本一致 |
-| `message resolve` | 有 | 有 | 基本一致 |
-| `message react` | 有 | 有 | 基本一致 |
-| `channel members` | 有 | 有 | **输入形态不同**：Raft 支持 positional target（channel/DM/thread）；smallkhoj 是 `--channel/--target/-c`，语义主要是 channel members |
-| `channel join/leave` | 有 | 有 | 基本一致 |
-| `server info` | 有 | 有 | Raft 输出更丰富（包含 runtime/model/computer 信息） |
-| `task list/create/claim/unclaim/update` | 有 | 有 | 我们额外支持 channel+number dual-mode |
-| `profile show/update` | 有 | 有 | 基本一致 |
-| `integration list/login` | 有 | 有 | Raft 的更完整（env/invoke/app） |
-| `reminder *` | 有 | 有 | 基本一致 |
-| `attachment upload/view` | 有 | 有 | **语义不同**：Raft `attachment view <id> --output` 是下载文件；smallkhoj `attachment view` 是 metadata 卡片，`attachment download` 才是文件下载。即 Raft view ≈ smallkhoj download，smallkhoj view metadata 是扩展 |
-| `thread unfollow` | 有 | 有 | 基本一致 |
+> 需要修改与 Raft 一致。按优先级排序。
+
+| 优先级 | 命令 | 差异 | 对齐方向 |
+|--------|------|------|----------|
+| **P0** | `attachment view/download` | Raft `view <id> --output` 是下载保存；smallkhoj `view=metadata`、`download=file` | 改成 Raft 语义：`view` 支持下载，metadata 另起 `attachment info` 或兼容 alias |
+| **P0** | `channel members` | Raft 支持 positional target（channel/DM/thread）；smallkhoj 是 `--channel/--target/-c` | 支持 positional target，尽量支持 DM/thread target |
+| **P1** | `server info` | Raft 输出更丰富（runtime/model/computer 信息） | 补齐重要字段 |
+| **P1** | `profile show/update` | 大体接近，需复核 positional target、字段名、avatar 参数 | 确认与 Raft 一致 |
+| **P1** | `integration list/login` | Raft 更完整（env/invoke/app） | 补 env/invoke 后接近 Raft |
+| **P2** | `task list/create/claim/unclaim/update` | 我们额外支持 channel+number dual-mode | 保留兼容，prompt 示例优先用 Raft 标准形态 |
+| **P2** | `thread read` | Raft 走 `message read --target #channel:thread` | prompt 优先使用 `message read --target`，`thread read` 后置/兼容 |
+| — | `message check/send/read/search/resolve/react` | 基本一致 | 无需修改 |
+| — | `channel join/leave` | 基本一致 | 无需修改 |
+| — | `reminder *` | 基本一致 | 无需修改 |
+| — | `thread unfollow` | 基本一致 | 无需修改 |
 
 ### 2.4 总结
 
-| 类别 | 数量 |
-|------|------|
-| 两边都有 | ~30 条 |
-| Raft 有我们没有 | ~18 条（大部分是 auth/agent/channel 管理，优先级低） |
-| 我们有 Raft 没有 | ~14 条（memory 系统 + task summary/promote + thread summary） |
-| 建议优先补的 Raft 命令 | channel mute/unmute, inbox check |
+| 类别 | 数量 | 说明 |
+|------|------|------|
+| 两边都有 | ~30 条 | 其中 ~8 条需对齐差异（P0-P2），其余基本一致 |
+| Raft 有我们需要补 | 20 条 | P0: 5 条（inbox/channel mute-unmute/manual/auth whoami）；P1: 8 条；P2: 3 条；P3: 4 条（后置）|
+| 我们有 Raft 没有 | 14 条 | 全部后置，暂不进 prompt |
+
+> 优先级表由 @codex-m-krill 制定，文档由 @关关 维护。实现等 @zy-ean 确认后拆任务。
 
 ---
 
-## 三、建议下一步
+## 三、下一步流程
 
-1. **@zy-ean review prompt impact checklist** — 决定提示词怎么改
-2. **补 Raft 缺失命令**（如果需要）— 按优先级：channel mute/unmute > inbox check > channel create/update
-3. **runtime behavior gate** — 用真实 runtime 验证模型按新 canonical text 正确行动
+1. **Phase 0（当前）**：@关关 收口文档 + 优先级表 → @codex-m-krill review → @zy-ean 确认
+2. **Phase 1**：@codex-m-krill 实现 P0 对齐 → 同步 prompt refs 给 @关关
+3. **Phase 2**：@能哥 真实环境验证
+
+> **文档调整完后不马上开始实现，等 @zy-ean 确认。**
