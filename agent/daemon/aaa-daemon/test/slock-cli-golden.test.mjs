@@ -916,8 +916,8 @@ test('golden: profile show canonical text output', async () => {
   const server = await startServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
-      handle: '@alice', displayName: 'Alice', role: 'owner',
-      description: 'Team lead', status: 'active',
+      profile: { handle: '@alice', displayName: 'Alice', role: 'owner',
+        description: 'Team lead', status: 'active' },
     }));
   });
   try {
@@ -937,7 +937,7 @@ test('golden: profile get alias works same as show', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
   const server = await startServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ handle: '@bob', displayName: 'Bob' }));
+    res.end(JSON.stringify({ profile: { handle: '@bob', displayName: 'Bob' } }));
   });
   try {
     const result = await runCli(['profile', 'get'], baseEnv(root, server.url));
@@ -1012,6 +1012,28 @@ test('golden: profile update no fields returns MISSING_UPDATE_FIELDS', async () 
     const result = await runCli(['profile', 'update'], env);
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Code: MISSING_UPDATE_FIELDS/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: profile update --avatar-file outputs Profile updated (text mode)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const avatarFile = join(root, 'avatar.png');
+  // Minimal valid PNG header
+  writeFileSync(avatarFile, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ avatar: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['profile', 'update', '--avatar-file', avatarFile], env);
+    assert.equal(result.code, 0, result.stderr);
+    // Text mode should output canonical 'Profile updated.' not raw JSON
+    assert.match(result.stdout, /Profile updated\./);
+    assert.doesNotMatch(result.stdout, /"avatar"/);
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });

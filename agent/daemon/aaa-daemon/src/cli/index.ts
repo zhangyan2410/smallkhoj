@@ -804,7 +804,7 @@ async function handleMigratedCommand(
 
     // Handle multipart uploads (e.g. profile avatar)
     if ((req as Record<string, unknown>).multipartUpload) {
-      return await handleMultipartUpload(config, req as CliRequest, io);
+      return await handleMultipartUploadFormatted(config, req as CliRequest, io, format, meta.formatText);
     }
 
     // Execute request
@@ -1057,5 +1057,71 @@ async function handleMultipartUpload(
     return 1;
   }
   out.write(formatPassthrough(text));
+  return 0;
+}
+
+/**
+ * Handle multipart upload with format-aware output for migrated commands.
+ * In text mode, uses the command's formatter instead of raw passthrough.
+ */
+async function handleMultipartUploadFormatted(
+  config: ProxyConfig,
+  request: CliRequest,
+  io: CliIo,
+  format: OutputFormat,
+  formatText: (json: unknown, opts?: Record<string, unknown>, request?: Record<string, unknown>) => string,
+): Promise<number> {
+  const out = io.stdout ?? stdout;
+  const err = io.stderr ?? stderr;
+  const { existsSync, statSync, readFileSync } = await import('fs');
+  const { basename } = await import('path');
+  const upload = request.multipartUpload!;
+
+  if (!existsSync(upload.filePath)) {
+    err.write(formatError(new CliError(`File does not exist: ${upload.filePath}`, 'MISSING_FILE')));
+    return 1;
+  }
+  const stat = statSync(upload.filePath);
+  if (!stat.isFile() || stat.size <= 0) {
+    err.write(formatError(new CliError('Invalid file for upload', 'INVALID_FILE')));
+    return 1;
+  }
+
+  const buffer = readFileSync(upload.filePath);
+  const filename = basename(upload.filePath);
+  const form = new FormData();
+  const inferMime = (fn: string, buf: Buffer, explicit?: string): string => {
+    if (explicit) return explicit;
+    if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
+    if (buf.length >= 3 && buf.subarray(0, 3).equals(Buffer.from([255, 216, 255]))) return 'image/jpeg';
+    const lower = fn.toLowerCase();
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'application/octet-stream';
+  };
+  form.append(upload.fieldName, new Blob([buffer], { type: inferMime(filename, buffer, upload.mimeType) }), filename);
+  if (upload.mimeType) form.append('mimeType', upload.mimeType);
+
+  const response = await fetch(new URL(request.path, config.proxyUrl), {
+    method: request.method,
+    headers: { 'Authorization': `Bearer ${config.token}`, 'X-Agent-Id': config.agentId },
+    body: form,
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    const enriched = enrichProxyFailure(text, response.status);
+    err.write(enriched.endsWith('\n') ? enriched : enriched + '\n');
+    return 1;
+  }
+
+  if (format === 'json') {
+    out.write(formatPassthrough(text));
+  } else {
+    try {
+      out.write(formatText(JSON.parse(text)));
+    } catch {
+      out.write(formatPassthrough(text));
+    }
+  }
   return 0;
 }

@@ -344,7 +344,9 @@ interface ProfileData {
 
 /** Format profile show response. */
 export function formatProfileShow(json: unknown): string {
-  const data = json as ProfileData;
+  // Backend wraps profile data in { profile: {...} }
+  const raw = json as { profile?: ProfileData } & ProfileData;
+  const data = raw.profile ?? raw;
   const lines: string[] = [];
   const name = data.displayName ?? data.name ?? data.handle ?? '';
   if (name) lines.push(`Name: ${name}`);
