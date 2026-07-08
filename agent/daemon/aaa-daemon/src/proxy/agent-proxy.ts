@@ -58,7 +58,7 @@ export function rewriteAgentPath(pathname: string, search: string, agentId: stri
     return `/internal/agent-api${suffix}${search}`;
   }
   if (suffix.startsWith('/channels/')) {
-    const channelMatch = /^\/channels\/([^/]+)\/(join|leave)$/.exec(suffix);
+    const channelMatch = /^\/channels\/([^/]+)\/(join|leave|mute|unmute)$/.exec(suffix);
     if (channelMatch) return `/internal/agent-api/channels/${channelMatch[1]}/${channelMatch[2]}${search}`;
   }
 

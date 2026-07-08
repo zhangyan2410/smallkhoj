@@ -167,6 +167,16 @@ test('slock CLI error paths', async (t) => {
     assert.match(result.stderr, /Code: MISSING_CHANNEL/);
   });
 
+  await t.test('#31 manual get/search missing required topic or keywords', async () => {
+    const get = await runCli(['manual', 'get'], baseEnv(root));
+    assert.equal(get.code, 1);
+    assert.match(get.stderr, /Code: MISSING_TOPIC/);
+
+    const search = await runCli(['manual', 'search'], baseEnv(root));
+    assert.equal(search.code, 1);
+    assert.match(search.stderr, /Code: MISSING_QUERY/);
+  });
+
   // #32 - channel join/leave missing channel
   await t.test('#32 channel join missing channel', async () => {
     const result = await runCli(['channel', 'join'], baseEnv(root));
@@ -178,6 +188,20 @@ test('slock CLI error paths', async (t) => {
     const result = await runCli(['channel', 'leave'], baseEnv(root));
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Code: MISSING_CHANNEL/);
+  });
+
+  await t.test('#32 channel mute/unmute target boundaries', async () => {
+    const missing = await runCli(['channel', 'mute'], baseEnv(root));
+    assert.equal(missing.code, 1);
+    assert.match(missing.stderr, /Code: MISSING_CHANNEL/);
+
+    const dm = await runCli(['channel', 'mute', 'dm:@alice'], baseEnv(root));
+    assert.equal(dm.code, 1);
+    assert.match(dm.stderr, /Code: INVALID_TARGET/);
+
+    const thread = await runCli(['channel', 'unmute', '#general:abcd1234'], baseEnv(root));
+    assert.equal(thread.code, 1);
+    assert.match(thread.stderr, /Code: INVALID_TARGET/);
   });
 
   await t.test('#32 thread read missing --thread-id', async () => {
@@ -391,10 +415,34 @@ function buildUpstreamHandler() {
       res.end(JSON.stringify({ left: true, channelId: 'chan-explicit-id' }));
       return;
     }
+    if (pathname === '/internal/agent-api/channels/%23general/mute') {
+      res.end(JSON.stringify({ muted: true }));
+      return;
+    }
+    if (pathname === '/internal/agent-api/channels/%23general/unmute') {
+      res.end(JSON.stringify({ muted: false }));
+      return;
+    }
 
     // server info
     if (pathname === '/internal/agent-api/server') {
       res.end(JSON.stringify({ id: 'server-1' }));
+      return;
+    }
+
+    // inbox summary
+    if (pathname === '/internal/agent-api/inbox') {
+      res.end(JSON.stringify({ rows: [{ target: '#general', pendingCount: 1 }], pending_messages: 1 }));
+      return;
+    }
+
+    // manual / knowledge
+    if (pathname === '/internal/agent-api/knowledge') {
+      res.end(JSON.stringify({ ok: true, content: 'Manual content\n' }));
+      return;
+    }
+    if (pathname === '/internal/agent-api/knowledge/search') {
+      res.end(JSON.stringify({ results: [{ topic: 'index', summary: 'Manual index' }] }));
       return;
     }
 
@@ -515,8 +563,8 @@ function buildUpstreamHandler() {
       return;
     }
 
-    // attachment download
-    if (pathname === '/internal/agent-api/attachments/att-2/download') {
+    // attachment download (Raft view/download semantics use the attachment resource)
+    if (pathname === '/internal/agent-api/attachments/att-2') {
       res.end(JSON.stringify({ file: 'att-2', downloaded: true }));
       return;
     }
@@ -633,6 +681,48 @@ test('slock CLI command variants', async (t) => {
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.left, true);
       assert.equal(parsed.channelId, 'chan-explicit-id');
+    });
+
+    await t.test('channel mute/unmute uses write gate and Raft target shape', async () => {
+      const mute = await runCli(['channel', 'mute', '#general', '--format', 'json'], env);
+      assert.equal(mute.code, 0, mute.stderr);
+      assert.equal(JSON.parse(mute.stdout).muted, true);
+
+      const unmute = await runCli(['channel', 'unmute', '--target', '#general', '--format', 'json'], env);
+      assert.equal(unmute.code, 0, unmute.stderr);
+      assert.equal(JSON.parse(unmute.stdout).muted, false);
+    });
+
+    await t.test('channel members positional target maps through channel query', async () => {
+      const result = await runCli(['channel', 'members', 'dm:@alice:abcd1234', '--format', 'json'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.channel, 'dm:@alice:abcd1234');
+    });
+
+    await t.test('inbox check reads summary without draining', async () => {
+      const result = await runCli(['inbox', 'check', '--format', 'json'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.pending_messages, 1);
+    });
+
+    await t.test('auth whoami returns local diagnostic JSON without upstream request', async () => {
+      const result = await runCli(['auth', 'whoami', '--format', 'json'], env);
+      assert.equal(result.code, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.data.agentId, 'agent-1');
+      assert.equal(parsed.data.clientMode, 'managed-runner');
+    });
+
+    await t.test('manual get/search use knowledge endpoints', async () => {
+      const get = await runCli(['manual', 'get', 'index'], env);
+      assert.equal(get.code, 0, get.stderr);
+      assert.equal(get.stdout, 'Manual content\n');
+
+      const search = await runCli(['manual', 'search', 'index', '--format', 'json'], env);
+      assert.equal(search.code, 0, search.stderr);
+      assert.equal(JSON.parse(search.stdout).results[0].topic, 'index');
     });
 
     await t.test('#5 thread read by short id', async () => {

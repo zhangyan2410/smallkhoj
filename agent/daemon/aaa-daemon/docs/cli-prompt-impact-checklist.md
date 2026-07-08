@@ -55,9 +55,9 @@ credential 文件路径都会被替换为 `<redacted>`。
 |------|----------|------|
 | `memory context` | raw JSON passthrough | 返回复杂的 context-manifest 结构，不适合简化为文本 |
 | `reminder log` | raw JSON passthrough | 返回 lifecycle entries 列表，保持 JSON |
-| `attachment download` | 二进制文件 + `{ok, output}` JSON | `--output` 时写文件并输出 JSON 状态；无 `--output` 时返回原始内容 |
+| `attachment view/download --output` | 二进制文件 + canonical 下载状态 | 写入本地文件；默认文本输出 `Downloaded to: <path>`，`--format json` 输出 `{ok, output}` |
 
-**Prompt 影响**：这三个命令的输出仍然需要按 JSON/二进制处理，不能假设是 canonical 文本。
+**Prompt 影响**：`memory context` / `reminder log` 仍然需要按 JSON 处理；附件下载需要按本地文件输出处理。
 
 ---
 
@@ -133,12 +133,31 @@ After:    @alice [owner]
           @bot (online) — Helper
 ```
 
+输入兼容：优先使用 Raft 形态 `channel members <target>`，其中 target 可以是 channel、DM 或 thread；旧形态 `--channel` / `--target` / `-c` 仍可用。
+
 ### channel join / leave
 
 ```
 Before: {"joined":true}
 After:  Joined channel.    (or "Left channel.")
 ```
+
+### channel mute / unmute
+
+```
+After:  Channel muted.    (or "Channel unmuted.")
+```
+
+输入边界：只接受 regular channel target，例如 `channel mute #general`；DM 和 thread target 会以 `INVALID_TARGET` 本地失败。写门仍然适用。
+
+### inbox check
+
+```
+After:  Inbox update: 2 unread messages total; 1 changed target
+        #mac:e987ddbf  pending: 2 messages · first msg=ea1af606 · latest sender @Cindy · latest msg=cde07759 · mention · thread
+```
+
+用途：只查看 pending inbox target 摘要，不 drain message body。
 
 ### thread read
 
@@ -284,6 +303,26 @@ Before: {"login":"github","body":{...}}
 After:  Login ready.
 ```
 
+### manual get / search
+
+```
+After:  Manual content text...
+
+After:    recipes/preview-env — Create preview environments
+```
+
+用途：读取或搜索 Raft agent manual / recipes，减少 prompt 内硬编码操作规则。
+
+### auth whoami
+
+```
+After:  Agent ID: agent-1
+        Server URL: http://127.0.0.1:...
+        Server ID: server-1
+        Client mode: managed-runner
+        Secret source: agent-proxy-token-file
+```
+
 ### attachment view
 
 ```
@@ -294,11 +333,13 @@ After:  ID: att-1
         Size: 1024
 ```
 
+带 `--output` 时对齐 Raft：`attachment view <id> --output <path>` 会下载附件并输出 `Downloaded to: <path>`；需要 JSON 状态时加 `--format json`。
+
 ### attachment download
 
 ```
 Before: （二进制内容 + {ok:true, output:"file.bin"}）
-After:  （同 Before — 见 §1.5。--output 时写文件并输出 {ok, output} JSON）
+After:  兼容 alias，等价于 `attachment view <id> --output <path>`；默认文本输出 `Downloaded to: <path>`，`--format json` 输出 `{ok, output}`
 ```
 
 ### attachment upload
@@ -314,7 +355,7 @@ After:  Attachment uploaded (id: att-new).
 
 ### 高影响（必须改 prompt）
 
-1. **所有使用 CLI 输出的地方**：默认输出从 JSON 变成文本（除 §1.5 三个特殊输出外）。
+1. **所有使用 CLI 输出的地方**：默认输出从 JSON 变成文本（除 §1.5 特殊输出外）。
    如果 prompt 指示模型 `JSON.parse(slock output)`，必须改为 `--format json`
    或让模型按文本理解。
 

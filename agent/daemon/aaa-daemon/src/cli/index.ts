@@ -1,11 +1,11 @@
 /**
- * Commander-based CLI entry point (MVP slice).
+ * Commander-based CLI entry point (productized command slice).
  *
- * Handles MVP commands with canonical output formatting:
+ * Handles migrated commands with canonical output formatting:
  *   - message check / read / send
  *   - memory read (smallkhoj extension)
  *
- * Non-MVP commands fall through to the legacy parseRequest handler
+ * Non-migrated commands fall through to the legacy parseRequest handler
  * in slock-cli.ts, ensuring zero regression.
  *
  * The public entry point `runSlockCli(argv, io)` signature is preserved.
@@ -61,6 +61,9 @@ import {
   formatAttachmentView,
   formatAttachmentUpload,
   formatPassthrough,
+  formatInboxCheck,
+  formatAuthWhoami,
+  formatManualSearch,
 } from './output.js';
 import { readDaemonPackageVersion } from '../version.js';
 
@@ -101,6 +104,23 @@ function buildProgram(): Command {
     })
     .exitOverride(); // Prevent process.exit on errors
 
+  // ── auth ─────────────────────────────────────────────────────
+  const authCmd = program.command('auth').description('Auth introspection');
+  authCmd.command('whoami').description('Show resolved agent context').action(async () => {});
+
+  // ── inbox ────────────────────────────────────────────────────
+  const inboxCmd = program.command('inbox').description('Inbox target summary operations');
+  inboxCmd.command('check').description('Show pending inbox targets without draining content').action(async () => {});
+
+  // ── manual / knowledge ───────────────────────────────────────
+  const manualCmd = program.command('manual').description('Look up Raft operating topics and agent recipes');
+  manualCmd.command('get <topic>').description('Fetch a manual topic')
+    .option('--reason <text>', 'Optional rationale').option('--turn-id <id>', 'Optional turn id').option('--trace-id <id>', 'Optional trace id')
+    .action(async () => {});
+  manualCmd.command('search <keywords>').description('Search manual topics')
+    .option('--scope <scope>', 'Optional search scope').option('--reason <text>', 'Optional rationale')
+    .action(async () => {});
+
   // ── message ──────────────────────────────────────────────────
   const messageCmd = program.command('message').description('Message operations');
 
@@ -140,7 +160,7 @@ function buildProgram(): Command {
   // ── channel ──────────────────────────────────────────────────
   const channelCmd = program.command('channel').description('Channel operations');
 
-  channelCmd.command('members').description('List channel members')
+  channelCmd.command('members [target]').description('List channel members')
     .option('--channel <target>', 'Channel name')
     .option('--target <target>', 'Alias for --channel').option('-c <target>', 'Short for --channel').action(async () => {});
 
@@ -152,6 +172,18 @@ function buildProgram(): Command {
 
   channelCmd.command('leave').description('Leave a channel')
     .option('--target <target>', 'Channel to leave')
+    .option('--channel <target>', 'Alias for --target')
+    .option('-c <target>', 'Short for --target')
+    .option('--channel-id <id>', 'Channel ID').action(async () => {});
+
+  channelCmd.command('mute [target]').description('Mute ordinary Activity delivery for a regular channel')
+    .option('--target <target>', 'Channel to mute')
+    .option('--channel <target>', 'Alias for --target')
+    .option('-c <target>', 'Short for --target')
+    .option('--channel-id <id>', 'Channel ID').action(async () => {});
+
+  channelCmd.command('unmute [target]').description('Unmute ordinary Activity delivery for a regular channel')
+    .option('--target <target>', 'Channel to unmute')
     .option('--channel <target>', 'Alias for --target')
     .option('-c <target>', 'Short for --target')
     .option('--channel-id <id>', 'Channel ID').action(async () => {});
@@ -306,8 +338,9 @@ function buildProgram(): Command {
   // ── attachment ───────────────────────────────────────────────
   const attachmentCmd = program.command('attachment').description('Attachment operations');
 
-  attachmentCmd.command('view').description('View attachment metadata')
+  attachmentCmd.command('view [attachmentId]').description('View attachment metadata or download with --output')
     .option('--id <id>', 'Attachment ID').option('--attachment-id <id>', 'Alias for --id')
+    .option('--output <path>', 'Output file path')
     .action(async () => {});
 
   attachmentCmd.command('download').description('Download attachment to file')
@@ -450,6 +483,7 @@ interface CommandMeta {
     path: string;
     body?: unknown;
     writeScope?: WriteScope;
+    localResponse?: unknown;
     [key: string]: unknown;
   }>;
   /** Formats the successful proxy response for text mode. */
@@ -480,7 +514,101 @@ function validateMemoryPath(rawPath: string): string {
   return normalized.split('/').map((part) => encodeURIComponent(part)).join('/');
 }
 
+function resolveTargetInput(
+  opts: Record<string, unknown>,
+  {
+    missingMessage,
+    nextAction,
+    regularChannelOnly = false,
+  }: { missingMessage: string; nextAction: string; regularChannelOnly?: boolean },
+): string {
+  const pos = (opts._positionals as string[]) ?? [];
+  const values = [
+    opts.target as string | undefined,
+    opts.channel as string | undefined,
+    opts.c as string | undefined,
+    pos[0],
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+  if (values.length === 0) {
+    throw new CliError(missingMessage, 'MISSING_CHANNEL', nextAction);
+  }
+
+  const target = values[0];
+  const conflicts = values.filter((value) => value !== target);
+  if (conflicts.length > 0) {
+    throw new CliError(
+      'Conflicting target values',
+      'INVALID_TARGET',
+      'Pass one target value, or pass aliases that resolve to the same target.',
+    );
+  }
+
+  if (regularChannelOnly && (!target.startsWith('#') || target.includes(':'))) {
+    throw new CliError(
+      'Invalid channel target',
+      'INVALID_TARGET',
+      'Use a regular channel target like #general; DMs and threads cannot be muted.',
+    );
+  }
+
+  return target;
+}
+
 const COMMAND_META: Record<string, CommandMeta> = {
+  'auth whoami': {
+    async buildRequest(_opts, config, env) {
+      return {
+        method: 'LOCAL',
+        path: 'auth whoami',
+        localResponse: {
+          ok: true,
+          data: {
+            agentId: config.agentId,
+            serverUrl: config.proxyUrl,
+            serverId: env.SLOCK_SERVER_ID ?? null,
+            clientMode: env.SLOCK_AGENT_PROXY_URL ? 'managed-runner' : 'profile',
+            secretSource: env.SLOCK_AGENT_PROXY_TOKEN_FILE ? 'agent-proxy-token-file' : 'unknown',
+            profileSlug: env.RAFT_PROFILE ?? env.SLOCK_PROFILE,
+            profileCredentialPath: env.RAFT_PROFILE_DIR ?? env.SLOCK_PROFILE_DIR,
+          },
+        },
+      };
+    },
+    formatText: formatAuthWhoami,
+  },
+  'inbox check': {
+    async buildRequest() {
+      return { method: 'GET', path: '/internal/agent-api/inbox' };
+    },
+    formatText: formatInboxCheck,
+  },
+  'manual get': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const topic = pos[0];
+      if (!topic) throw new CliError('Missing topic', 'MISSING_TOPIC', 'Provide a manual topic, e.g. manual get index');
+      const query = new URLSearchParams();
+      query.set('topic', topic);
+      if (opts.reason) query.set('reason', opts.reason as string);
+      if (opts.turnId) query.set('turn_id', opts.turnId as string);
+      if (opts.traceId) query.set('trace_id', opts.traceId as string);
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/knowledge?${query}` };
+    },
+    formatText: formatPassthroughText,
+  },
+  'manual search': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const keywords = pos.join(' ').trim();
+      if (!keywords) throw new CliError('Missing keywords', 'MISSING_QUERY', 'Provide manual search keywords');
+      const query = new URLSearchParams();
+      query.set('query', keywords);
+      if (opts.scope) query.set('scope', opts.scope as string);
+      if (opts.reason) query.set('reason', opts.reason as string);
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/knowledge/search?${query}` };
+    },
+    formatText: formatManualSearch,
+  },
   'message check': {
     async buildRequest(opts, config) {
       const query = new URLSearchParams();
@@ -590,8 +718,10 @@ const COMMAND_META: Record<string, CommandMeta> = {
   // ── Batch 2: channel members/join/leave ──
   'channel members': {
     async buildRequest(opts, config) {
-      const channel = (opts.channel as string) ?? (opts.target as string) ?? (opts.c as string);
-      if (!channel) throw new CliError('Missing --channel', ErrorCodes.MISSING_CHANNEL.code, ErrorCodes.MISSING_CHANNEL.nextAction);
+      const channel = resolveTargetInput(opts, {
+        missingMessage: 'Missing target',
+        nextAction: 'Specify the target, e.g. channel members #general',
+      });
       const query = new URLSearchParams();
       query.set('channel', channel);
       return { method: 'GET', path: `${agentPrefix(config.agentId)}/channel-members?${query}` };
@@ -623,6 +753,38 @@ const COMMAND_META: Record<string, CommandMeta> = {
       };
     },
     formatText: (json) => formatChannelAction(json, 'leave'),
+  },
+  'channel mute': {
+    async buildRequest(opts, config) {
+      const channel = resolveTargetInput(opts, {
+        missingMessage: 'Missing target',
+        nextAction: 'Specify the channel to mute, e.g. channel mute #general',
+        regularChannelOnly: true,
+      });
+      const channelId = opts.channelId as string | undefined;
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/channels/${encodeURIComponent(channelId ?? channel)}/mute`,
+        writeScope: writeScope(channel),
+      };
+    },
+    formatText: (json) => formatChannelAction(json, 'mute'),
+  },
+  'channel unmute': {
+    async buildRequest(opts, config) {
+      const channel = resolveTargetInput(opts, {
+        missingMessage: 'Missing target',
+        nextAction: 'Specify the channel to unmute, e.g. channel unmute #general',
+        regularChannelOnly: true,
+      });
+      const channelId = opts.channelId as string | undefined;
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/channels/${encodeURIComponent(channelId ?? channel)}/unmute`,
+        writeScope: writeScope(channel),
+      };
+    },
+    formatText: (json) => formatChannelAction(json, 'unmute'),
   },
   // ── Batch 2: thread read/unfollow ──
   'thread read': {
@@ -1102,7 +1264,8 @@ const COMMAND_META: Record<string, CommandMeta> = {
       const pos = (opts._positionals as string[]) ?? [];
       const id = (opts.id as string) ?? (opts.attachmentId as string) ?? pos[0];
       if (!id) throw new CliError('Missing --id', ErrorCodes.MISSING_ATTACHMENT_ID.code, ErrorCodes.MISSING_ATTACHMENT_ID.nextAction);
-      return { method: 'GET', path: `/api/attachments/${encodeURIComponent(id)}` };
+      const output = opts.output as string | undefined;
+      return { method: 'GET', path: `/api/attachments/${encodeURIComponent(id)}`, rawOutputFile: output };
     },
     formatText: formatAttachmentView,
   },
@@ -1112,7 +1275,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
       const id = (opts.id as string) ?? (opts.attachmentId as string) ?? pos[0];
       if (!id) throw new CliError('Missing --id', ErrorCodes.MISSING_ATTACHMENT_ID.code, ErrorCodes.MISSING_ATTACHMENT_ID.nextAction);
       const output = opts.output as string | undefined;
-      return { method: 'GET', path: `/api/attachments/${encodeURIComponent(id)}/download`, rawOutputFile: output };
+      return { method: 'GET', path: `/api/attachments/${encodeURIComponent(id)}`, rawOutputFile: output };
     },
     formatText: formatPassthroughText,
   },
@@ -1152,7 +1315,7 @@ const VALUE_OPTIONS = new Set([
   '--fire-at', '--at', '--delay-seconds', '--repeat', '--cadence', '--in',
   '--msg-id', '--reminder-id', '--redirect-url', '--service', '--provider',
   '--base-sha', '--prompt', '--review-note', '--note', '--proposal-id',
-  '--attachment-id', '--file', '--output',
+  '--attachment-id', '--file', '--output', '--reason', '--turn-id', '--trace-id',
   '-t', '-c', '-q', '-s', '-m', '-r', '-a', '-h',
 ]);
 
@@ -1176,7 +1339,7 @@ function matchMigratedCommand(argv: string[]): string | null {
 }
 
 /**
- * Handle an MVP command end-to-end.
+ * Handle a migrated command end-to-end.
  * Returns exit code (0 = success, 1 = error).
  */
 async function handleMigratedCommand(
@@ -1232,6 +1395,14 @@ async function handleMigratedCommand(
         const mapping = optErrorMap[optName] ?? { code: 'MISSING_OPTION', nextAction: `Provide ${optName}` };
         throw new CliError(`Missing required option ${optName}`, mapping.code, mapping.nextAction);
       }
+      if (cmdErrCode?.includes('missingArgument')) {
+        const argErrorMap: Record<string, { message: string; code: string; nextAction: string }> = {
+          'manual get': { message: 'Missing topic', code: 'MISSING_TOPIC', nextAction: 'Provide a manual topic, e.g. manual get index' },
+          'manual search': { message: 'Missing keywords', code: 'MISSING_QUERY', nextAction: 'Provide manual search keywords' },
+        };
+        const mapping = argErrorMap[metaKey] ?? { message: cmdErr.message || 'Missing argument', code: 'MISSING_ARGUMENT', nextAction: 'Run with --help to see required arguments.' };
+        throw new CliError(mapping.message, mapping.code, mapping.nextAction);
+      }
       // For other commander errors, convert generically
       throw toCliError(cmdErr);
     }
@@ -1280,6 +1451,16 @@ async function handleMigratedCommand(
       req = await meta.buildRequest(commandOpts, config, cliEnv);
     }
 
+    if ((req as Record<string, unknown>).localResponse !== undefined) {
+      const localResponse = (req as Record<string, unknown>).localResponse;
+      if (format === 'json') {
+        out.write(formatPassthrough(JSON.stringify(localResponse)));
+      } else {
+        out.write(meta.formatText(localResponse, commandOpts, req as Record<string, unknown>));
+      }
+      return 0;
+    }
+
     // Write safety gate
     assertWriteAllowed(req.writeScope, cliEnv);
 
@@ -1297,7 +1478,8 @@ async function handleMigratedCommand(
       if (dlResponse.ok) {
         const buffer = Buffer.from(await dlResponse.arrayBuffer());
         writeFileSync((req as Record<string, unknown>).rawOutputFile as string, buffer);
-        out.write(JSON.stringify({ ok: true, output: (req as Record<string, unknown>).rawOutputFile }) + '\n');
+        const outputFile = (req as Record<string, unknown>).rawOutputFile as string;
+        out.write(format === 'json' ? JSON.stringify({ ok: true, output: outputFile }) + '\n' : `Downloaded to: ${outputFile}\n`);
         return 0;
       }
       const dlText = await dlResponse.text();
@@ -1377,7 +1559,7 @@ function extractPositionals(argv: string[]): string[] {
 }
 
 /**
- * Public entry point. Tries MVP commander path first, falls back to legacy.
+ * Public entry point. Tries migrated commander path first, falls back to legacy.
  * Preserves the same signature as the original runSlockCli.
  */
 export async function runSlockCli(argv: string[], io: CliIo = {}): Promise<number> {
@@ -1386,13 +1568,13 @@ export async function runSlockCli(argv: string[], io: CliIo = {}): Promise<numbe
     return handleMigratedCommand(migratedKey, argv, io);
   }
 
-  // Fall through to legacy handler for non-MVP commands
+  // Fall through to legacy handler for non-migrated commands
   return runLegacyCli(argv, io);
 }
 
 /**
  * Legacy CLI handler — delegates to the original parseRequest flow.
- * This ensures all non-MVP commands continue to work unchanged.
+ * This ensures all non-migrated commands continue to work unchanged.
  */
 async function runLegacyCli(argv: string[], io: CliIo): Promise<number> {
   const out = io.stdout ?? stdout;
@@ -1448,7 +1630,7 @@ async function runLegacyCli(argv: string[], io: CliIo): Promise<number> {
     out.write(formatPassthrough(response.text));
     return 0;
   } catch (e) {
-    // Legacy handler preserves old JSON error format for non-MVP commands
+    // Legacy handler preserves old JSON error format for non-migrated commands
     const err_ = e as Error & { code?: string; nextAction?: string };
     const errorJson = JSON.stringify({
       ok: false,

@@ -59,11 +59,11 @@
 
 | 优先级 | Raft 命令 | 说明 | 状态 |
 |--------|-----------|------|------|
-| **P0** | `raft inbox check` | 收件箱摘要（不 drain 内容，只看 pending targets） | 需要 |
-| **P0** | `raft channel mute` | 静音频道 | 需要 |
-| **P0** | `raft channel unmute` | 取消静音 | 需要 |
-| **P0** | `raft manual get` | 获取操作手册/运行规则，可缩短 prompt | 需要 |
-| **P0** | `raft auth whoami` | 认证自省/运行上下文诊断 | 需要 |
+| **P0** | `raft inbox check` | 收件箱摘要（不 drain 内容，只看 pending targets） | 当前批次已实现 |
+| **P0** | `raft channel mute` | 静音频道 | 当前批次已实现 |
+| **P0** | `raft channel unmute` | 取消静音 | 当前批次已实现 |
+| **P0** | `raft manual get` | 获取操作手册/运行规则，可缩短 prompt | 当前批次已实现 |
+| **P0** | `raft auth whoami` | 认证自省/运行上下文诊断 | 当前批次已实现 |
 | **P1** | `raft channel create` | 创建频道 | 需要 |
 | **P1** | `raft channel update` | 更新频道设置 | 需要 |
 | **P1** | `raft channel add-member` | 添加成员 | 需要 |
@@ -80,7 +80,7 @@
 | **P3** | `raft agent bridge` | Agent 桥接 | 需要（后置）— 跨 daemon 协作 |
 | **P3** | `raft --profile <slug>` | Profile 凭证 | 需要（后置）— 外部 agent 场景 |
 | **P2** | `raft user info` | 用户信息查询 | 需要（后置）|
-| **P0** | `raft manual search` | 搜索操作手册主题 | 需要 — 与 `manual get` 同域 |
+| **P0** | `raft manual search` | 搜索操作手册主题 | 当前批次已实现 — 与 `manual get` 同域 |
 
 > 注：`raft knowledge` 是 `raft manual` 的 legacy alias，不单独实现，作为 alias 排除在计数外。
 
@@ -111,8 +111,8 @@
 
 | 优先级 | 命令 | 差异 | 对齐方向 |
 |--------|------|------|----------|
-| **P0** | `attachment view/download` | Raft `view <id> --output` 是下载保存；smallkhoj `view=metadata`、`download=file` | 改成 Raft 语义：`view` 支持下载，metadata 另起 `attachment info` 或兼容 alias |
-| **P0** | `channel members` | Raft 支持 positional target（channel/DM/thread）；smallkhoj 是 `--channel/--target/-c` | 支持 positional target，尽量支持 DM/thread target |
+| **P0** | `attachment view/download` | Raft `view <id> --output` 是下载保存；smallkhoj `view=metadata`、`download=file` | 当前批次已实现：`view` 支持 `--output` 下载；`download` 保留兼容 alias |
+| **P0** | `channel members` | Raft 支持 positional target（channel/DM/thread）；smallkhoj 是 `--channel/--target/-c` | 当前批次已实现：支持 positional target，并保留旧 alias |
 | **P1** | `server info` | Raft 输出更丰富（runtime/model/computer 信息） | 补齐重要字段 |
 | **P1** | `profile show/update` | 大体接近，需复核 positional target、字段名、avatar 参数 | 确认与 Raft 一致 |
 | **P1** | `integration list/login` | Raft 更完整（env/invoke/app） | 补 env/invoke 后接近 Raft |
@@ -128,7 +128,7 @@
 | 类别 | 数量 | 说明 |
 |------|------|------|
 | 两边都有 | ~30 条 | 其中 ~8 条需对齐差异（P0-P2），其余基本一致 |
-| Raft 有我们需要补 | 22 条 | P0: 6 条（inbox/channel mute-unmute/manual get/manual search/auth whoami）；P1: 8 条；P2: 4 条；P3: 4 条（后置）。注：`knowledge` 作为 `manual` legacy alias 排除在计数外。|
+| Raft 有我们需要补/已补齐 | 22 条 | P0: 6 条已在当前批次补齐（inbox/channel mute-unmute/manual get/manual search/auth whoami）；P1: 8 条；P2: 4 条；P3: 4 条（后置）。注：`knowledge` 作为 `manual` legacy alias 排除在计数外。|
 | 我们有 Raft 没有 | 14 条 | 全部后置，暂不进 prompt |
 
 > 优先级表由 @codex-m-krill 制定，文档由 @关关 维护。实现等 @zy-ean 确认后拆任务。
@@ -137,8 +137,8 @@
 
 ## 三、下一步流程
 
-1. **Phase 0（当前）**：@关关 收口文档 + 优先级表 → @codex-m-krill review → @zy-ean 确认
-2. **Phase 1**：@codex-m-krill 实现 P0 对齐 → 同步 prompt refs 给 @关关
+1. **Phase 0**：@关关 收口文档 + 优先级表 → @codex-m-krill review → @zy-ean 确认
+2. **Phase 1（当前批次）**：@codex-m-krill 实现 P0 对齐 → 同步 prompt refs 给 @关关
 3. **Phase 2**：@能哥 真实环境验证
 
-> **文档调整完后不马上开始实现，等 @zy-ean 确认。**
+> 当前批次代码实现后，prompt/docs 需要优先引用短命令形态（`raft ...` / `slock ...`），并把 P0 项标为可用。

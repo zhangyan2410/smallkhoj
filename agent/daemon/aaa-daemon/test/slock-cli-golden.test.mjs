@@ -1,5 +1,5 @@
 /**
- * Golden tests for the MVP CLI slice.
+ * Golden tests for the migrated CLI slice.
  *
  * Covers 4 categories per @codex-m-krill's contract:
  *   1. Canonical success (text mode)
@@ -13,7 +13,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -155,6 +155,92 @@ test('golden: message check --format json preserves raw passthrough', async () =
   }
 });
 
+test('golden: inbox check summarizes pending targets without draining', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      rows: [
+        {
+          target: '#mac:e987ddbf',
+          pendingCount: 2,
+          firstPendingMsgId: 'ea1af606-ff03-4704-a644-635155b4d077',
+          latestMsgId: 'cde07759-608c-4ded-a31c-a84d74daf894',
+          latestSenderName: 'Cindy',
+          flags: ['mention', 'thread'],
+        },
+      ],
+      pending_messages: 2,
+    }));
+  });
+  try {
+    const result = await runCli(['inbox', 'check'], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /Inbox update: 2 unread messages total; 1 changed target/);
+    assert.match(result.stdout, /#mac:e987ddbf\s+pending: 2 messages/);
+    assert.match(result.stdout, /first msg=ea1af606/);
+    assert.match(result.stdout, /latest sender @Cindy/);
+    assert.match(result.stdout, /mention · thread/);
+    assert.equal(server.requests[0].req.url, '/internal/agent-api/inbox');
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: auth whoami reports local agent context without network', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(500, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'should not be called' }));
+  });
+  try {
+    const result = await runCli(['auth', 'whoami'], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /Agent ID: agent-test/);
+    assert.match(result.stdout, /Client mode: managed-runner/);
+    assert.match(result.stdout, /Secret source: agent-proxy-token-file/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: manual get passthrough text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((req, res) => {
+    assert.equal(req.url, '/internal/agent/agent-test/knowledge?topic=index');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, content: 'Manual index\n- recipes/preview\n' }));
+  });
+  try {
+    const result = await runCli(['manual', 'get', 'index'], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stdout, 'Manual index\n- recipes/preview\n');
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: manual search canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((req, res) => {
+    assert.equal(req.url, '/internal/agent/agent-test/knowledge/search?query=preview&scope=recipes');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ results: [{ topic: 'recipes/preview-env', summary: 'Create preview environments' }] }));
+  });
+  try {
+    const result = await runCli(['manual', 'search', 'preview', '--scope', 'recipes'], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /recipes\/preview-env — Create preview environments/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // ===========================================================================
 // 2. STRUCTURED ERROR (three-part Error/Code/Next action)
 // ===========================================================================
@@ -288,7 +374,7 @@ test('golden: token file path is not leaked in errors', async () => {
 // 5. --format json does NOT pollute existing --json body parameter
 // ===========================================================================
 
-test('golden: --json body parameter still works for non-MVP commands (task update)', async () => {
+test('golden: --json body parameter still works for non-migrated commands (task update)', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
   const server = await startServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -312,7 +398,7 @@ test('golden: --json body parameter still works for non-MVP commands (task updat
 });
 
 // ===========================================================================
-// 6. MVP command: memory read (smallkhoj extension)
+// 6. Migrated command: memory read (smallkhoj extension)
 // ===========================================================================
 
 test('golden: memory read canonical text output', async () => {
@@ -425,14 +511,14 @@ test('golden: missing --scope is NOT MISSING_TARGET', async () => {
   }
 });
 
-test('golden: --format json before command enters MVP path', async () => {
+test('golden: --format json before command enters migrated path', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
   const server = await startServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ messages: [] }));
   });
   try {
-    // --format before command should still match MVP path
+    // --format before command should still match the migrated path
     const result = await runCli(['--format', 'json', 'message', 'check'], baseEnv(root, server.url));
     assert.equal(result.code, 0);
     // Should output raw JSON, not canonical text
@@ -536,6 +622,23 @@ test('golden: channel members canonical text output', async () => {
   }
 });
 
+test('golden: channel members accepts Raft positional target', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((req, res) => {
+    assert.equal(req.url, '/internal/agent/agent-test/channel-members?channel=dm%3A%40alice%3Aabcd1234');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ members: [{ name: 'alice' }] }));
+  });
+  try {
+    const result = await runCli(['channel', 'members', 'dm:@alice:abcd1234'], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /@alice/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('golden: thread read canonical text output', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
   const server = await startServer((_req, res) => {
@@ -585,6 +688,83 @@ test('golden: channel join canonical text output', async () => {
     const result = await runCli(['channel', 'join', '--target', '#general'], env);
     assert.equal(result.code, 0);
     assert.match(result.stdout, /Joined channel\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: channel mute canonical text output and write gate', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((req, res) => {
+    assert.equal(req.url, '/internal/agent/agent-test/channels/%23general/mute');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ muted: true }));
+  });
+  try {
+    const denied = await runCli(['channel', 'mute', '#general'], baseEnv(root, server.url));
+    assert.equal(denied.code, 1);
+    assert.match(denied.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['channel', 'mute', '#general'], env);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /Channel muted\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: channel unmute supports --target alias', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((req, res) => {
+    assert.equal(req.url, '/internal/agent/agent-test/channels/%23general/unmute');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ muted: false }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['channel', 'unmute', '--target', '#general'], env);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /Channel unmuted\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: channel mute rejects non-channel targets before write gate', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(['channel', 'mute', 'dm:@alice'], baseEnv(root, server.url));
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: INVALID_TARGET/);
+    assert.match(result.stderr, /DMs and threads cannot be muted/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: channel target aliases fail closed on conflict', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(['channel', 'members', '#general', '--target', '#mac'], baseEnv(root, server.url));
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: INVALID_TARGET/);
+    assert.match(result.stderr, /Conflicting target values/);
+    assert.equal(server.requests.length, 0);
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });
@@ -1340,6 +1520,44 @@ test('golden: attachment view canonical text output', async () => {
     assert.match(result.stdout, /Filename: report\.pdf/);
     assert.match(result.stdout, /Type: application\/pdf/);
     assert.match(result.stdout, /Size: 1024/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: attachment view --output downloads file with Raft semantics', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const outputFile = join(root, 'report.pdf');
+  const server = await startServer((req, res) => {
+    assert.equal(req.url, '/api/attachments/att-1');
+    res.writeHead(200, { 'content-type': 'application/pdf' });
+    res.end('PDF bytes');
+  });
+  try {
+    const result = await runCli(['attachment', 'view', '--id', 'att-1', '--output', outputFile], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(`Downloaded to: ${outputFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    assert.equal(readFileSync(outputFile, 'utf-8'), 'PDF bytes');
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: attachment download remains compatibility alias for view --output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const outputFile = join(root, 'downloaded.bin');
+  const server = await startServer((req, res) => {
+    assert.equal(req.url, '/api/attachments/att-2');
+    res.writeHead(200, { 'content-type': 'application/octet-stream' });
+    res.end('binary');
+  });
+  try {
+    const result = await runCli(['attachment', 'download', '--id', 'att-2', '--output', outputFile, '--format', 'json'], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { ok: true, output: outputFile });
+    assert.equal(readFileSync(outputFile, 'utf-8'), 'binary');
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });

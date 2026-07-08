@@ -243,7 +243,85 @@ export function formatChannelAction(json: unknown, action: string): string {
   const data = json as { joined?: boolean; left?: boolean; channel?: string };
   if (action === 'join') return `Joined channel.\n`;
   if (action === 'leave') return `Left channel.\n`;
+  if (action === 'mute') return `Channel muted.\n`;
+  if (action === 'unmute') return `Channel unmuted.\n`;
   return JSON.stringify(data) + '\n';
+}
+
+interface InboxRow {
+  target?: string;
+  pendingCount?: number;
+  pending?: number;
+  firstPendingMsgId?: string;
+  latestMsgId?: string;
+  latestSenderName?: string;
+  latestSender?: string;
+  flags?: string[];
+}
+
+function shortId(id: string | undefined): string {
+  return id ? id.slice(0, 8) : '';
+}
+
+/** Format inbox target summary response without draining message bodies. */
+export function formatInboxCheck(json: unknown): string {
+  const data = json as { rows?: InboxRow[]; pending_targets?: number; pending_messages?: number };
+  const rows = data.rows ?? [];
+  if (rows.length === 0) return 'No pending inbox targets.\n';
+  const totalMessages = data.pending_messages ?? rows.reduce((sum, row) => sum + (row.pendingCount ?? row.pending ?? 0), 0);
+  const lines = [`Inbox update: ${totalMessages} unread message${totalMessages === 1 ? '' : 's'} total; ${rows.length} changed target${rows.length === 1 ? '' : 's'}`];
+  for (const row of rows) {
+    const pending = row.pendingCount ?? row.pending ?? 0;
+    const sender = row.latestSenderName ?? row.latestSender;
+    const first = shortId(row.firstPendingMsgId);
+    const latest = shortId(row.latestMsgId);
+    const flags = row.flags && row.flags.length > 0 ? ` · ${row.flags.join(' · ')}` : '';
+    const senderPart = sender ? ` · latest sender @${sender.replace(/^@/, '')}` : '';
+    lines.push(`${row.target ?? '(unknown target)'}  pending: ${pending} message${pending === 1 ? '' : 's'}${first ? ` · first msg=${first}` : ''}${senderPart}${latest ? ` · latest msg=${latest}` : ''}${flags}`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+/** Format local auth whoami diagnostic output. */
+export function formatAuthWhoami(json: unknown): string {
+  const data = json as {
+    ok?: boolean;
+    data?: {
+      agentId?: string;
+      serverUrl?: string;
+      serverId?: string | null;
+      clientMode?: string;
+      secretSource?: string;
+      profileSlug?: string;
+      profileCredentialPath?: string;
+    };
+  };
+  const ctx = data.data ?? {};
+  const lines = [
+    `Agent ID: ${ctx.agentId ?? '(unknown)'}`,
+    `Server URL: ${ctx.serverUrl ?? '(unknown)'}`,
+    `Server ID: ${ctx.serverId ?? '(none)'}`,
+    `Client mode: ${ctx.clientMode ?? '(unknown)'}`,
+    `Secret source: ${ctx.secretSource ?? '(unknown)'}`,
+  ];
+  if (ctx.profileSlug) lines.push(`Profile: ${ctx.profileSlug}`);
+  if (ctx.profileCredentialPath) lines.push(`Profile credential: ${ctx.profileCredentialPath}`);
+  return lines.join('\n') + '\n';
+}
+
+/** Format manual search response. */
+export function formatManualSearch(json: unknown): string {
+  const data = json as {
+    results?: Array<{ topic?: string; title?: string; summary?: string; description?: string }>;
+    topics?: Array<{ topic?: string; title?: string; summary?: string; description?: string }>;
+  };
+  const results = data.results ?? data.topics ?? [];
+  if (results.length === 0) return 'No manual topics found.\n';
+  return results.map((result) => {
+    const topic = result.topic ?? result.title ?? '(unknown topic)';
+    const summary = result.summary ?? result.description;
+    return summary ? `  ${topic} — ${summary}` : `  ${topic}`;
+  }).join('\n') + '\n';
 }
 
 // ─── Thread formatting ──────────────────────────────────────────
@@ -514,6 +592,8 @@ export function formatThreadSummary(_json: unknown): string {
 
 /** Passthrough formatter that accepts unknown and outputs as string. */
 export function formatPassthroughText(json: unknown): string {
+  const data = json as { content?: unknown };
+  if (typeof data?.content === 'string') return data.content.endsWith('\n') ? data.content : data.content + '\n';
   if (typeof json === 'string') return json.endsWith('\n') ? json : json + '\n';
   return JSON.stringify(json) + '\n';
 }

@@ -1332,7 +1332,7 @@ test('slock reminder and attachment aliases route to canonical endpoints', async
       },
       {
         method: 'GET',
-        url: '/api/attachments/file-1/download',
+        url: '/api/attachments/file-1',
         body: '',
       },
     ]);
