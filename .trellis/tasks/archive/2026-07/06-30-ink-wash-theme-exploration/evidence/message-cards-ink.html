@@ -1,0 +1,1014 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>message cards · ink-material 按需渲染</title>
+<!--
+  message-cards-ink.html — 消息卡片（按需渲染版，v3）
+
+  核心问题：chat 消息卡片会有很多张，不可能每张一个 WebGL context（每 context
+  在 Apple Silicon 上 ~150MB 驱动驻留，5 卡就 ~1G）。
+
+  方案：按需渲染。
+    · 默认：所有卡片/桌面是静态纸纹图。启动时引擎跑一帧 idle 干纸，抓成 dataURL，
+      所有卡片共用这一张图。0 个常驻 WebGL context。
+    · 激活：点某卡片「渲染」按钮 → 临时为该卡创建 1 个 context 跑流体 sim，可画墨。
+    · 单例：全局同一时刻最多 1 个活 surface（桌面 or 某张卡）。激活新的会自动收起旧的。
+    · 收起：点「收起」。keep=true 把最后一帧抓成新背景图（墨保留）；keep=false 回初始纸纹（墨丢弃）。
+    · 桌面：也可激活画墨，与卡片共用单例额度。桌面 tint = desk 色，卡片 tint = paper 色，互不串色。
+
+  测试：message-cards-ink.test.html
+-->
+<style>
+  :root {
+    --paper:      oklch(0.974 0.012 83);
+    --paper-deep: oklch(0.902 0.020 84);
+    --desk:       oklch(0.935 0.014 80);   /* 桌面色：比 paper 略深略暖，区分于卡片 */
+    --ink:        oklch(0.205 0.027 78);
+    --ink-soft:   oklch(0.205 0.027 78 / 0.55);
+    --ink-line:   oklch(0.205 0.027 78 / 0.16);
+    --cinnabar:   oklch(0.50 0.17 32);
+    --moss:       oklch(0.55 0.06 145);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+  body {
+    /* 桌面背景：CSS 静态（引擎激活前），desk 色 */
+    background:
+      radial-gradient(120% 80% at 50% 0%, #efe9da 0%, #e7e0cf 55%, #ddd5c1 100%);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC",
+                 "Helvetica Neue", "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.65;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+    min-height: 100vh;
+  }
+
+  /* ─────────── 桌面静态墨迹层 + 引擎 canvas（同一 fixed viewport 坐标系） ─────────── */
+  .desk-static-bg {
+    position: fixed; inset: 0;
+    z-index: 0;
+    width: 100vw; height: 100vh;
+    pointer-events: none;
+    background-image: none;
+    background-size: 100% 100%;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  .desk-canvas {
+    position: fixed; inset: 0;
+    z-index: 0;
+    width: 100vw; height: 100vh;
+    display: none;       /* 未激活时隐藏，由 JS 控制 */
+    pointer-events: none;/* 默认不接指针，激活后才接（避免挡住卡片交互） */
+  }
+  .desk-canvas.is-active { display: block; pointer-events: auto; cursor: crosshair; touch-action: none; }
+
+  .intro, .chat { position: relative; z-index: 1; }
+  .intro { max-width: 880px; margin: 0 auto; padding: 32px 24px 24px; }
+  .intro h1 { margin: 0 0 6px; font-size: 20px; font-weight: 700; }
+  .intro .sub { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); }
+  .intro p { margin: 12px 0 0; font-size: 12.5px; color: var(--ink-soft); line-height: 1.7; max-width: 64ch; }
+  .intro .hint { margin-top: 10px; font-size: 11px; color: var(--ink-soft); border-left: 2px solid var(--ink-line); padding-left: 10px; }
+  .intro .hint b { color: var(--ink); }
+  /* 桌面渲染按钮 */
+  .desk-controls { margin-top: 12px; display: flex; gap: 8px; }
+  .desk-controls button {
+    background: var(--desk); border: 1.5px solid var(--ink); color: var(--ink);
+    font: inherit; font-size: 11px; padding: 5px 10px; cursor: pointer;
+  }
+  .desk-controls button:hover { background: #fff; }
+
+  .chat { max-width: 880px; margin: 0 auto; padding: 0 24px 96px; display: flex; flex-direction: column; gap: 22px; }
+
+  /* ─────────── 消息帧 ─────────── */
+  .msg-frame {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+    transition: transform 220ms cubic-bezier(.22,.7,.28,1);
+  }
+  .msg-frame[data-movable="true"]:hover,
+  .msg-frame[data-movable="true"].is-hovered { transform: translateY(-2px); }
+
+  .author-tag { padding-top: 6px; display: flex; flex-direction: column; gap: 2px;
+                font-size: 12px; color: var(--ink-soft); line-height: 1.35; }
+  .author-tag .name { font-weight: 600; color: var(--ink); font-size: 13px; }
+  .author-tag .time { font-variant-numeric: tabular-nums; }
+  .author-tag .placeholder { width: 56px; height: 56px; border: 1.5px dashed var(--ink-line);
+    color: var(--ink-soft); font-size: 9px; display: flex; align-items: center; justify-content: center;
+    text-align: center; line-height: 1.2; margin-bottom: 6px; }
+
+  /* ─────────── 卡纸本体 ─────────── */
+  /* 默认：静态背景图（JS 注入 paperDataURL）。激活时内部 canvas 显示并接指针。 */
+  .paper {
+    position: relative;
+    display: block;
+    width: 100%;
+    border: 2px solid var(--ink);
+    box-shadow: 4px 4px 0 var(--ink);
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    /* background-image 由 JS 设成纸纹图 */
+  }
+  /* 激活态：canvas 接管显示 */
+  .paper canvas {
+    position: absolute; inset: 0;
+    display: none;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .paper.is-active { cursor: crosshair; touch-action: none; }
+  .paper.is-active canvas { display: block; }
+  /* 文字层 */
+  .text-overlay {
+    position: relative; z-index: 2;
+    padding: 20px 22px;
+    pointer-events: none;
+    color: var(--ink);
+  }
+  .paper[data-density="short"] { min-height: 96px; }
+  .paper[data-density="long"]  { min-height: 280px; }
+  .msg-frame[data-sender-type="human"][data-density="short"] .paper { transform: rotate(-1.2deg); }
+  .msg-frame[data-sender-type="human"][data-density="short"]:hover .paper,
+  .msg-frame[data-sender-type="human"][data-density="short"].is-hovered .paper { transform: rotate(-1.2deg) translateY(-1px); }
+
+  /* 卡片渲染/收起按钮（默认可见，让用户知道能激活） */
+  .card-controls {
+    position: absolute; right: 10px; top: 8px; z-index: 3;
+    display: flex; gap: 4px;
+    pointer-events: auto;
+  }
+  .card-controls button {
+    background: var(--paper); border: 1.5px solid var(--ink); color: var(--ink);
+    font: inherit; font-size: 10px; padding: 3px 7px; cursor: pointer;
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+  .card-controls button:hover { background: #fff; }
+  .card-controls .btn-keep { display: none; }   /* 仅激活态显示 */
+  .paper.is-active ~ .card-controls .btn-render,
+  .paper.is-active + .card-controls .btn-render { display: none; }
+  .paper.is-active ~ .card-controls .btn-keep,
+  .paper.is-active + .card-controls .btn-keep { display: inline-block; }
+
+  /* ─────────── 文字 / tokens（同前） ─────────── */
+  .t { margin: 0 0 12px; max-width: 72ch; }
+  .t:last-child { margin-bottom: 0; }
+  .note { margin: 12px 0 0; font-size: 12.5px; color: var(--ink-soft); border-left: 2px solid var(--ink-line); padding-left: 12px; max-width: 70ch; }
+  .marker { font-family: ui-monospace,"SF Mono",Menlo,monospace; font-size: 11px; color: var(--cinnabar);
+    margin: 0 0 12px; padding: 6px 9px; background: oklch(0.96 0.04 35 / 0.35); border-left: 2px solid var(--cinnabar); word-break: break-all; }
+  .code-block { font-family: ui-monospace,"SF Mono",Menlo,monospace; font-size: 12.5px; line-height: 1.55;
+    background: oklch(0.205 0.027 78 / 0.06); border-left: 2px solid var(--ink); padding: 9px 12px; margin: 10px 0; max-width: 70ch; white-space: pre-wrap; word-break: break-all; }
+  .lst { margin: 8px 0 12px; padding-left: 22px; max-width: 70ch; }
+  .lst li { margin-bottom: 5px; }
+  .tk { display: inline; padding: 1px 5px; border-radius: 1px; font-size: 0.94em; white-space: nowrap; }
+  .tk.path { font-family: ui-monospace,"SF Mono",Menlo,monospace; font-size: 0.88em; background: oklch(0.92 0.07 85 / 0.55); border: 1px solid oklch(0.78 0.10 75 / 0.6); word-break: break-all; white-space: normal; }
+  .tk.code { font-family: ui-monospace,"SF Mono",Menlo,monospace; font-size: 0.88em; background: oklch(0.205 0.027 78 / 0.07); border: 1px solid var(--ink-line); }
+  .tk.mention { color: var(--cinnabar); font-weight: 600; }
+  .tk.channel { color: var(--moss); font-weight: 600; }
+  .tk.task { font-size: 0.9em; background: oklch(0.205 0.027 78 / 0.06); border: 1px solid var(--ink-line); color: var(--ink); }
+
+  /* 状态徽标：激活时显示 */
+  .active-badge { position: absolute; left: 10px; top: 8px; z-index: 3;
+    font-size: 10px; color: var(--cinnabar); border: 1px solid var(--cinnabar);
+    background: oklch(0.96 0.04 35 / 0.5); padding: 1px 6px; display: none; pointer-events: none; }
+  .paper.is-active ~ .active-badge, .paper.is-active + .active-badge { display: block; }
+
+  @media (max-width: 720px) {
+    .intro, .chat { padding-left: 14px; padding-right: 14px; }
+    .msg-frame { grid-template-columns: 72px minmax(0, 1fr); gap: 10px; }
+    .text-overlay { padding: 16px 14px; }
+    .author-tag .placeholder { width: 48px; height: 48px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .msg-frame, .paper { transition: none !important; }
+    .msg-frame[data-movable="true"]:hover, .msg-frame[data-movable="true"].is-hovered { transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 桌面静态墨迹层：收起后显示保存的墨，保持 fixed viewport 坐标系 -->
+<div class="desk-static-bg" aria-hidden="true"></div>
+
+<!-- 桌面引擎 canvas（激活时显示，desk 色，可画墨） -->
+<canvas class="desk-canvas" data-object="desk"></canvas>
+
+<div class="intro">
+  <h1>Message Cards · 按需渲染</h1>
+  <span class="sub">单 WebGL context · 卡片默认静态 · 点「渲染」才活</span>
+  <p>
+    默认所有卡片/桌面是静态纸纹图（0 个 WebGL context，几百张卡也不涨内存）。
+    点某张卡的「渲染」让它临时活过来可画墨；同一时刻全局最多 1 个活 surface。
+    桌面也能画墨（desk 色），卡片是 paper 色，互不串色。
+  </p>
+  <div class="hint">
+    <b>可玩交互</b>：点卡片「渲染」→ 拖墨笔、右键水刷 → 点「收起(保留)」存墨 / 「收起(丢弃)」回初始。
+  </div>
+  <div class="desk-controls">
+    <button id="deskRender" type="button">渲染桌面（可画墨）</button>
+    <button id="deskKeep" type="button" style="display:none">收起桌面(保留)</button>
+    <button id="deskDrop" type="button" style="display:none">收起桌面(丢弃)</button>
+    <button id="deskPlaceCat" type="button" style="display:none">放猫(TL水墨)</button>
+  </div>
+</div>
+
+<main class="chat">
+  <!-- 1 · HUMAN 短 -->
+  <article class="msg-frame" data-object="message-frame" data-sender-type="human" data-density="short" data-movable="true">
+    <div class="author-tag">
+      <div class="placeholder" aria-hidden="true">smallkhoj<br>头像</div>
+      <span class="name">Lee Yan</span><time class="time">09:12</time>
+    </div>
+    <div>
+      <div class="paper" data-object="chat-message" data-density="short">
+        <canvas></canvas>
+        <span class="active-badge">渲染中</span>
+        <div class="text-overlay">
+          <p class="t">先把 <span class="tk channel">#gate-lab</span> 的状态收敛，等 <span class="tk mention">@gate-minimax</span> 回来再推进。</p>
+        </div>
+      </div>
+      <div class="card-controls">
+        <button class="btn-render" type="button">渲染</button>
+        <button class="btn-keep" type="button">收起(保留)</button>
+        <button class="btn-drop" type="button">收起(丢弃)</button>
+      </div>
+    </div>
+  </article>
+
+  <!-- 2 · AGENT 长 -->
+  <article class="msg-frame" data-object="message-frame" data-sender-type="agent" data-density="long" data-movable="true">
+    <div class="author-tag">
+      <div class="placeholder" aria-hidden="true">smallkhoj<br>头像</div>
+      <span class="name">gate-minimax</span><time class="time">09:14</time>
+    </div>
+    <div>
+      <div class="paper" data-object="chat-message" data-variant="notebook" data-density="long">
+        <canvas></canvas>
+        <span class="active-badge">渲染中</span>
+        <div class="text-overlay">
+          <p class="marker">REAL_TASKRUN_AUTOSTART_20260704091402<br>EXACT_MARKER: REAL_TASKRUN_AUTOSTART_20260704091402</p>
+          <p class="t">TaskRun auto-start acknowledged. <span class="tk mention">@gate-minimax</span> 已认领 <span class="tk task">task #3</span>，按要求把 marker 回传到 <span class="tk channel">#gate-lab</span>。</p>
+          <p class="t">关键路径：<span class="tk path">/Users/lee/.kimi-code/bin/kimi</span> 和 <span class="tk path">kimi.executablePath</span>。</p>
+          <p class="note">路径和命令必须像证据碎片一样被扫到。</p>
+        </div>
+      </div>
+      <div class="card-controls">
+        <button class="btn-render" type="button">渲染</button>
+        <button class="btn-keep" type="button">收起(保留)</button>
+        <button class="btn-drop" type="button">收起(丢弃)</button>
+      </div>
+    </div>
+  </article>
+
+  <!-- 3 · HUMAN 短 -->
+  <article class="msg-frame" data-object="message-frame" data-sender-type="human" data-density="short" data-movable="true">
+    <div class="author-tag">
+      <div class="placeholder" aria-hidden="true">smallkhoj<br>头像</div>
+      <span class="name">Lee Yan</span><time class="time">09:16</time>
+    </div>
+    <div>
+      <div class="paper" data-object="chat-message" data-density="short">
+        <canvas></canvas>
+        <span class="active-badge">渲染中</span>
+        <div class="text-overlay"><p class="t">好。下一页放验证结果。</p></div>
+      </div>
+      <div class="card-controls">
+        <button class="btn-render" type="button">渲染</button>
+        <button class="btn-keep" type="button">收起(保留)</button>
+        <button class="btn-drop" type="button">收起(丢弃)</button>
+      </div>
+    </div>
+  </article>
+
+  <!-- 4 · AGENT 长（markdown） -->
+  <article class="msg-frame" data-object="message-frame" data-sender-type="agent" data-density="long" data-movable="true">
+    <div class="author-tag">
+      <div class="placeholder" aria-hidden="true">smallkhoj<br>头像</div>
+      <span class="name">codex-m-krill</span><time class="time">09:22</time>
+    </div>
+    <div>
+      <div class="paper" data-object="chat-message" data-variant="notebook" data-density="long">
+        <canvas></canvas>
+        <span class="active-badge">渲染中</span>
+        <div class="text-overlay">
+          <p class="t">查到并处理了：standalone <span class="tk code">kimi</span> CLI 不支持 <span class="tk code">--json</span>。</p>
+          <div class="code-block">error: unknown option '--json'</div>
+          <ul class="lst">
+            <li>bundled CLI：<span class="tk path">kimi, version 1.43.0</span>，<span class="tk code">info --json</span> 正常；</li>
+            <li>standalone CLI：<span class="tk path">/Users/lee/.kimi-code/bin/kimi</span> 用于终端。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card-controls">
+        <button class="btn-render" type="button">渲染</button>
+        <button class="btn-keep" type="button">收起(保留)</button>
+        <button class="btn-drop" type="button">收起(丢弃)</button>
+      </div>
+    </div>
+  </article>
+
+  <!-- 5 · AGENT 短 -->
+  <article class="msg-frame" data-object="message-frame" data-sender-type="agent" data-density="short" data-movable="true">
+    <div class="author-tag">
+      <div class="placeholder" aria-hidden="true">smallkhoj<br>头像</div>
+      <span class="name">gate-minimax</span><time class="time">09:28</time>
+    </div>
+    <div>
+      <div class="paper" data-object="chat-message" data-density="short">
+        <canvas></canvas>
+        <span class="active-badge">渲染中</span>
+        <div class="text-overlay"><p class="t">复测通过，建议把 <span class="tk task">task #3</span> 标记为 <span class="tk task">verified</span>。</p></div>
+      </div>
+      <div class="card-controls">
+        <button class="btn-render" type="button">渲染</button>
+        <button class="btn-keep" type="button">收起(保留)</button>
+        <button class="btn-drop" type="button">收起(丢弃)</button>
+      </div>
+    </div>
+  </article>
+</main>
+
+<script src="ink-material-engine.js?v=3"></script>
+<script>
+'use strict';
+(function () {
+  // ===== 测试 API 状态 =====
+  // 图片资源模型：私有图用 Blob + objectURL 显式管理生命周期；共享纸纹图是单独一份。
+  //   resource 形状: { kind:'shared-paper'|'card-private'|'desk-private', blob, objectUrl }
+  //   kind==='shared-paper' 的资源永不被 revoke（所有卡片共用它）。
+  const state = {
+    active: null,            // { kind, paper?, surface, restoreToken? }
+    paperImage: null,        // 共享初始纸纹图 resource（所有卡片共用，不 revoke）
+    perCardImage: new Map(), // paper 元素 → 当前应用的 resource（多数指向 paperImage；保留后变私有）
+    deskImage: null,         // 桌面当前 resource（null/共享=CSS桌面色；保留后私有）
+    contextCount: 0,
+    revokedObjectUrlCount: 0, // 测试可观察：revokeObjectURL 累计调用次数
+    transition: Promise.resolve(),
+    transitionSerial: 0,
+    transitioning: false
+  };
+
+  const PAPER_TINT = [0.962, 0.954, 0.930];   // 引擎默认 paper 色
+  const DESK_TINT  = [0.920, 0.905, 0.880];   // 桌面色（比 paper 深，偏暖）
+
+  if (!window.InkMaterial || !InkMaterial.isWebGL2Available()) {
+    console.warn('[message-cards-ink] WebGL2 不可用');
+    return;
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 图片资源辅助
+  // ──────────────────────────────────────────────────────────
+  // canvas → Blob（异步）。preserveDrawingBuffer:true 保证抓得到当前帧。
+  function canvasToBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('toBlob null')), 'image/png');
+    });
+  }
+  // 用 canvas 当前帧造一个私有 resource（Blob + objectURL）。
+  function blobResourceFromCanvas(canvas, role) {
+    return canvasToBlob(canvas).then((blob) => ({
+      role, blob, objectUrl: URL.createObjectURL(blob)
+    }));
+  }
+  // ── 纯墨场抓取（keep 专用）──────────────────────────────────
+  // 直接读引擎内部 ink+fixed 浮点场（R 通道=密度），不读渲染帧。
+  // 渲染帧含 vignette/wet/fiber/纸色基线等显示层修饰，bakeSource 反烤会把这些当墨
+  // 累积，导致每轮 keep 后墨的面积扩散、整体变暗（实测 5 轮 ink 总量 6143→27336）。
+  // 抓纯墨场就跳过整个显示层，只把真墨数据 restore 回去。
+  //
+  // 关键：
+  //   - 背景填 tint 色（卡片用 PAPER_TINT，桌面用 DESK_TINT），不是白纸——这样 keep
+  //     后的背景图颜色与渲染态一致，不会变白。
+  //   - 只写 ink+fixed > THRESH 的像素为墨，其余保持 tint 背景——滤掉纸纹残留
+  //     （那些 low-residue 像素，实测 5146 个，是累积扩散的来源）。
+  //   - Y 翻转：GL 场 y=0 在底，canvas y=0 在顶；loadImage 上传时 UNPACK_FLIP_Y=true，
+  //     所以 canvas 行 y 读场行 (dyeH-1-y)，方位才对。
+  //   - readPixels R16F 用 gl.RGBA+gl.FLOAT（实测 RED_INTEGER+FLOAT 报 1282）。
+  function readFieldR(gl, field, W, H) {
+    const raw = new Float32Array(W * H * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, field.read.fbo);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, raw);
+    const out = new Float32Array(W * H);
+    for (let i = 0; i < W * H; i++) out[i] = raw[i * 4];
+    return out;
+  }
+  const INK_THRESH = 0.12;   // 低于此密度视为纸纹残留，不写墨
+  function inkFieldToCanvas(surface, tint) {
+    const gl = surface.gl;
+    const W = surface.dyeW, H = surface.dyeH;
+    const ink = readFieldR(gl, surface.ink, W, H);
+    const fixed = readFieldR(gl, surface.fixed, W, H);
+    const oc = document.createElement('canvas');
+    oc.width = W; oc.height = H;
+    const ctx = oc.getContext('2d');
+    // 背景填 tint 色（与该 surface 的纸色一致，避免 keep 后背景变白）
+    const tr = Math.round(tint[0] * 255), tg = Math.round(tint[1] * 255), tb = Math.round(tint[2] * 255);
+    ctx.fillStyle = `rgb(${tr},${tg},${tb})`;
+    ctx.fillRect(0, 0, W, H);
+    // 只写真墨：密度 > THRESH 的像素覆盖成深色（按密度强弱）
+    const img = ctx.getImageData(0, 0, W, H);
+    for (let y = 0; y < H; y++) {
+      const fRow = H - 1 - y;   // Y 翻转
+      for (let x = 0; x < W; x++) {
+        const sum = ink[fRow * W + x] + fixed[fRow * W + x];
+        if (sum <= INK_THRESH) continue;   // 滤掉纸纹残留
+        // 墨的暗度：sum 越大越黑，用 smoothstep 让边缘自然过渡（避免硬边）
+        const t = Math.min(1, (sum - INK_THRESH) / (1.8 - INK_THRESH));
+        const k = t * t * (3 - 2 * t);     // smoothstep
+        const ci = (y * W + x) * 4;
+        img.data[ci]     = Math.round(tr * (1 - k));
+        img.data[ci + 1] = Math.round(tg * (1 - k));
+        img.data[ci + 2] = Math.round(tb * (1 - k));
+        img.data[ci + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return oc;
+  }
+  async function makeInkFieldResource(surface, kind, tint) {
+    const oc = inkFieldToCanvas(surface, tint);
+    const restore = await blobResourceFromCanvas(oc, 'restore');
+    return { kind, blob: restore.blob, objectUrl: restore.objectUrl };
+  }
+  async function makeSurfaceResource(surface, kind, tint) {
+    const hasSource = !!surface._sourceCanvas;
+    if (!hasSource) return makeInkFieldResource(surface, kind, tint);
+
+    const visual = await blobResourceFromCanvas(surface.canvas, 'visual');
+    const restoreCanvas = inkFieldToCanvas(surface, tint);
+    const restore = await blobResourceFromCanvas(restoreCanvas, 'restore');
+    const source = await blobResourceFromCanvas(surface._sourceCanvas, 'source');
+    return {
+      kind,
+      blob: visual.blob,
+      objectUrl: visual.objectUrl,
+      restoreBlob: restore.blob,
+      restoreObjectUrl: restore.objectUrl,
+      sourceBlob: source.blob,
+      sourceObjectUrl: source.objectUrl
+    };
+  }
+  // 释放一个私有 resource 的 objectURL。共享纸纹图不释放（多卡共用）。
+  function revokeResource(resource) {
+    if (!resource) return;
+    if (resource.kind === 'shared-paper') return;   // 共享，不释放
+    const urls = [resource.objectUrl, resource.restoreObjectUrl, resource.sourceObjectUrl]
+      .filter((url, index, arr) => url && arr.indexOf(url) === index);
+    for (const url of urls) {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      state.revokedObjectUrlCount++;
+    }
+  }
+  // 把 resource 应用到某卡片的背景。
+  function applyCardImage(paper, resource) {
+    if (!resource) return;
+    paper.style.backgroundImage = `url("${resource.objectUrl}")`;
+    state.perCardImage.set(paper, resource);
+  }
+  function applyDeskImage(resource) {
+    const layer = document.querySelector('.desk-static-bg');
+    if (!layer) return;
+    if (resource) {
+      layer.style.backgroundImage = `url("${resource.objectUrl}")`;
+      layer.style.backgroundSize = '100% 100%';
+      layer.style.backgroundPosition = 'center';
+      layer.style.backgroundRepeat = 'no-repeat';
+    } else {
+      layer.style.backgroundImage = '';
+      layer.style.backgroundSize = '';
+      layer.style.backgroundPosition = '';
+      layer.style.backgroundRepeat = '';
+    }
+  }
+  function loadImageFromUrl(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('image load failed'));
+      img.src = url;
+    });
+  }
+  async function restoreResourceIntoSurface(surface, resource, opts = {}) {
+    if (!resource) return;
+    const isCurrent = typeof opts.isCurrent === 'function' ? opts.isCurrent : () => true;
+    const restoreUrl = resource.restoreObjectUrl || resource.objectUrl;
+    if (restoreUrl) {
+      const restoreImg = await loadImageFromUrl(restoreUrl);
+      if (!isCurrent()) return;
+      surface.loadImage(restoreImg);
+      surface.bakeSource({ density: opts.density ?? 0.9, wet: opts.wet ?? 0 });
+    }
+    if (resource.sourceObjectUrl) {
+      const sourceImg = await loadImageFromUrl(resource.sourceObjectUrl);
+      if (!isCurrent()) return;
+      // Load source color AFTER baking the restore map. bakeSource reads the
+      // current source canvas, so loading color first would overwrite the
+      // restore density source. This second load keeps colors sharp for live
+      // composite while the already-baked ink/fixed fields remain editable.
+      surface.loadImage(sourceImg);
+      if (opts.renderMode) surface.setRenderMode(opts.renderMode);
+    } else {
+      // restore-only maps are not user/imported source art. Clear the temporary
+      // loadImage source so a later keep does not preserve the black restore map
+      // as if it were a color source.
+      if (surface.sourceTexture) {
+        try { surface.gl.deleteTexture(surface.sourceTexture); } catch (_) {}
+        surface.sourceTexture = null;
+      }
+      surface._sourceCanvas = null;
+    }
+  }
+  // 串行化 render/keep/drop。toBlob 与 image restore 都是异步的；如果不排队，
+  // 用户快速点击「保留」后再点另一张「渲染」会对同一个 surface 执行两次 deactivate。
+  function runTransition(action) {
+    const serial = ++state.transitionSerial;
+    state.transitioning = true;
+    updateControlsUI();
+    const job = state.transition.catch(() => {}).then(action);
+    state.transition = job.catch(() => {}).finally(() => {
+      if (state.transitionSerial === serial) {
+        state.transitioning = false;
+        updateControlsUI();
+      }
+    });
+    return job;
+  }
+  // 卸载页面时 revoke 所有私有 resource（共享纸纹图也顺手 revoke，因为页面要没了）。
+  function revokeAll() {
+    for (const [paper, res] of state.perCardImage) revokeResource(res);
+    state.perCardImage.clear();
+    if (state.deskImage) { revokeResource(state.deskImage); state.deskImage = null; }
+    // 共享纸纹图：页面卸载时释放（不再有卡片用它了）
+    if (state.paperImage && state.paperImage.objectUrl) {
+      try { URL.revokeObjectURL(state.paperImage.objectUrl); } catch (_) {}
+      state.paperImage = null;
+    }
+  }
+  window.addEventListener('pagehide', revokeAll);
+  window.addEventListener('beforeunload', revokeAll);
+
+  // ──────────────────────────────────────────────────────────
+  // 第 0 步：预生成共享纸纹图（一次性，用完即毁 context）。
+  //   跑一帧 idle 干纸，toBlob 成共享 resource（kind:'shared-paper'），所有卡片共用。
+  //   临时 context 立刻 destroy，不计入常驻。
+  // ──────────────────────────────────────────────────────────
+  function preRenderPaper(tint, w, h) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    let surf = null;
+    try {
+      surf = InkMaterial.create(c, {
+        name: 'prerender', state: 'idle', preset: 'reference',
+        quality: 'low', seed: 'paper-' + tint.join(','), renderMode: 'fluid',
+        paperTint: tint
+      });
+      surf.setState({ state: 'idle', seedMarks: false });
+    } catch (e) { console.warn('prerender fail', e); return null; }
+    // 引擎 rAF 异步；等两帧让纸纹渲染稳定，再 toBlob。
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        canvasToBlob(c).then((blob) => {
+          try { surf.destroy(); } catch (_) {}
+          resolve({ kind: 'shared-paper', blob, objectUrl: URL.createObjectURL(blob) });
+        }).catch((e) => {
+          console.warn('prerender blob fail', e);
+          try { surf.destroy(); } catch (_) {}
+          resolve(null);
+        });
+      }));
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 第 1 步：把共享纸纹图铺到所有卡片。
+  //   桌面（body）不动 —— 永远是它自己的 CSS 颜色，不被任何图覆盖。
+  //   桌面只在被用户主动激活、画墨、收起(保留)后，才把画过的墨痕留在背景上。
+  // ──────────────────────────────────────────────────────────
+  const papers = Array.from(document.querySelectorAll('.paper'));
+
+  preRenderPaper(PAPER_TINT, 512, 256).then((paperRes) => {
+    state.paperImage = paperRes;
+    papers.forEach((p) => { if (paperRes) applyCardImage(p, paperRes); });
+    window.__messageCardsInk = makeTestAPI();
+  });
+
+  // ──────────────────────────────────────────────────────────
+  // 激活/收起 —— 全局单例
+  //   deactivateCurrent 现在 async：toBlob 要等。先抓 canvas 帧再 destroy surface，
+  //   避免 destroy 后画布内容丢失。激活新卡时用 await 保证旧的先收起完。
+  // ──────────────────────────────────────────────────────────
+  function activateCard(paper) {
+    return runTransition(() => activateCardNow(paper));
+  }
+
+  async function activateCardNow(paper) {
+    if (state.active && state.active.kind === 'card' && state.active.paper === paper) return;
+    await deactivateCurrentNow();   // 先收起旧的（等 toBlob 完成）
+    const canvas = paper.querySelector('canvas');
+    if (!canvas) return;
+    let surf;
+    try {
+      surf = InkMaterial.create(canvas, {
+        name: 'card-active', state: 'idle', preset: 'reference',
+        quality: 'low', seed: 'card-' + Date.now(), renderMode: 'fluid',
+        paperTint: PAPER_TINT
+        // vignette 走引擎默认 0.16：卡片要保留暗角效果（不明显，但用户要）
+      });
+      state.contextCount++;
+    } catch (e) { console.warn('activateCard fail', e); return; }
+    surf.setState({ state: 'idle', seedMarks: false });
+    paper.classList.add('is-active');
+    const restoreToken = {};
+    const activeRecord = { kind: 'card', paper, surface: surf, restoreToken, restorePromise: Promise.resolve() };
+    state.active = activeRecord;
+    bindPaperPointer(paper, surf);
+    // 恢复上次保留的墨：该卡当前用的是私有 resource（非共享纸纹）才恢复。
+    // bakeSource 的 mark score（darkness + chroma*0.75，smoothstep 0.12..0.2）会自动
+    // 滤掉接近白纸的底色（lum≈0.97 → mark≈0.03 < 0.12），只把真墨迹烤进 ink/fixed。
+    const currentRes = state.perCardImage.get(paper);
+    if (currentRes && currentRes.kind === 'card-private') {
+      try {
+        activeRecord.restorePromise = (async () => {
+          if (!state.active || state.active.surface !== surf ||
+              state.active.restoreToken !== restoreToken) return;
+          try {
+            await restoreResourceIntoSurface(surf, currentRes, {
+              density: 0.9,
+              wet: 0,
+              renderMode: 'live',
+              isCurrent: () => !!(state.active && state.active.surface === surf &&
+                state.active.restoreToken === restoreToken)
+            });
+          } catch (e) { console.warn('restore bake fail', e); }
+        })();
+      } catch (e) { console.warn('restore setup fail', e); }
+    }
+    updateControlsUI();
+  }
+
+  function activateDesk() {
+    return runTransition(() => activateDeskNow());
+  }
+
+  async function activateDeskNow() {
+    if (state.active && state.active.kind === 'desk') return;
+    await deactivateCurrentNow();
+    const canvas = document.querySelector('.desk-canvas');
+    let surf;
+    try {
+      surf = InkMaterial.create(canvas, {
+        name: 'desk-active', state: 'running', preset: 'reference',
+        quality: 'low', seed: 'desk-' + Date.now(), renderMode: 'live',
+        paperTint: DESK_TINT,
+        vignette: 0   // 桌面会 keep/restore 循环，关掉暗角避免 bakeSource 反烤累积变暗
+      });
+      state.contextCount++;
+    } catch (e) { console.warn('activateDesk fail', e); return; }
+    // 照搬原版 ink-material-inkify.html 的 live 模式初始化（水能冲墨、墨画可改）：
+    //   setRenderMode('live') + setState('running') + setParams({ink,flow,swirl,vortex})
+    // 不是 fluid+idle（那个模式图烤不进流体场、水冲不掉墨）。
+    surf.setRenderMode('live');
+    surf.setState({ state: 'running', seedMarks: false });
+    surf.setParams({ ink: 1.0, flow: 0.6, swirl: 0.6, vortex: 1.0 });
+    canvas.classList.add('is-active');
+    const restoreToken = {};
+    const activeRecord = { kind: 'desk', surface: surf, restoreToken, restorePromise: Promise.resolve() };
+    state.active = activeRecord;
+    bindDeskPointer(canvas, surf);
+    // 桌面恢复上次保留的墨（若有私有 desk resource）
+    if (state.deskImage && state.deskImage.kind === 'desk-private') {
+      try {
+        const deskRes = state.deskImage;
+        activeRecord.restorePromise = (async () => {
+          if (!state.active || state.active.surface !== surf ||
+              state.active.restoreToken !== restoreToken) return;
+          try {
+            await restoreResourceIntoSurface(surf, deskRes, {
+              density: 0.9,
+              wet: 0,
+              renderMode: 'live',
+              isCurrent: () => !!(state.active && state.active.surface === surf &&
+                state.active.restoreToken === restoreToken)
+            });
+          } catch (e) { console.warn('desk restore bake fail', e); }
+        })();
+      } catch (e) { console.warn('desk restore setup fail', e); }
+    }
+    updateControlsUI();
+  }
+
+  function deactivateCurrent(keep) {
+    return runTransition(() => deactivateCurrentNow(keep));
+  }
+
+  async function deactivateCurrentNow(keep) {
+    if (!state.active) return;
+    const activeRecord = state.active;
+    const { kind, paper, surface } = activeRecord;
+    // 如果用户在 restore 后立刻保留，先等 restore 烤回 surface，避免保存空纸。
+    if (keep && activeRecord.restorePromise) {
+      await activeRecord.restorePromise;
+    }
+    // 进入收起流程后，任何尚未返回的 restore 都不能再写入旧 surface。
+    activeRecord.restoreToken = null;
+    if (kind === 'card') {
+      if (keep) {
+        // 抓当前 canvas 帧 → 私有 resource。先抓帧（surface 还活着），成功后再换背景。
+        try {
+          const newRes = await makeSurfaceResource(surface, 'card-private', PAPER_TINT);
+          // 替换前 revoke 该卡上一个私有 resource（共享纸纹图不 revoke）
+          const prev = state.perCardImage.get(paper);
+          if (prev && prev !== newRes) revokeResource(prev);
+          applyCardImage(paper, newRes);
+        } catch (e) { console.warn('keep snapshot fail', e); }
+      } else {
+        // 丢弃：revoke 该卡私有 resource，回到共享纸纹图
+        const prev = state.perCardImage.get(paper);
+        if (prev && prev.kind !== 'shared-paper') revokeResource(prev);
+        if (state.paperImage) applyCardImage(paper, state.paperImage);
+      }
+      paper.classList.remove('is-active');
+    } else {
+      // desk
+      if (keep) {
+        try {
+          const newRes = await makeSurfaceResource(surface, 'desk-private', DESK_TINT);
+          if (state.deskImage) revokeResource(state.deskImage);
+          state.deskImage = newRes;
+          applyDeskImage(newRes);
+        } catch (e) { console.warn('desk keep snapshot fail', e); }
+      } else {
+        if (state.deskImage) revokeResource(state.deskImage);
+        state.deskImage = null;
+        applyDeskImage(null);
+      }
+      surface.canvas.classList.remove('is-active');
+    }
+    try { surface.destroy(); state.contextCount--; } catch (_) {}
+    state.active = null;
+    updateControlsUI();
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // UI 按钮绑定
+  // ──────────────────────────────────────────────────────────
+  papers.forEach((paper) => {
+    const frame = paper.closest('.msg-frame');
+    const ctrls = frame.querySelector('.card-controls');
+    ctrls.querySelector('.btn-render').addEventListener('click', () => activateCard(paper));
+    ctrls.querySelector('.btn-keep').addEventListener('click', () => deactivateCurrent(true));
+    ctrls.querySelector('.btn-drop').addEventListener('click', () => deactivateCurrent(false));
+  });
+  document.getElementById('deskRender').addEventListener('click', () => activateDesk());
+  document.getElementById('deskKeep').addEventListener('click', () => deactivateCurrent(true));
+  document.getElementById('deskDrop').addEventListener('click', () => deactivateCurrent(false));
+  document.getElementById('deskPlaceCat').addEventListener('click', () => placeCatOnDesk());
+
+  // ──────────────────────────────────────────────────────────
+  // 放猫：把 cat_TL.png 作为水墨画烤进当前桌面 surface。
+  //   关键约束：猫不能盖住消息卡片。算法：
+  //   1. 收集所有 .msg-frame 在视口里的矩形（屏坐标）。
+  //   2. 在桌面（视口）的 UV 空间里找一个不与任何卡片重叠的正方形区域，
+  //      优先放右下角，尺寸取「桌面短边的 28%」——小到不抢卡片、大到看清。
+  //   3. 把猫预合成到一张 dyeW×dyeH 的画布上对应位置（其余填 desk 纸色，
+  //      bakeSource 的 mark score 会滤掉纸色只烤墨），再 loadImage+bakeSource。
+  //   全程不改引擎，只用 loadImage+bakeSource 这两个公开 API。
+  // ──────────────────────────────────────────────────────────
+  function findNonOverlappingDeskRect() {
+    const deskRect = document.querySelector('.desk-canvas').getBoundingClientRect();
+    const cards = Array.from(document.querySelectorAll('.msg-frame')).map((f) => {
+      const r = f.getBoundingClientRect();
+      // 卡片矩形转桌面 UV 空间（0..1）
+      return {
+        x0: (r.left - deskRect.left) / deskRect.width,
+        y0: (r.top - deskRect.top) / deskRect.height,
+        x1: (r.right - deskRect.left) / deskRect.width,
+        y1: (r.bottom - deskRect.top) / deskRect.height
+      };
+    });
+    const overlap = (rx0, ry0, size) => {
+      const rx1 = rx0 + size, ry1 = ry0 + size;
+      // 内边距：猫矩形再扩 2% 边距，避免贴太近
+      const pad = 0.02;
+      for (const c of cards) {
+        if (rx1 <= c.x0 - pad || rx0 >= c.x1 + pad) continue;
+        if (ry1 <= c.y0 - pad || ry0 >= c.y1 + pad) continue;
+        return true;   // 有重叠
+      }
+      return false;
+    };
+    const size = Math.min(0.28, 1 / 3);   // 猫方块边长占桌面短边的比例
+    // 候选位置：右下、左下、右上、左上、中下、中上（依次试，第一个不重叠的就采用）
+    const candidates = [
+      [1 - size - 0.02, 1 - size - 0.02],   // 右下
+      [0.02, 1 - size - 0.02],              // 左下
+      [1 - size - 0.02, 0.02],              // 右上
+      [0.02, 0.02],                         // 左上
+      [0.5 - size / 2, 1 - size - 0.02],    // 中下
+      [0.5 - size / 2, 0.02],               // 中上
+    ];
+    for (const [x, y] of candidates) {
+      if (x < 0 || y < 0 || x + size > 1 || y + size > 1) continue;
+      if (!overlap(x, y, size)) return { x, y, size };
+    }
+    // 全都被卡片占了：退回右下角固定（至少能用，验收时看得到猫）
+    return { x: 1 - size - 0.02, y: 1 - size - 0.02, size };
+  }
+
+  function placeCatOnDesk() {
+    const active = state.active;
+    if (!active || active.kind !== 'desk') {
+      console.warn('[placeCat] 桌面未激活');
+      return false;
+    }
+    const surf = active.surface;
+    const place = findNonOverlappingDeskRect();
+    // 加载猫图（cat_TL.png 与本 html 同目录）
+    const img = new Image();
+    img.onload = () => {
+      if (!state.active || state.active.surface !== surf) {
+        console.warn('[placeCat] 加载回来时 surface 已切走');
+        return;
+      }
+      // 把猫合成到一张接近显示分辨率的 source 画布：desk 纸色底 + 猫放在 place 矩形里。
+      // 不再用 dyeW×dyeH；dye grid 是流体成本预算，不该决定图片颜色/细节保真度。
+      const oc = document.createElement('canvas');
+      const sourceScale = Math.min(1, 2048 / Math.max(surf.canvas.width || 1, surf.canvas.height || 1));
+      oc.width = Math.max(surf.dyeW, Math.round((surf.canvas.width || surf.dyeW) * sourceScale));
+      oc.height = Math.max(surf.dyeH, Math.round((surf.canvas.height || surf.dyeH) * sourceScale));
+      const ctx = oc.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      // 底色用 desk 纸色（与桌面 tint 接近），bakeSource 会滤掉只烤猫墨
+      ctx.fillStyle = `rgb(${Math.round(DESK_TINT[0]*255)},${Math.round(DESK_TINT[1]*255)},${Math.round(DESK_TINT[2]*255)})`;
+      ctx.fillRect(0, 0, oc.width, oc.height);
+      // place 的 UV 矩形 → 画布像素矩形。注意 Y 翻转：UV 的 y=0 在底，
+      // 但画布 y=0 在顶。loadImage 会 UNPACK_FLIP_Y，所以这里按画布坐标画。
+      const px = place.x * oc.width;
+      // Y 翻转：place.y 是从桌面底量起的 UV，画布要从顶画
+      const py = (1 - place.y - place.size) * oc.height;
+      const pw = place.size * oc.width;
+      const ph = place.size * oc.height;
+      // contain 进矩形（猫是方的，矩形也是方的，直接铺满）
+      ctx.drawImage(img, px, py, pw, ph);
+      // 用这张合成画布作为 source 烤进 ink/fixed 场
+      try {
+        surf.loadImage(oc);
+        surf.bakeSource({ density: 0.95, wet: 0 });
+      } catch (e) { console.warn('[placeCat] bakeSource fail', e); }
+    };
+    img.onerror = () => { console.warn('[placeCat] cat_TL.png 加载失败'); };
+    img.src = 'cat_TL.png?v=1';
+    return true;
+  }
+
+  function updateControlsUI() {
+    // 卡片按钮显隐
+    papers.forEach((p) => {
+      const isActive = state.active && state.active.kind === 'card' && state.active.paper === p;
+      const frame = p.closest('.msg-frame');
+      frame.querySelector('.btn-render').style.display = isActive ? 'none' : '';
+      frame.querySelector('.btn-keep').style.display = isActive ? '' : 'none';
+      frame.querySelector('.btn-drop').style.display = isActive ? '' : 'none';
+    });
+    // 桌面按钮显隐
+    const deskActive = state.active && state.active.kind === 'desk';
+    document.getElementById('deskRender').style.display = deskActive ? 'none' : '';
+    document.getElementById('deskKeep').style.display = deskActive ? '' : 'none';
+    document.getElementById('deskDrop').style.display = deskActive ? '' : 'none';
+    document.getElementById('deskPlaceCat').style.display = deskActive ? '' : 'none';
+  }
+  updateControlsUI();
+
+  // ──────────────────────────────────────────────────────────
+  // pointer：拖=墨笔，右键=水刷
+  // ──────────────────────────────────────────────────────────
+  function bindPaperPointer(paper, surface) {
+    const ptr = { down:false, x:0.5, y:0.5, speed:0, water:false, activated:false };
+    function toUv(e){const r=paper.getBoundingClientRect();return [(e.clientX-r.left)/r.width,1-(e.clientY-r.top)/r.height];}
+    paper.onpointerdown = (e) => {
+      e.preventDefault();
+      if (!ptr.activated){ptr.activated=true; surface.setState({state:'running',seedMarks:false});}
+      const [x,y]=toUv(e); ptr.down=true; ptr.x=x; ptr.y=y; ptr.speed=0;
+      ptr.water=(e.buttons&2)!==0||e.shiftKey||e.ctrlKey;
+      drawAt(x,y,0,0);
+    };
+    paper.onpointermove = (e) => {
+      if(!ptr.down) return;
+      const [x,y]=toUv(e); const dx=x-ptr.x, dy=y-ptr.y, dist=Math.hypot(dx,dy);
+      ptr.speed=dist*60;
+      const pressure=(e.pressure>0&&e.pressure<1)?e.pressure:0.7;
+      const sm=surface._sizeMult();
+      const baseR=ptr.water?(0.014+0.060*pressure)*sm:(0.0016+0.0042*pressure)*sm;
+      const spacing=Math.max(baseR*0.6,0.0006);
+      const steps=Math.min(Math.max(Math.ceil(dist/spacing),1),90);
+      for(let i=1;i<=steps;i++){const t=i/steps; drawAt(ptr.x+dx*t,ptr.y+dy*t,pressure,ptr.speed);}
+      ptr.x=x; ptr.y=y;
+    };
+    function drawAt(x,y,pressure,speed){
+      if(ptr.water) surface.brush({x,y,pressure:pressure||0.6,speed,vx:(x-ptr.x)*60,vy:(y-ptr.y)*60});
+      else surface.pen({x,y,pressure:pressure||0.7,speed});
+    }
+    paper.onpointerup = ()=>{ptr.down=false;ptr.water=false;};
+    paper.onpointercancel = paper.onpointerup;
+    paper.oncontextmenu = (e)=>{e.preventDefault();const [x,y]=toUv(e);surface.injectWater({x,y,radius:0.08,strength:0.85,vx:0.10,vy:0.03});};
+  }
+  function bindDeskPointer(canvas, surface) {
+    // 同 paper，但坐标系是 canvas 全屏
+    const ptr = { down:false, x:0.5, y:0.5, speed:0, water:false, activated:false };
+    function toUv(e){const r=canvas.getBoundingClientRect();return [(e.clientX-r.left)/r.width,1-(e.clientY-r.top)/r.height];}
+    canvas.onpointerdown = (e) => {
+      e.preventDefault();
+      if (!ptr.activated){ptr.activated=true; surface.setState({state:'running',seedMarks:false});}
+      const [x,y]=toUv(e); ptr.down=true; ptr.x=x; ptr.y=y; ptr.speed=0;
+      ptr.water=(e.buttons&2)!==0||e.shiftKey||e.ctrlKey;
+      drawAt(x,y,0,0);
+    };
+    canvas.onpointermove = (e) => {
+      if(!ptr.down) return;
+      const [x,y]=toUv(e); const dx=x-ptr.x, dy=y-ptr.y, dist=Math.hypot(dx,dy);
+      ptr.speed=dist*60;
+      const pressure=(e.pressure>0&&e.pressure<1)?e.pressure:0.7;
+      const sm=surface._sizeMult();
+      const baseR=ptr.water?(0.014+0.060*pressure)*sm:(0.0016+0.0042*pressure)*sm;
+      const spacing=Math.max(baseR*0.6,0.0006);
+      const steps=Math.min(Math.max(Math.ceil(dist/spacing),1),90);
+      for(let i=1;i<=steps;i++){const t=i/steps; drawAt(ptr.x+dx*t,ptr.y+dy*t,pressure,ptr.speed);}
+      ptr.x=x; ptr.y=y;
+    };
+    function drawAt(x,y,pressure,speed){
+      if(ptr.water) surface.brush({x,y,pressure:pressure||0.6,speed,vx:(x-ptr.x)*60,vy:(y-ptr.y)*60});
+      else surface.pen({x,y,pressure:pressure||0.7,speed});
+    }
+    canvas.onpointerup = ()=>{ptr.down=false;ptr.water=false;};
+    canvas.onpointercancel = canvas.onpointerup;
+    canvas.oncontextmenu = (e)=>{e.preventDefault();const [x,y]=toUv(e);surface.injectWater({x,y,radius:0.08,strength:0.85,vx:0.10,vy:0.03});};
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 测试 API
+  // ──────────────────────────────────────────────────────────
+  function makeTestAPI() {
+    return {
+      activeCount: () => state.active ? 1 : 0,
+      contextCount: () => state.contextCount,
+      // activate/deactivate 现在是 async；测试里要 await
+      activate: (paper) => activateCard(paper),
+      activateDesk: () => activateDesk(),
+      deactivate: (paper, keep) => {
+        if (state.active && state.active.kind === 'card' && state.active.paper === paper) return deactivateCurrent(keep);
+        return Promise.resolve();
+      },
+      deactivateDesk: (keep) => {
+        if (state.active && state.active.kind === 'desk') return deactivateCurrent(keep);
+        return Promise.resolve();
+      },
+      activeIs: (paper) => !!(state.active && state.active.kind === 'card' && state.active.paper === paper),
+      activeIsDesk: () => !!(state.active && state.active.kind === 'desk'),
+      surfaceOf: (paper) => (state.active && state.active.kind==='card' && state.active.paper===paper) ? state.active.surface : null,
+      surfaceOfDesk: () => (state.active && state.active.kind==='desk') ? state.active.surface : null,
+      tintOf: (k) => k === 'desk' ? DESK_TINT : PAPER_TINT,
+      // backgroundOf 返回该卡当前应用图的 objectUrl（共享或私有）
+      backgroundOf: (paper) => { const r = state.perCardImage.get(paper); return r ? r.objectUrl : null; },
+      placeCatOnDesk: () => placeCatOnDesk(),
+      // 私有 card resource 计数（不含共享纸纹图）
+      cardResourceCount: () => {
+        let n = 0;
+        for (const [, r] of state.perCardImage) if (r && r.kind === 'card-private') n++;
+        return n;
+      },
+      revokedObjectUrlCount: () => state.revokedObjectUrlCount,
+      deskBackgroundUrl: () => state.deskImage ? state.deskImage.objectUrl : null,
+      deskResourceInfo: () => state.deskImage ? ({
+        kind: state.deskImage.kind,
+        hasVisual: !!state.deskImage.objectUrl,
+        hasRestore: !!state.deskImage.restoreObjectUrl,
+        hasSource: !!state.deskImage.sourceObjectUrl,
+        visualBlobSize: state.deskImage.blob ? state.deskImage.blob.size : 0,
+        restoreBlobSize: state.deskImage.restoreBlob ? state.deskImage.restoreBlob.size : 0,
+        sourceBlobSize: state.deskImage.sourceBlob ? state.deskImage.sourceBlob.size : 0
+      }) : null,
+      bodyBackgroundImage: () => {
+        const layer = document.querySelector('.desk-static-bg');
+        return layer ? layer.style.backgroundImage : document.body.style.backgroundImage;
+      },
+      // 共享初始纸纹图的 objectUrl（测试用来判断「是否回到初始纸纹」）
+      initialPaperImage: () => state.paperImage ? state.paperImage.objectUrl : null,
+      _state: state
+    };
+  }
+  // 暴露（即使预渲染还没完成也先给个桩，测试会等）
+  if (!window.__messageCardsInk) window.__messageCardsInk = makeTestAPI();
+})();
+</script>
+</body>
+</html>

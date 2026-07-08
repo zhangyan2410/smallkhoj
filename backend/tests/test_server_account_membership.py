@@ -780,6 +780,8 @@ def test_public_human_routes_resolve_active_server_instead_of_default_server():
         public_api.create_api_key,
         public_api.revoke_api_key,
         public_api.list_channels,
+        public_api.get_chat_read_cursors,
+        public_api.update_chat_read_cursor,
         public_api.stream_public_events,
         public_api.get_channel_messages,
         public_api.get_public_thread,

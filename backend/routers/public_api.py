@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import settings
 from models import (
     get_db, Account, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
-    Computer, ConnectTicket, Member, Message, MessageReaction, EventRecord, FileEntry, Reminder, SavedItem,
+    ChatThreadReadCursor, Computer, ConnectTicket, Member, Message, MessageReaction, EventRecord, FileEntry, Reminder, SavedItem,
     Server, ServerMembership, Task, TaskRun, TaskRunTemplate, ThreadSummary,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
@@ -86,6 +86,13 @@ from services.task_run_templates import (
     update_template,
 )
 from services.task_runs import create_task_assignment_and_run, serialize_task_run
+from services.chat_read_cursors import (
+    mark_channel_read,
+    read_state_from_message_seq,
+    serialize_channel_read_cursor,
+    serialize_thread_read_cursor,
+    upsert_thread_read_cursor,
+)
 from services.thread_summary import (
     load_thread_metadata,
     resolve_thread_root,
@@ -1211,12 +1218,23 @@ async def _serialize_public_message(
     db: AsyncSession,
     msg: Message,
     thread_metadata: dict[uuid.UUID, dict] | None = None,
+    thread_read_seq_by_root: dict[uuid.UUID, int] | None = None,
+    thread_unread_count_by_root: dict[uuid.UUID, int] | None = None,
 ) -> dict:
     sender_result = await db.execute(select(Member).where(Member.id == msg.sender_id))
     sender = sender_result.scalar_one_or_none()
     sender_member = await serialize_member(db, sender) if sender else None
     root_id = msg.parent_id or msg.id
     metadata = (thread_metadata or {}).get(root_id, {})
+    thread_latest_seq = int(metadata.get("latestReplySeq") or 0) if not msg.parent_id else 0
+    thread_read_state = read_state_from_message_seq(
+        latest_seq=thread_latest_seq,
+        last_read_seq=(thread_read_seq_by_root or {}).get(root_id, 0),
+    )
+    if thread_unread_count_by_root is not None and not msg.parent_id:
+        thread_unread_count = max(0, int(thread_unread_count_by_root.get(root_id, 0)))
+        thread_read_state["unreadCount"] = thread_unread_count
+        thread_read_state["hasUnread"] = thread_unread_count > 0
     reactions = await _serialize_public_reactions(db, msg.id)
     return {
         "seq": msg.seq,
@@ -1235,6 +1253,9 @@ async def _serialize_public_message(
         "channelType": msg.channel_type,
         "replyCount": int(metadata.get("replyCount") or 0) if not msg.parent_id else 0,
         "threadSummary": metadata.get("threadSummary") if not msg.parent_id else None,
+        "threadLatestSeq": int(thread_read_state["latestSeq"]) if not msg.parent_id else 0,
+        "threadUnreadCount": int(thread_read_state["unreadCount"]) if not msg.parent_id else 0,
+        "hasThreadUnread": bool(thread_read_state["hasUnread"]) if not msg.parent_id else False,
         "reactions": reactions["items"],
         "reactionCounts": reactions["counts"],
         "time": msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else "",
@@ -1267,7 +1288,116 @@ async def _serialize_public_reactions(db: AsyncSession, message_id: uuid.UUID) -
     return {"items": items, "counts": counts}
 
 
-async def _dm_channel_payload(db: AsyncSession, channel: Channel, viewer: Member) -> dict:
+async def _channel_latest_seq_map(db: AsyncSession, channel_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    if not channel_ids:
+        return {}
+    result = await db.execute(
+        select(Message.channel_id, func.max(Message.seq))
+        .where(Message.channel_id.in_(channel_ids))
+        .group_by(Message.channel_id)
+    )
+    return {channel_id: int(latest_seq or 0) for channel_id, latest_seq in result.all()}
+
+
+async def _channel_read_seq_map(
+    db: AsyncSession,
+    *,
+    channel_ids: list[uuid.UUID],
+    member_id: uuid.UUID,
+) -> dict[uuid.UUID, int]:
+    if not channel_ids:
+        return {}
+    result = await db.execute(
+        select(ChannelMember.channel_id, ChannelMember.last_read_seq).where(
+            ChannelMember.channel_id.in_(channel_ids),
+            ChannelMember.member_id == member_id,
+        )
+    )
+    return {channel_id: int(last_read_seq or 0) for channel_id, last_read_seq in result.all()}
+
+
+async def _channel_unread_count_map(
+    db: AsyncSession,
+    *,
+    channel_ids: list[uuid.UUID],
+    read_seq_by_channel: dict[uuid.UUID, int],
+) -> dict[uuid.UUID, int]:
+    if not channel_ids:
+        return {}
+    result = await db.execute(
+        select(Message.channel_id, Message.seq).where(Message.channel_id.in_(channel_ids))
+    )
+    counts = {channel_id: 0 for channel_id in channel_ids}
+    for channel_id, seq in result.all():
+        if int(seq or 0) > read_seq_by_channel.get(channel_id, 0):
+            counts[channel_id] = counts.get(channel_id, 0) + 1
+    return counts
+
+
+async def _thread_read_seq_map(
+    db: AsyncSession,
+    *,
+    root_message_ids: list[uuid.UUID],
+    server_id: uuid.UUID,
+    member_id: uuid.UUID,
+) -> dict[uuid.UUID, int]:
+    if not root_message_ids:
+        return {}
+    result = await db.execute(
+        select(ChatThreadReadCursor.root_message_id, ChatThreadReadCursor.last_read_seq).where(
+            ChatThreadReadCursor.server_id == server_id,
+            ChatThreadReadCursor.root_message_id.in_(root_message_ids),
+            ChatThreadReadCursor.member_id == member_id,
+        )
+    )
+    return {root_message_id: int(last_read_seq or 0) for root_message_id, last_read_seq in result.all()}
+
+
+async def _thread_unread_count_map(
+    db: AsyncSession,
+    *,
+    root_message_ids: list[uuid.UUID],
+    thread_read_seq_by_root: dict[uuid.UUID, int],
+) -> dict[uuid.UUID, int]:
+    if not root_message_ids:
+        return {}
+    result = await db.execute(
+        select(Message.parent_id, Message.seq).where(Message.parent_id.in_(root_message_ids))
+    )
+    counts = {root_id: 0 for root_id in root_message_ids}
+    for root_id, seq in result.all():
+        if root_id and int(seq or 0) > thread_read_seq_by_root.get(root_id, 0):
+            counts[root_id] = counts.get(root_id, 0) + 1
+    return counts
+
+
+def _channel_read_state_payload(
+    channel: Channel,
+    *,
+    latest_seq_by_channel: dict[uuid.UUID, int],
+    read_seq_by_channel: dict[uuid.UUID, int],
+    unread_count_by_channel: dict[uuid.UUID, int] | None = None,
+) -> dict[str, int | bool]:
+    state = read_state_from_message_seq(
+        latest_seq=latest_seq_by_channel.get(channel.id, 0),
+        last_read_seq=read_seq_by_channel.get(channel.id, 0),
+    )
+    if unread_count_by_channel is not None:
+        unread_count = max(0, int(unread_count_by_channel.get(channel.id, 0)))
+        state["unreadCount"] = unread_count
+        state["hasUnread"] = unread_count > 0
+    return state
+
+
+async def _dm_channel_payload(
+    db: AsyncSession,
+    channel: Channel,
+    viewer: Member,
+    *,
+    latest_seq_by_channel: dict[uuid.UUID, int] | None = None,
+    read_seq_by_channel: dict[uuid.UUID, int] | None = None,
+    unread_count_by_channel: dict[uuid.UUID, int] | None = None,
+) -> dict:
     peer_result = await db.execute(
         select(Member)
         .join(ChannelMember, ChannelMember.member_id == Member.id)
@@ -1285,6 +1415,12 @@ async def _dm_channel_payload(db: AsyncSession, channel: Channel, viewer: Member
         "type": "dm",
         "displayName": f"DM @{peer.display_name}" if peer else "DM",
         "peer": await serialize_member(db, peer) if peer else None,
+        **_channel_read_state_payload(
+            channel,
+            latest_seq_by_channel=latest_seq_by_channel or {},
+            read_seq_by_channel=read_seq_by_channel or {},
+            unread_count_by_channel=unread_count_by_channel,
+        ),
     }
 
 
@@ -1426,6 +1562,18 @@ async def list_channels(
         if channel.kind == "private" and not await is_channel_member(db, channel_id=channel.id, member_id=context.member.id):
             continue
         visible_channels.append(channel)
+    visible_channel_ids = [channel.id for channel in visible_channels]
+    latest_seq_by_channel = await _channel_latest_seq_map(db, visible_channel_ids)
+    read_seq_by_channel = await _channel_read_seq_map(
+        db,
+        channel_ids=visible_channel_ids,
+        member_id=context.member.id,
+    )
+    unread_count_by_channel = await _channel_unread_count_map(
+        db,
+        channel_ids=visible_channel_ids,
+        read_seq_by_channel=read_seq_by_channel,
+    )
 
     return {
         "channels": [
@@ -1434,10 +1582,197 @@ async def list_channels(
                 "name": f"#{ch.name}" if ch.kind == "public" else ch.name,
                 "type": ch.kind,
                 "description": ch.description or "",
+                **_channel_read_state_payload(
+                    ch,
+                    latest_seq_by_channel=latest_seq_by_channel,
+                    read_seq_by_channel=read_seq_by_channel,
+                    unread_count_by_channel=unread_count_by_channel,
+                ),
             }
             for ch in visible_channels
         ]
     }
+
+
+@router.get("/chat/read-cursors")
+async def get_chat_read_cursors(
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    context = await _resolve_active_server_context(db, request)
+    channel_rows = await db.execute(
+        select(ChannelMember, Channel)
+        .join(Channel, Channel.id == ChannelMember.channel_id)
+        .where(
+            Channel.server_id == context.server.id,
+            ChannelMember.member_id == context.member.id,
+        )
+    )
+    thread_result = await db.execute(
+        select(ChatThreadReadCursor).where(
+            ChatThreadReadCursor.server_id == context.server.id,
+            ChatThreadReadCursor.member_id == context.member.id,
+        )
+    )
+
+    cursors = [
+        serialize_channel_read_cursor(membership, scope_kind="dm" if channel.kind == "dm" else "channel")
+        for membership, channel in channel_rows.all()
+    ]
+    cursors.extend(serialize_thread_read_cursor(cursor) for cursor in thread_result.scalars().all())
+    return {
+        "serverId": str(context.server.id),
+        "memberId": str(context.member.id),
+        "cursors": cursors,
+    }
+
+
+async def _resolve_read_cursor_channel(db: AsyncSession, server: Server, scope: dict) -> Channel:
+    channel_ref = scope.get("channelId") or scope.get("id") or scope.get("channelName") or scope.get("name")
+    if not channel_ref:
+        raise HTTPException(400, "Missing channel cursor scope")
+    try:
+        channel_id = uuid.UUID(str(channel_ref))
+    except ValueError:
+        channel_id = None
+    if channel_id:
+        result = await db.execute(select(Channel).where(Channel.server_id == server.id, Channel.id == channel_id))
+        channel = result.scalar_one_or_none()
+    else:
+        channel = await _resolve_channel(db, server, str(channel_ref).lstrip("#"))
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+    return channel
+
+
+async def _resolve_thread_last_seen_message_id(
+    db: AsyncSession,
+    *,
+    root: Message,
+    last_seen_message_id: object | None,
+) -> uuid.UUID | None:
+    if last_seen_message_id is None:
+        return None
+    try:
+        parsed_id = uuid.UUID(str(last_seen_message_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid thread lastSeenMessageId") from None
+
+    result = await db.execute(select(Message).where(Message.id == parsed_id))
+    message = result.scalar_one_or_none()
+    if not message:
+        raise HTTPException(400, "Thread lastSeenMessageId not found")
+    if message.id != root.id and message.parent_id != root.id:
+        raise HTTPException(400, "Thread lastSeenMessageId must belong to the thread")
+    return message.id
+
+
+def _parse_read_cursor_last_read_seq(body: dict) -> int:
+    if "lastReadSeq" in body:
+        raw = body["lastReadSeq"]
+    elif "last_read_seq" in body:
+        raw = body["last_read_seq"]
+    else:
+        return 0
+
+    if raw is None or isinstance(raw, bool):
+        raise HTTPException(400, "Invalid lastReadSeq")
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, str):
+        text = raw.strip()
+        if not text or not text.isdecimal():
+            raise HTTPException(400, "Invalid lastReadSeq")
+        value = int(text)
+    else:
+        raise HTTPException(400, "Invalid lastReadSeq")
+
+    if value < 0:
+        raise HTTPException(400, "Invalid lastReadSeq")
+    return value
+
+
+def _parse_read_cursor_request_body(raw: object) -> dict:
+    if not isinstance(raw, dict):
+        raise HTTPException(400, "Invalid read cursor request body")
+    return raw
+
+
+def _parse_read_cursor_scope(body: dict) -> dict:
+    if "scope" not in body:
+        return {}
+    scope = body["scope"]
+    if not isinstance(scope, dict):
+        raise HTTPException(400, "Invalid read cursor scope")
+    return scope
+
+
+@router.post("/chat/read-cursors")
+async def update_chat_read_cursor(
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    body = _parse_read_cursor_request_body(await request.json())
+    scope = _parse_read_cursor_scope(body)
+    kind = scope.get("kind") or body.get("kind")
+    last_read_seq = _parse_read_cursor_last_read_seq(body)
+    context = await _resolve_active_server_context(db, request)
+
+    if kind in {"channel", "dm"}:
+        channel = await _resolve_read_cursor_channel(db, context.server, scope)
+        if kind == "dm" and channel.kind != "dm":
+            raise HTTPException(400, "DM cursor scope must reference a DM channel")
+        if kind == "channel" and channel.kind == "dm":
+            raise HTTPException(400, "Channel cursor scope must not reference a DM channel")
+        member_in_channel = await is_channel_member(db, channel_id=channel.id, member_id=context.member.id)
+        ensure_channel_access(channel, context.member.id, is_channel_member=member_in_channel)
+        cursor = await mark_channel_read(
+            db,
+            channel_id=channel.id,
+            member_id=context.member.id,
+            last_read_seq=last_read_seq,
+        )
+        await db.commit()
+        return {
+            "cursor": serialize_channel_read_cursor(cursor, scope_kind="dm" if channel.kind == "dm" else "channel")
+        }
+
+    if kind == "thread":
+        thread_ref = scope.get("rootMessageId") or scope.get("threadId") or body.get("threadId")
+        if not thread_ref:
+            raise HTTPException(400, "Missing thread cursor scope")
+        root = await resolve_thread_root(db, context.server.id, str(thread_ref))
+        if not root:
+            raise HTTPException(404, "Thread root not found")
+        channel_result = await db.execute(select(Channel).where(Channel.id == root.channel_id))
+        channel = channel_result.scalar_one_or_none()
+        if channel:
+            member_in_channel = await is_channel_member(db, channel_id=channel.id, member_id=context.member.id)
+            ensure_channel_access(channel, context.member.id, is_channel_member=member_in_channel)
+        last_seen_message_id = (
+            body["lastSeenMessageId"]
+            if "lastSeenMessageId" in body
+            else scope.get("lastSeenMessageId")
+        )
+        validated_last_seen_message_id = await _resolve_thread_last_seen_message_id(
+            db,
+            root=root,
+            last_seen_message_id=last_seen_message_id,
+        )
+        cursor = await upsert_thread_read_cursor(
+            db,
+            server_id=context.server.id,
+            member_id=context.member.id,
+            root_message_id=root.id,
+            last_read_seq=last_read_seq,
+            last_seen_message_id=validated_last_seen_message_id,
+        )
+        await db.commit()
+        return {"cursor": serialize_thread_read_cursor(cursor)}
+
+    raise HTTPException(400, "Unsupported read cursor scope")
 
 
 @router.get("/events/stream")
@@ -1505,7 +1840,27 @@ async def get_channel_messages(
 
     root_ids = [msg.id for msg in messages if msg.parent_id is None]
     metadata = await load_thread_metadata(db, root_ids)
-    result = [await _serialize_public_message(db, msg, metadata) for msg in messages]
+    thread_read_seq_by_root = await _thread_read_seq_map(
+        db,
+        root_message_ids=root_ids,
+        server_id=context.server.id,
+        member_id=context.member.id,
+    )
+    thread_unread_count_by_root = await _thread_unread_count_map(
+        db,
+        root_message_ids=root_ids,
+        thread_read_seq_by_root=thread_read_seq_by_root,
+    )
+    result = [
+        await _serialize_public_message(
+            db,
+            msg,
+            metadata,
+            thread_read_seq_by_root=thread_read_seq_by_root,
+            thread_unread_count_by_root=thread_unread_count_by_root,
+        )
+        for msg in messages
+    ]
 
     return {"messages": result, "channelName": name}
 
@@ -1538,11 +1893,29 @@ async def get_public_thread(
     metadata = {
         root.id: {
             "replyCount": len(replies),
+            "latestReplySeq": max([int(reply.seq or 0) for reply in replies], default=0),
             "threadSummary": serialize_thread_summary(summary),
         }
     }
+    thread_read_seq_by_root = await _thread_read_seq_map(
+        db,
+        root_message_ids=[root.id],
+        server_id=server.id,
+        member_id=context.member.id,
+    )
+    thread_unread_count_by_root = await _thread_unread_count_map(
+        db,
+        root_message_ids=[root.id],
+        thread_read_seq_by_root=thread_read_seq_by_root,
+    )
     return {
-        "thread": await _serialize_public_message(db, root, metadata),
+        "thread": await _serialize_public_message(
+            db,
+            root,
+            metadata,
+            thread_read_seq_by_root=thread_read_seq_by_root,
+            thread_unread_count_by_root=thread_unread_count_by_root,
+        ),
         "replies": [
             await _serialize_public_message(db, item, metadata)
             for item in replies
@@ -4173,8 +4546,30 @@ async def list_dms(
         .order_by(Channel.updated_at.desc(), Channel.created_at.desc())
     )
     channels = result.scalars().all()
+    channel_ids = [channel.id for channel in channels]
+    latest_seq_by_channel = await _channel_latest_seq_map(db, channel_ids)
+    read_seq_by_channel = await _channel_read_seq_map(
+        db,
+        channel_ids=channel_ids,
+        member_id=viewer.id,
+    )
+    unread_count_by_channel = await _channel_unread_count_map(
+        db,
+        channel_ids=channel_ids,
+        read_seq_by_channel=read_seq_by_channel,
+    )
     return {
-        "dms": [await _dm_channel_payload(db, channel, viewer) for channel in channels],
+        "dms": [
+            await _dm_channel_payload(
+                db,
+                channel,
+                viewer,
+                latest_seq_by_channel=latest_seq_by_channel,
+                read_seq_by_channel=read_seq_by_channel,
+                unread_count_by_channel=unread_count_by_channel,
+            )
+            for channel in channels
+        ],
         "count": len(channels),
     }
 

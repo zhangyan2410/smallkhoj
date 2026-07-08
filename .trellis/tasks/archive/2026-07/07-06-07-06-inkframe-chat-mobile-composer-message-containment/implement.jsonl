@@ -1,0 +1,6 @@
+{"path":"frontend/app/chat/[channel]/channel-client.tsx","reason":"Owns chat message list, composer, thread panel, and mobile proof roles."}
+{"path":"frontend/components/message-frame.tsx","reason":"Shared message prefab whose body/content containment must be centralized."}
+{"path":"frontend/test/material-surface.test.tsx","reason":"Existing Inkframe source contract tests for chat/task material and mobile roles."}
+{"path":"frontend/test/chat-unread-state.test.ts","reason":"Previous chat unread/event Trellis task validation included in this round."}
+{"path":".trellis/spec/frontend/component-guidelines.md","reason":"Component ownership and data-region/source hook rules."}
+{"path":".trellis/spec/frontend/quality-guidelines.md","reason":"Flex overflow, browser evidence, and ProductShell ownership rules."}

@@ -1,0 +1,28 @@
+{
+  "id": "runtime-provider-expansion",
+  "name": "runtime-provider-expansion",
+  "title": "runtime provider expansion",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-09",
+  "completedAt": "2026-07-06",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "06-30-windows-runtime-launch-conversation-validation"
+  ],
+  "parent": "06-09-product-maturity-gap-decomposition",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

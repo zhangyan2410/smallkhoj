@@ -1,0 +1,8 @@
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/prd.md","reason":"Implementation requirements and acceptance criteria for the next optimization loop."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/design.md","reason":"Browser/mobile/backend route-flow design contracts."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/implement.md","reason":"Ordered implementation and validation plan."}
+{"file":".trellis/tasks/07-06-inkframe-runtime-browser-proof-product-polish/evidence/browser-proof.md","reason":"Previous-loop WebDriver blocker evidence to continue from."}
+{"file":".trellis/tasks/07-06-inkframe-runtime-browser-proof-product-polish/evidence/product-surface-audit.md","reason":"Previous-loop product surface audit and remaining browser/mobile proof gaps."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser evidence, mobile overflow, and ProductShell quality rules."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Server/member scoping and authenticated public API database contracts."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Realtime/read cursor event projection boundaries."}

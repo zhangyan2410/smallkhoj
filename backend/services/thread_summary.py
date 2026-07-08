@@ -86,18 +86,19 @@ async def load_thread_metadata(
         return {}
 
     metadata: dict[uuid.UUID, dict[str, Any]] = {
-        root_id: {"replyCount": 0, "threadSummary": None}
+        root_id: {"replyCount": 0, "latestReplySeq": 0, "threadSummary": None}
         for root_id in root_message_ids
     }
 
     counts_result = await db.execute(
-        select(Message.parent_id, func.count())
+        select(Message.parent_id, func.count(), func.max(Message.seq))
         .where(Message.parent_id.in_(root_message_ids))
         .group_by(Message.parent_id)
     )
-    for root_id, count in counts_result.all():
+    for root_id, count, latest_reply_seq in counts_result.all():
         if root_id in metadata:
             metadata[root_id]["replyCount"] = int(count or 0)
+            metadata[root_id]["latestReplySeq"] = int(latest_reply_seq or 0)
 
     summaries_result = await db.execute(
         select(ThreadSummary).where(ThreadSummary.root_message_id.in_(root_message_ids))

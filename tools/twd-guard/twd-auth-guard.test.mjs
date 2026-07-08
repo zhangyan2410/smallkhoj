@@ -3,7 +3,9 @@ import assert from "node:assert/strict"
 
 import {
   assertTargetResult,
+  config,
   normalizeTarget,
+  parsePortCandidates,
   parseLastJson,
   selectLocalTab,
   urlMatchForTarget,
@@ -37,6 +39,37 @@ test("parseLastJson ignores WebDriver connection logs", () => {
   const parsed = parseLastJson("New tab connected: http://127.0.0.1:3000/login\n{\"ok\":true,\"count\":1}\n")
 
   assert.deepEqual(parsed, { ok: true, count: 1 })
+})
+
+test("config leaves twdPort unset so ./twd can auto-discover", () => {
+  const oldPort = process.env.TWD_PORT
+  const oldCandidates = process.env.TWD_PORT_CANDIDATES
+  delete process.env.TWD_PORT
+  delete process.env.TWD_PORT_CANDIDATES
+  try {
+    assert.equal(config().twdPort, null)
+    assert.deepEqual(config().twdPortCandidates, [28765, 18765])
+  } finally {
+    if (oldPort === undefined) delete process.env.TWD_PORT
+    else process.env.TWD_PORT = oldPort
+    if (oldCandidates === undefined) delete process.env.TWD_PORT_CANDIDATES
+    else process.env.TWD_PORT_CANDIDATES = oldCandidates
+  }
+})
+
+test("config allows TWD_PORT override", () => {
+  const oldPort = process.env.TWD_PORT
+  process.env.TWD_PORT = "18765"
+  try {
+    assert.equal(config().twdPort, 18765)
+  } finally {
+    if (oldPort === undefined) delete process.env.TWD_PORT
+    else process.env.TWD_PORT = oldPort
+  }
+})
+
+test("parsePortCandidates accepts comma separated discovery order", () => {
+  assert.deepEqual(parsePortCandidates("39000, 39010"), [39000, 39010])
 })
 
 test("selectLocalTab prefers a target tab when present", () => {

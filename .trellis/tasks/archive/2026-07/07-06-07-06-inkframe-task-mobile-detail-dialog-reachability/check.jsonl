@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review overflow, scroll-owner, and browser-evidence honesty."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Review Inkframe task detail changes against product style constraints."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review component ownership and stable data-role contracts."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-task-mobile-detail-dialog-reachability/prd.md","reason":"Task requirements and acceptance criteria."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-task-mobile-detail-dialog-reachability/design.md","reason":"Expected DOM/layout contract."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-task-mobile-detail-dialog-reachability/implement.md","reason":"Implementation and validation plan."}
+{"file":".agents/skills/project-webdriver-cli/SKILL.md","reason":"Review that browser evidence uses ./twd and does not claim acceptance when no tab is connected."}

@@ -1,0 +1,8 @@
+{"file":".trellis/tasks/07-05-inkframe-product-ui-refactor/prd.md","reason":"Parent Inkframe product UI acceptance frame."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/evidence/browser-connectivity.md","reason":"Current no-tab and Chrome diagnostic evidence."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/evidence/backend-route-flow.md","reason":"Current handler-level route-flow backend evidence and limitations."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser evidence, mobile proof, and no fake UI verification rules."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Selectors/data-region/data-slot and shared component contracts."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Material surface active state and persistence boundaries."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Database/session/scoping expectations for backend cursor tests."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Read cursor, event, and unread projection correctness."}

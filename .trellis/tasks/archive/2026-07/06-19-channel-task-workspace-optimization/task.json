@@ -1,0 +1,37 @@
+{
+  "id": "channel-task-workspace-optimization",
+  "name": "channel-task-workspace-optimization",
+  "title": "channel and task workspace optimization",
+  "description": "Improve channel-scoped agent workspaces, shared channel space, and richer task surfaces after evaluating Clowder for product references.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-19",
+  "completedAt": "2026-07-06",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/models/slock.py",
+    "backend/routers/public_api.py",
+    "backend/routers/agent_api.py",
+    "backend/services/daemon_control.py",
+    "frontend/app/chat/[channel]/channel-client.tsx",
+    "frontend/components/task-board.tsx",
+    "frontend/app/tasks/page.tsx",
+    "frontend/lib/control-plane.ts"
+  ],
+  "notes": "",
+  "meta": {
+    "referenceProject": "/Users/code/project/clowder-ai"
+  }
+}

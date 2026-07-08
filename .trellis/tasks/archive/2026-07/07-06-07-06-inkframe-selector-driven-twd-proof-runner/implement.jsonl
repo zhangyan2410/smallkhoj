@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Browser-facing evidence gate and twd requirements"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Runner bridges CLI/browser/frontend evidence boundaries"}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-browserless-dom-mobile-proof-readiness/evidence/twd-proof-checklist.md", "reason": "Source selector checklist"}
+{"file": ".trellis/tasks/07-06-07-06-inkframe-browserless-dom-mobile-proof-readiness/evidence/dom-contract-inventory.md", "reason": "Stable DOM contract inventory"}

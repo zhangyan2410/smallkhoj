@@ -1,0 +1,13 @@
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/prd.md","reason":"Review against exact task requirements and acceptance criteria."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/design.md","reason":"Review browser/mobile/backend route-flow architecture."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/implement.md","reason":"Review implementation order and verification completeness."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/evidence/2026-07-06-progress.md","reason":"Review current scope alignment, validation claims, and remaining blocker truthfulness."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/evidence/browser-connectivity.md","reason":"Verify browser evidence is represented truthfully as blocked by no connected tab."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/evidence/backend-route-flow.md","reason":"Review backend route-flow test claims and documented remaining gaps."}
+{"file":".trellis/tasks/07-05-inkframe-product-ui-refactor/prd.md","reason":"Parent product acceptance frame that must include earlier Trellis scopes."}
+{"file":".trellis/tasks/07-06-inkframe-material-runtime-chat-events-optimization/prd.md","reason":"Previously written optimization task now included in the same delivery tree."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review selectors, regions, component ownership, and no route-local styling drift."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review real browser evidence and mobile overflow claims."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Review local material activation state and persistence boundaries."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review backend route-flow scoping and database invariants."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Review read cursor and event projection correctness."}

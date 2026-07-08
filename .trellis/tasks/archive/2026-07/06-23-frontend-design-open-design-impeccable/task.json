@@ -1,0 +1,28 @@
+{
+  "id": "frontend-design-open-design-impeccable",
+  "name": "frontend-design-open-design-impeccable",
+  "title": "frontend design workflow with open design and impeccable",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-23",
+  "completedAt": "2026-07-06",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "06-30-ink-wash-theme-exploration"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

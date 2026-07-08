@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review whether shell/background contracts remain centralized in product primitives."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Review visual-language guardrails for clean desk background and Inkframe object language."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review evidence quality, ProductShell ownership, browser-proof honesty, and overflow constraints."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Review that material resources stay session-local and no browser/backend blob persistence was introduced."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review ownership boundaries and future image-resource integration risks."}

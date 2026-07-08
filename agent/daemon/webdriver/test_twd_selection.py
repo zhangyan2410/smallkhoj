@@ -1,7 +1,9 @@
 import unittest
 import argparse
+import os
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import twd
@@ -150,6 +152,60 @@ class TabSelectionTests(unittest.TestCase):
 
         driver._unregister_client(client_b)
         self.assertFalse(session.is_active())
+
+
+class PortResolutionTests(unittest.TestCase):
+    def args(self, port=None):
+        return argparse.Namespace(host="127.0.0.1", port=port, token=None)
+
+    def test_explicit_cli_port_wins_over_discovery(self):
+        with patch.dict(os.environ, {}, clear=True):
+            selected = twd.resolve_twd_port(
+                self.args(port=18765),
+                session_probe=lambda host, port, token: [{"id": "connected"}],
+            )
+
+        self.assertEqual(selected, 18765)
+
+    def test_env_port_wins_over_discovery(self):
+        with patch.dict(os.environ, {"TWD_PORT": "18765"}, clear=True):
+            selected = twd.resolve_twd_port(
+                self.args(),
+                session_probe=lambda host, port, token: [{"id": "connected"}],
+            )
+
+        self.assertEqual(selected, 18765)
+
+    def test_auto_discovery_prefers_candidate_with_connected_tabs(self):
+        sessions_by_port = {
+            28765: [],
+            18765: [{"id": "1", "url": "http://127.0.0.1:3000/tasks"}],
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            selected = twd.resolve_twd_port(
+                self.args(),
+                session_probe=lambda host, port, token: sessions_by_port.get(port),
+            )
+
+        self.assertEqual(selected, 18765)
+
+    def test_auto_discovery_falls_back_to_preferred_candidate_when_no_tabs_are_connected(self):
+        with patch.dict(os.environ, {}, clear=True):
+            selected = twd.resolve_twd_port(
+                self.args(),
+                session_probe=lambda host, port, token: [],
+            )
+
+        self.assertEqual(selected, 28765)
+
+    def test_port_candidates_can_be_overridden_for_local_experiments(self):
+        with patch.dict(os.environ, {"TWD_PORT_CANDIDATES": "39000, 39010"}, clear=True):
+            selected = twd.resolve_twd_port(
+                self.args(),
+                session_probe=lambda host, port, token: None,
+            )
+
+        self.assertEqual(selected, 39000)
 
 
 if __name__ == "__main__":

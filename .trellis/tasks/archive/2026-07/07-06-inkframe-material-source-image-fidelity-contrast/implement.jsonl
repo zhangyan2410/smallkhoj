@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Component ownership and stable data-region/data-slot rules for foreground contrast hooks."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Inkframe visual direction, background/readability expectations, and forbidden dirty/pink/glass patterns."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser evidence gates, ProductShell ownership, overflow, and source-test expectations."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Session-local material resources and durable persistence boundaries."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Keeps image/material resources separate from backend-owned product state."}

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/product-ui-style.md", "reason": "verify existing default style was not lost"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "verify frontend quality and real browser evidence"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "verify persisted theme preference follows project patterns"}
+{"file": ".trellis/tasks/06-30-ink-wash-theme-exploration/prd.md", "reason": "verify Shui-mo exploration acceptance criteria"}

@@ -1,0 +1,10 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check evidence honesty, test coverage, and no-tab/browser proof wording."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Check that source contracts preserve Inkframe object language."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Check shared component boundaries and no route-local primitive drift."}
+{"file":".trellis/tasks/07-05-inkframe-product-ui-refactor/prd.md","reason":"Check alignment with parent Inkframe UI refactor goals."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-mobile-source-contract-hardening/prd.md","reason":"Check this task's requirements and acceptance criteria."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-mobile-source-contract-hardening/design.md","reason":"Check technical boundaries and intended source contracts."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-mobile-source-contract-hardening/implement.md","reason":"Check execution plan and validation gates."}
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/evidence/browser-recovery.md","reason":"Check current no-tab blocker and browser evidence status."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-browserless-dom-mobile-proof-readiness/evidence/twd-proof-checklist.md","reason":"Check canonical selector groups against implementation."}
+{"file":".agents/skills/project-webdriver-cli/SKILL.md","reason":"Check WebDriver/twd rules and no Playwright substitution."}

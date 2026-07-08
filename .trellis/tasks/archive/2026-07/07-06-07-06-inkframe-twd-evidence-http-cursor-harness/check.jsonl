@@ -1,0 +1,9 @@
+{"file":".trellis/tasks/07-06-07-06-inkframe-twd-evidence-http-cursor-harness/prd.md","reason":"Review exact requirements and acceptance criteria."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-twd-evidence-http-cursor-harness/design.md","reason":"Review browser/backend technical design and boundaries."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-twd-evidence-http-cursor-harness/implement.md","reason":"Review implementation order and validation plan."}
+{"file":".trellis/tasks/07-05-inkframe-product-ui-refactor/prd.md","reason":"Ensure this optimization remains aligned with the parent product refactor."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/evidence/browser-connectivity.md","reason":"Review no-tab evidence and Chrome diagnostic truthfulness."}
+{"file":".trellis/tasks/07-06-inkframe-browser-mobile-backend-hardening/evidence/backend-route-flow.md","reason":"Review prior backend route-flow evidence and remaining HTTP gap."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review browser/mobile evidence claims."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review database/session/scoping correctness."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Review read cursor and event projection correctness."}

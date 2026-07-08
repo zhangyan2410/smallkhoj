@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend guideline index before implementation"}
+{"file": ".trellis/spec/frontend/product-ui-style.md", "reason": "current default visual identity that must remain available"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "frontend quality and real browser verification expectations"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "theme preference should use existing durable preference patterns"}
+{"file": ".trellis/tasks/06-30-ink-wash-theme-exploration/prd.md", "reason": "Shui-mo exploration requirements, acceptance criteria, and design intent"}

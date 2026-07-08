@@ -1,0 +1,10 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend test, browser evidence, and no-tab gate contracts."}
+{"file":".trellis/spec/frontend/product-ui-style.md","reason":"Inkframe product style and mobile surface constraints."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Shared component/source contract guidance for avoiding route-local drift."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Thinking guide for source/test/browser evidence boundaries."}
+{"file":".trellis/tasks/07-05-inkframe-product-ui-refactor/prd.md","reason":"Parent Inkframe product acceptance frame."}
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/prd.md","reason":"Real browser/mobile proof remains the final acceptance gate."}
+{"file":".trellis/tasks/07-06-inkframe-browser-connection-mobile-proof/evidence/browser-recovery.md","reason":"Current no-tab blocker and runner result."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-browserless-dom-mobile-proof-readiness/evidence/twd-proof-checklist.md","reason":"Canonical selector groups for chat/task/mobile/material proof."}
+{"file":".trellis/tasks/07-06-07-06-inkframe-browserless-dom-mobile-proof-readiness/evidence/dom-contract-inventory.md","reason":"Existing stable DOM contract inventory."}
+{"file":".agents/skills/project-webdriver-cli/SKILL.md","reason":"Project WebDriver rules: use ./twd, no Playwright substitution."}

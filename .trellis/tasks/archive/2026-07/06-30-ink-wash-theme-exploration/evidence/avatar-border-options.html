@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Avatar Border Options</title>
+  <style>
+    :root {
+      --paper: #f6f1e2;
+      --paper-deep: #e9dcc1;
+      --ink: #221e16;
+      --muted: #756f62;
+      --blue-paper: #e8dfc8;
+      --human-paper: #f3ead4;
+      --cinnabar: #b74634;
+      --moss: #78956a;
+      --amber: #d6a33f;
+      --status: #4f9d62;
+      --shadow: #2a2419;
+      --grid: rgba(34, 30, 22, 0.075);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+        radial-gradient(circle at 18% 10%, rgba(255,255,255,0.62), transparent 30%),
+        linear-gradient(180deg, #fbf7ea, var(--paper));
+      background-size: 56px 56px, 56px 56px, auto, auto;
+      padding: 40px;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 28px;
+      max-width: 760px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+
+    .sample {
+      position: relative;
+      min-height: 220px;
+      border: 2px solid var(--ink);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.34), transparent 54%),
+        color-mix(in srgb, var(--paper) 88%, white);
+      box-shadow: 4px 4px 0 var(--shadow);
+      padding: 18px;
+    }
+
+    .sample.recommended::before {
+      content: "推荐";
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      border: 1.5px solid var(--ink);
+      background: color-mix(in srgb, var(--moss) 18%, var(--paper));
+      box-shadow: 1px 1px 0 var(--ink);
+      padding: 2px 7px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .stage {
+      display: flex;
+      min-height: 105px;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+
+    .label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .label code {
+      border: 1px solid rgba(34,30,22,0.42);
+      background: rgba(255,255,255,0.38);
+      padding: 1px 5px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .avatar-object {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .avatar-holder {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .avatar {
+      display: inline-flex;
+      width: 56px;
+      height: 56px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.44), transparent 38%),
+        var(--blue-paper);
+      color: var(--ink);
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .avatar.agent {
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, color-mix(in srgb, white 40%, transparent), transparent 42%),
+        linear-gradient(180deg, color-mix(in srgb, var(--amber) 18%, var(--paper)), color-mix(in srgb, var(--moss) 12%, var(--paper))),
+        linear-gradient(135deg, rgba(255,255,255,0.42), transparent 40%),
+        color-mix(in srgb, var(--amber) 16%, var(--paper));
+      color: transparent;
+      font-size: 0;
+    }
+
+    .avatar.agent .face-eye,
+    .avatar.agent .face-nose,
+    .avatar.agent .face-mouth,
+    .avatar.agent .face-brow,
+    .avatar.agent .face-mark {
+      position: absolute;
+      display: block;
+      pointer-events: none;
+    }
+
+    .avatar.agent .face-eye {
+      top: 21px;
+      width: 10px;
+      height: 4px;
+      border-top: 1.5px solid var(--ink);
+      border-radius: 50%;
+    }
+
+    .avatar.agent .face-eye.left {
+      left: 14px;
+      transform: rotate(10deg);
+    }
+
+    .avatar.agent .face-eye.right {
+      right: 13px;
+      transform: rotate(-16deg);
+    }
+
+    .avatar.agent .face-brow {
+      top: 16px;
+      width: 14px;
+      border-top: 1.5px solid var(--ink);
+      opacity: 0.85;
+    }
+
+    .avatar.agent .face-brow.left {
+      left: 10px;
+      transform: rotate(12deg);
+    }
+
+    .avatar.agent .face-brow.right {
+      right: 9px;
+      transform: rotate(-22deg);
+    }
+
+    .avatar.agent .face-nose {
+      left: 26px;
+      top: 29px;
+      width: 6px;
+      height: 6px;
+      border-left: 1.4px solid var(--ink);
+      border-bottom: 1.4px solid var(--ink);
+      border-radius: 50%;
+      transform: rotate(-18deg);
+    }
+
+    .avatar.agent .face-mouth {
+      left: 15px;
+      bottom: 12px;
+      width: 20px;
+      height: 9px;
+      border-top: 1.5px solid var(--ink);
+      border-radius: 50%;
+      transform: rotate(-18deg);
+    }
+
+    .avatar.agent .face-mark {
+      right: 8px;
+      top: 12px;
+      width: 9px;
+      height: 9px;
+      border: 2px solid color-mix(in srgb, var(--ink) 62%, transparent);
+      border-left-color: transparent;
+      border-radius: 50%;
+      opacity: 0.75;
+    }
+
+    .avatar.human {
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.48), transparent 40%),
+        var(--human-paper);
+      font-family: ui-serif, Georgia, serif;
+      font-weight: 700;
+    }
+
+    .status-dot {
+      position: absolute;
+      right: -2px;
+      top: -2px;
+      width: 11px;
+      height: 11px;
+      border: 2px solid var(--paper);
+      border-radius: 999px;
+      background: var(--status);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 38%, transparent);
+    }
+
+    .agent-face {
+      display: contents;
+    }
+
+    .size-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+
+    .size-row .avatar { width: 36px; height: 36px; font-size: 14px; }
+    .size-row .avatar-object:nth-child(2) .avatar { width: 48px; height: 48px; font-size: 18px; }
+    .size-row .avatar-object:nth-child(3) .avatar { width: 64px; height: 64px; font-size: 24px; }
+
+    /* A. Current style: useful as baseline, intentionally too heavy. */
+    .agent-current {
+      position: relative;
+      display: inline-flex;
+      border: 2px solid var(--ink);
+      background: color-mix(in srgb, var(--cinnabar) 8%, var(--paper));
+      box-shadow: 2px 2px 0 var(--ink);
+      padding: 2px;
+    }
+    .agent-current::after {
+      content: "";
+      position: absolute;
+      right: -5px;
+      top: -5px;
+      width: 10px;
+      height: 10px;
+      border: 2px solid var(--ink);
+      background: var(--cinnabar);
+      box-shadow: 1px 1px 0 var(--ink);
+    }
+
+    /* B. Recommended: identity frame with no stamp; status dot stays readable. */
+    .agent-thin {
+      position: relative;
+      display: inline-flex;
+      border: 1.25px solid color-mix(in srgb, var(--ink) 82%, transparent);
+      background: color-mix(in srgb, white 14%, var(--paper));
+      box-shadow: 1px 1px 0 color-mix(in srgb, var(--ink) 72%, transparent);
+      padding: 1px;
+    }
+
+    /* C. Ledger line: more like a nameplate/register mark than a stamp. */
+    .agent-ledger {
+      position: relative;
+      display: inline-flex;
+      border: 1.5px solid color-mix(in srgb, var(--ink) 70%, transparent);
+      background: color-mix(in srgb, white 18%, var(--paper));
+      box-shadow: 0 2px 0 color-mix(in srgb, var(--ink) 24%, transparent);
+      padding: 2px 2px 5px;
+    }
+    .agent-ledger::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      right: 6px;
+      bottom: 2px;
+      border-bottom: 1.5px solid color-mix(in srgb, var(--moss) 62%, var(--ink));
+    }
+
+    /* D. Folded paper: object frame without strong all-around boxing. */
+    .agent-fold {
+      position: relative;
+      display: inline-flex;
+      border: 1.5px solid color-mix(in srgb, var(--ink) 74%, transparent);
+      background: color-mix(in srgb, var(--amber) 8%, var(--paper));
+      box-shadow: 1px 1px 0 color-mix(in srgb, var(--ink) 68%, transparent);
+      padding: 2px;
+    }
+    .agent-fold::after {
+      content: "";
+      position: absolute;
+      left: -1.5px;
+      top: -1.5px;
+      width: 13px;
+      height: 13px;
+      border-right: 1.5px solid color-mix(in srgb, var(--ink) 70%, transparent);
+      border-bottom: 1.5px solid color-mix(in srgb, var(--ink) 70%, transparent);
+      background: color-mix(in srgb, white 38%, var(--paper));
+    }
+
+    /* E. Brush ring: keeps agent special, less square-object pressure. */
+    .agent-brush {
+      position: relative;
+      display: inline-flex;
+      border: 1.5px solid color-mix(in srgb, var(--ink) 72%, transparent);
+      background:
+        linear-gradient(90deg, transparent 0 12%, color-mix(in srgb, var(--ink) 10%, transparent) 12% 15%, transparent 15%),
+        color-mix(in srgb, var(--moss) 7%, var(--paper));
+      box-shadow: 1px 1px 0 color-mix(in srgb, var(--ink) 52%, transparent);
+      padding: 2px;
+    }
+    .agent-brush::before {
+      content: "";
+      position: absolute;
+      inset: 4px;
+      border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+      pointer-events: none;
+    }
+
+    /* F. Clip/pin: good for movable or attached identity tokens. */
+    .agent-clip {
+      position: relative;
+      display: inline-flex;
+      border: 1.25px solid color-mix(in srgb, var(--ink) 74%, transparent);
+      background: color-mix(in srgb, white 16%, var(--paper));
+      box-shadow: 1px 1px 0 color-mix(in srgb, var(--ink) 62%, transparent);
+      padding: 2px;
+    }
+    .agent-clip::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: -7px;
+      width: 18px;
+      height: 9px;
+      transform: translateX(-50%);
+      border: 1.5px solid color-mix(in srgb, var(--ink) 72%, transparent);
+      border-bottom: 0;
+      background: color-mix(in srgb, var(--amber) 18%, var(--paper));
+      box-shadow: 1px 0 0 color-mix(in srgb, var(--ink) 38%, transparent);
+    }
+
+    .comparison {
+      margin-top: 22px;
+      border: 2px solid var(--ink);
+      background: rgba(255,255,255,0.32);
+      box-shadow: 3px 3px 0 var(--shadow);
+      padding: 18px;
+    }
+
+    .comparison h2 {
+      margin: 0 0 14px;
+      font-size: 16px;
+    }
+
+    .message-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      max-width: 760px;
+    }
+
+    .message-paper {
+      border: 2px solid var(--ink);
+      background: color-mix(in srgb, white 22%, var(--paper));
+      box-shadow: 3px 3px 0 var(--ink);
+      padding: 12px 14px;
+      min-width: 0;
+    }
+
+    .message-paper strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    @media (max-width: 760px) {
+      body { padding: 20px; }
+      .board { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Agent 头像描边选型</h1>
+      <p>
+        更新后的判断：实际头像组件不是必须是球；静态 demo 里的蓝色圆球是误导。
+        头像本体应该填满身份框，agent / human 使用同一个 AvatarObject，只是身份框和内容来源不同。
+      </p>
+    </header>
+
+    <section class="board" aria-label="avatar border options">
+      <article class="sample">
+        <div class="stage">
+          <span class="avatar-object agent-current"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+        </div>
+        <div class="label">A 当前反例 <code>current / remove</code></div>
+        <div class="note">红色印章角标和状态小圆球抢同一个位置。这个后面应该去掉，不作为可选方向。</div>
+      </article>
+
+      <article class="sample recommended">
+        <div class="stage">
+          <span class="avatar-object agent-thin"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+        </div>
+        <div class="label">B 轻身份框 <code>identity-thin</code></div>
+        <div class="note">推荐默认方向。只保留轻外框，不再放印章，右上角完整留给状态。</div>
+      </article>
+
+      <article class="sample">
+        <div class="stage">
+          <span class="avatar-object agent-ledger"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+        </div>
+        <div class="label">C 账页名签线 <code>ledger</code></div>
+        <div class="note">更像登记页上的身份标注。适合成员列表、运行绑定这种偏信息登记的位置。</div>
+      </article>
+
+      <article class="sample">
+        <div class="stage">
+          <span class="avatar-object agent-fold"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+        </div>
+        <div class="label">D 折角纸框 <code>fold</code></div>
+        <div class="note">像贴在桌上的小纸框。比印章更轻，也能和便签、任务票据产生区分。</div>
+      </article>
+
+      <article class="sample">
+        <div class="stage">
+          <span class="avatar-object agent-brush"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+        </div>
+        <div class="label">E 内框墨线 <code>brush-line</code></div>
+        <div class="note">有一点手工墨线，但不做脏水墨。适合想让 agent 更“活”一点的位置。</div>
+      </article>
+
+      <article class="sample">
+        <div class="stage">
+          <span class="avatar-object agent-clip"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+        </div>
+        <div class="label">F 夹子身份牌 <code>clip</code></div>
+        <div class="note">更像被夹住的身份牌。适合未来可拖动/可分配的 agent 实体，不适合所有普通头像。</div>
+      </article>
+    </section>
+
+    <section class="comparison" aria-label="size comparison">
+      <h2>尺寸对比：推荐 B 在 xs / sm / lg 下保留状态点</h2>
+      <div class="size-row">
+        <span class="avatar-object agent-thin"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+        <span class="avatar-object agent-thin"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+        <span class="avatar-object agent-thin"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+      </div>
+    </section>
+
+    <section class="comparison" aria-label="message context">
+      <h2>agent / human 应该是同一个头像预制体的不同实例</h2>
+      <div class="message-row">
+        <span class="avatar-object agent-thin"><span class="avatar-holder"><span class="avatar agent"><span class="agent-face"><span class="face-brow left"></span><span class="face-brow right"></span><span class="face-eye left"></span><span class="face-eye right"></span><span class="face-nose"></span><span class="face-mouth"></span><span class="face-mark"></span></span></span><span class="status-dot"></span></span></span>
+        <div class="message-paper">
+          <strong>Zed Engine</strong>
+          这里头像是身份锚点，状态点负责表达 agent 当前状态。身份框只负责区分对象类型，不再硬塞印章。
+        </div>
+      </div>
+      <div class="message-row" style="margin-top: 14px;">
+        <span class="avatar-object agent-ledger"><span class="avatar-holder"><span class="avatar human">LY</span><span class="status-dot"></span></span></span>
+        <div class="message-paper">
+          <strong>Lee Yan</strong>
+          human 也应该走同一个头像预制体，只是 frame 更像签名/名签，不应该变成另一套完全独立的控件。
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

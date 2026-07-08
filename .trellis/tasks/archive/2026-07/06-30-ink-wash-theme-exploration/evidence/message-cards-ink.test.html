@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>message-cards-ink · 测试用例</title>
+<!--
+  这是 message-cards-ink.html 的测试用例。
+
+  方案：按需渲染（路3/C）
+    · 卡片默认是静态纸纹图（0 个 WebGL context）
+    · 点卡片「渲染」按钮才临时激活（最多 1 个活 surface，桌面 or 某张卡）
+    · 点「收起」关闭，墨可选保留（抓最后一帧当背景）或丢弃（回初始纸纹）
+
+  测试用例覆盖（每条都是代码可验证的断言，不靠截图）：
+
+  [初始态]
+  T1  页面启动后，活 surface 数 === 0（所有卡片都是静态图，无 context）
+  T2  WebGL context 创建次数 === 0（除了预生成纸纹图的那一次性的、用完即毁的 context）
+
+  [激活]
+  T3  点卡片A「渲染」→ 活 surface 数 === 1，且这 1 个是卡片A
+  T4  激活后该卡 canvas 接 pointer 能画墨（拖拽后渲染像素深墨 > 0）
+  T5  桌面与卡片 tint 不同：桌面 surface 的 paperTint ≠ 卡片 surface 的 paperTint
+       （背景是 desk 色、卡片是 paper 色，互不串色）
+
+  [全局单例]
+  T6  卡片A 激活时，再点卡片B「渲染」→ A 自动收起，活 surface 数仍 === 1，且是 B
+  T7  卡片激活时，点桌面「渲染」→ 卡片收起，活 surface === 1 是桌面；反之亦然
+       （桌面与卡片共用「最多 1 个活 surface」额度）
+
+  [收起-保留]
+  T8  在卡片A画墨后，点「收起(保留)」→ 活 surface === 0，且卡片A 的背景图
+       是抓取的最后一帧（与初始纸纹图不同，能检出墨迹像素）
+
+  [收起-丢弃]
+  T9  在卡片B画墨后，点「收起(丢弃)」→ 活 surface === 0，且卡片B 的背景图
+       回到初始公共纸纹图（无墨）
+
+  [内存上限]
+  T10 不管点多少张卡的「渲染」，活 surface 数永远 ≤ 1（全局单例不泄漏）
+
+  [可交互]
+  T11 桌面「渲染」激活后，在桌面上拖墨 → 桌面渲染像素深墨 > 0（桌面真的能画）
+
+  [桌面背景不变 + 收起保留]
+  T12 启动时桌面(body)背景图 === ''（CSS 桌面色，未被 prerender 图覆盖）—— 背景颜色不变
+  T13 桌面画墨后收起(保留) → deskBackgroundUrl() !== null（墨痕留在桌面背景）
+       且桌面静态背景在 fixed viewport 图层中显示，避免 body 文档高度导致墨迹位移/缩放
+  T14 桌面收起(丢弃) → deskBackgroundUrl() === null，bodyBackgroundImage() === ''（彻底恢复 CSS 桌面色）
+  T14b 桌面图片墨化后保留 → 静态图保留视觉快照，再渲染恢复颜色源 + 墨场，不退化成纯黑墨
+
+  [再渲染不丢墨 + 资源管理]
+  T15 卡片A 画墨→收起(保留)→再次渲染：第二次激活后墨还在（恢复后 surface 中心能检出墨像素）
+       —— 这是「再次渲染后之前保留的会丢失」的反向验证
+  T16 卡片丢弃后 perCardBg 条目回到初始纸纹图（不残留私有 dataURL，避免内存累积）
+  T17 同一张卡反复「渲染→画墨→保留」多次，perCardBg 条目数不增长（旧 dataURL 被覆盖，不泄漏）
+
+  测试运行方式：twd 打开本文件，等 #test-result 输出 PASS/FAIL 明细。
+-->
+<style>
+  body { font: 14px/1.6 ui-monospace, monospace; padding: 20px; background: #1a1a1a; color: #eee; }
+  #out { white-space: pre-wrap; }
+  .pass { color: #6f6; }
+  .fail { color: #f66; }
+  .info { color: #99c; }
+  hr { border: 0; border-top: 1px solid #444; margin: 12px 0; }
+</style>
+</head>
+<body>
+<div id="out">running…</div>
+<iframe id="stage" src="about:blank" style="width:1200px;height:800px;border:1px solid #555;display:block"></iframe>
+<script src="ink-material-engine.js?v=impl1"></script>
+<script>
+'use strict';
+// —— 极简断言框架 ——
+const out = document.getElementById('out');
+const results = { pass: 0, fail: 0, lines: [] };
+function assert(cond, name, extra) {
+  if (cond) { results.pass++; results.lines.push('  ✓ ' + name); }
+  else      { results.fail++; results.lines.push('  ✗ FAIL: ' + name + (extra ? '  → ' + extra : '')); }
+}
+function info(msg) { results.lines.push('  · ' + msg); }
+function section(t) { results.lines.push('\n[' + t + ']'); }
+function flush() {
+  const summary = `PASS ${results.pass} / FAIL ${results.fail}\n` + results.lines.join('\n');
+  out.innerHTML = '';
+  out.appendChild(document.createTextNode(summary));
+  out.className = results.fail ? 'fail' : 'pass';
+}
+
+// —— 等待 iframe 加载 ——
+const stage = document.getElementById('stage');
+stage.src = 'message-cards-ink.html?v=' + encodeURIComponent('test-' + Date.now());
+function ready() {
+  return new Promise((res) => {
+    if (stage.contentWindow && stage.contentWindow.__messageCardsInk) return res();
+    stage.addEventListener('load', () => setTimeout(res, 300));
+  });
+}
+
+// —— 在 iframe 内执行 fn，返回其返回值 ——
+function inFrame(fn) {
+  // 通过 postMessage 不方便回传复杂值；直接用 contentWindow 调用（同源）
+  return fn(stage.contentWindow, stage.contentDocument);
+}
+
+// —— 像素工具：读某 surface 渲染输出的深墨像素数 ——
+function darkPixelCount(surfDoc, surface) {
+  const W = surface.contentWindow || window; // surface 的 gl 属于 iframe
+  const gl = surface.gl;
+  const w = surface.canvas.width, h = surface.canvas.height;
+  // 读中央水平条带
+  const bh = Math.min(40, h);
+  const px = new Uint8Array(w * bh * 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.readPixels(0, Math.floor((h - bh) / 2), w, bh, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  let under180 = 0;
+  for (let i = 0; i < w * bh; i++) {
+    const lum = (px[i*4] + px[i*4+1] + px[i*4+2]) / 3;
+    if (lum < 180) under180++;
+  }
+  return under180;
+}
+
+function darkPixelCountAt(surface, y) {
+  const gl = surface.gl;
+  const w = surface.canvas.width, h = surface.canvas.height;
+  const bh = Math.min(40, h);
+  const row = Math.max(0, Math.min(h - bh, Math.floor(y * h - bh / 2)));
+  const px = new Uint8Array(w * bh * 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.readPixels(0, row, w, bh, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  let under180 = 0;
+  for (let i = 0; i < w * bh; i++) {
+    const lum = (px[i*4] + px[i*4+1] + px[i*4+2]) / 3;
+    if (lum < 180) under180++;
+  }
+  return under180;
+}
+
+ready().then(async function () {
+  const win = stage.contentWindow;
+  const doc = stage.contentDocument;
+  const api = win.__messageCardsInk;   // demo 暴露的测试 API
+
+  // 等一帧让初始静态图铺好
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  // ===== T1 初始活 surface = 0 =====
+  section('T1 初始态：活 surface = 0');
+  assert(api.activeCount() === 0, '启动后 activeCount() === 0',
+         'got ' + api.activeCount());
+
+  // ===== T2 初始 WebGL context 创建次数（静态图那次的临时 context 已销毁） =====
+  section('T2 初始 WebGL context 创建次数 = 0');
+  assert(api.contextCount() === 0, '启动后 contextCount() === 0',
+         'got ' + api.contextCount());
+  info('(预生成纸纹图的临时 context 应已销毁，不计入)');
+
+  // ===== T12 桌面背景未被改（启动时 body 背景图应为空 = CSS 桌面色） =====
+  section('T12 启动时桌面背景 = CSS 色（未被 prerender 图覆盖）');
+  const deskBgInit = api.bodyBackgroundImage();
+  assert(deskBgInit === '' || deskBgInit === 'none',
+         '启动时 body background-image 为空（CSS 桌面色）',
+         'got: ' + deskBgInit.slice(0, 40));
+  assert(api.deskBackgroundUrl() === null,
+         '启动时 deskBackgroundUrl() === null', 'got ' + api.deskBackgroundUrl());
+
+  // ===== T3 激活卡片A =====
+  section('T3 点卡片A「渲染」→ 活 surface = 1 且是A');
+  const cardA = doc.querySelectorAll('.paper')[0];
+  await api.activate(cardA);
+  await new Promise(r => setTimeout(r, 350));   // 等 context 创建 + shader 编译
+  assert(api.activeCount() === 1, 'activate(A) 后 activeCount() === 1',
+         'got ' + api.activeCount());
+  assert(api.activeIs(cardA), 'activeIs(A) === true', 'active 是别的元素');
+  info('context 数: ' + api.contextCount());
+
+  // ===== T4 激活后能画墨 =====
+  section('T4 卡片A激活后，拖墨 → 渲染深墨像素 > 0');
+  const surfA = api.surfaceOf(cardA);
+  const before = darkPixelCount(win, surfA);
+  // 模拟拖拽（直接调 pen，绕过事件——验证引擎真在画）
+  for (let i = 0; i < 40; i++) {
+    surfA.pen({ x: 0.2 + i * 0.015, y: 0.5, pressure: 0.9, speed: 0.1 });
+  }
+  await new Promise(r => setTimeout(r, 400));   // 等 sim
+  const after = darkPixelCount(win, surfA);
+  assert(after - before > 50, '画墨后深墨像素增量 > 50',
+         'before=' + before + ' after=' + after + ' delta=' + (after - before));
+
+  // ===== T5 桌面与卡片 tint 不同 =====
+  section('T5 桌面 tint ≠ 卡片 tint（desk色 vs paper色）');
+  const cardTint = api.tintOf('card');
+  const deskTint = api.tintOf('desk');
+  info('card paperTint=' + JSON.stringify(cardTint));
+  info('desk paperTint=' + JSON.stringify(deskTint));
+  assert(JSON.stringify(cardTint) !== JSON.stringify(deskTint),
+         'card tint !== desk tint', '两者相同，会串色');
+
+  // ===== T6 单例：A 激活时点 B → A 收起，活的是 B =====
+  section('T6 A激活时点B「渲染」→ A自动收起，活的=B');
+  const cardB = doc.querySelectorAll('.paper')[1];
+  await api.activate(cardB);
+  await new Promise(r => setTimeout(r, 350));
+  assert(api.activeCount() === 1, 'activate(B) 后仍 === 1', 'got ' + api.activeCount());
+  assert(api.activeIs(cardB), 'active 现在是 B', 'active 不是 B');
+  assert(!api.activeIs(cardA), 'A 已不再是 active', 'A 仍 active（泄漏）');
+
+  // ===== T7 卡片与桌面互斥 =====
+  section('T7 卡片激活时点桌面 → 卡片收起，活的是桌面');
+  const desk = doc.querySelector('.desk-canvas');   // 桌面元素
+  await api.activateDesk();
+  await new Promise(r => setTimeout(r, 350));
+  assert(api.activeCount() === 1, 'activateDesk 后 === 1', 'got ' + api.activeCount());
+  assert(api.activeIsDesk() === true, 'active 是桌面', 'active 不是桌面');
+  // 反过来：桌面激活时点卡片 → 桌面收起
+  await api.activate(cardA);
+  await new Promise(r => setTimeout(r, 350));
+  assert(api.activeIsDesk() === false, '再 activate(A) 后桌面不再是 active', '桌面仍 active');
+
+  // ===== T8 收起-保留 =====
+  section('T8 画墨后「收起(保留)」→ 活=0，背景图含墨');
+  await api.activate(cardB);
+  await new Promise(r => setTimeout(r, 350));
+  const surfB = api.surfaceOf(cardB);
+  for (let i = 0; i < 30; i++) surfB.pen({ x: 0.3 + i*0.01, y: 0.5, pressure: 0.9, speed: 0.1 });
+  await new Promise(r => setTimeout(r, 300));
+  await api.deactivate(cardB, /*keep*/true);   // 保留
+  await new Promise(r => setTimeout(r, 200));
+  assert(api.activeCount() === 0, '收起后 activeCount === 0', 'got ' + api.activeCount());
+  // 卡片B背景图应该不再是初始公共纸纹图（含墨）
+  const bgB = api.backgroundOf(cardB);
+  const initialPaper = api.initialPaperImage();
+  assert(bgB !== initialPaper, '保留模式下 B 背景图 ≠ 初始纸纹图',
+         '背景未更新（仍为初始图）');
+
+  // ===== T9 收起-丢弃 =====
+  section('T9 画墨后「收起(丢弃)」→ 活=0，背景回初始纸纹');
+  await api.activate(cardA);
+  await new Promise(r => setTimeout(r, 350));
+  const surfA2 = api.surfaceOf(cardA);
+  for (let i = 0; i < 30; i++) surfA2.pen({ x: 0.3 + i*0.01, y: 0.5, pressure: 0.9, speed: 0.1 });
+  await new Promise(r => setTimeout(r, 300));
+  await api.deactivate(cardA, /*keep*/false);  // 丢弃
+  await new Promise(r => setTimeout(r, 200));
+  assert(api.activeCount() === 0, '收起后 activeCount === 0', 'got ' + api.activeCount());
+  const bgA = api.backgroundOf(cardA);
+  assert(bgA === initialPaper, '丢弃模式下 A 背景图 === 初始纸纹图',
+         '背景未回退');
+
+  // ===== T10 连续点 5 张卡，活 surface 永远 ≤ 1 =====
+  section('T10 连续点5张卡 → 活 surface ≤ 1');
+  const papers = doc.querySelectorAll('.paper');
+  let maxSeen = 0;
+  for (const p of papers) {
+    await api.activate(p);
+    await new Promise(r => setTimeout(r, 250));
+    if (api.activeCount() > maxSeen) maxSeen = api.activeCount();
+  }
+  assert(maxSeen <= 1, '全程 activeCount 最大值 ≤ 1', '峰值 ' + maxSeen);
+
+  // ===== T11 桌面可画 =====
+  section('T11 桌面激活后拖墨 → 渲染深墨像素 > 0');
+  await api.activateDesk();
+  await new Promise(r => setTimeout(r, 350));
+  const deskSurf = api.surfaceOfDesk();
+  const dBefore = darkPixelCount(win, deskSurf);
+  for (let i = 0; i < 40; i++) deskSurf.pen({ x: 0.2 + i*0.015, y: 0.5, pressure: 0.9, speed: 0.1 });
+  await new Promise(r => setTimeout(r, 400));
+  const dAfter = darkPixelCount(win, deskSurf);
+  assert(dAfter - dBefore > 30, '桌面画墨后深墨像素增量 > 30',
+         'before=' + dBefore + ' after=' + dAfter);
+
+  // ===== T13 桌面收起(保留) → 墨痕留在桌面背景 =====
+  section('T13 桌面画墨后「收起(保留)」→ 背景含墨');
+  await api.deactivateDesk(true);   // 保留
+  await new Promise(r => setTimeout(r, 300));
+  assert(api.activeCount() === 0, '收起后 activeCount === 0', 'got ' + api.activeCount());
+  const deskKeptUrl = api.deskBackgroundUrl();
+  assert(deskKeptUrl !== null, 'deskBackgroundUrl() !== null（墨痕保留）',
+         'deskBackgroundUrl 为 null（没保留）');
+  const deskBgKept = api.bodyBackgroundImage();
+  assert(deskBgKept.indexOf('data:image') > -1 || deskBgKept.indexOf('blob:') > -1,
+         '桌面静态背景含图像（data/blob URL，带墨快照）',
+         '桌面静态背景: ' + deskBgKept.slice(0, 30));
+  const deskStaticLayer = doc.querySelector('.desk-static-bg');
+  const deskStaticStyle = deskStaticLayer ? win.getComputedStyle(deskStaticLayer) : null;
+  assert(!!deskStaticLayer, '存在 fixed 桌面静态背景层，收起后仍使用 viewport 坐标系',
+         'missing .desk-static-bg');
+  assert(deskStaticStyle && deskStaticStyle.position === 'fixed',
+         '桌面静态背景层 position === fixed',
+         'got ' + (deskStaticStyle ? deskStaticStyle.position : 'missing'));
+  assert(deskStaticStyle && deskStaticStyle.backgroundImage.indexOf('blob:') > -1,
+         '桌面静态背景层应用保留墨迹图',
+         'background: ' + (deskStaticStyle ? deskStaticStyle.backgroundImage.slice(0, 30) : 'missing'));
+  assert(win.getComputedStyle(doc.body).backgroundImage.indexOf('blob:') === -1,
+         'body 不直接承载桌面墨迹图，避免文档高度缩放/位移',
+         'body background: ' + win.getComputedStyle(doc.body).backgroundImage.slice(0, 80));
+
+  // ===== T14 桌面再次画墨后「收起(丢弃)」→ 彻底恢复 CSS 桌面色 =====
+  section('T14 桌面「收起(丢弃)」→ 桌面静态背景清空，恢复 CSS 桌面色');
+  await api.activateDesk();
+  await new Promise(r => setTimeout(r, 350));
+  await api.deactivateDesk(false);  // 丢弃
+  await new Promise(r => setTimeout(r, 300));
+  assert(api.activeCount() === 0, '丢弃后 activeCount === 0', 'got ' + api.activeCount());
+  assert(api.deskBackgroundUrl() === null, '丢弃后 deskBackgroundUrl === null',
+         'got ' + api.deskBackgroundUrl());
+  const deskBgDropped = api.bodyBackgroundImage();
+  assert(deskBgDropped === '' || deskBgDropped === 'none',
+         '丢弃后 body 背景为空（CSS 桌面色）',
+         'body 背景: ' + deskBgDropped.slice(0, 30));
+
+  // helper：读 active surface 渲染输出的深墨像素数（复用 darkPixelCount 的中央条带）
+  function inkDarkPx(surf) { return darkPixelCount(win, surf); }
+
+  // 测试 API 容错：未实现时返回默认值（让 red test 因断言失败，而非抛异常）
+  const cardResourceCount = () => typeof api.cardResourceCount === 'function' ? api.cardResourceCount() : -1;
+  const revokedObjectUrlCount = () => typeof api.revokedObjectUrlCount === 'function' ? api.revokedObjectUrlCount() : -1;
+
+  // ===== T14b 图片墨化保真：保留 visual + source + restore 三份语义资源 =====
+  section('T14b 桌面图片墨化后保留 → 再渲染恢复颜色源');
+  const placeImageOnDesk = () => typeof api.placeCatOnDesk === 'function' ? api.placeCatOnDesk() : false;
+  const deskResourceInfo = () => typeof api.deskResourceInfo === 'function' ? api.deskResourceInfo() : null;
+  await api.activateDesk(); await new Promise(r => setTimeout(r, 450));
+  const placed = placeImageOnDesk();
+  await new Promise(r => setTimeout(r, 800));
+  const sourceBeforeKeep = api.surfaceOfDesk() && api.surfaceOfDesk().sourceTexture;
+  assert(placed !== false, '测试 API 可将图片墨化进桌面', 'missing placeCatOnDesk()');
+  assert(!!sourceBeforeKeep, '图片墨化后 active surface 有 sourceTexture', 'sourceTexture missing before keep');
+  await api.deactivateDesk(true); await new Promise(r => setTimeout(r, 450));
+  const infoAfterImageKeep = deskResourceInfo();
+  assert(infoAfterImageKeep && infoAfterImageKeep.hasVisual,
+         '带图片的桌面 keep 保存视觉快照（静态显示用）',
+         JSON.stringify(infoAfterImageKeep));
+  assert(infoAfterImageKeep && infoAfterImageKeep.hasRestore,
+         '带图片的桌面 keep 保存墨场恢复图（再渲染用）',
+         JSON.stringify(infoAfterImageKeep));
+  assert(infoAfterImageKeep && infoAfterImageKeep.hasSource,
+         '带图片的桌面 keep 保存颜色源图（保真用）',
+         JSON.stringify(infoAfterImageKeep));
+  await api.activateDesk(); await new Promise(r => setTimeout(r, 800));
+  const restoredDesk = api.surfaceOfDesk();
+  assert(!!(restoredDesk && restoredDesk.sourceTexture),
+         '带图片桌面再次渲染后恢复 sourceTexture，颜色不会退化成纯墨',
+         'sourceTexture missing after restore');
+  await api.deactivateDesk(false); await new Promise(r => setTimeout(r, 300));
+
+  // ===== T15 再渲染不丢墨：画→保留→再次渲染，恢复的墨应能检出 =====
+  section('T15 再次渲染后之前保留的墨还在');
+  const cardC = doc.querySelectorAll('.paper')[2];
+  // 第一次：画墨 + 保留
+  await api.activate(cardC); await new Promise(r=>setTimeout(r,450));
+  const sC1 = api.surfaceOf(cardC);
+  for (let i=0;i<30;i++) sC1.pen({x:0.3+i*0.01, y:0.5, pressure:0.9, speed:0.1});
+  await new Promise(r=>setTimeout(r,400));
+  const inkAfterFirstDraw = inkDarkPx(sC1);
+  await api.deactivate(cardC, true); await new Promise(r=>setTimeout(r,450));  // toBlob 异步，多等
+  const keptUrl = api.backgroundOf(cardC);
+  assert(keptUrl && keptUrl !== api.initialPaperImage(), '第一次保留成功（背景≠初始纸纹图）',
+         'keptUrl=' + (keptUrl ? keptUrl.slice(0,30) : 'null'));
+  // 第二次：再次渲染 —— 关键。实现必须把保留的墨 bake 回新 surface
+  await api.activate(cardC); await new Promise(r=>setTimeout(r,700));  // 多等 loadImage+bake
+  const sC2 = api.surfaceOf(cardC);
+  await new Promise(r=>setTimeout(r,400));
+  const inkAfterRestore = inkDarkPx(sC2);
+  info('第一次画墨后深墨像素=' + inkAfterFirstDraw + '；恢复后深墨像素=' + inkAfterRestore);
+  assert(inkAfterRestore > 50, '再次渲染后墨恢复（中心深墨像素 > 50）',
+         '深墨像素 ' + inkAfterRestore + '（墨丢了，恢复未生效）');
+
+  // ===== T15b 恢复后可接着画：恢复后再画墨+保留，应含旧墨+新墨 =====
+  section('T15b 恢复后接着画，再次保留含旧+新墨');
+  // 在恢复的 sC2 上继续画一条新墨（不同位置，避免和旧的完全重叠难分辨）
+  for (let i=0;i<25;i++) sC2.pen({x:0.2+i*0.018, y:0.7, pressure:0.85, speed:0.1});
+  await new Promise(r=>setTimeout(r,400));
+  const inkAfterSecondDraw = inkDarkPx(sC2);
+  await api.deactivate(cardC, true); await new Promise(r=>setTimeout(r,450));
+  // 第三次渲染，恢复的应同时含旧墨(中线)+新墨(下区)
+  await api.activate(cardC); await new Promise(r=>setTimeout(r,700));
+  const sC3 = api.surfaceOf(cardC);
+  await new Promise(r=>setTimeout(r,400));
+  const inkAfterSecondRestore = inkDarkPx(sC3);
+  const oldBandAfterSecondRestore = darkPixelCountAt(sC3, 0.5);
+  const newBandAfterSecondRestore = darkPixelCountAt(sC3, 0.7);
+  info('二次画墨=' + inkAfterSecondDraw + '；二次恢复=' + inkAfterSecondRestore);
+  assert(inkAfterSecondRestore > 50, '二次恢复后墨仍在（旧+新墨都保留）',
+         '深墨像素 ' + inkAfterSecondRestore);
+  assert(oldBandAfterSecondRestore > 50, '二次恢复后旧墨区域仍在',
+         'oldBand=' + oldBandAfterSecondRestore);
+  assert(newBandAfterSecondRestore > 50, '二次恢复后新墨区域仍在',
+         'newBand=' + newBandAfterSecondRestore);
+
+  // ===== T16 丢弃后回初始纸纹图 + 私有资源清掉 =====
+  section('T16 丢弃后背景回初始纸纹图、私有资源清除');
+  const revokeBefore16 = revokedObjectUrlCount();
+  const resBefore16 = cardResourceCount();
+  await api.deactivate(cardC, false); await new Promise(r=>setTimeout(r,300));
+  const bgAfterDrop = api.backgroundOf(cardC);
+  const revokeAfter16 = revokedObjectUrlCount();
+  assert(bgAfterDrop === api.initialPaperImage(), '丢弃后 backgroundOf === 初始纸纹图',
+         '仍残留私有图');
+  assert(cardResourceCount() < resBefore16 || cardResourceCount() === 0,
+         '丢弃后 cardResourceCount 减少（私有资源释放）',
+         'before=' + resBefore16 + ' after=' + cardResourceCount());
+  assert(revokeAfter16 > revokeBefore16, '丢弃 active 私有资源时 revokeObjectURL 计数增长',
+         'before=' + revokeBefore16 + ' after=' + revokeAfter16);
+
+  // ===== T17 反复保留不泄漏（perCardImage 条目数不增长） =====
+  section('T17 同卡反复渲染→保留，资源不累积');
+  // 预热一次让 cardC 进入私有态（共享→私有），再测量基线
+  await api.activate(cardC); await new Promise(r=>setTimeout(r,450));
+  for (let i=0;i<15;i++) api.surfaceOf(cardC).pen({x:0.4,y:0.5,pressure:0.7,speed:0.1});
+  await new Promise(r=>setTimeout(r,200));
+  await api.deactivate(cardC, true); await new Promise(r=>setTimeout(r,450));
+  const mapSizeBefore = cardResourceCount();   // 预热后：cardC 私有 = 1
+  for (let round=0; round<3; round++) {
+    await api.activate(cardC); await new Promise(r=>setTimeout(r,450));
+    const s = api.surfaceOf(cardC);
+    for (let i=0;i<20;i++) s.pen({x:0.3+i*0.015, y:0.5, pressure:0.8, speed:0.1});
+    await new Promise(r=>setTimeout(r,300));
+    await api.deactivate(cardC, true); await new Promise(r=>setTimeout(r,450));  // 替换：旧私有应 revoke
+  }
+  const mapSizeAfter = cardResourceCount();    // 仍是 1（替换不累积）
+  assert(mapSizeAfter === mapSizeBefore, '反复保留后 cardResourceCount 不变（同卡覆盖，不泄漏）',
+         'before=' + mapSizeBefore + ' after=' + mapSizeAfter);
+
+  // ===== Resource lifecycle：replace/discard 调 revokeObjectURL =====
+  section('Resource lifecycle: revokeObjectURL 被调用');
+  const revokeStart = revokedObjectUrlCount();
+  // 再画一次保留（产生私有 objectURL），然后丢弃（应 revoke）
+  await api.activate(cardC); await new Promise(r=>setTimeout(r,450));
+  const sL = api.surfaceOf(cardC);
+  for (let i=0;i<15;i++) sL.pen({x:0.4, y:0.4, pressure:0.8, speed:0.1});
+  await new Promise(r=>setTimeout(r,300));
+  await api.deactivate(cardC, true); await new Promise(r=>setTimeout(r,450));  // replace: 旧私有应 revoke
+  const revokeAfterKeep = revokedObjectUrlCount();
+  await api.deactivate(cardC, false); await new Promise(r=>setTimeout(r,300)); // 不会触发（已非 active）
+  // 激活→保留→再激活→保留：第二次保留替换第一次，应 revoke 第一次的
+  await api.activate(cardC); await new Promise(r=>setTimeout(r,450));
+  for (let i=0;i<10;i++) api.surfaceOf(cardC).pen({x:0.5,y:0.5,pressure:0.7,speed:0.1});
+  await new Promise(r=>setTimeout(r,200));
+  await api.deactivate(cardC, true); await new Promise(r=>setTimeout(r,450));
+  const firstKeepUrl = api.backgroundOf(cardC);
+  await api.activate(cardC); await new Promise(r=>setTimeout(r,600));
+  for (let i=0;i<10;i++) api.surfaceOf(cardC).pen({x:0.5,y:0.5,pressure:0.7,speed:0.1});
+  await new Promise(r=>setTimeout(r,200));
+  await api.deactivate(cardC, true); await new Promise(r=>setTimeout(r,450));
+  const secondKeepUrl = api.backgroundOf(cardC);
+  const revokeAfterReplace = revokedObjectUrlCount();
+  info('revokeStart=' + revokeStart + ' afterKeep=' + revokeAfterKeep + ' afterReplace=' + revokeAfterReplace);
+  info('firstKeepUrl=' + (firstKeepUrl||'').slice(0,40) + ' secondKeepUrl=' + (secondKeepUrl||'').slice(0,40));
+  assert(secondKeepUrl !== firstKeepUrl, '二次保留产生了新资源（url 变化）', '两次 url 相同');
+  assert(revokeAfterReplace > revokeStart, 'revokeObjectURL 被调用（计数增长）',
+         'start=' + revokeStart + ' end=' + revokeAfterReplace);
+
+  // ===== Resource lifecycle：active discard 明确释放私有 objectURL =====
+  section('Resource lifecycle: active discard 释放私有资源');
+  await api.activate(cardC); await new Promise(r=>setTimeout(r,450));
+  const discardBefore = revokedObjectUrlCount();
+  await api.deactivate(cardC, false); await new Promise(r=>setTimeout(r,350));
+  const discardAfter = revokedObjectUrlCount();
+  assert(api.backgroundOf(cardC) === api.initialPaperImage(), 'active discard 后回到共享纸纹图',
+         '仍不是共享纸纹图');
+  assert(discardAfter > discardBefore, 'active discard 调用 revokeObjectURL',
+         'before=' + discardBefore + ' after=' + discardAfter);
+
+  // ===== T18 快速 keep→render：异步收起期间下一次渲染不能丢 =====
+  section('T18 快速 keep 后立刻 render 另一张卡，下一次渲染不丢');
+  const cardD = doc.querySelectorAll('.paper')[3] || doc.querySelectorAll('.paper')[0];
+  const cardE = doc.querySelectorAll('.paper')[4] || doc.querySelectorAll('.paper')[1];
+  await api.activate(cardD); await new Promise(r=>setTimeout(r,450));
+  const sRace = api.surfaceOf(cardD);
+  for (let i=0;i<20;i++) sRace.pen({x:0.25+i*0.02,y:0.5,pressure:0.9,speed:0.1});
+  await new Promise(r=>setTimeout(r,250));
+  const keepPromise = api.deactivate(cardD, true);
+  const renderPromise = api.activate(cardE);
+  await Promise.allSettled([keepPromise, renderPromise]);
+  await new Promise(r=>setTimeout(r,700));
+  assert(api.activeIs(cardE), 'keep pending 时触发 render，最终 active 是下一张卡',
+         'activeCount=' + api.activeCount());
+  assert(api.activeCount() === 1, '快速 keep→render 后 activeCount === 1',
+         'got ' + api.activeCount());
+  assert(api.contextCount() === 1, '快速 keep→render 后 contextCount === 1',
+         'got ' + api.contextCount());
+  await api.deactivate(cardE, false);
+  await new Promise(r=>setTimeout(r,300));
+
+  // ===== 总结 =====
+  flush();
+  // 暴露给 twd
+  window.__testResult = { pass: results.pass, fail: results.fail };
+});
+</script>
+</body>
+</html>

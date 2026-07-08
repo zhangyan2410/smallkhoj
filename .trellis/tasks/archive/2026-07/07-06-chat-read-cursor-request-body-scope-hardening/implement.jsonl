@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Read cursor writes are Server/member scoped and must not commit malformed input."}
+{"file":".trellis/spec/backend/event-delivery-contracts.md","reason":"Chat unread cursor state feeds browser event projections but must not affect runtime delivery."}
+{"file":".trellis/spec/backend/threading-contracts.md","reason":"Thread fallback request shape and root/reply validation must stay compatible."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Public API input validation owns the body/scope contract before service/database boundaries."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Search and reuse existing route-local validation patterns before adding helpers."}

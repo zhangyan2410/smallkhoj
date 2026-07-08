@@ -13,6 +13,7 @@ const DEFAULT_API_BASE = "http://localhost:8000"
 const DEFAULT_PUBLIC_KEY = "sk_public_local"
 const DEFAULT_ACCOUNT = "zy-ean"
 const DEFAULT_TWD_WAIT = "5"
+const DEFAULT_TWD_PORT_CANDIDATES = Object.freeze([28765, 18765])
 const SESSION_COOKIE = "smallkhoj_session"
 
 function envValue(...names) {
@@ -23,14 +24,32 @@ function envValue(...names) {
   return null
 }
 
-function config() {
+export function parsePortCandidates(value) {
+  const ports = String(value ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => Number(part))
+
+  if (ports.length === 0 || ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)) {
+    throw new Error(`Invalid TWD_PORT_CANDIDATES: ${value}`)
+  }
+
+  return Array.from(new Set(ports))
+}
+
+export function config() {
+  const explicitTwdPort = envValue("TWD_PORT")
   return {
     frontendBase: envValue("FRONTEND_BASE", "SMALLKHOJ_FRONTEND") ?? DEFAULT_FRONTEND_BASE,
     apiBase: envValue("API_BASE", "SMALLKHOJ_API", "NEXT_PUBLIC_API_BASE_URL") ?? DEFAULT_API_BASE,
     publicKey: envValue("PUBLIC_KEY", "NEXT_PUBLIC_API_KEY") ?? DEFAULT_PUBLIC_KEY,
     accountName: envValue("TWD_ACCOUNT", "SMALLKHOJ_TWD_ACCOUNT") ?? DEFAULT_ACCOUNT,
     twdWait: envValue("TWD_WAIT") ?? DEFAULT_TWD_WAIT,
-    twdPort: Number(envValue("TWD_PORT") ?? "18765"),
+    twdPort: explicitTwdPort ? Number(explicitTwdPort) : null,
+    twdPortCandidates: process.env.TWD_PORT_CANDIDATES
+      ? parsePortCandidates(process.env.TWD_PORT_CANDIDATES)
+      : [...DEFAULT_TWD_PORT_CANDIDATES],
   }
 }
 
@@ -118,15 +137,18 @@ async function waitForPort(port, timeoutMs) {
 }
 
 async function ensureTwdServe(cfg) {
-  if (await isPortOpen(cfg.twdPort)) return
+  const wsPort = cfg.twdPort ?? cfg.twdPortCandidates[0]
+  const controlPort = wsPort + 1
+  if (await isPortOpen(controlPort)) return
 
-  const child = spawn(TWD, ["serve"], {
+  const args = cfg.twdPort ? ["--port", String(cfg.twdPort), "serve"] : ["serve"]
+  const child = spawn(TWD, args, {
     cwd: ROOT,
     detached: true,
     stdio: "ignore",
   })
   child.unref()
-  await waitForPort(cfg.twdPort, Number(cfg.twdWait) * 1000)
+  await waitForPort(controlPort, Number(cfg.twdWait) * 1000)
 }
 
 function asUrl(value) {

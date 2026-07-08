@@ -1,0 +1,49 @@
+{
+  "id": "channel-memory-store-and-scoped-sessions",
+  "name": "channel-memory-store-and-scoped-sessions",
+  "title": "Channel Memory Store and Scoped Runtime Sessions",
+  "description": "Design and implement server-owned channel/task memory and scoped runtime sessions so agents can share channel knowledge without polluting unrelated DM/channel/task context. Local FUSE/WinFsp projections are documented later work, not the first-slice source of truth.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-06-22",
+  "completedAt": "2026-07-06",
+  "branch": "feat/channel-memory-store-and-scoped-sessions",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/models/slock.py",
+    "backend/routers/agent_api.py",
+    "backend/routers/public_api.py",
+    "backend/services/daemon_control.py",
+    "backend/services/public_events.py",
+    "agent/daemon/aaa-daemon/src/daemon/daemon.ts",
+    "agent/daemon/aaa-daemon/src/proxy/agent-proxy.ts",
+    "agent/daemon/aaa-daemon/src/runtime/slock-wrapper.ts",
+    "frontend/app/chat/[channel]/channel-client.tsx",
+    "frontend/lib/control-plane.ts",
+    ".trellis/tasks/06-19-channel-task-workspace-optimization/prd.md",
+    ".trellis/tasks/06-19-agent-context-inspector/prd.md",
+    ".trellis/tasks/06-09-files-surface-and-attachments/prd.md"
+  ],
+  "notes": "Created from 2026-06-22 design discussion with @zy-ean. Prioritize server-owned Channel Memory Store and task/session scope control. FUSE/WinFsp is a later local projection, not the source of truth. Selective prompt/context injection by session scope is implemented for the first slice after storage/API semantics were added.",
+  "meta": {
+    "referenceProjects": [
+      "/Users/code/project/agent-platform/memory-fuse",
+      "/Users/code/project/clowder-ai"
+    ],
+    "referenceTask": "06-19-channel-task-workspace-optimization",
+    "storageDecision": "server-owned metadata and small text in DB; large or binary content in object/blob storage",
+    "projectionDecision": "FUSE/macFUSE/WinFsp can expose local channel memory views after API semantics stabilize",
+    "promptContextInjection": "implemented-selective-first-slice"
+  }
+}
