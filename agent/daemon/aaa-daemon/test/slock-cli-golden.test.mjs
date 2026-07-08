@@ -1322,3 +1322,76 @@ test('golden: memory list-proposals alias works', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ===========================================================================
+// 14. Batch 7: Attachment domain golden tests
+// ===========================================================================
+
+test('golden: attachment view canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ id: 'att-1', filename: 'report.pdf', mimeType: 'application/pdf', size: 1024 }));
+  });
+  try {
+    const result = await runCli(['attachment', 'view', '--id', 'att-1'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /ID: att-1/);
+    assert.match(result.stdout, /Filename: report\.pdf/);
+    assert.match(result.stdout, /Type: application\/pdf/);
+    assert.match(result.stdout, /Size: 1024/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: attachment upload canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const uploadFile = join(root, 'test.txt');
+  writeFileSync(uploadFile, 'test content', 'utf-8');
+  const server = await startServer((req, res) => {
+    const url = new URL(req.url, 'http://test');
+    if (url.pathname.includes('resolve-channel')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ channelId: 'chan-1' }));
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ attachment: { id: 'att-new' } }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(
+      ['attachment', 'upload', '--channel', '#general', '--file', uploadFile],
+      env,
+    );
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /Attachment uploaded.*att-new/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: attachment upload write-gate denial', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const uploadFile = join(root, 'test.txt');
+  writeFileSync(uploadFile, 'test content', 'utf-8');
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(
+      ['attachment', 'upload', '--channel', '#general', '--file', uploadFile],
+      baseEnv(root, server.url),
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

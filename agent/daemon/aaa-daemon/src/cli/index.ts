@@ -58,6 +58,8 @@ import {
   formatMemoryDelete,
   formatThreadSummary,
   formatPassthroughText,
+  formatAttachmentView,
+  formatAttachmentUpload,
   formatPassthrough,
 } from './output.js';
 import { readDaemonPackageVersion } from '../version.js';
@@ -300,6 +302,25 @@ function buildProgram(): Command {
 
   // ── integration ──────────────────────────────────────────────
   const integrationCmd = program.command('integration').description('Integration operations');
+
+  // ── attachment ───────────────────────────────────────────────
+  const attachmentCmd = program.command('attachment').description('Attachment operations');
+
+  attachmentCmd.command('view').description('View attachment metadata')
+    .option('--id <id>', 'Attachment ID').option('--attachment-id <id>', 'Alias for --id')
+    .action(async () => {});
+
+  attachmentCmd.command('download').description('Download attachment to file')
+    .option('--id <id>', 'Attachment ID').option('--attachment-id <id>', 'Alias for --id')
+    .option('--output <path>', 'Output file path')
+    .action(async () => {});
+
+  attachmentCmd.command('upload').description('Upload attachment')
+    .option('--channel <target>', 'Channel target').option('--target <target>', 'Alias for --channel')
+    .option('-t <target>', 'Short for --channel')
+    .option('--file <path>', 'File path').option('--path <path>', 'Alias for --file')
+    .option('--mime-type <type>', 'MIME type').option('--content-type <type>', 'Alias for --mime-type')
+    .action(async () => {});
 
   integrationCmd.command('list').description('List integrations').action(async () => {});
 
@@ -1075,6 +1096,47 @@ const COMMAND_META: Record<string, CommandMeta> = {
     },
     formatText: formatThreadSummary,
   },
+  // ── Batch 7: attachment commands ──
+  'attachment view': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const id = (opts.id as string) ?? (opts.attachmentId as string) ?? pos[0];
+      if (!id) throw new CliError('Missing --id', ErrorCodes.MISSING_ATTACHMENT_ID.code, ErrorCodes.MISSING_ATTACHMENT_ID.nextAction);
+      return { method: 'GET', path: `/api/attachments/${encodeURIComponent(id)}` };
+    },
+    formatText: formatAttachmentView,
+  },
+  'attachment download': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const id = (opts.id as string) ?? (opts.attachmentId as string) ?? pos[0];
+      if (!id) throw new CliError('Missing --id', ErrorCodes.MISSING_ATTACHMENT_ID.code, ErrorCodes.MISSING_ATTACHMENT_ID.nextAction);
+      const output = opts.output as string | undefined;
+      return { method: 'GET', path: `/api/attachments/${encodeURIComponent(id)}/download`, rawOutputFile: output };
+    },
+    formatText: formatPassthroughText,
+  },
+  'attachment upload': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const target = (opts.channel as string) ?? (opts.target as string) ?? (opts.t as string);
+      const filePath = (opts.file as string) ?? (opts.path as string) ?? pos[0];
+      if (!target) throw new CliError('Missing --target', ErrorCodes.MISSING_TARGET.code, ErrorCodes.MISSING_TARGET.nextAction);
+      if (!filePath) throw new CliError('Missing --file', ErrorCodes.MISSING_FILE.code, ErrorCodes.MISSING_FILE.nextAction);
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/upload`,
+        multipartUpload: {
+          filePath,
+          channelTarget: target,
+          fieldName: 'file',
+          mimeType: (opts.mimeType as string) ?? (opts.contentType as string),
+        },
+        writeScope: writeScope(target),
+      };
+    },
+    formatText: formatAttachmentUpload,
+  },
 };
 
 /** Known options that take a value (to skip the value when scanning positionals). */
@@ -1090,6 +1152,7 @@ const VALUE_OPTIONS = new Set([
   '--fire-at', '--at', '--delay-seconds', '--repeat', '--cadence', '--in',
   '--msg-id', '--reminder-id', '--redirect-url', '--service', '--provider',
   '--base-sha', '--prompt', '--review-note', '--note', '--proposal-id',
+  '--attachment-id', '--file', '--output',
   '-t', '-c', '-q', '-s', '-m', '-r', '-a', '-h',
 ]);
 
@@ -1220,9 +1283,27 @@ async function handleMigratedCommand(
     // Write safety gate
     assertWriteAllowed(req.writeScope, cliEnv);
 
-    // Handle multipart uploads (e.g. profile avatar)
+    // Handle multipart uploads (e.g. profile avatar, attachment upload)
     if ((req as Record<string, unknown>).multipartUpload) {
       return await handleMultipartUploadFormatted(config, req as CliRequest, io, format, meta.formatText);
+    }
+
+    // Handle raw output files (attachment download)
+    if ((req as Record<string, unknown>).rawOutputFile) {
+      const dlResponse = await fetch(new URL(req.path, config.proxyUrl), {
+        method: req.method,
+        headers: { 'Authorization': `Bearer ${config.token}`, 'X-Agent-Id': config.agentId },
+      });
+      if (dlResponse.ok) {
+        const buffer = Buffer.from(await dlResponse.arrayBuffer());
+        writeFileSync((req as Record<string, unknown>).rawOutputFile as string, buffer);
+        out.write(JSON.stringify({ ok: true, output: (req as Record<string, unknown>).rawOutputFile }) + '\n');
+        return 0;
+      }
+      const dlText = await dlResponse.text();
+      const enriched = enrichProxyFailure(dlText, dlResponse.status);
+      err.write(enriched.endsWith('\n') ? enriched : enriched + '\n');
+      return 1;
     }
 
     // Execute request
@@ -1515,10 +1596,36 @@ async function handleMultipartUploadFormatted(
     const lower = fn.toLowerCase();
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.md')) return 'text/markdown';
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.json')) return 'application/json';
+    if (lower.endsWith('.csv')) return 'text/csv';
     return 'application/octet-stream';
   };
   form.append(upload.fieldName, new Blob([buffer], { type: inferMime(filename, buffer, upload.mimeType) }), filename);
   if (upload.mimeType) form.append('mimeType', upload.mimeType);
+
+  // Channel resolve for attachment uploads (not needed for profile avatar)
+  if (upload.channelTarget) {
+    const resolved = await fetch(new URL(`${agentPrefix(config.agentId)}/resolve-channel`, config.proxyUrl), {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${config.token}`, 'Content-Type': 'application/json', 'X-Agent-Id': config.agentId },
+      body: JSON.stringify({ target: upload.channelTarget }),
+    });
+    const resolvedText = await resolved.text();
+    if (!resolved.ok) {
+      const enriched = enrichProxyFailure(resolvedText, resolved.status);
+      err.write(enriched.endsWith('\n') ? enriched : enriched + '\n');
+      return 1;
+    }
+    const channelId = (JSON.parse(resolvedText) as { channelId?: string }).channelId;
+    if (!channelId) {
+      err.write(formatError(new CliError(`Could not resolve channel: ${upload.channelTarget}`, 'RESOLVE_FAILED')));
+      return 1;
+    }
+    form.append('channelId', channelId);
+  }
 
   const response = await fetch(new URL(request.path, config.proxyUrl), {
     method: request.method,

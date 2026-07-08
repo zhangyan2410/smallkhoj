@@ -518,6 +518,29 @@ export function formatPassthroughText(json: unknown): string {
   return JSON.stringify(json) + '\n';
 }
 
+// ─── Attachment formatting ──────────────────────────────────────
+
+/** Format attachment view response. */
+export function formatAttachmentView(json: unknown): string {
+  const data = json as { id?: string; filename?: string; mimeType?: string; size?: number; url?: string };
+  const lines: string[] = [];
+  if (data.id) lines.push(`ID: ${data.id}`);
+  if (data.filename) lines.push(`Filename: ${data.filename}`);
+  if (data.mimeType) lines.push(`Type: ${data.mimeType}`);
+  if (data.size !== undefined) lines.push(`Size: ${data.size}`);
+  if (data.url) lines.push(`URL: ${data.url}`);
+  if (lines.length === 0) return JSON.stringify(json) + '\n';
+  return lines.join('\n') + '\n';
+}
+
+/** Format attachment upload response. */
+export function formatAttachmentUpload(json: unknown): string {
+  const data = json as { attachment?: { id?: string }; id?: string };
+  const id = data.attachment?.id ?? data.id;
+  if (id) return `Attachment uploaded (id: ${id}).\n`;
+  return 'Attachment uploaded.\n';
+}
+
 /** For commands not yet migrated to canonical formatting, pass through raw JSON. */
 export function formatPassthrough(text: string): string {
   return text.endsWith('\n') ? text : text + '\n';

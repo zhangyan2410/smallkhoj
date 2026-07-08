@@ -266,21 +266,21 @@ test('slock CLI error paths', async (t) => {
   await t.test('#43 attachment view missing --id', async () => {
     const result = await runCli(['attachment', 'view'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_ATTACHMENT_ID');
+    assert.match(result.stderr, /Code: MISSING_ATTACHMENT_ID/);
   });
 
   // #44 - upload missing --target
   await t.test('#44 upload missing --target', async () => {
     const result = await runCli(['attachment', 'upload', '--file', '/dev/null'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_TARGET');
+    assert.match(result.stderr, /Code: MISSING_TARGET/);
   });
 
   // #45 - upload missing --file
   await t.test('#45 upload missing --file', async () => {
     const result = await runCli(['attachment', 'upload', '--target', '#general'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_FILE');
+    assert.match(result.stderr, /Code: MISSING_FILE/);
   });
 
   // #46 - HTTP non-200
@@ -902,7 +902,7 @@ test('slock CLI command variants', async (t) => {
     await t.test('#20 attachment download --output file', async () => {
       const outputFile = join(root, 'downloaded.json');
       const result = await runCli(
-        ['attachment', 'download', '--id', 'att-2', '--output', outputFile],
+        ['attachment', 'download', '--id', 'att-2', '--output', outputFile, '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);

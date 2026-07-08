@@ -1316,7 +1316,7 @@ test('slock reminder and attachment aliases route to canonical endpoints', async
     const deleteReminder = await runCli(['reminder', 'delete', '--id', 'rem-1', '--format', 'json'], env);
     assert.equal(deleteReminder.code, 0, deleteReminder.stderr);
 
-    const downloadAttachment = await runCli(['attachment', 'download', '--id', 'file-1'], env);
+    const downloadAttachment = await runCli(['attachment', 'download', '--id', 'file-1', '--format', 'json'], env);
     assert.equal(downloadAttachment.code, 0, downloadAttachment.stderr);
 
     assert.deepEqual(server.requests.map(({ req, body }) => ({ method: req.method, url: req.url, body })), [
@@ -1575,13 +1575,13 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(deleteReminder.code, 0, deleteReminder.stderr);
     assert.deepEqual(JSON.parse(deleteReminder.stdout), { reminderId: 'rem-1', method: 'DELETE', body: null });
 
-    const uploadAttachment = await runCli(['attachment', 'upload', '--channel', '#general', '--path', uploadFile], env);
+    const uploadAttachment = await runCli(['attachment', 'upload', '--channel', '#general', '--path', uploadFile, '--format', 'json'], env);
     assert.equal(uploadAttachment.code, 0, uploadAttachment.stderr);
     const uploadData = JSON.parse(uploadAttachment.stdout);
     assert.equal(uploadData.attachment.multipart, true);
     assert.ok(uploadData.attachment.size > 0);
 
-    const downloadAttachment = await runCli(['attachment', 'view', '--id', 'file-1'], env);
+    const downloadAttachment = await runCli(['attachment', 'view', '--id', 'file-1', '--format', 'json'], env);
     assert.equal(downloadAttachment.code, 0, downloadAttachment.stderr);
     assert.deepEqual(JSON.parse(downloadAttachment.stdout), { file: 'file-1' });
 
