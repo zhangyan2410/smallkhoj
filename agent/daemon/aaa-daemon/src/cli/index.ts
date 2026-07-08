@@ -121,17 +121,19 @@ function buildProgram(): Command {
   const channelCmd = program.command('channel').description('Channel operations');
 
   channelCmd.command('members').description('List channel members')
-    .requiredOption('--channel <target>', 'Channel name')
+    .option('--channel <target>', 'Channel name')
     .option('--target <target>', 'Alias for --channel').option('-c <target>', 'Short for --channel').action(async () => {});
 
   channelCmd.command('join').description('Join a channel')
     .option('--target <target>', 'Channel to join')
     .option('--channel <target>', 'Alias for --target')
+    .option('-c <target>', 'Short for --target')
     .option('--channel-id <id>', 'Channel ID').action(async () => {});
 
   channelCmd.command('leave').description('Leave a channel')
     .option('--target <target>', 'Channel to leave')
     .option('--channel <target>', 'Alias for --target')
+    .option('-c <target>', 'Short for --target')
     .option('--channel-id <id>', 'Channel ID').action(async () => {});
 
   // ── thread ───────────────────────────────────────────────────
@@ -318,7 +320,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
   },
   'channel join': {
     async buildRequest(opts, config) {
-      const channel = (opts.target as string) ?? (opts.channel as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      const channel = (opts.target as string) ?? (opts.channel as string) ?? (opts.c as string) ?? ((opts._positionals as string[]) ?? [])[0];
       if (!channel) throw new CliError('Missing --target or --channel', 'MISSING_CHANNEL', 'Specify the channel with --target "#channel"');
       const channelId = opts.channelId as string | undefined;
       return {
@@ -331,7 +333,7 @@ const COMMAND_META: Record<string, CommandMeta> = {
   },
   'channel leave': {
     async buildRequest(opts, config) {
-      const channel = (opts.target as string) ?? (opts.channel as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      const channel = (opts.target as string) ?? (opts.channel as string) ?? (opts.c as string) ?? ((opts._positionals as string[]) ?? [])[0];
       if (!channel) throw new CliError('Missing --target or --channel', 'MISSING_CHANNEL', 'Specify the channel with --target "#channel"');
       const channelId = opts.channelId as string | undefined;
       return {

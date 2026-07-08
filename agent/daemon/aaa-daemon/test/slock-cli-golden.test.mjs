@@ -625,3 +625,69 @@ test('golden: legacy short aliases work for migrated commands', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('golden: channel members --target alias works', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ members: [{ name: 'alice', role: 'owner' }] }));
+  });
+  try {
+    const result = await runCli(['channel', 'members', '--target', '#general', '--format', 'json'], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.ok(parsed.members);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: channel members -c alias works', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ members: [] }));
+  });
+  try {
+    const result = await runCli(['channel', 'members', '-c', '#general', '--format', 'json'], baseEnv(root, server.url));
+    assert.equal(result.code, 0, result.stderr);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: channel join -c alias works', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ joined: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['channel', 'join', '-c', '#general', '--format', 'json'], env);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).joined, true);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: channel leave -c alias works', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ left: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['channel', 'leave', '-c', '#general', '--format', 'json'], env);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).left, true);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
