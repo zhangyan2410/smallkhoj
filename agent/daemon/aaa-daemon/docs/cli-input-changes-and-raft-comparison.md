@@ -117,7 +117,7 @@
 | **P1** | `profile show/update` | 大体接近，需复核 positional target、字段名、avatar 参数 | 确认与 Raft 一致 |
 | **P1** | `integration list/login` | Raft 更完整（env/invoke/app） | 补 env/invoke 后接近 Raft |
 | **P2** | `task list/create/claim/unclaim/update` | 我们额外支持 channel+number dual-mode | 保留兼容，prompt 示例优先用 Raft 标准形态 |
-| **P2** | `thread read` | Raft 走 `message read --target #channel:thread` | prompt 优先使用 `message read --target`，`thread read` 后置/兼容 |
+| **P2** | `thread read` | Raft 走 `message read --target "#channel:thread"` | prompt 优先使用 `message read --target`，`thread read` 后置/兼容 |
 | — | `message check/send/read/search/resolve/react` | 基本一致 | 无需修改 |
 | — | `channel join/leave` | 基本一致 | 无需修改 |
 | — | `reminder *` | 基本一致 | 无需修改 |
