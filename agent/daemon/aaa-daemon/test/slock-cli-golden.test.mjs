@@ -906,3 +906,114 @@ test('golden: task update --json invalid returns INVALID_JSON not CLI_FAILED', a
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ===========================================================================
+// 11. Batch 4: Profile domain canonical text golden tests
+// ===========================================================================
+
+test('golden: profile show canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      handle: '@alice', displayName: 'Alice', role: 'owner',
+      description: 'Team lead', status: 'active',
+    }));
+  });
+  try {
+    const result = await runCli(['profile', 'show', '--handle', '@alice'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Name: Alice/);
+    assert.match(result.stdout, /Handle: @alice/);
+    assert.match(result.stdout, /Role: owner/);
+    assert.match(result.stdout, /Status: active/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: profile get alias works same as show', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ handle: '@bob', displayName: 'Bob' }));
+  });
+  try {
+    const result = await runCli(['profile', 'get'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Name: Bob/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: profile update canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ profile: { displayName: 'New Name' } }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['profile', 'update', '--display-name', 'New Name'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Profile updated\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: profile update write-gate denial', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(['profile', 'update', '--display-name', 'X'], baseEnv(root, server.url));
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: profile update --json invalid returns INVALID_JSON', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['profile', 'update', '--json', '{invalid'], env);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: INVALID_JSON/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: profile update no fields returns MISSING_UPDATE_FIELDS', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['profile', 'update'], env);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: MISSING_UPDATE_FIELDS/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

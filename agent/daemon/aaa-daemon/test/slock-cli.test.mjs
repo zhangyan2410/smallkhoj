@@ -182,7 +182,7 @@ test('slock CLI parity commands map to canonical local proxy endpoints', async (
     assert.equal((await runCli(['message', 'resolve', 'msg-1'], env)).code, 0);
     assert.equal((await runCli(['thread', 'unfollow', '--target', '#general:msg-1'], env)).code, 0);
     assert.equal((await runCli(['task', 'unclaim', '--id', 'task-1', '--format', 'json'], env)).code, 0);
-    assert.equal((await runCli(['profile', 'show', '--handle', '@alice'], env)).code, 0);
+    assert.equal((await runCli(['profile', 'show', '--handle', '@alice', '--format', 'json'], env)).code, 0);
     assert.equal((await runCli(['reminder', 'snooze', '--id', 'rem-1', '--delay-seconds', '300'], env)).code, 0);
     assert.equal((await runCli(['reminder', 'log', '--id', 'rem-1'], env)).code, 0);
 
@@ -1515,7 +1515,7 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(members.code, 0, members.stderr);
     assert.deepEqual(JSON.parse(members.stdout), { members: [], channel: '#general' });
 
-    const profile = await runCli(['profile', 'get', '--handle', '@alice'], env);
+    const profile = await runCli(['profile', 'get', '--handle', '@alice', '--format', 'json'], env);
     assert.equal(profile.code, 0, profile.stderr);
     assert.deepEqual(JSON.parse(profile.stdout), { handle: '@alice' });
 
@@ -1551,11 +1551,11 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(react.code, 0, react.stderr);
     assert.deepEqual(JSON.parse(react.stdout), { reacted: true, body: { reaction: '+1' } });
 
-    const updateProfile = await runCli(['profile', 'update', '--status', 'busy'], env);
+    const updateProfile = await runCli(['profile', 'update', '--status', 'busy', '--format', 'json'], env);
     assert.equal(updateProfile.code, 0, updateProfile.stderr);
     assert.deepEqual(JSON.parse(updateProfile.stdout), { profile: { status: 'busy' } });
 
-    const avatarProfile = await runCli(['profile', 'update', '--avatar-file', uploadFile], env);
+    const avatarProfile = await runCli(['profile', 'update', '--avatar-file', uploadFile, '--format', 'json'], env);
     assert.equal(avatarProfile.code, 0, avatarProfile.stderr);
     assert.deepEqual(JSON.parse(avatarProfile.stdout), { avatar: true });
 

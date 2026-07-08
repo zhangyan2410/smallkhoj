@@ -42,6 +42,8 @@ import {
   formatThreadUnfollow,
   formatTaskList,
   formatTaskAction,
+  formatProfileShow,
+  formatProfileUpdate,
   formatPassthrough,
 } from './output.js';
 import { readDaemonPackageVersion } from '../version.js';
@@ -159,6 +161,25 @@ function buildProgram(): Command {
 
   // ── task ─────────────────────────────────────────────────────
   const taskCmd = program.command('task').description('Task board operations');
+
+  // ── profile ──────────────────────────────────────────────────
+  const profileCmd = program.command('profile').description('Profile operations');
+
+  profileCmd.command('show').description('Show profile')
+    .option('--handle <name>', 'User handle').option('-h <name>', 'Short for --handle')
+    .action(async () => {});
+  // 'get' as alias for 'show'
+  profileCmd.command('get').description('Alias for show')
+    .option('--handle <name>', 'User handle').option('-h <name>', 'Short for --handle')
+    .action(async () => {});
+
+  profileCmd.command('update').description('Update profile')
+    .option('--display-name <name>', 'Display name').option('--description <text>', 'Description')
+    .option('--bio <text>', 'Alias for --description').option('--avatar-url <url>', 'Avatar URL')
+    .option('--avatar-file <path>', 'Upload avatar from file')
+    .option('--mime-type <type>', 'MIME type for avatar file').option('--content-type <type>', 'Alias for --mime-type')
+    .option('--status <status>', 'Status').option('--json <data>', 'JSON data payload')
+    .action(async () => {});
 
   taskCmd.command('list').description('List tasks')
     .option('--channel <target>', 'Filter by channel').option('--status <status>', 'Filter by status')
@@ -592,6 +613,53 @@ const COMMAND_META: Record<string, CommandMeta> = {
     },
     formatText: (json) => formatTaskAction(json, 'promote'),
   },
+  // ── Batch 4: profile commands ──
+  'profile show': {
+    async buildRequest(opts, config) {
+      const handle = (opts.handle as string) ?? (opts.h as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/profile${handle ? `/${encodeURIComponent(handle)}` : ''}` };
+    },
+    formatText: formatProfileShow,
+  },
+  'profile get': {
+    async buildRequest(opts, config) {
+      const handle = (opts.handle as string) ?? (opts.h as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/profile${handle ? `/${encodeURIComponent(handle)}` : ''}` };
+    },
+    formatText: formatProfileShow,
+  },
+  'profile update': {
+    async buildRequest(opts, config) {
+      const avatarFile = opts.avatarFile as string | undefined;
+      if (avatarFile) {
+        return {
+          method: 'POST',
+          path: `${agentPrefix(config.agentId)}/profile/avatar`,
+          multipartUpload: {
+            filePath: avatarFile,
+            fieldName: 'avatar',
+            mimeType: (opts.mimeType as string) ?? (opts.contentType as string),
+          },
+          writeScope: writeScope('profile'),
+        };
+      }
+      const body = compactBody({
+        displayName: opts.displayName as string,
+        description: (opts.description as string) ?? (opts.bio as string),
+        avatarUrl: opts.avatarUrl as string,
+        status: opts.status as string,
+        data: parseJsonOptionValue(opts.json as string, '--json'),
+      });
+      if (Object.keys(body).length === 0) throw new CliError('Missing profile update fields', 'MISSING_UPDATE_FIELDS', 'Provide at least one of --display-name, --description, --avatar-url, --status, --json');
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/profile`,
+        body,
+        writeScope: writeScope('profile'),
+      };
+    },
+    formatText: formatProfileUpdate,
+  },
 };
 
 /** Known options that take a value (to skip the value when scanning positionals). */
@@ -602,7 +670,9 @@ const VALUE_OPTIONS = new Set([
   '--task-id', '--number', '--status', '--title', '--assignee', '--json',
   '--summary', '--final-summary', '--text', '--progress', '--source-path',
   '--channel-path', '--reason',
-  '-t', '-c', '-q', '-s', '-m', '-r', '-a',
+  '--handle', '--display-name', '--description', '--bio', '--avatar-url',
+  '--avatar-file', '--mime-type', '--content-type',
+  '-t', '-c', '-q', '-s', '-m', '-r', '-a', '-h',
 ]);
 
 /** Check if argv matches a migrated command. Returns the meta key or null. */
@@ -731,6 +801,11 @@ async function handleMigratedCommand(
 
     // Write safety gate
     assertWriteAllowed(req.writeScope, cliEnv);
+
+    // Handle multipart uploads (e.g. profile avatar)
+    if ((req as Record<string, unknown>).multipartUpload) {
+      return await handleMultipartUpload(config, req as CliRequest, io);
+    }
 
     // Execute request
     const response = await proxyRequest(config, req);

@@ -330,6 +330,38 @@ export function formatTaskAction(_json: unknown, action: string): string {
   return messages[action] ?? 'Done.\n';
 }
 
+// ─── Profile formatting ─────────────────────────────────────────
+
+interface ProfileData {
+  name?: string;
+  displayName?: string;
+  description?: string;
+  status?: string;
+  avatarUrl?: string;
+  handle?: string;
+  role?: string;
+}
+
+/** Format profile show response. */
+export function formatProfileShow(json: unknown): string {
+  const data = json as ProfileData;
+  const lines: string[] = [];
+  const name = data.displayName ?? data.name ?? data.handle ?? '';
+  if (name) lines.push(`Name: ${name}`);
+  if (data.handle) lines.push(`Handle: ${data.handle}`);
+  if (data.role) lines.push(`Role: ${data.role}`);
+  if (data.description) lines.push(`Description: ${data.description}`);
+  if (data.status) lines.push(`Status: ${data.status}`);
+  if (data.avatarUrl) lines.push(`Avatar: ${data.avatarUrl}`);
+  if (lines.length === 0) return JSON.stringify(json) + '\n';
+  return lines.join('\n') + '\n';
+}
+
+/** Format profile update response. */
+export function formatProfileUpdate(_json: unknown): string {
+  return 'Profile updated.\n';
+}
+
 /** For commands not yet migrated to canonical formatting, pass through raw JSON. */
 export function formatPassthrough(text: string): string {
   return text.endsWith('\n') ? text : text + '\n';

@@ -224,7 +224,7 @@ test('slock CLI error paths', async (t) => {
   await t.test('#37 profile update no fields', async () => {
     const result = await runCli(['profile', 'update'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_UPDATE_FIELDS');
+    assert.match(result.stderr, /Code: MISSING_UPDATE_FIELDS/);
   });
 
   // #38 - integration login missing --service
@@ -778,14 +778,14 @@ test('slock CLI command variants', async (t) => {
 
     // #14 - profile get without --handle (own profile)
     await t.test('#14 profile get own (no --handle)', async () => {
-      const result = await runCli(['profile', 'get'], env);
+      const result = await runCli(['profile', 'get', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.handle, '@self');
     });
 
     await t.test('profile show aliases profile get', async () => {
-      const result = await runCli(['profile', 'show', '--handle', '@bob'], env);
+      const result = await runCli(['profile', 'show', '--handle', '@bob', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.handle, '@bob');
@@ -800,6 +800,7 @@ test('slock CLI command variants', async (t) => {
           '--description', 'An agent',
           '--avatar-url', 'https://img.test/alice.png',
           '--json', '{"theme":"dark"}',
+          '--format', 'json',
         ],
         env,
       );
