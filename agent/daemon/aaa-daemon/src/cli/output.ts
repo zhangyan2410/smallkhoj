@@ -364,6 +364,88 @@ export function formatProfileUpdate(_json: unknown): string {
   return 'Profile updated.\n';
 }
 
+// ─── Reminder formatting ────────────────────────────────────────
+
+interface ReminderInfo {
+  id?: string;
+  title?: string;
+  fireAt?: string;
+  repeat?: string;
+  channel?: string;
+  done?: boolean;
+}
+
+/** Format reminder list response. */
+export function formatReminderList(json: unknown): string {
+  let reminders: ReminderInfo[];
+  if (Array.isArray(json)) {
+    reminders = json as ReminderInfo[];
+  } else {
+    const data = json as { reminders?: ReminderInfo[] };
+    reminders = data.reminders ?? [];
+  }
+  if (reminders.length === 0) {
+    return 'No reminders.\n';
+  }
+  const lines = reminders.map((r) => {
+    const title = r.title ?? '(no title)';
+    const fire = r.fireAt ? ` @ ${r.fireAt}` : '';
+    const repeat = r.repeat ? ` (${r.repeat})` : '';
+    const done = r.done ? ' [done]' : '';
+    const channel = r.channel ? ` #${r.channel}` : '';
+    return `  ${title}${fire}${repeat}${channel}${done}`;
+  });
+  return lines.join('\n') + '\n';
+}
+
+/** Format reminder schedule/create response. */
+export function formatReminderSchedule(_json: unknown): string {
+  return 'Reminder scheduled.\n';
+}
+
+/** Format reminder update/snooze response. */
+export function formatReminderUpdate(_json: unknown): string {
+  return 'Reminder updated.\n';
+}
+
+/** Format reminder cancel response. */
+export function formatReminderCancel(_json: unknown): string {
+  return 'Reminder canceled.\n';
+}
+
+// ─── Integration formatting ─────────────────────────────────────
+
+interface IntegrationInfo {
+  service?: string;
+  status?: string;
+  loggedIn?: boolean;
+}
+
+/** Format integration list response. */
+export function formatIntegrationList(json: unknown): string {
+  let integrations: IntegrationInfo[];
+  if (Array.isArray(json)) {
+    integrations = json as IntegrationInfo[];
+  } else {
+    const data = json as { integrations?: IntegrationInfo[] };
+    integrations = data.integrations ?? [];
+  }
+  if (integrations.length === 0) {
+    return 'No integrations.\n';
+  }
+  const lines = integrations.map((i) => {
+    const service = i.service ?? '?';
+    const status = i.status ? ` (${i.status})` : i.loggedIn ? ' (logged in)' : '';
+    return `  ${service}${status}`;
+  });
+  return lines.join('\n') + '\n';
+}
+
+/** Format integration login response. */
+export function formatIntegrationLogin(_json: unknown): string {
+  return 'Login ready.\n';
+}
+
 /** For commands not yet migrated to canonical formatting, pass through raw JSON. */
 export function formatPassthrough(text: string): string {
   return text.endsWith('\n') ? text : text + '\n';

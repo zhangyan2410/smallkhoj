@@ -1039,3 +1039,115 @@ test('golden: profile update --avatar-file outputs Profile updated (text mode)',
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ===========================================================================
+// 12. Batch 5: Reminder + Integration domain golden tests
+// ===========================================================================
+
+test('golden: reminder list canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ reminders: [
+      { title: 'Standup', fireAt: '2026-07-09T09:00:00Z', repeat: 'daily', channel: '#general' },
+      { title: 'Review', done: true },
+    ]}));
+  });
+  try {
+    const result = await runCli(['reminder', 'list'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Standup @ 2026-07-09T09:00:00Z \(daily\)/);
+    assert.match(result.stdout, /Review.*\[done\]/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: reminder schedule canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ reminderId: 'rem-1' }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['reminder', 'schedule', '--title', 'Test', '--delay-seconds', '300'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Reminder scheduled\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: reminder cancel canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(['reminder', 'cancel', '--id', 'rem-1'], env);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Reminder canceled\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: reminder write-gate denial', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(['reminder', 'schedule', '--title', 'Test', '--delay-seconds', '300'], baseEnv(root, server.url));
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: integration list canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ integrations: [
+      { service: 'github', loggedIn: true },
+      { service: 'slack', status: 'disconnected' },
+    ]}));
+  });
+  try {
+    const result = await runCli(['integration', 'list'], baseEnv(root, server.url));
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /github.*logged in/);
+    assert.match(result.stdout, /slack.*disconnected/);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: integration login write-gate denial', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(['integration', 'login', '--service', 'github'], baseEnv(root, server.url));
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

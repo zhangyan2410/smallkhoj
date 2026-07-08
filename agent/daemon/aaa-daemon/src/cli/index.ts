@@ -44,6 +44,12 @@ import {
   formatTaskAction,
   formatProfileShow,
   formatProfileUpdate,
+  formatReminderList,
+  formatReminderSchedule,
+  formatReminderUpdate,
+  formatReminderCancel,
+  formatIntegrationList,
+  formatIntegrationLogin,
   formatPassthrough,
 } from './output.js';
 import { readDaemonPackageVersion } from '../version.js';
@@ -181,6 +187,67 @@ function buildProgram(): Command {
     .option('--status <status>', 'Status').option('--json <data>', 'JSON data payload')
     .action(async () => {});
 
+  // ── reminder ─────────────────────────────────────────────────
+  const reminderCmd = program.command('reminder').description('Reminder operations');
+
+  reminderCmd.command('list').description('List reminders').action(async () => {});
+
+  reminderCmd.command('schedule').description('Schedule a reminder (alias: create)')
+    .option('--title <text>', 'Reminder title').option('--text <text>', 'Alias for --title').option('--message <text>', 'Alias for --title')
+    .option('--fire-at <iso>', 'Fire at ISO time').option('--at <iso>', 'Alias for --fire-at')
+    .option('--delay-seconds <n>', 'Delay in seconds')
+    .option('--repeat <cadence>', 'Repeat cadence').option('--channel <target>', 'Channel target')
+    .option('--msg-id <id>', 'Message ID').option('--json <data>', 'JSON data payload')
+    .action(async () => {});
+  // 'create' as alias for 'schedule'
+  reminderCmd.command('create').description('Alias for schedule')
+    .option('--title <text>', 'Reminder title').option('--text <text>', 'Alias for --title').option('--message <text>', 'Alias for --title')
+    .option('--fire-at <iso>', 'Fire at ISO time').option('--at <iso>', 'Alias for --fire-at')
+    .option('--delay-seconds <n>', 'Delay in seconds')
+    .option('--repeat <cadence>', 'Repeat cadence').option('--channel <target>', 'Channel target')
+    .option('--msg-id <id>', 'Message ID').option('--json <data>', 'JSON data payload')
+    .action(async () => {});
+
+  reminderCmd.command('update').description('Update a reminder')
+    .option('--id <id>', 'Reminder ID').option('--reminder-id <id>', 'Alias for --id')
+    .option('--title <text>', 'Title').option('--text <text>', 'Alias for --title').option('--message <text>', 'Alias for --title')
+    .option('--fire-at <iso>', 'Fire at ISO time').option('--at <iso>', 'Alias for --fire-at')
+    .option('--in <seconds>', 'Delay in seconds').option('--delay-seconds <seconds>', 'Alias for --in')
+    .option('--cadence <cadence>', 'Repeat cadence').option('--repeat <cadence>', 'Alias for --cadence')
+    .option('--channel <target>', 'Channel').option('--done', 'Mark as done').option('--json <data>', 'JSON data payload')
+    .action(async () => {});
+
+  reminderCmd.command('snooze').description('Snooze a reminder')
+    .option('--id <id>', 'Reminder ID').option('--reminder-id <id>', 'Alias for --id')
+    .option('--in <seconds>', 'Delay in seconds').option('--delay-seconds <seconds>', 'Alias for --in')
+    .option('--fire-at <iso>', 'Fire at ISO time').option('--at <iso>', 'Alias for --fire-at')
+    .action(async () => {});
+
+  reminderCmd.command('cancel').description('Cancel a reminder (aliases: delete, remove)')
+    .option('--id <id>', 'Reminder ID').option('--reminder-id <id>', 'Alias for --id')
+    .action(async () => {});
+  reminderCmd.command('delete').description('Alias for cancel')
+    .option('--id <id>', 'Reminder ID').option('--reminder-id <id>', 'Alias for --id')
+    .action(async () => {});
+  reminderCmd.command('remove').description('Alias for cancel')
+    .option('--id <id>', 'Reminder ID').option('--reminder-id <id>', 'Alias for --id')
+    .action(async () => {});
+
+  reminderCmd.command('log').description('View reminder log')
+    .option('--id <id>', 'Reminder ID').option('--reminder-id <id>', 'Alias for --id')
+    .action(async () => {});
+
+  // ── integration ──────────────────────────────────────────────
+  const integrationCmd = program.command('integration').description('Integration operations');
+
+  integrationCmd.command('list').description('List integrations').action(async () => {});
+
+  integrationCmd.command('login').description('Login to a service')
+    .option('--service <name>', 'Service name').option('--provider <name>', 'Alias for --service')
+    .option('--scope <scope>', 'Scopes (repeatable, comma-separated)', collectArray, [])
+    .option('--redirect-url <url>', 'Redirect URL')
+    .action(async () => {});
+
   taskCmd.command('list').description('List tasks')
     .option('--channel <target>', 'Filter by channel').option('--status <status>', 'Filter by status')
     .action(async () => {});
@@ -251,6 +318,43 @@ function parseJsonOptionValue(raw: string | undefined, name: string): unknown | 
   } catch {
     throw new CliError(`Invalid ${name} JSON: ${raw}`, 'INVALID_JSON', `Provide valid JSON for ${name}`);
   }
+}
+
+/** Convert a string to number or undefined. */
+function maybeNumberOpt(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+/** Shared builder for reminder schedule/create. */
+async function buildReminderSchedule(opts: Record<string, unknown>, config: ProxyConfig) {
+  const pos = (opts._positionals as string[]) ?? [];
+  const title = (opts.title as string) ?? (opts.text as string) ?? (opts.message as string) ?? pos.join(' ').trim();
+  const at = (opts.fireAt as string) ?? (opts.at as string);
+  const delaySeconds = opts.delaySeconds as string | undefined;
+  const channel = opts.channel as string | undefined;
+  const msgId = opts.msgId as string | undefined;
+  if (!title) throw new CliError('Missing --title', 'MISSING_TEXT', 'Provide --title "text"');
+  if (!at && !delaySeconds) throw new CliError('Missing --fire-at or --delay-seconds', 'MISSING_AT', 'Provide --fire-at <iso> or --delay-seconds <n>');
+  return {
+    method: 'POST',
+    path: `${agentPrefix(config.agentId)}/reminders`,
+    body: compactBody({
+      title, fireAt: at, delaySeconds: maybeNumberOpt(delaySeconds),
+      repeat: opts.repeat as string, channel, msgId,
+      data: parseJsonOptionValue(opts.json as string, '--json'),
+    }),
+    writeScope: writeScope(channel ?? 'reminder'),
+  };
+}
+
+/** Shared builder for reminder cancel/delete/remove. */
+function buildReminderCancel(opts: Record<string, unknown>, config: ProxyConfig) {
+  const pos = (opts._positionals as string[]) ?? [];
+  const id = (opts.id as string) ?? (opts.reminderId as string) ?? pos[0];
+  if (!id) throw new CliError('Missing --id', ErrorCodes.MISSING_REMINDER_ID.code, ErrorCodes.MISSING_REMINDER_ID.nextAction);
+  return { method: 'DELETE', path: `${agentPrefix(config.agentId)}/reminders/${encodeURIComponent(id)}`, writeScope: writeScope(id) };
 }
 
 /** Metadata for each migrated command. */
@@ -660,6 +764,108 @@ const COMMAND_META: Record<string, CommandMeta> = {
     },
     formatText: formatProfileUpdate,
   },
+  // ── Batch 5: reminder commands ──
+  'reminder list': {
+    async buildRequest(_opts, config) {
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/reminders` };
+    },
+    formatText: formatReminderList,
+  },
+  'reminder schedule': {
+    async buildRequest(opts, config) {
+      return buildReminderSchedule(opts, config);
+    },
+    formatText: formatReminderSchedule,
+  },
+  'reminder create': {
+    async buildRequest(opts, config) {
+      return buildReminderSchedule(opts, config);
+    },
+    formatText: formatReminderSchedule,
+  },
+  'reminder update': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const id = (opts.id as string) ?? (opts.reminderId as string) ?? pos[0];
+      if (!id) throw new CliError('Missing --id', ErrorCodes.MISSING_REMINDER_ID.code, ErrorCodes.MISSING_REMINDER_ID.nextAction);
+      const body = compactBody({
+        title: (opts.title as string) ?? (opts.text as string) ?? (opts.message as string),
+        fireAt: (opts.fireAt as string) ?? (opts.at as string),
+        delaySeconds: maybeNumberOpt((opts.in as string) ?? (opts.delaySeconds as string)),
+        repeat: (opts.cadence as string) ?? (opts.repeat as string),
+        channel: opts.channel as string,
+        done: opts.done === true ? true : undefined,
+        data: parseJsonOptionValue(opts.json as string, '--json'),
+      });
+      if (Object.keys(body).length === 0) throw new CliError('Missing reminder update fields', 'MISSING_UPDATE_FIELDS', 'Provide at least one update field');
+      return { method: 'PATCH', path: `${agentPrefix(config.agentId)}/reminders/${encodeURIComponent(id)}`, body, writeScope: writeScope(id) };
+    },
+    formatText: formatReminderUpdate,
+  },
+  'reminder snooze': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const id = (opts.id as string) ?? (opts.reminderId as string) ?? pos[0];
+      if (!id) throw new CliError('Missing --id', ErrorCodes.MISSING_REMINDER_ID.code, ErrorCodes.MISSING_REMINDER_ID.nextAction);
+      const delaySeconds = (opts.in as string) ?? (opts.delaySeconds as string);
+      const fireAt = (opts.fireAt as string) ?? (opts.at as string);
+      if (!delaySeconds && !fireAt) throw new CliError('Missing --delay-seconds or --fire-at', 'MISSING_AT', 'Provide --in <seconds> or --fire-at <iso>');
+      return {
+        method: 'PATCH', path: `${agentPrefix(config.agentId)}/reminders/${encodeURIComponent(id)}`,
+        body: compactBody({ delaySeconds: maybeNumberOpt(delaySeconds), fireAt }),
+        writeScope: writeScope(id),
+      };
+    },
+    formatText: formatReminderUpdate,
+  },
+  'reminder cancel': {
+    async buildRequest(opts, config) {
+      return buildReminderCancel(opts, config);
+    },
+    formatText: formatReminderCancel,
+  },
+  'reminder delete': {
+    async buildRequest(opts, config) {
+      return buildReminderCancel(opts, config);
+    },
+    formatText: formatReminderCancel,
+  },
+  'reminder remove': {
+    async buildRequest(opts, config) {
+      return buildReminderCancel(opts, config);
+    },
+    formatText: formatReminderCancel,
+  },
+  'reminder log': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const id = (opts.id as string) ?? (opts.reminderId as string) ?? pos[0];
+      if (!id) throw new CliError('Missing --id', ErrorCodes.MISSING_REMINDER_ID.code, ErrorCodes.MISSING_REMINDER_ID.nextAction);
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/reminders/${encodeURIComponent(id)}/log` };
+    },
+    formatText: (json) => formatPassthrough(typeof json === 'string' ? json : JSON.stringify(json)),
+  },
+  // ── Batch 5: integration commands ──
+  'integration list': {
+    async buildRequest(_opts, config) {
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/integrations` };
+    },
+    formatText: formatIntegrationList,
+  },
+  'integration login': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const service = (opts.service as string) ?? (opts.provider as string) ?? pos[0];
+      if (!service) throw new CliError('Missing --service', ErrorCodes.MISSING_PROVIDER.code, ErrorCodes.MISSING_PROVIDER.nextAction);
+      const scopes = ((opts.scope as string[]) ?? []).flatMap((v) => v.split(',')).map((v) => v.trim()).filter(Boolean);
+      return {
+        method: 'POST', path: `${agentPrefix(config.agentId)}/integrations/login`,
+        body: compactBody({ service, scopes: scopes.length > 0 ? scopes : undefined, redirectUrl: opts.redirectUrl as string }),
+        writeScope: writeScope(`integration:${service}`),
+      };
+    },
+    formatText: formatIntegrationLogin,
+  },
 };
 
 /** Known options that take a value (to skip the value when scanning positionals). */
@@ -672,6 +878,8 @@ const VALUE_OPTIONS = new Set([
   '--channel-path', '--reason',
   '--handle', '--display-name', '--description', '--bio', '--avatar-url',
   '--avatar-file', '--mime-type', '--content-type',
+  '--fire-at', '--at', '--delay-seconds', '--repeat', '--cadence', '--in',
+  '--msg-id', '--reminder-id', '--redirect-url', '--service', '--provider',
   '-t', '-c', '-q', '-s', '-m', '-r', '-a', '-h',
 ]);
 

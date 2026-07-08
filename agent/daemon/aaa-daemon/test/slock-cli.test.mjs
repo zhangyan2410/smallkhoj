@@ -183,8 +183,8 @@ test('slock CLI parity commands map to canonical local proxy endpoints', async (
     assert.equal((await runCli(['thread', 'unfollow', '--target', '#general:msg-1'], env)).code, 0);
     assert.equal((await runCli(['task', 'unclaim', '--id', 'task-1', '--format', 'json'], env)).code, 0);
     assert.equal((await runCli(['profile', 'show', '--handle', '@alice', '--format', 'json'], env)).code, 0);
-    assert.equal((await runCli(['reminder', 'snooze', '--id', 'rem-1', '--delay-seconds', '300'], env)).code, 0);
-    assert.equal((await runCli(['reminder', 'log', '--id', 'rem-1'], env)).code, 0);
+    assert.equal((await runCli(['reminder', 'snooze', '--id', 'rem-1', '--delay-seconds', '300', '--format', 'json'], env)).code, 0);
+    assert.equal((await runCli(['reminder', 'log', '--id', 'rem-1', '--format', 'json'], env)).code, 0);
 
     assert.deepEqual(server.requests.map(({ req, body }) => ({ method: req.method, url: req.url, body })), [
       {
@@ -1310,10 +1310,10 @@ test('slock reminder and attachment aliases route to canonical endpoints', async
       SLOCK_ALLOW_WRITES: '1',
     };
 
-    const createReminder = await runCli(['reminder', 'create', '--title', 'alias', '--fire-at', '2030-01-01T00:00:00Z'], env);
+    const createReminder = await runCli(['reminder', 'create', '--title', 'alias', '--fire-at', '2030-01-01T00:00:00Z', '--format', 'json'], env);
     assert.equal(createReminder.code, 0, createReminder.stderr);
 
-    const deleteReminder = await runCli(['reminder', 'delete', '--id', 'rem-1'], env);
+    const deleteReminder = await runCli(['reminder', 'delete', '--id', 'rem-1', '--format', 'json'], env);
     assert.equal(deleteReminder.code, 0, deleteReminder.stderr);
 
     const downloadAttachment = await runCli(['attachment', 'download', '--id', 'file-1'], env);
@@ -1519,11 +1519,11 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(profile.code, 0, profile.stderr);
     assert.deepEqual(JSON.parse(profile.stdout), { handle: '@alice' });
 
-    const integrations = await runCli(['integration', 'list'], env);
+    const integrations = await runCli(['integration', 'list', '--format', 'json'], env);
     assert.equal(integrations.code, 0, integrations.stderr);
     assert.deepEqual(JSON.parse(integrations.stdout), { integrations: [] });
 
-    const reminders = await runCli(['reminder', 'list'], env);
+    const reminders = await runCli(['reminder', 'list', '--format', 'json'], env);
     assert.equal(reminders.code, 0, reminders.stderr);
     assert.deepEqual(JSON.parse(reminders.stdout), { reminders: [] });
 
@@ -1559,19 +1559,19 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(avatarProfile.code, 0, avatarProfile.stderr);
     assert.deepEqual(JSON.parse(avatarProfile.stdout), { avatar: true });
 
-    const integrationLogin = await runCli(['integration', 'login', '--service', 'github', '--scope', 'repo,read:user'], env);
+    const integrationLogin = await runCli(['integration', 'login', '--service', 'github', '--scope', 'repo,read:user', '--format', 'json'], env);
     assert.equal(integrationLogin.code, 0, integrationLogin.stderr);
     assert.deepEqual(JSON.parse(integrationLogin.stdout), { login: 'github', body: { service: 'github', scopes: ['repo', 'read:user'] } });
 
-    const createReminder = await runCli(['reminder', 'schedule', '--channel', '#general', '--fire-at', '2030-01-01T00:00:00Z', '--title', 'standup'], env);
+    const createReminder = await runCli(['reminder', 'schedule', '--channel', '#general', '--fire-at', '2030-01-01T00:00:00Z', '--title', 'standup', '--format', 'json'], env);
     assert.equal(createReminder.code, 0, createReminder.stderr);
     assert.deepEqual(JSON.parse(createReminder.stdout), { reminder: { title: 'standup', fireAt: '2030-01-01T00:00:00Z', channel: '#general' } });
 
-    const updateReminder = await runCli(['reminder', 'update', '--id', 'rem-1', '--title', 'new title'], env);
+    const updateReminder = await runCli(['reminder', 'update', '--id', 'rem-1', '--title', 'new title', '--format', 'json'], env);
     assert.equal(updateReminder.code, 0, updateReminder.stderr);
     assert.deepEqual(JSON.parse(updateReminder.stdout), { reminderId: 'rem-1', method: 'PATCH', body: { title: 'new title' } });
 
-    const deleteReminder = await runCli(['reminder', 'cancel', '--id', 'rem-1'], env);
+    const deleteReminder = await runCli(['reminder', 'cancel', '--id', 'rem-1', '--format', 'json'], env);
     assert.equal(deleteReminder.code, 0, deleteReminder.stderr);
     assert.deepEqual(JSON.parse(deleteReminder.stdout), { reminderId: 'rem-1', method: 'DELETE', body: null });
 

@@ -231,35 +231,35 @@ test('slock CLI error paths', async (t) => {
   await t.test('#38 integration login missing --service', async () => {
     const result = await runCli(['integration', 'login'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_PROVIDER');
+    assert.match(result.stderr, /Code: MISSING_PROVIDER/);
   });
 
   // #39 - reminder create missing title
   await t.test('#39 reminder create missing title', async () => {
     const result = await runCli(['reminder', 'create', '--fire-at', '2030-01-01T00:00:00Z'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_TEXT');
+    assert.match(result.stderr, /Code: MISSING_TEXT/);
   });
 
   // #40 - reminder create missing --fire-at + --delay-seconds
   await t.test('#40 reminder create missing --fire-at and --delay-seconds', async () => {
     const result = await runCli(['reminder', 'create', '--title', 'test'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_AT');
+    assert.match(result.stderr, /Code: MISSING_AT/);
   });
 
   // #41 - reminder update no fields
   await t.test('#41 reminder update no fields', async () => {
     const result = await runCli(['reminder', 'update', '--id', 'rem-1'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_UPDATE_FIELDS');
+    assert.match(result.stderr, /Code: MISSING_UPDATE_FIELDS/);
   });
 
   // #42 - reminder delete missing --id
   await t.test('#42 reminder delete missing --id', async () => {
     const result = await runCli(['reminder', 'delete'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_REMINDER_ID');
+    assert.match(result.stderr, /Code: MISSING_REMINDER_ID/);
   });
 
   // #43 - attachment missing --id
@@ -817,7 +817,7 @@ test('slock CLI command variants', async (t) => {
     // #16 - reminder create --delay-seconds
     await t.test('#16 reminder create --delay-seconds', async () => {
       const result = await runCli(
-        ['reminder', 'create', '--title', 'delayed task', '--delay-seconds', '300'],
+        ['reminder', 'create', '--title', 'delayed task', '--delay-seconds', '300', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -838,6 +838,7 @@ test('slock CLI command variants', async (t) => {
           '--repeat', 'daily',
           '--msg-id', 'msg-55',
           '--json', '{"timezone":"UTC"}',
+          '--format', 'json',
         ],
         env,
       );
@@ -855,7 +856,7 @@ test('slock CLI command variants', async (t) => {
     // #18 - reminder update --done
     await t.test('#18 reminder update --done', async () => {
       const result = await runCli(
-        ['reminder', 'update', '--id', 'rem-7', '--done'],
+        ['reminder', 'update', '--id', 'rem-7', '--done', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -868,7 +869,7 @@ test('slock CLI command variants', async (t) => {
     // #19 - reminder update --in/--cadence alias flags
     await t.test('#19 reminder update --in/--cadence alias flags', async () => {
       const result = await runCli(
-        ['reminder', 'update', '--id', 'rem-7', '--in', '600', '--cadence', 'weekly'],
+        ['reminder', 'update', '--id', 'rem-7', '--in', '600', '--cadence', 'weekly', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -881,7 +882,7 @@ test('slock CLI command variants', async (t) => {
     });
 
     await t.test('reminder snooze updates delay without replacing reminder', async () => {
-      const result = await runCli(['reminder', 'snooze', '--id', 'rem-7', '--in', '900'], env);
+      const result = await runCli(['reminder', 'snooze', '--id', 'rem-7', '--in', '900', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.reminderId, 'rem-7');
@@ -890,7 +891,7 @@ test('slock CLI command variants', async (t) => {
     });
 
     await t.test('reminder log reads lifecycle entries', async () => {
-      const result = await runCli(['reminder', 'log', '--id', 'rem-7'], env);
+      const result = await runCli(['reminder', 'log', '--id', 'rem-7', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.reminderId, 'rem-7');
