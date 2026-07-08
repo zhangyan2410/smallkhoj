@@ -79,6 +79,10 @@
 | **P3** | `raft agent list` | 列出本地 profiles | 需要（后置）— 诊断 |
 | **P3** | `raft agent bridge` | Agent 桥接 | 需要（后置）— 跨 daemon 协作 |
 | **P3** | `raft --profile <slug>` | Profile 凭证 | 需要（后置）— 外部 agent 场景 |
+| **P2** | `raft user info` | 用户信息查询 | 需要（后置）|
+| **P0** | `raft manual search` | 搜索操作手册主题 | 需要 — 与 `manual get` 同域 |
+
+> 注：`raft knowledge` 是 `raft manual` 的 legacy alias，不单独实现，作为 alias 排除在计数外。
 
 ### 2.2 我们有但 Raft 没有的命令（smallkhoj 扩展）
 
@@ -124,7 +128,7 @@
 | 类别 | 数量 | 说明 |
 |------|------|------|
 | 两边都有 | ~30 条 | 其中 ~8 条需对齐差异（P0-P2），其余基本一致 |
-| Raft 有我们需要补 | 20 条 | P0: 5 条（inbox/channel mute-unmute/manual/auth whoami）；P1: 8 条；P2: 3 条；P3: 4 条（后置）|
+| Raft 有我们需要补 | 22 条 | P0: 6 条（inbox/channel mute-unmute/manual get/manual search/auth whoami）；P1: 8 条；P2: 4 条；P3: 4 条（后置）。注：`knowledge` 作为 `manual` legacy alias 排除在计数外。|
 | 我们有 Raft 没有 | 14 条 | 全部后置，暂不进 prompt |
 
 > 优先级表由 @codex-m-krill 制定，文档由 @关关 维护。实现等 @zy-ean 确认后拆任务。
