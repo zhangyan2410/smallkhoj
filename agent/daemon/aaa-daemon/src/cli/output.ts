@@ -162,7 +162,126 @@ export function formatServerInfo(json: unknown): string {
   return lines.join('\n') + '\n';
 }
 
-// ─── Generic passthrough ─────────────────────────────────────────
+// ─── Message search formatting ───────────────────────────────────
+
+interface SearchResult {
+  target?: string;
+  msg?: string;
+  messageId?: string;
+  time?: string;
+  type?: string;
+  sender?: string;
+  content?: string;
+  score?: number;
+}
+
+/** Format message search response. */
+export function formatMessageSearch(json: unknown): string {
+  const data = json as { results?: SearchResult[] };
+  const results = data.results ?? [];
+  if (results.length === 0) {
+    return 'No results found.\n';
+  }
+  const lines = results.map((r) => {
+    const target = r.target ?? '';
+    const id = r.msg ?? r.messageId ?? '';
+    const time = r.time ?? '';
+    const sender = r.sender ?? '';
+    const content = r.content ?? '';
+    return `[target=${target} msg=${id} time=${time}] ${sender}: ${content}`;
+  });
+  return lines.join('\n') + '\n';
+}
+
+/** Format message resolve response. */
+export function formatMessageResolve(json: unknown): string {
+  const data = json as { target?: string; channel?: string; channelId?: string; threadId?: string };
+  const parts: string[] = [];
+  if (data.target) parts.push(`Target: ${data.target}`);
+  if (data.channel) parts.push(`Channel: ${data.channel}`);
+  if (data.channelId) parts.push(`Channel ID: ${data.channelId}`);
+  if (data.threadId) parts.push(`Thread ID: ${data.threadId}`);
+  if (parts.length === 0) return JSON.stringify(json) + '\n';
+  return parts.join('\n') + '\n';
+}
+
+/** Format message react response (generic write success). */
+export function formatReact(_json: unknown): string {
+  return 'Reaction added.\n';
+}
+
+// ─── Channel formatting ─────────────────────────────────────────
+
+interface MemberInfo {
+  name?: string;
+  role?: string;
+  type?: string;
+  status?: string;
+  description?: string;
+}
+
+/** Format channel members response. */
+export function formatChannelMembers(json: unknown): string {
+  const data = json as { members?: MemberInfo[] };
+  const members = data.members ?? [];
+  if (members.length === 0) {
+    return 'No members.\n';
+  }
+  const lines = members.map((m) => {
+    const role = m.role ? ` [${m.role}]` : '';
+    const status = m.status ? ` (${m.status})` : '';
+    const desc = m.description ? ` — ${m.description}` : '';
+    return `  @${m.name}${role}${status}${desc}`;
+  });
+  return lines.join('\n') + '\n';
+}
+
+/** Format generic join/leave response. */
+export function formatChannelAction(json: unknown, action: string): string {
+  const data = json as { joined?: boolean; left?: boolean; channel?: string };
+  if (action === 'join') return `Joined channel.\n`;
+  if (action === 'leave') return `Left channel.\n`;
+  return JSON.stringify(data) + '\n';
+}
+
+// ─── Thread formatting ──────────────────────────────────────────
+
+interface ThreadMessage {
+  target?: string;
+  msg?: string;
+  messageId?: string;
+  time?: string;
+  type?: string;
+  sender?: string;
+  content?: string;
+}
+
+/** Format thread read response. */
+export function formatThreadRead(json: unknown): string {
+  let messages: ThreadMessage[];
+  if (Array.isArray(json)) {
+    messages = json as ThreadMessage[];
+  } else {
+    const data = json as { messages?: ThreadMessage[] };
+    messages = data.messages ?? [];
+  }
+  if (messages.length === 0) {
+    return 'No messages in thread.\n';
+  }
+  const lines = messages.map((m) => {
+    const target = m.target ?? '';
+    const id = m.msg ?? m.messageId ?? '';
+    const time = m.time ?? '';
+    const sender = m.sender ?? '';
+    return `[target=${target} msg=${id} time=${time}] ${sender}: ${m.content ?? ''}`;
+  });
+  return lines.join('\n') + '\n';
+}
+
+/** Format thread unfollow response. */
+export function formatThreadUnfollow(_json: unknown): string {
+  return 'Thread unfollowed.\n';
+}
 
 /** For commands not yet migrated to canonical formatting, pass through raw JSON. */
 export function formatPassthrough(text: string): string {

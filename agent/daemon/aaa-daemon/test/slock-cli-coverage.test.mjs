@@ -143,47 +143,47 @@ test('slock CLI error paths', async (t) => {
   await t.test('#28 react missing --message-id', async () => {
     const result = await runCli(['message', 'react', '--reaction', '+1'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_MESSAGE_ID');
+    assert.match(result.stderr, /Code: MISSING_MESSAGE_ID/);
   });
 
   // #29 - react missing --reaction
   await t.test('#29 react missing --reaction', async () => {
     const result = await runCli(['message', 'react', '--message-id', 'msg-1'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_REACTION');
+    assert.match(result.stderr, /Code: MISSING_REACTION/);
   });
 
   // #30 - search missing --query
   await t.test('#30 search missing --query', async () => {
     const result = await runCli(['message', 'search'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_QUERY');
+    assert.match(result.stderr, /Code: MISSING_QUERY/);
   });
 
   // #31 - channel members missing --channel
   await t.test('#31 channel members missing --channel', async () => {
     const result = await runCli(['channel', 'members'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_CHANNEL');
+    assert.match(result.stderr, /Code: MISSING_CHANNEL/);
   });
 
   // #32 - channel join/leave missing channel
   await t.test('#32 channel join missing channel', async () => {
     const result = await runCli(['channel', 'join'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_CHANNEL');
+    assert.match(result.stderr, /Code: MISSING_CHANNEL/);
   });
 
   await t.test('#32 channel leave missing channel', async () => {
     const result = await runCli(['channel', 'leave'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_CHANNEL');
+    assert.match(result.stderr, /Code: MISSING_CHANNEL/);
   });
 
   await t.test('#32 thread read missing --thread-id', async () => {
     const result = await runCli(['thread', 'read'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_THREAD_ID');
+    assert.match(result.stderr, /Code: MISSING_THREAD_ID/);
   });
 
   await t.test('#32 thread summary missing --summary', async () => {
@@ -585,7 +585,7 @@ test('slock CLI command variants', async (t) => {
     // #3 - message react --remove (DELETE method)
     await t.test('#3 message react --remove uses DELETE', async () => {
       const result = await runCli(
-        ['message', 'react', '--message-id', 'msg-1', '--reaction', '+1', '--remove'],
+        ['message', 'react', '--message-id', 'msg-1', '--reaction', '+1', '--remove', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -605,7 +605,7 @@ test('slock CLI command variants', async (t) => {
     });
 
     await t.test('message resolve returns canonical resolved message', async () => {
-      const result = await runCli(['message', 'resolve', 'msg-1'], env);
+      const result = await runCli(['message', 'resolve', 'msg-1', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.resolved, true);
@@ -615,7 +615,7 @@ test('slock CLI command variants', async (t) => {
     // #5 - channel join/leave --channel-id (explicit channelId)
     await t.test('#5 channel join with --channel-id', async () => {
       const result = await runCli(
-        ['channel', 'join', '--channel', '#test', '--channel-id', 'chan-explicit-id'],
+        ['channel', 'join', '--channel', '#test', '--channel-id', 'chan-explicit-id', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -626,7 +626,7 @@ test('slock CLI command variants', async (t) => {
 
     await t.test('#5 channel leave with --channel-id', async () => {
       const result = await runCli(
-        ['channel', 'leave', '--channel', '#test', '--channel-id', 'chan-explicit-id'],
+        ['channel', 'leave', '--channel', '#test', '--channel-id', 'chan-explicit-id', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -636,7 +636,7 @@ test('slock CLI command variants', async (t) => {
     });
 
     await t.test('#5 thread read by short id', async () => {
-      const result = await runCli(['thread', 'read', '--thread-id', 'thread-1'], env);
+      const result = await runCli(['thread', 'read', '--thread-id', 'thread-1', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.deepEqual(parsed.thread, { id: 'thread-1' });
@@ -652,7 +652,7 @@ test('slock CLI command variants', async (t) => {
     });
 
     await t.test('thread unfollow posts thread target body', async () => {
-      const result = await runCli(['thread', 'unfollow', '--target', '#general:thread-1'], env);
+      const result = await runCli(['thread', 'unfollow', '--target', '#general:thread-1', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.unfollowed, true);

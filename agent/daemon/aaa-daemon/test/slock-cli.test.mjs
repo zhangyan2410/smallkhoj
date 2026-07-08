@@ -1491,7 +1491,7 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(send.code, 0, send.stderr);
     assert.equal(JSON.parse(send.stdout).state, 'sent');
 
-    const serverInfo = await runCli(['server', 'info'], env);
+    const serverInfo = await runCli(['server', 'info', '--format', 'json'], env);
     assert.equal(serverInfo.code, 0, serverInfo.stderr);
     assert.deepEqual(JSON.parse(serverInfo.stdout), { id: 'server-1', channels: [{ name: 'general' }] });
 
@@ -1507,11 +1507,11 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(tasks.code, 0, tasks.stderr);
     assert.deepEqual(JSON.parse(tasks.stdout), { tasks: [], channel: '#general' });
 
-    const search = await runCli(['message', 'search', '--query', 'hello world', '--channel', '#general', '--limit', '4'], env);
+    const search = await runCli(['message', 'search', '--query', 'hello world', '--channel', '#general', '--limit', '4', '--format', 'json'], env);
     assert.equal(search.code, 0, search.stderr);
     assert.deepEqual(JSON.parse(search.stdout), { results: [], q: 'hello world', channel: '#general', limit: '4' });
 
-    const members = await runCli(['channel', 'members', '--channel', '#general'], env);
+    const members = await runCli(['channel', 'members', '--channel', '#general', '--format', 'json'], env);
     assert.equal(members.code, 0, members.stderr);
     assert.deepEqual(JSON.parse(members.stdout), { members: [], channel: '#general' });
 
@@ -1539,15 +1539,15 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(updateTask.code, 0, updateTask.stderr);
     assert.deepEqual(JSON.parse(updateTask.stdout), { updated: true, body: { channel: '#general', task_number: 1, status: 'done' } });
 
-    const joinChannel = await runCli(['channel', 'join', '--channel', '#general'], env);
+    const joinChannel = await runCli(['channel', 'join', '--channel', '#general', '--format', 'json'], env);
     assert.equal(joinChannel.code, 0, joinChannel.stderr);
     assert.deepEqual(JSON.parse(joinChannel.stdout), { joined: true });
 
-    const leaveChannel = await runCli(['channel', 'leave', '--channel', '#general'], env);
+    const leaveChannel = await runCli(['channel', 'leave', '--channel', '#general', '--format', 'json'], env);
     assert.equal(leaveChannel.code, 0, leaveChannel.stderr);
     assert.deepEqual(JSON.parse(leaveChannel.stdout), { left: true });
 
-    const react = await runCli(['message', 'react', '--message-id', 'msg-1', '--reaction', '+1'], env);
+    const react = await runCli(['message', 'react', '--message-id', 'msg-1', '--reaction', '+1', '--format', 'json'], env);
     assert.equal(react.code, 0, react.stderr);
     assert.deepEqual(JSON.parse(react.stdout), { reacted: true, body: { reaction: '+1' } });
 

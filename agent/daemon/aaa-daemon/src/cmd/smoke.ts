@@ -36,7 +36,7 @@ export async function runReadOnlySmoke(options: SmokeOptions): Promise<number> {
       launchId: `smoke-${process.pid}`,
     });
 
-    const code = await runSlockCli(['server', 'info'], {
+    const code = await runSlockCli(['server', 'info', '--format', 'json'], {
       env: {
         SLOCK_AGENT_PROXY_URL: proxy.getProxyUrl(),
         SLOCK_AGENT_PROXY_TOKEN_FILE: wrapper.tokenFile,

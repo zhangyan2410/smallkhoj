@@ -87,6 +87,7 @@ export const ErrorCodes = {
   MISSING_QUERY: { code: 'MISSING_QUERY', nextAction: 'Provide a search query with --query "text"' },
   MISSING_CONTENT: { code: 'MISSING_CONTENT', nextAction: 'Provide content via --content, positional args, or stdin' },
   MISSING_MESSAGE_ID: { code: 'MISSING_MESSAGE_ID', nextAction: 'Specify the message ID with --message-id <id>' },
+  MISSING_REACTION: { code: 'MISSING_REACTION', nextAction: 'Specify the reaction with --reaction <value>' },
   MISSING_TASK_ID: { code: 'MISSING_TASK_ID', nextAction: 'Specify the task with --id <id> or --channel with --number' },
   MISSING_TITLE: { code: 'MISSING_TITLE', nextAction: 'Provide a title with --title "text"' },
   MISSING_THREAD_ID: { code: 'MISSING_THREAD_ID', nextAction: 'Specify the thread ID with --thread-id <id>' },

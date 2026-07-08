@@ -32,6 +32,14 @@ import {
   formatMessageRead,
   formatMessageSend,
   formatMemoryRead,
+  formatMessageSearch,
+  formatMessageResolve,
+  formatReact,
+  formatServerInfo,
+  formatChannelMembers,
+  formatChannelAction,
+  formatThreadRead,
+  formatThreadUnfollow,
   formatPassthrough,
 } from './output.js';
 import { readDaemonPackageVersion } from '../version.js';
@@ -57,8 +65,7 @@ function compactBody(values: Record<string, unknown>): Record<string, unknown> {
 }
 
 /**
- * Build the commander program for MVP commands.
- * Returns the program and a registry of which commands are handled.
+ * Build the commander program for all migrated commands.
  */
 function buildProgram(): Command {
   const program = new Command();
@@ -77,33 +84,69 @@ function buildProgram(): Command {
   // ── message ──────────────────────────────────────────────────
   const messageCmd = program.command('message').description('Message operations');
 
-  messageCmd
-    .command('check')
-    .description('Check for new messages')
-    .option('--limit <n>', 'Max messages to fetch')
-    .action(async () => { /* handled via unified action */ });
+  messageCmd.command('check').description('Check for new messages')
+    .option('--limit <n>', 'Max messages to fetch').action(async () => {});
 
-  messageCmd
-    .command('read')
-    .description('Read message history')
-    .option('--channel <target>', 'Channel to read')
-    .option('--target <target>', 'Alias for --channel')
-    .option('--limit <n>', 'Max messages to fetch')
-    .action(async () => {});
+  messageCmd.command('read').description('Read message history')
+    .option('--channel <target>', 'Channel to read').option('--target <target>', 'Alias for --channel')
+    .option('--limit <n>', 'Max messages to fetch').action(async () => {});
 
-  messageCmd
-    .command('send')
-    .description('Send a message')
+  messageCmd.command('send').description('Send a message')
     .requiredOption('--target <target>', 'Message target (channel or dm:@user)')
     .option('--attachment-id <id>', 'Attachment ID (repeatable)', collectArray, [])
     .action(async () => {});
 
+  messageCmd.command('search').description('Search messages')
+    .option('--query <text>', 'Search query').option('--channel <target>', 'Filter by channel').option('--target <target>', 'Alias for --channel')
+    .option('--limit <n>', 'Max results').action(async () => {});
+
+  messageCmd.command('resolve').description('Resolve a message target')
+    .option('--message-id <id>', 'Message ID').option('--id <id>', 'Alias for --message-id').action(async () => {});
+
+  messageCmd.command('react').description('Add or remove a reaction')
+    .option('--message-id <id>', 'Message ID').option('--id <id>', 'Alias for --message-id')
+    .option('--reaction <value>', 'Reaction emoji or value')
+    .option('--remove', 'Remove reaction instead of adding')
+    .action(async () => {});
+
+  // ── server ───────────────────────────────────────────────────
+  program.command('info').description('Server / workspace introspection')
+    .action(async () => {});
+  // server info is under 'server' group
+
+  const serverCmd = program.command('server').description('Server operations');
+  serverCmd.command('info').description('Server / workspace introspection').action(async () => {});
+
+  // ── channel ──────────────────────────────────────────────────
+  const channelCmd = program.command('channel').description('Channel operations');
+
+  channelCmd.command('members').description('List channel members')
+    .requiredOption('--channel <target>', 'Channel name').action(async () => {});
+
+  channelCmd.command('join').description('Join a channel')
+    .option('--target <target>', 'Channel to join')
+    .option('--channel <target>', 'Alias for --target')
+    .option('--channel-id <id>', 'Channel ID').action(async () => {});
+
+  channelCmd.command('leave').description('Leave a channel')
+    .option('--target <target>', 'Channel to leave')
+    .option('--channel <target>', 'Alias for --target')
+    .option('--channel-id <id>', 'Channel ID').action(async () => {});
+
+  // ── thread ───────────────────────────────────────────────────
+  const threadCmd = program.command('thread').description('Thread operations');
+
+  threadCmd.command('read').description('Read thread messages')
+    .option('--thread-id <id>', 'Thread ID').option('--id <id>', 'Alias for --thread-id').action(async () => {});
+
+  threadCmd.command('unfollow').description('Stop following a thread')
+    .option('--target <id>', 'Thread ID or target').option('--thread-id <id>', 'Alias for --target')
+    .option('--id <id>', 'Alias for --target').action(async () => {});
+
   // ── memory (smallkhoj extension) ─────────────────────────────
   const memoryCmd = program.command('memory').description('Memory operations (smallkhoj extension)');
 
-  memoryCmd
-    .command('read')
-    .description('Read memory content')
+  memoryCmd.command('read').description('Read memory content')
     .requiredOption('--scope <type>', 'Memory scope (agent|channel|thread|task)')
     .requiredOption('--id <scopeId>', 'Scope ID')
     .requiredOption('--path <path>', 'Memory path')
@@ -209,17 +252,123 @@ const COMMAND_META: Record<string, CommandMeta> = {
     },
     formatText: formatMemoryRead,
   },
+  // ── Batch 2: message search/resolve/react ──
+  'message search': {
+    async buildRequest(opts, config) {
+      const q = (opts.query as string) ?? (opts.q as string) ?? ((opts._positionals as string[]) ?? []).join(' ').trim();
+      if (!q) throw new CliError('Missing --query', ErrorCodes.MISSING_QUERY.code, ErrorCodes.MISSING_QUERY.nextAction);
+      const channel = (opts.channel as string) ?? (opts.target as string);
+      const limit = opts.limit as string | undefined;
+      const query = new URLSearchParams();
+      query.set('q', q);
+      if (channel) query.set('channel', channel);
+      if (limit) query.set('limit', limit);
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/search?${query}` };
+    },
+    formatText: formatMessageSearch,
+  },
+  'message resolve': {
+    async buildRequest(opts, config) {
+      const messageId = (opts.messageId as string) ?? (opts.id as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!messageId) throw new CliError('Missing --message-id', ErrorCodes.MISSING_MESSAGE_ID.code, ErrorCodes.MISSING_MESSAGE_ID.nextAction);
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/messages/${encodeURIComponent(messageId)}/resolve` };
+    },
+    formatText: formatMessageResolve,
+  },
+  'message react': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const messageId = (opts.messageId as string) ?? (opts.id as string) ?? pos[0];
+      if (!messageId) throw new CliError('Missing --message-id', ErrorCodes.MISSING_MESSAGE_ID.code, ErrorCodes.MISSING_MESSAGE_ID.nextAction);
+      const reaction = (opts.reaction as string) ?? pos[1];
+      if (!reaction) throw new CliError('Missing --reaction', ErrorCodes.MISSING_REACTION.code, ErrorCodes.MISSING_REACTION.nextAction);
+      const remove = opts.remove === true;
+      return {
+        method: remove ? 'DELETE' : 'POST',
+        path: `${agentPrefix(config.agentId)}/messages/${encodeURIComponent(messageId)}/reactions`,
+        body: { reaction },
+        writeScope: writeScope(messageId),
+      };
+    },
+    formatText: formatReact,
+  },
+  // ── Batch 2: server info ──
+  'server info': {
+    async buildRequest(_opts, config) {
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/server` };
+    },
+    formatText: formatServerInfo,
+  },
+  // ── Batch 2: channel members/join/leave ──
+  'channel members': {
+    async buildRequest(opts, config) {
+      const channel = opts.channel as string;
+      const query = new URLSearchParams();
+      query.set('channel', channel);
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/channel-members?${query}` };
+    },
+    formatText: formatChannelMembers,
+  },
+  'channel join': {
+    async buildRequest(opts, config) {
+      const channel = (opts.target as string) ?? (opts.channel as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!channel) throw new CliError('Missing --target or --channel', 'MISSING_CHANNEL', 'Specify the channel with --target "#channel"');
+      const channelId = opts.channelId as string | undefined;
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/channels/${encodeURIComponent(channelId ?? channel)}/join`,
+        writeScope: writeScope(channel),
+      };
+    },
+    formatText: (json) => formatChannelAction(json, 'join'),
+  },
+  'channel leave': {
+    async buildRequest(opts, config) {
+      const channel = (opts.target as string) ?? (opts.channel as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!channel) throw new CliError('Missing --target or --channel', 'MISSING_CHANNEL', 'Specify the channel with --target "#channel"');
+      const channelId = opts.channelId as string | undefined;
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/channels/${encodeURIComponent(channelId ?? channel)}/leave`,
+        writeScope: writeScope(channel),
+      };
+    },
+    formatText: (json) => formatChannelAction(json, 'leave'),
+  },
+  // ── Batch 2: thread read/unfollow ──
+  'thread read': {
+    async buildRequest(opts, config) {
+      const threadId = (opts.threadId as string) ?? (opts.id as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!threadId) throw new CliError('Missing --thread-id', 'MISSING_THREAD_ID', 'Specify the thread ID with --thread-id <id>');
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/threads/${encodeURIComponent(threadId)}` };
+    },
+    formatText: formatThreadRead,
+  },
+  'thread unfollow': {
+    async buildRequest(opts, config) {
+      const target = (opts.target as string) ?? (opts.threadId as string) ?? (opts.id as string) ?? ((opts._positionals as string[]) ?? [])[0];
+      if (!target) throw new CliError('Missing --target or --thread-id', 'MISSING_THREAD_ID', 'Specify the thread ID with --target <id>');
+      return {
+        method: 'POST',
+        path: `${agentPrefix(config.agentId)}/threads/unfollow`,
+        body: { threadId: target },
+        writeScope: writeScope(`thread:${target}`),
+      };
+    },
+    formatText: formatThreadUnfollow,
+  },
 };
 
 /** Known options that take a value (to skip the value when scanning positionals). */
 const VALUE_OPTIONS = new Set([
   '--format', '--limit', '--channel', '--target', '--scope', '--id', '--path',
-  '--attachment-id', '--content', '-t', '-c', '-q', '-s',
+  '--attachment-id', '--content', '--query', '--message-id', '--reaction',
+  '--thread-id', '--channel-id', '-t', '-c', '-q', '-s', '-m', '-r',
 ]);
 
-/** Check if argv matches an MVP command. Returns the meta key or null. */
-function matchMvpCommand(argv: string[]): string | null {
-  const mvpKeys = Object.keys(COMMAND_META);
+/** Check if argv matches a migrated command. Returns the meta key or null. */
+function matchMigratedCommand(argv: string[]): string | null {
+  const migratedKeys = Object.keys(COMMAND_META);
   // Skip options AND their values to find group + command positionals
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -233,14 +382,14 @@ function matchMvpCommand(argv: string[]): string | null {
   }
   if (positional.length < 2) return null;
   const key = `${positional[0]} ${positional[1]}`;
-  return mvpKeys.includes(key) ? key : null;
+  return migratedKeys.includes(key) ? key : null;
 }
 
 /**
  * Handle an MVP command end-to-end.
  * Returns exit code (0 = success, 1 = error).
  */
-async function handleMvpCommand(
+async function handleMigratedCommand(
   metaKey: string,
   argv: string[],
   io: CliIo,
@@ -284,6 +433,11 @@ async function handleMvpCommand(
           '--scope': { code: 'MISSING_SCOPE', nextAction: 'Provide --scope with one of: agent, channel, thread, task' },
           '--id': { code: 'MISSING_SCOPE_ID', nextAction: 'Provide the scope ID with --id <id>' },
           '--path': { code: 'MISSING_PATH', nextAction: 'Provide a memory path with --path <path>' },
+          '--message-id': { code: 'MISSING_MESSAGE_ID', nextAction: 'Specify the message ID with --message-id <id>' },
+          '--reaction': { code: 'MISSING_REACTION', nextAction: 'Specify the reaction with --reaction <value>' },
+          '--query': { code: 'MISSING_QUERY', nextAction: 'Provide a search query with --query "text"' },
+          '--channel': { code: 'MISSING_CHANNEL', nextAction: 'Specify the channel with --channel "#channel"' },
+          '--thread-id': { code: 'MISSING_THREAD_ID', nextAction: 'Specify the thread ID with --thread-id <id>' },
         };
         const mapping = optErrorMap[optName] ?? { code: 'MISSING_OPTION', nextAction: `Provide ${optName}` };
         throw new CliError(`Missing required option ${optName}`, mapping.code, mapping.nextAction);
@@ -298,10 +452,16 @@ async function handleMvpCommand(
       commandOpts = matchedCmd.opts();
     }
 
+    // Add positional args for commands that accept them
+    const positionals = extractPositionals(argv);
+    const cmdPositionals = positionals.slice(2); // skip group + command
+    if (cmdPositionals.length > 0) {
+      commandOpts = { ...commandOpts, _positionals: cmdPositionals };
+    }
+
     // For message send, handle positional content
     if (metaKey === 'message send') {
-      const positionals = extractPositionals(argv);
-      const inlineContent = positionals.slice(2).join(' ').trim(); // skip group + command
+      const inlineContent = cmdPositionals.join(' ').trim();
       if (inlineContent) {
         commandOpts = { ...commandOpts, _inlineContent: inlineContent };
       }
@@ -391,13 +551,9 @@ function findCommand(program: Command, metaKey: string): Command | null {
 /** Extract positional arguments from argv (skipping options and their values). */
 function extractPositionals(argv: string[]): string[] {
   const result: string[] = [];
-  const knownValueOpts = new Set([
-    '--limit', '--channel', '--target', '--scope', '--id', '--path',
-    '--format', '--attachment-id', '--content', '-t', '-c', '-q',
-  ]);
   for (let i = 0; i < argv.length; i++) {
     if (argv[i].startsWith('-')) {
-      if (knownValueOpts.has(argv[i]) && i + 1 < argv.length) {
+      if (VALUE_OPTIONS.has(argv[i]) && i + 1 < argv.length) {
         i++; // skip the value
       }
       continue;
@@ -412,9 +568,9 @@ function extractPositionals(argv: string[]): string[] {
  * Preserves the same signature as the original runSlockCli.
  */
 export async function runSlockCli(argv: string[], io: CliIo = {}): Promise<number> {
-  const mvpKey = matchMvpCommand(argv);
-  if (mvpKey) {
-    return handleMvpCommand(mvpKey, argv, io);
+  const migratedKey = matchMigratedCommand(argv);
+  if (migratedKey) {
+    return handleMigratedCommand(migratedKey, argv, io);
   }
 
   // Fall through to legacy handler for non-MVP commands

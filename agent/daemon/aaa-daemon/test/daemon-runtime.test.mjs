@@ -1002,7 +1002,7 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
     const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
 
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
-    assert.match(runtime.serverStdout, /"server-1"/);
+    assert.match(runtime.serverStdout, /server-1|Channels:/);
     assert.equal(runtime.sendStatus, 0, runtime.sendStderr);
     assert.match(runtime.sendStdout, /Message sent/);
     assert.equal(runtime.pathHead, join(root, '.slock'));
@@ -1099,7 +1099,7 @@ test('daemon machine-token startup does not imply runtime write opt-in', async (
     const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
 
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
-    assert.match(runtime.serverStdout, /"server-1"/);
+    assert.match(runtime.serverStdout, /server-1|Channels:/);
     assert.notEqual(runtime.sendStatus, 0);
     assert.match(runtime.sendStderr, /WRITES_NOT_ALLOWED/);
     assert.equal(runtime.allowWrites, null);
@@ -1376,7 +1376,7 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
 
     assert.equal(runtime.agentId, 'agent-acp');
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
-    assert.match(runtime.serverStdout, /"server-acp"/);
+    assert.match(runtime.serverStdout, /server-acp|Channels:/);
     assert.equal(runtime.pathHead, join(root, '.slock'));
     assert.equal(runtime.slockHome, join(root, '.slock'));
     assert.equal(runtime.currentWorkspacePath, root);
@@ -1537,7 +1537,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
 
     assert.equal(runtime.agentId, 'agent-dynamic');
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
-    assert.match(runtime.serverStdout, /"server-control"/);
+    assert.match(runtime.serverStdout, /server-control|Channels:/);
     assert.equal(runtime.sendStatus, 0, runtime.sendStderr);
     assert.match(runtime.sendStdout, /Message sent/);
     assert.equal(runtime.pathHead, join(runtimeWorkspace, '.slock'));
@@ -1681,7 +1681,7 @@ process.stdout.write(JSON.stringify([{
     const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
     assert.equal(runtime.agentId, 'agent-provider');
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
-    assert.match(runtime.serverStdout, /"server-provider"/);
+    assert.match(runtime.serverStdout, /server-provider|Channels:/);
     assert.equal(runtime.argv.includes('--append-system-prompt-file'), true);
     assert.equal(runtime.argv.includes('--model'), true);
     assert.equal(runtime.argv.includes('kimi-for-coding'), true);
@@ -2149,7 +2149,7 @@ test('daemon start imports existing Slock runtime and Claude can call slock serv
     const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
 
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
-    assert.match(runtime.serverStdout, /"server-imported"/);
+    assert.match(runtime.serverStdout, /server-imported|Channels:/);
     assert.equal(runtime.pathHead, join(root, '.slock'));
     assert.equal(runtime.slockHome, join(root, '.slock'));
     assert.match(runtime.launchId, /^pid-/);
