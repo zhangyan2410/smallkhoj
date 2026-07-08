@@ -1,6 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, realpathSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import type { Credential } from '../types.js';
 
 export interface SlockWrapperOptions {
@@ -50,7 +51,16 @@ function quotePosix(value: string): string {
 }
 
 export function defaultSlockCliPath(): string {
-  return resolve(process.argv[1], '..', '..', 'slock-cli.js');
+  if (process.argv[1]) {
+    try {
+      const entrypoint = realpathSync(process.argv[1]);
+      const candidate = resolve(entrypoint, '..', '..', 'slock-cli.js');
+      if (existsSync(candidate)) return candidate;
+    } catch {
+      // Fall through to the module-relative path for cases like `node -`.
+    }
+  }
+  return resolve(dirname(fileURLToPath(import.meta.url)), '..', 'slock-cli.js');
 }
 
 export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperResult {

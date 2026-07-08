@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 import { rewriteAgentPath } from '../dist/proxy/agent-proxy.js';
-import { prependPathEnv, writeSlockWrapper } from '../dist/runtime/slock-wrapper.js';
+import { defaultSlockCliPath, prependPathEnv, writeSlockWrapper } from '../dist/runtime/slock-wrapper.js';
 
 test('rewriteAgentPath preserves query strings and normalizes receive', () => {
   const agentId = 'agent 1';
@@ -108,6 +108,27 @@ test('writeSlockWrapper writes wrappers and proxy token', () => {
     assert.match(readFileSync(join(workspace, 'MEMORY.md'), 'utf-8'), /New daemon-managed Slock\/Raft runtime workspace/);
     assert.equal(prependPathEnv(result.wrapperDir, 'BASE'), `${result.wrapperDir}${process.platform === 'win32' ? ';' : ':'}BASE`);
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('defaultSlockCliPath resolves package bin symlinks to the real slock CLI', { skip: process.platform === 'win32' }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-wrapper-bin-symlink-'));
+  const previousArgv1 = process.argv[1];
+  try {
+    const packageRoot = join(root, 'node_modules', '@smallkhoj', 'smallkhoj-daemon');
+    const binRoot = join(root, 'node_modules', '.bin');
+    mkdirSync(join(packageRoot, 'dist', 'cmd'), { recursive: true });
+    mkdirSync(binRoot, { recursive: true });
+    writeFileSync(join(packageRoot, 'dist', 'cmd', 'main.js'), '');
+    writeFileSync(join(packageRoot, 'dist', 'slock-cli.js'), '');
+    symlinkSync('../@smallkhoj/smallkhoj-daemon/dist/cmd/main.js', join(binRoot, 'smallkhoj-daemon'));
+
+    process.argv[1] = join(binRoot, 'smallkhoj-daemon');
+
+    assert.equal(defaultSlockCliPath(), realpathSync(join(packageRoot, 'dist', 'slock-cli.js')));
+  } finally {
+    process.argv[1] = previousArgv1;
     rmSync(root, { recursive: true, force: true });
   }
 });

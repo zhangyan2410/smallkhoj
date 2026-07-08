@@ -1004,7 +1004,7 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
     assert.match(runtime.serverStdout, /"server-1"/);
     assert.equal(runtime.sendStatus, 0, runtime.sendStderr);
-    assert.match(runtime.sendStdout, /"sent"/);
+    assert.match(runtime.sendStdout, /Message sent/);
     assert.equal(runtime.pathHead, join(root, '.slock'));
     assert.equal(runtime.slockHome, join(root, '.slock'));
     assert.match(runtime.launchId, /^pid-/);
@@ -1185,7 +1185,7 @@ test('daemon write opt-in and target allowlist are explicit runtime startup opti
 
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
     assert.equal(runtime.sendStatus, 0, runtime.sendStderr);
-    assert.match(runtime.sendStdout, /"sent"/);
+    assert.match(runtime.sendStdout, /Message sent/);
     assert.equal(runtime.allowWrites, '1');
     assert.equal(runtime.writeTargetAllowlist, '#general');
 
@@ -1539,7 +1539,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
     assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
     assert.match(runtime.serverStdout, /"server-control"/);
     assert.equal(runtime.sendStatus, 0, runtime.sendStderr);
-    assert.match(runtime.sendStdout, /"sent"/);
+    assert.match(runtime.sendStdout, /Message sent/);
     assert.equal(runtime.pathHead, join(runtimeWorkspace, '.slock'));
     assert.equal(runtime.slockHome, join(runtimeWorkspace, '.slock'));
     assert.equal(runtime.currentWorkspacePath, runtimeWorkspace);

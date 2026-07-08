@@ -67,7 +67,7 @@ test('slock message send posts to local proxy with bearer token', async () => {
     }, 'hello from stdin\n');
 
     assert.equal(result.code, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), { state: 'sent', messageSeq: 7 });
+    assert.match(result.stdout, /Message sent/);
     assert.equal(server.requests.length, 1);
     assert.equal(server.requests[0].req.method, 'POST');
     assert.equal(server.requests[0].req.url, '/internal/agent/agent-1/send');
@@ -100,7 +100,8 @@ test('write-capable slock commands require explicit opt-in', async () => {
     });
 
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'WRITES_NOT_ALLOWED');
+    assert.match(result.stderr, /Error:.*SLOCK_ALLOW_WRITES/s);
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
     assert.equal(server.requests.length, 0);
   } finally {
     await server.close();
@@ -127,7 +128,7 @@ test('write-capable slock commands honor target allowlist', async () => {
     });
 
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'WRITE_TARGET_NOT_ALLOWED');
+    assert.match(result.stderr, /Code: WRITE_TARGET_NOT_ALLOWED/);
     assert.equal(server.requests.length, 0);
   } finally {
     await server.close();
@@ -152,7 +153,7 @@ test('slock message check maps to receive endpoint with limit', async () => {
     });
 
     assert.equal(result.code, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), { events: [] });
+    assert.match(result.stdout, /No new messages/);
     assert.equal(server.requests[0].req.method, 'GET');
     assert.equal(server.requests[0].req.url, '/internal/agent/agent-1/receive?limit=3');
   } finally {
@@ -1486,7 +1487,7 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
       SLOCK_ALLOW_WRITES: '1',
     };
 
-    const send = await runCli(['message', 'send', '--target', '#general'], env, 'hello\n');
+    const send = await runCli(['message', 'send', '--target', '#general', '--format', 'json'], env, 'hello\n');
     assert.equal(send.code, 0, send.stderr);
     assert.equal(JSON.parse(send.stdout).state, 'sent');
 
@@ -1494,11 +1495,11 @@ test('slock CLI reaches fake Slock API through AgentProxy', async () => {
     assert.equal(serverInfo.code, 0, serverInfo.stderr);
     assert.deepEqual(JSON.parse(serverInfo.stdout), { id: 'server-1', channels: [{ name: 'general' }] });
 
-    const read = await runCli(['message', 'read', '--channel', '#general', '--limit', '2'], env);
+    const read = await runCli(['message', 'read', '--channel', '#general', '--limit', '2', '--format', 'json'], env);
     assert.equal(read.code, 0, read.stderr);
     assert.deepEqual(JSON.parse(read.stdout), { messages: [], channel: '#general' });
 
-    const check = await runCli(['message', 'check', '--limit', '5'], env);
+    const check = await runCli(['message', 'check', '--limit', '5', '--format', 'json'], env);
     assert.equal(check.code, 0, check.stderr);
     assert.deepEqual(JSON.parse(check.stdout), { events: [], since: 'latest', limit: '5' });
 

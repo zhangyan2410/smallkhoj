@@ -86,7 +86,7 @@ test('slock CLI error paths', async (t) => {
     delete env.SLOCK_AGENT_PROXY_URL;
     const result = await runCli(['message', 'check'], env);
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_SLOCK_AGENT_PROXY_URL');
+    assert.match(result.stderr, /Code: MISSING_SLOCK_AGENT_PROXY_URL/);
   });
 
   // #22 - Missing SLOCK_AGENT_PROXY_TOKEN_FILE
@@ -95,7 +95,7 @@ test('slock CLI error paths', async (t) => {
     delete env.SLOCK_AGENT_PROXY_TOKEN_FILE;
     const result = await runCli(['message', 'check'], env);
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_SLOCK_AGENT_PROXY_TOKEN_FILE');
+    assert.match(result.stderr, /Code: MISSING_SLOCK_AGENT_PROXY_TOKEN_FILE/);
   });
 
   // #23 - Token file does not exist
@@ -106,7 +106,7 @@ test('slock CLI error paths', async (t) => {
     };
     const result = await runCli(['message', 'check'], env);
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'TOKEN_READ_FAILED');
+    assert.match(result.stderr, /Code: TOKEN_READ_FAILED/);
   });
 
   // #24 - Missing SLOCK_AGENT_ID
@@ -115,7 +115,7 @@ test('slock CLI error paths', async (t) => {
     env.SLOCK_AGENT_ID = '';
     const result = await runCli(['message', 'check'], env);
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_SLOCK_AGENT_ID');
+    assert.match(result.stderr, /Code: MISSING_SLOCK_AGENT_ID/);
   });
 
   // #25 - Unknown command
@@ -129,14 +129,14 @@ test('slock CLI error paths', async (t) => {
   await t.test('#26 send missing --target', async () => {
     const result = await runCli(['message', 'send', 'hello'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_TARGET');
+    assert.match(result.stderr, /(Code: MISSING_TARGET|required option)/);
   });
 
   // #27 - send no content
   await t.test('#27 send no content', async () => {
     const result = await runCli(['message', 'send', '--target', '#general'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_CONTENT');
+    assert.match(result.stderr, /Code: MISSING_CONTENT/);
   });
 
   // #28 - react missing --message-id
@@ -559,7 +559,7 @@ test('slock CLI command variants', async (t) => {
 
     // #1 - message send inline positional content
     await t.test('#1 message send inline positional content', async () => {
-      const result = await runCli(['message', 'send', '--target', '#general', 'hello', 'world'], env);
+      const result = await runCli(['message', 'send', '--target', '#general', 'hello', 'world', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.state, 'sent');
@@ -569,7 +569,7 @@ test('slock CLI command variants', async (t) => {
     // #2 - message send --attachment-id with multiple IDs
     await t.test('#2 message send --attachment-id multiple', async () => {
       const result = await runCli(
-        ['message', 'send', '--target', '#general', '--attachment-id', 'att-1', '--attachment-id', 'att-2', 'with files'],
+        ['message', 'send', '--target', '#general', '--attachment-id', 'att-1', '--attachment-id', 'att-2', 'with files', '--format', 'json'],
         env,
       );
       assert.equal(result.code, 0, result.stderr);
@@ -596,7 +596,7 @@ test('slock CLI command variants', async (t) => {
 
     // #4 - message check without --limit (bare check)
     await t.test('#4 message check bare (no --limit)', async () => {
-      const result = await runCli(['message', 'check'], env);
+      const result = await runCli(['message', 'check', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       // Proxy injects since=latest; just verify events is empty
