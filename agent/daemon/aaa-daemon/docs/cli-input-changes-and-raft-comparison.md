@@ -14,7 +14,7 @@
 
 ### 1.2 输入参数兼容性
 
-**所有旧参数格式仍然可用**（zero breaking change on input）：
+**所有旧参数格式仍然可用**（相对 smallkhoj 旧 CLI / legacy wrapper 零 breaking change on input）：
 
 | 输入方式 | 状态 | 示例 |
 |----------|------|------|
@@ -33,7 +33,7 @@
 | memory scope | proxy 端拒绝 | **本地拒绝**（不发请求） | 低：更快失败，错误信息相同 |
 | memory path `../` | proxy 端拒绝 | **本地拒绝** | 低：同上 |
 | 数字参数 | proxy 端拒绝 | **本地拒绝**（INVALID_NUMBER） | 低：同上 |
-| `--json` 无效 JSON | proxy 端拒绝 | **本地拒绝**（INVALID_NUMBER） | 低：同上 |
+| `--json` 无效 JSON | proxy 端拒绝 | **本地拒绝**（INVALID_JSON） | 低：同上 |
 | 缺少必填参数 | JSON 错误 | 三段式错误（但 code 相同） | **中**：错误格式变了 |
 
 ### 1.4 关键安全边界变化
@@ -107,14 +107,14 @@
 | `message search` | 有 | 有 | 基本一致 |
 | `message resolve` | 有 | 有 | 基本一致 |
 | `message react` | 有 | 有 | 基本一致 |
-| `channel members` | 有 | 有 | 基本一致 |
+| `channel members` | 有 | 有 | **输入形态不同**：Raft 支持 positional target（channel/DM/thread）；smallkhoj 是 `--channel/--target/-c`，语义主要是 channel members |
 | `channel join/leave` | 有 | 有 | 基本一致 |
 | `server info` | 有 | 有 | Raft 输出更丰富（包含 runtime/model/computer 信息） |
 | `task list/create/claim/unclaim/update` | 有 | 有 | 我们额外支持 channel+number dual-mode |
 | `profile show/update` | 有 | 有 | 基本一致 |
 | `integration list/login` | 有 | 有 | Raft 的更完整（env/invoke/app） |
 | `reminder *` | 有 | 有 | 基本一致 |
-| `attachment upload/view` | 有 | 有 | 基本一致 |
+| `attachment upload/view` | 有 | 有 | **语义不同**：Raft `attachment view <id> --output` 是下载文件；smallkhoj `attachment view` 是 metadata 卡片，`attachment download` 才是文件下载。即 Raft view ≈ smallkhoj download，smallkhoj view metadata 是扩展 |
 | `thread unfollow` | 有 | 有 | 基本一致 |
 
 ### 2.4 总结
