@@ -452,6 +452,65 @@ export function formatIntegrationLogin(_json: unknown): string {
   return 'Login ready.\n';
 }
 
+// ─── Memory formatting (smallkhoj extension) ────────────────────
+
+/** Format memory search response. */
+export function formatMemorySearch(json: unknown): string {
+  const data = json as { results?: Array<{ path?: string; content?: string; score?: number }> };
+  const results = data.results ?? [];
+  if (results.length === 0) {
+    return 'No results found.\n';
+  }
+  const lines = results.map((r) => `  ${r.path ?? '?'}: ${(r.content ?? '').slice(0, 100)}`);
+  return lines.join('\n') + '\n';
+}
+
+/** Format memory write response. */
+export function formatMemoryWrite(_json: unknown): string {
+  return 'Memory written.\n';
+}
+
+/** Format memory propose response. */
+export function formatMemoryPropose(_json: unknown): string {
+  return 'Proposal created.\n';
+}
+
+/** Format memory proposals list response. */
+export function formatMemoryProposals(json: unknown): string {
+  const data = json as { proposals?: Array<{ id?: string; path?: string; status?: string; reason?: string }> };
+  const proposals = data.proposals ?? [];
+  if (proposals.length === 0) {
+    return 'No proposals.\n';
+  }
+  const lines = proposals.map((p) => {
+    const status = p.status ? ` [${p.status}]` : '';
+    const reason = p.reason ? ` — ${p.reason}` : '';
+    return `  ${p.id ?? '?'} ${p.path ?? '?'}${status}${reason}`;
+  });
+  return lines.join('\n') + '\n';
+}
+
+/** Format memory accept/reject proposal response. */
+export function formatProposalAction(_json: unknown, action: string): string {
+  return action === 'accept' ? 'Proposal accepted.\n' : 'Proposal rejected.\n';
+}
+
+/** Format memory delete response. */
+export function formatMemoryDelete(_json: unknown): string {
+  return 'Memory deleted.\n';
+}
+
+/** Format thread summary response. */
+export function formatThreadSummary(_json: unknown): string {
+  return 'Thread summary written.\n';
+}
+
+/** Passthrough formatter that accepts unknown and outputs as string. */
+export function formatPassthroughText(json: unknown): string {
+  if (typeof json === 'string') return json.endsWith('\n') ? json : json + '\n';
+  return JSON.stringify(json) + '\n';
+}
+
 /** For commands not yet migrated to canonical formatting, pass through raw JSON. */
 export function formatPassthrough(text: string): string {
   return text.endsWith('\n') ? text : text + '\n';

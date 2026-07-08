@@ -397,7 +397,7 @@ test('slock memory write requires explicit write opt-in', async () => {
     }, 'body');
 
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'WRITES_NOT_ALLOWED');
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
     assert.equal(server.requests.length, 0);
   } finally {
     await server.close();

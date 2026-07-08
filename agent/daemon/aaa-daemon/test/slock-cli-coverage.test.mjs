@@ -189,7 +189,7 @@ test('slock CLI error paths', async (t) => {
   await t.test('#32 thread summary missing --summary', async () => {
     const result = await runCli(['thread', 'summary', '--thread-id', 'thread-1'], baseEnv(root));
     assert.equal(result.code, 1);
-    assert.equal(JSON.parse(result.stderr).code, 'MISSING_SUMMARY');
+    assert.match(result.stderr, /Code: MISSING_SUMMARY/);
   });
 
   // #33 - task claim insufficient args
@@ -644,7 +644,7 @@ test('slock CLI command variants', async (t) => {
     });
 
     await t.test('#5 thread summary writes summary body', async () => {
-      const result = await runCli(['thread', 'summary', '--thread-id', 'thread-1', '--summary', 'Current state is clear.'], env);
+      const result = await runCli(['thread', 'summary', '--thread-id', 'thread-1', '--summary', 'Current state is clear.', '--format', 'json'], env);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout);
       assert.equal(parsed.updated, true);

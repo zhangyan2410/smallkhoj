@@ -50,6 +50,14 @@ import {
   formatReminderCancel,
   formatIntegrationList,
   formatIntegrationLogin,
+  formatMemorySearch,
+  formatMemoryWrite,
+  formatMemoryPropose,
+  formatMemoryProposals,
+  formatProposalAction,
+  formatMemoryDelete,
+  formatThreadSummary,
+  formatPassthroughText,
   formatPassthrough,
 } from './output.js';
 import { readDaemonPackageVersion } from '../version.js';
@@ -163,6 +171,56 @@ function buildProgram(): Command {
     .requiredOption('--scope <type>', 'Memory scope (agent|channel|thread|task)')
     .requiredOption('--id <scopeId>', 'Scope ID')
     .requiredOption('--path <path>', 'Memory path')
+    .action(async () => {});
+
+  memoryCmd.command('search').description('Search memory')
+    .requiredOption('--scope <type>', 'Memory scope').requiredOption('--id <scopeId>', 'Scope ID')
+    .option('--query <text>', 'Search query').option('-q <text>', 'Short for --query')
+    .option('--limit <n>', 'Max results').action(async () => {});
+
+  memoryCmd.command('context').description('Get memory context manifest')
+    .requiredOption('--scope <type>', 'Memory scope').requiredOption('--id <scopeId>', 'Scope ID')
+    .option('--query <text>', 'Context query').option('-q <text>', 'Short for --query').option('--prompt <text>', 'Alias for --query')
+    .option('--limit <n>', 'Max results').action(async () => {});
+
+  memoryCmd.command('write').description('Write memory content')
+    .requiredOption('--scope <type>', 'Memory scope').requiredOption('--id <scopeId>', 'Scope ID')
+    .requiredOption('--path <path>', 'Memory path')
+    .option('--content <text>', 'Content text').option('--text <text>', 'Alias for --content')
+    .option('--base-sha <sha>', 'Base SHA for conflict detection').action(async () => {});
+
+  memoryCmd.command('propose').description('Propose memory change')
+    .requiredOption('--scope <type>', 'Memory scope').requiredOption('--id <scopeId>', 'Scope ID')
+    .requiredOption('--path <path>', 'Memory path')
+    .option('--content <text>', 'Content text').option('--text <text>', 'Alias for --content')
+    .option('--reason <text>', 'Proposal reason').option('--base-sha <sha>', 'Base SHA')
+    .action(async () => {});
+
+  memoryCmd.command('proposals').description('List proposals (alias: list-proposals)')
+    .requiredOption('--scope <type>', 'Memory scope').requiredOption('--id <scopeId>', 'Scope ID')
+    .option('--status <status>', 'Filter by status').action(async () => {});
+
+  memoryCmd.command('accept-proposal').description('Accept a proposal')
+    .option('--id <id>', 'Proposal ID').option('--proposal-id <id>', 'Alias for --id')
+    .option('--review-note <text>', 'Review note').option('--note <text>', 'Alias for --review-note')
+    .action(async () => {});
+
+  memoryCmd.command('reject-proposal').description('Reject a proposal')
+    .option('--id <id>', 'Proposal ID').option('--proposal-id <id>', 'Alias for --id')
+    .option('--review-note <text>', 'Review note').option('--note <text>', 'Alias for --review-note')
+    .action(async () => {});
+
+  memoryCmd.command('delete').description('Delete memory (alias: remove)')
+    .requiredOption('--scope <type>', 'Memory scope').requiredOption('--id <scopeId>', 'Scope ID')
+    .requiredOption('--path <path>', 'Memory path').action(async () => {});
+  memoryCmd.command('remove').description('Alias for delete')
+    .requiredOption('--scope <type>', 'Memory scope').requiredOption('--id <scopeId>', 'Scope ID')
+    .requiredOption('--path <path>', 'Memory path').action(async () => {});
+
+  // ── thread summary ────────────────────────────────────────────
+  threadCmd.command('summary').description('Write thread summary')
+    .option('--thread-id <id>', 'Thread ID').option('--id <id>', 'Alias for --thread-id')
+    .option('--summary <text>', 'Summary text').option('--text <text>', 'Alias for --summary')
     .action(async () => {});
 
   // ── task ─────────────────────────────────────────────────────
@@ -869,6 +927,141 @@ const COMMAND_META: Record<string, CommandMeta> = {
     },
     formatText: formatIntegrationLogin,
   },
+  // ── Batch 6: memory write/propose/proposals/accept/reject/delete ──
+  'memory search': {
+    async buildRequest(opts, config) {
+      const scope = validateMemoryScope(opts.scope as string);
+      const pos = (opts._positionals as string[]) ?? [];
+      const q = (opts.query as string) ?? (opts.q as string) ?? pos.join(' ').trim();
+      if (!q) throw new CliError('Missing --query', ErrorCodes.MISSING_QUERY.code, ErrorCodes.MISSING_QUERY.nextAction);
+      const limit = opts.limit as string | undefined;
+      const query = new URLSearchParams();
+      query.set('q', q);
+      if (limit) query.set('limit', limit);
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/memory/scopes/${scope}/${encodeURIComponent(opts.id as string)}/search?${query}` };
+    },
+    formatText: formatMemorySearch,
+  },
+  'memory context': {
+    async buildRequest(opts, config) {
+      const scope = validateMemoryScope(opts.scope as string);
+      const pos = (opts._positionals as string[]) ?? [];
+      const prompt = (opts.query as string) ?? (opts.q as string) ?? (opts.prompt as string) ?? pos.join(' ').trim();
+      const limit = maybeNumberOpt(opts.limit as string);
+      return {
+        method: 'POST', path: `${agentPrefix(config.agentId)}/memory/context-manifest`,
+        body: compactBody({ scopeType: scope, scopeId: opts.id as string, prompt, topK: limit }),
+      };
+    },
+    formatText: formatPassthroughText,
+  },
+  'memory write': {
+    async buildRequest(opts, config) {
+      const scope = validateMemoryScope(opts.scope as string);
+      const memPath = validateMemoryPath(opts.path as string);
+      const inline = (opts.content as string) ?? (opts.text as string);
+      const contentText = inline ?? await readStdinText();
+      if (!contentText) throw new CliError('Missing memory content', ErrorCodes.MISSING_CONTENT.code, ErrorCodes.MISSING_CONTENT.nextAction);
+      return {
+        method: 'PUT', path: `${agentPrefix(config.agentId)}/memory/scopes/${scope}/${encodeURIComponent(opts.id as string)}/path/${memPath}`,
+        body: compactBody({ contentText, baseSha: opts.baseSha as string }),
+        writeScope: writeScope(`memory:${scope}:${opts.id}:${memPath}`),
+      };
+    },
+    formatText: formatMemoryWrite,
+  },
+  'memory propose': {
+    async buildRequest(opts, config) {
+      const scope = validateMemoryScope(opts.scope as string);
+      const memPath = validateMemoryPath(opts.path as string);
+      const inline = (opts.content as string) ?? (opts.text as string);
+      const contentText = inline ?? await readStdinText();
+      if (!contentText) throw new CliError('Missing memory content', ErrorCodes.MISSING_CONTENT.code, ErrorCodes.MISSING_CONTENT.nextAction);
+      return {
+        method: 'POST', path: `${agentPrefix(config.agentId)}/memory/scopes/${scope}/${encodeURIComponent(opts.id as string)}/proposals`,
+        body: compactBody({
+          path: memPath.split('/').map((p) => decodeURIComponent(p)).join('/'),
+          contentText, reason: opts.reason as string, baseSha: opts.baseSha as string,
+        }),
+        writeScope: writeScope(`memory:${scope}:${opts.id}:${memPath}`),
+      };
+    },
+    formatText: formatMemoryPropose,
+  },
+  'memory proposals': {
+    async buildRequest(opts, config) {
+      const scope = validateMemoryScope(opts.scope as string);
+      const query = new URLSearchParams();
+      if (opts.status) query.set('status', opts.status as string);
+      const suffix = query.toString() ? `?${query}` : '';
+      return { method: 'GET', path: `${agentPrefix(config.agentId)}/memory/scopes/${scope}/${encodeURIComponent(opts.id as string)}/proposals${suffix}` };
+    },
+    formatText: formatMemoryProposals,
+  },
+  'memory accept-proposal': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const proposalId = (opts.id as string) ?? (opts.proposalId as string) ?? pos[0];
+      if (!proposalId) throw new CliError('Missing proposal id', 'MISSING_PROPOSAL_ID', 'Specify with --id <id>');
+      return {
+        method: 'POST', path: `${agentPrefix(config.agentId)}/memory/proposals/${encodeURIComponent(proposalId)}/accept`,
+        body: compactBody({ reviewNote: (opts.reviewNote as string) ?? (opts.note as string) }),
+        writeScope: writeScope(`memory:proposal:${proposalId}`),
+      };
+    },
+    formatText: (json) => formatProposalAction(json, 'accept'),
+  },
+  'memory reject-proposal': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const proposalId = (opts.id as string) ?? (opts.proposalId as string) ?? pos[0];
+      if (!proposalId) throw new CliError('Missing proposal id', 'MISSING_PROPOSAL_ID', 'Specify with --id <id>');
+      return {
+        method: 'POST', path: `${agentPrefix(config.agentId)}/memory/proposals/${encodeURIComponent(proposalId)}/reject`,
+        body: compactBody({ reviewNote: (opts.reviewNote as string) ?? (opts.note as string) }),
+        writeScope: writeScope(`memory:proposal:${proposalId}`),
+      };
+    },
+    formatText: (json) => formatProposalAction(json, 'reject'),
+  },
+  'memory delete': {
+    async buildRequest(opts, config) {
+      const scope = validateMemoryScope(opts.scope as string);
+      const memPath = validateMemoryPath(opts.path as string);
+      return {
+        method: 'DELETE', path: `${agentPrefix(config.agentId)}/memory/scopes/${scope}/${encodeURIComponent(opts.id as string)}/path/${memPath}`,
+        writeScope: writeScope(`memory:${scope}:${opts.id}:${memPath}`),
+      };
+    },
+    formatText: formatMemoryDelete,
+  },
+  'memory remove': {
+    async buildRequest(opts, config) {
+      const scope = validateMemoryScope(opts.scope as string);
+      const memPath = validateMemoryPath(opts.path as string);
+      return {
+        method: 'DELETE', path: `${agentPrefix(config.agentId)}/memory/scopes/${scope}/${encodeURIComponent(opts.id as string)}/path/${memPath}`,
+        writeScope: writeScope(`memory:${scope}:${opts.id}:${memPath}`),
+      };
+    },
+    formatText: formatMemoryDelete,
+  },
+  // ── Batch 6: thread summary ──
+  'thread summary': {
+    async buildRequest(opts, config) {
+      const pos = (opts._positionals as string[]) ?? [];
+      const threadId = (opts.threadId as string) ?? (opts.id as string) ?? pos[0];
+      if (!threadId) throw new CliError('Missing --thread-id', ErrorCodes.MISSING_THREAD_ID.code, ErrorCodes.MISSING_THREAD_ID.nextAction);
+      const inline = (opts.summary as string) ?? (opts.text as string) ?? pos.slice(1).join(' ').trim();
+      const summary = inline || await readStdinText();
+      if (!summary) throw new CliError('Missing --summary', 'MISSING_SUMMARY', 'Provide summary via --summary or stdin');
+      return {
+        method: 'POST', path: `${agentPrefix(config.agentId)}/threads/${encodeURIComponent(threadId)}/summary`,
+        body: { summary }, writeScope: writeScope(`thread:${threadId}`),
+      };
+    },
+    formatText: formatThreadSummary,
+  },
 };
 
 /** Known options that take a value (to skip the value when scanning positionals). */
@@ -883,6 +1076,7 @@ const VALUE_OPTIONS = new Set([
   '--avatar-file', '--mime-type', '--content-type',
   '--fire-at', '--at', '--delay-seconds', '--repeat', '--cadence', '--in',
   '--msg-id', '--reminder-id', '--redirect-url', '--service', '--provider',
+  '--base-sha', '--prompt', '--review-note', '--note', '--proposal-id',
   '-t', '-c', '-q', '-s', '-m', '-r', '-a', '-h',
 ]);
 

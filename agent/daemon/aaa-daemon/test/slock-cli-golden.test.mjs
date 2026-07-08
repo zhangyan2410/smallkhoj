@@ -1172,3 +1172,108 @@ test('golden: reminder schedule invalid --delay-seconds returns INVALID_NUMBER',
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ===========================================================================
+// 13. Batch 6: Memory write/propose/delete + thread summary golden tests
+// ===========================================================================
+
+test('golden: memory write canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ sha: 'newsha123' }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(
+      ['memory', 'write', '--scope', 'agent', '--id', 'me', '--path', 'notes.md', '--content', 'test content'],
+      env,
+    );
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Memory written\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: memory write write-gate denial', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const result = await runCli(
+      ['memory', 'write', '--scope', 'agent', '--id', 'me', '--path', 'notes.md', '--content', 'test'],
+      baseEnv(root, server.url),
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: WRITES_NOT_ALLOWED/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: memory delete canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(
+      ['memory', 'delete', '--scope', 'channel', '--id', 'ch-1', '--path', 'old.md'],
+      env,
+    );
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Memory deleted\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: thread summary canonical text output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ updated: true }));
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(
+      ['thread', 'summary', '--thread-id', 't-1', '--summary', 'Discussion resolved.'],
+      env,
+    );
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Thread summary written\./);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('golden: memory write --scope bogus rejected locally', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-golden-'));
+  const server = await startServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    const env = { ...baseEnv(root, server.url), SLOCK_ALLOW_WRITES: '1' };
+    const result = await runCli(
+      ['memory', 'write', '--scope', 'bogus', '--id', 'x', '--path', 't.md', '--content', 'x'],
+      env,
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Code: INVALID_SCOPE/);
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
