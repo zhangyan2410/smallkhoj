@@ -4,10 +4,9 @@
 
 aaa-daemon 的 `slock` CLI 原本是架构验证原型：手写参数解析、raw JSON 输出、JSON blob 错误、无 `--help`/`--version`。@zy-ean 要求将其改造为真正的产品级 CLI，目标是**贴近真实 Raft agent-facing CLI 体验**——不只是命令名补齐，而是输入、输出、错误、权限、边界和使用手感全面对齐。
 
-本次 P0 批次完成了：
-1. 全部 46 条原有命令的 commander 化迁移（canonical 输出 + 三段式错误 + credential 脱敏 + 写安全门）
-2. 6 条 Raft 缺失命令的补齐
-3. 2 条已有命令的 Raft 语义对齐
+本次 P0 批次在前序产品化迁移基础上，完成了：
+1. 6 条 Raft 缺失命令的补齐
+2. 2 条已有命令的 Raft 语义对齐
 
 ---
 
@@ -103,7 +102,7 @@ aaa-daemon 的 `slock` CLI 原本是架构验证原型：手写参数解析、ra
 
 本批 P0 Raft parity 达到 **usable / reliable / productized**。
 
-- 所有 P0 命令行为对齐真实 Raft agent-facing CLI 体验
+- 本批 P0 阻塞行为和关键 agent-facing 体验已对齐真实 Raft。
 - 输入/输出/错误/权限/边界经过真实测试验证
 - 两个非阻塞 residual 不影响 P0 验收
 
