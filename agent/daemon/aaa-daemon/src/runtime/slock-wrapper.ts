@@ -113,6 +113,9 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
   const raftBashWrapper = join(wrapperDir, 'raft');
   writeFileSync(raftBashWrapper, bashWrapperContent, 'utf-8');
   chmodSync(raftBashWrapper, 0o755);
+  const auraBashWrapper = join(wrapperDir, 'aura');
+  writeFileSync(auraBashWrapper, bashWrapperContent, 'utf-8');
+  chmodSync(auraBashWrapper, 0o755);
 
   const cmdWrapper = join(wrapperDir, 'slock.cmd');
   const cmdEnvLines = Object.entries(commonEnv).map(([name, value]) => (
@@ -126,6 +129,7 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
   ].join('\r\n');
   writeFileSync(cmdWrapper, cmdWrapperContent, 'utf-8');
   writeFileSync(join(wrapperDir, 'raft.cmd'), cmdWrapperContent, 'utf-8');
+  writeFileSync(join(wrapperDir, 'aura.cmd'), cmdWrapperContent, 'utf-8');
 
   const psWrapper = join(wrapperDir, 'slock.ps1');
   const psEnvLines = Object.entries(commonEnv).map(([name, value]) => (
@@ -138,6 +142,7 @@ export function writeSlockWrapper(options: SlockWrapperOptions): SlockWrapperRes
   ].join('\n');
   writeFileSync(psWrapper, psWrapperContent, 'utf-8');
   writeFileSync(join(wrapperDir, 'raft.ps1'), psWrapperContent, 'utf-8');
+  writeFileSync(join(wrapperDir, 'aura.ps1'), psWrapperContent, 'utf-8');
 
   return { slockHome: wrapperDir, launchId, wrapperDir, tokenFile, bashWrapper, cmdWrapper, psWrapper };
 }

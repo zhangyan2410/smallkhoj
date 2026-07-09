@@ -9,6 +9,7 @@
   ],
   "bin": {
     "smallkhoj-daemon": "dist/cmd/main.js",
+    "aura": "dist/cmd/main.js",
     "aaa-daemon": "dist/cmd/main.js",
     "slock": "dist/slock-cli.js",
     "aaa-chat-bridge": "dist/chat-bridge.js"

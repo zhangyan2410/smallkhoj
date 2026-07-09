@@ -105,7 +105,7 @@ router = APIRouter(prefix="/api/v1", tags=["public"])
 logger = logging.getLogger(__name__)
 
 PUBLIC_API_KEY = "sk_public_local"
-DAEMON_CLI_COMMAND = "smallkhoj-daemon"
+DAEMON_CLI_COMMAND = "aura"
 DAEMON_DOWNLOAD_PATH = "/downloads/smallkhoj-daemon"
 DAEMON_NPX_PACKAGE_PREFIX = "smallkhoj-smallkhoj-daemon"
 CONNECT_TICKET_TTL_SECONDS = 300
@@ -192,7 +192,9 @@ def _computer_connection_command(token: str, server_url: str, server_label: str 
         [
             "npx",
             "-y",
+            "--package",
             shlex.quote(package),
+            DAEMON_CLI_COMMAND,
             "--server-url",
             shlex.quote(server_url),
             "--api-key",
@@ -230,7 +232,9 @@ def _computer_connect_command(connect_token: str, server_url: str, server_label:
         [
             "npx",
             "-y",
+            "--package",
             shlex.quote(package),
+            DAEMON_CLI_COMMAND,
             "--server-url",
             shlex.quote(server_url),
             "--api-key",

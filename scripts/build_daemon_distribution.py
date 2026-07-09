@@ -89,17 +89,20 @@ def copy_required_runtime_files(daemon_dir: Path, staging_dir: Path) -> None:
 
 def write_launcher(staging_dir: Path) -> None:
     launcher = staging_dir / "smallkhoj-daemon"
-    launcher.write_text(
+    launcher_text = (
         "\n".join([
             "#!/usr/bin/env bash",
             "set -euo pipefail",
             'DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
             'exec node "$DIR/dist/cmd/main.js" "$@"',
             "",
-        ]),
-        encoding="utf-8",
+        ])
     )
+    launcher.write_text(launcher_text, encoding="utf-8")
     launcher.chmod(0o755)
+    aura_launcher = staging_dir / "aura"
+    aura_launcher.write_text(launcher_text, encoding="utf-8")
+    aura_launcher.chmod(0o755)
 
 
 def write_manifest(
@@ -115,7 +118,7 @@ def write_manifest(
         "platform": target_platform,
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "gitCommit": git_commit,
-        "entrypoint": "smallkhoj-daemon",
+        "entrypoint": "aura",
         "requires": {
             "node": ">=20",
         },
@@ -225,11 +228,17 @@ def write_install_script(
             '#!/usr/bin/env bash',
             'exec "${VERSION_DIR}/smallkhoj-daemon" "\\$@"',
             'EOF',
+            'cat > "${BIN_DIR}/aura" <<EOF',
+            '#!/usr/bin/env bash',
+            'exec "${VERSION_DIR}/aura" "\\$@"',
+            'EOF',
             'chmod +x "${VERSION_DIR}/smallkhoj-daemon"',
+            'chmod +x "${VERSION_DIR}/aura"',
             'chmod +x "${BIN_DIR}/smallkhoj-daemon"',
+            'chmod +x "${BIN_DIR}/aura"',
             "",
-            'echo "Installed smallkhoj-daemon ${DAEMON_VERSION} (${DAEMON_PLATFORM}) to ${VERSION_DIR}"',
-            'echo "Add ${BIN_DIR} to PATH if smallkhoj-daemon is not found."',
+            'echo "Installed AuraTeam daemon ${DAEMON_VERSION} (${DAEMON_PLATFORM}) to ${VERSION_DIR}"',
+            'echo "Add ${BIN_DIR} to PATH if aura is not found."',
             "",
         ]),
         encoding="utf-8",

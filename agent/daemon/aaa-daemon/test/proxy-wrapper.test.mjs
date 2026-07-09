@@ -105,6 +105,9 @@ test('writeSlockWrapper writes wrappers and proxy token', () => {
     assert.match(bashWrapper, /exec '.*node(\.exe)?' 'D:\/repo\/dist\/slock-cli\.js' "\$@"/);
     assert.match(readFileSync(result.cmdWrapper, 'utf-8'), /set "SLOCK_AGENT_ID=agent-123"/);
     assert.match(readFileSync(result.psWrapper, 'utf-8'), /\$env:SLOCK_SERVER_URL='https:\/\/api\.slock\.ai'/);
+    assert.match(readFileSync(join(result.wrapperDir, 'aura'), 'utf-8'), /SLOCK_AGENT_PROXY_URL='http:\/\/127\.0\.0\.1:3456'/);
+    assert.match(readFileSync(join(result.wrapperDir, 'aura.cmd'), 'utf-8'), /set "SLOCK_AGENT_ID=agent-123"/);
+    assert.match(readFileSync(join(result.wrapperDir, 'aura.ps1'), 'utf-8'), /\$env:SLOCK_SERVER_URL='https:\/\/api\.slock\.ai'/);
     assert.match(readFileSync(join(workspace, 'MEMORY.md'), 'utf-8'), /New daemon-managed Slock\/Raft runtime workspace/);
     assert.equal(prependPathEnv(result.wrapperDir, 'BASE'), `${result.wrapperDir}${process.platform === 'win32' ? ';' : ':'}BASE`);
   } finally {

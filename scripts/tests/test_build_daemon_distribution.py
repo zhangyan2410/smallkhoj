@@ -64,6 +64,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertIn("smallkhoj-daemon-v0.2.0-darwin-arm64.tar.gz", install_script)
             self.assertIn(result.sha256, install_script)
             self.assertIn('exec "${VERSION_DIR}/smallkhoj-daemon" "\\$@"', install_script)
+            self.assertIn('exec "${VERSION_DIR}/aura" "\\$@"', install_script)
             self.assertNotIn("ln -sfn", install_script)
 
             with tarfile.open(result.artifact, "r:gz") as tar:
@@ -71,6 +72,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
 
             prefix = "smallkhoj-daemon-v0.2.0-darwin-arm64"
             self.assertIn(f"{prefix}/smallkhoj-daemon", names)
+            self.assertIn(f"{prefix}/aura", names)
             self.assertIn(f"{prefix}/dist/cmd/main.js", names)
             self.assertIn(f"{prefix}/manifest.json", names)
             self.assertNotIn("agent/daemon/aaa-daemon", "\n".join(names))
