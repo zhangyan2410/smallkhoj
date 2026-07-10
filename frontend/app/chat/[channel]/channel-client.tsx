@@ -114,6 +114,31 @@ type ChannelMessage = {
   reactions?: ReactionItem[]
   reactionCounts?: Record<string, number>
 }
+
+const CHAT_SCROLL_TICK_COUNT = 12
+
+function ChatScrollRail({ progress, visible }: { progress: number; visible: boolean }) {
+  const activeIndex = Math.round(Math.max(0, Math.min(1, progress)) * (CHAT_SCROLL_TICK_COUNT - 1))
+
+  return (
+    <div
+      aria-hidden="true"
+      data-slot="chat-scroll-rail"
+      data-visible={visible ? "true" : "false"}
+      className="sk-chat-scroll-rail"
+    >
+      {Array.from({ length: CHAT_SCROLL_TICK_COUNT }, (_, index) => (
+        <span
+          key={index}
+          data-active={index === activeIndex ? "true" : "false"}
+          data-near={Math.abs(index - activeIndex) === 1 ? "true" : "false"}
+          className="sk-chat-scroll-rail-tick"
+        />
+      ))}
+    </div>
+  )
+}
+
 type ThreadData = {
   thread?: ChannelMessage
   replies?: ChannelMessage[]
@@ -289,10 +314,12 @@ export function ChannelClient({
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
+  const messageScrollRef = useRef<HTMLDivElement>(null)
   const chatDeskMaterialLayerRef = useRef<HTMLDivElement>(null)
   const chatDeskPointerForwardingRef = useRef(false)
   const messageEndRef = useRef<HTMLDivElement>(null)
   const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
+  const [messageScrollState, setMessageScrollState] = useState({ progress: 0, visible: false })
 
   const storedThreadWidth = useSyncExternalStore(
     subscribePanelWidthStore,
@@ -315,10 +342,68 @@ export function ChannelClient({
   const currentIsDm = Boolean(currentDm)
   const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
   const allKnownMembers = [...members, ...allMembers]
+  const updateMessageScrollRail = useCallback(() => {
+    const element = messageScrollRef.current
+    if (!element) {
+      setMessageScrollState({ progress: 0, visible: false })
+      return
+    }
+
+    const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight)
+    const nextState = {
+      progress: maxScroll > 0 ? element.scrollTop / maxScroll : 0,
+      visible: maxScroll > 8,
+    }
+    setMessageScrollState((current) => {
+      if (
+        current.visible === nextState.visible &&
+        Math.abs(current.progress - nextState.progress) < 0.005
+      ) {
+        return current
+      }
+      return nextState
+    })
+  }, [])
+
   const didReact = (message: ChannelMessage, emoji: string) =>
     Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
   const memberKindLabel = (kind: string) => kind === "agent" ? tChat("agentKind") : kind === "human" ? tChat("humanKind") : kind
   const messageRoleLabels = { assistant: tChat("agentKind"), member: tChat("members") }
+
+  useEffect(() => {
+    updateMessageScrollRail()
+    const element = messageScrollRef.current
+    if (!element) return
+
+    let frame = 0
+    const delayedFrame = requestAnimationFrame(updateMessageScrollRail)
+    const delayedTimer = window.setTimeout(updateMessageScrollRail, 180)
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => {
+          cancelAnimationFrame(frame)
+          frame = requestAnimationFrame(updateMessageScrollRail)
+        })
+    const onScrollOrResize = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(updateMessageScrollRail)
+    }
+
+    element.addEventListener("scroll", onScrollOrResize, { passive: true })
+    window.addEventListener("resize", onScrollOrResize)
+    resizeObserver?.observe(element)
+    if (element.firstElementChild) resizeObserver?.observe(element.firstElementChild)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      cancelAnimationFrame(delayedFrame)
+      window.clearTimeout(delayedTimer)
+      resizeObserver?.disconnect()
+      element.removeEventListener("scroll", onScrollOrResize)
+      window.removeEventListener("resize", onScrollOrResize)
+    }
+  }, [activeTab, messages.length, updateMessageScrollRail])
+
   const markVisibleThreadRead = useCallback(async (threadId: string, data: ThreadData) => {
     const replies = data.replies ?? (data.messages || []).filter((msg) => msg.parentId)
     const visibleMessages = data.thread ? [data.thread, ...replies] : replies
@@ -1483,6 +1568,7 @@ export function ChannelClient({
             ) : (
               <>
                 <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" data-inkframe-mobile-role="chat-message-list" className="sk-chat-message-list relative isolate min-h-0 min-w-0 flex-1 overflow-hidden">
+                <ChatScrollRail progress={messageScrollState.progress} visible={messageScrollState.visible} />
                 <div
                   ref={chatDeskMaterialLayerRef}
                   data-slot="chat-desk-material-layer"
@@ -1511,12 +1597,14 @@ export function ChannelClient({
                   </MaterialSurface>
                 </div>
                 <div
+                  ref={messageScrollRef}
                   data-slot="chat-message-scroll"
                   onPointerDownCapture={handleChatDeskPointerDownCapture}
                   onPointerMoveCapture={handleChatDeskPointerMoveCapture}
                   onPointerUpCapture={handleChatDeskPointerUpCapture}
                   onPointerCancelCapture={handleChatDeskPointerUpCapture}
-                  className={`pointer-events-auto relative z-10 h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-4`}
+                  onScroll={updateMessageScrollRail}
+                  className={`sk-chat-message-scroll pointer-events-auto relative z-10 h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-4`}
                 >
                 <div className="sk-chat-message-stack pointer-events-none relative mr-auto w-full max-w-[1248px] min-w-0 space-y-3">
                 {messages.map((msg) => {
