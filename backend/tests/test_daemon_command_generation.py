@@ -9,7 +9,7 @@ def test_connect_command_uses_hosted_npm_tarball_by_default_not_repo_path():
     )
 
     assert command == (
-        "npx -y --package https://smallkhoj.example.com/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.0.tgz "
+        "npx -y --package https://smallkhoj.example.com/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.1.tgz "
         "aura --server-url https://smallkhoj.example.com --api-key sk_connect_test # 张岩 Server"
     )
     assert "agent/daemon/aaa-daemon" not in command
@@ -33,6 +33,20 @@ def test_connect_command_can_use_configured_npm_package(monkeypatch):
     )
 
 
+def test_connect_command_can_advertise_newer_daemon_without_raising_minimum(monkeypatch):
+    monkeypatch.setattr(public_api.settings, "minimum_daemon_version", "0.2.0")
+    monkeypatch.setattr(public_api.settings, "daemon_release_version", "0.2.1")
+
+    command = public_api._computer_connect_command(
+        "sk_connect_test",
+        "https://smallkhoj.example.com",
+        "张岩 Server",
+    )
+
+    assert "smallkhoj-smallkhoj-daemon-0.2.1.tgz" in command
+    assert "aura --server-url https://smallkhoj.example.com" in command
+
+
 def test_daemon_install_metadata_is_domain_aware():
     metadata = public_api._daemon_install_metadata("https://smallkhoj.example.com")
 
@@ -53,7 +67,7 @@ def test_reconnect_command_uses_hosted_npm_tarball_by_default_not_repo_path():
     )
 
     assert command == (
-        "npx -y --package https://smallkhoj.example.com/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.0.tgz "
+        "npx -y --package https://smallkhoj.example.com/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.1.tgz "
         "aura --server-url https://smallkhoj.example.com --api-key sk_machine_test # 张岩 Server"
     )
     assert "agent/daemon/aaa-daemon" not in command

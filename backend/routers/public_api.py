@@ -181,7 +181,7 @@ def _daemon_npx_package(server_url: str) -> str:
     configured = settings.daemon_npx_package.strip()
     if configured:
         return configured
-    version = settings.minimum_daemon_version.strip() or "0.2.0"
+    version = settings.daemon_release_version.strip() or settings.minimum_daemon_version.strip() or "0.2.1"
     return f"{_daemon_download_base_url(server_url)}/{DAEMON_NPX_PACKAGE_PREFIX}-{version}.tgz"
 
 

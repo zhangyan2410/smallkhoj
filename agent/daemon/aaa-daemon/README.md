@@ -1,4 +1,4 @@
-# aaa-daemon v0.2.0
+# aaa-daemon v0.2.1
 
 Minimal Slock agent daemon prototype for Claude Code runtime integration.
 

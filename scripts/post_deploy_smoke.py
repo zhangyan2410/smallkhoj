@@ -28,6 +28,7 @@ from scripts.initial_release_deploy_preflight import (  # noqa: E402
 
 
 READY = "POST_DEPLOY_SMOKE_READY"
+DEFAULT_DAEMON_PACKAGE_VERSION = "0.2.1"
 
 
 @dataclass(frozen=True)
@@ -250,7 +251,7 @@ def check_openapi(base_url: str, *, timeout: float) -> CheckResult:
 
 
 def check_daemon_package(base_url: str, *, timeout: float) -> CheckResult:
-    package_path = "/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.0.tgz"
+    package_path = f"/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-{DEFAULT_DAEMON_PACKAGE_VERSION}.tgz"
     try:
         probe = get_url(urljoin(base_url, package_path), timeout=timeout)
     except Exception as exc:

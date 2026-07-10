@@ -1797,7 +1797,7 @@ test('smallkhoj-daemon packaged CLI connect starts daemon with one-time ticket',
     if (url.pathname === '/internal/agent-api/daemon/connect') {
       assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
       const payload = JSON.parse(body);
-      assert.equal(payload.daemonVersion, '0.2.0');
+      assert.equal(payload.daemonVersion, '0.2.1');
       res.end(JSON.stringify({
         connected: true,
         daemonId: 'daemon-cli-connect',
@@ -1851,7 +1851,7 @@ test('smallkhoj-daemon packaged CLI connect starts daemon with one-time ticket',
       assert.fail(`packaged CLI connect exited before daemon registration\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
     }
     const firstRegister = registerBodies[0];
-    assert.equal(firstRegister.daemonVersion, '0.2.0');
+    assert.equal(firstRegister.daemonVersion, '0.2.1');
     assert.equal(firstRegister.workspaces.length, 0);
     assert.equal(daemon.exitCode, null, `daemon exited early\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
@@ -1873,7 +1873,7 @@ test('smallkhoj-daemon supports Raft-style one-line npx onboarding arguments', a
     if (url.pathname === '/internal/agent-api/daemon/connect') {
       assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
       const payload = JSON.parse(body);
-      assert.equal(payload.daemonVersion, '0.2.0');
+      assert.equal(payload.daemonVersion, '0.2.1');
       res.end(JSON.stringify({
         connected: true,
         daemonId: 'daemon-npx-style-connect',
@@ -1921,7 +1921,7 @@ test('smallkhoj-daemon supports Raft-style one-line npx onboarding arguments', a
     if (registerBodies.length === 0) {
       assert.fail(`one-line npx-style onboarding exited before daemon registration\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
     }
-    assert.equal(registerBodies[0].daemonVersion, '0.2.0');
+    assert.equal(registerBodies[0].daemonVersion, '0.2.1');
     assert.equal(daemon.exitCode, null, `daemon exited early\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
     daemon.kill('SIGTERM');

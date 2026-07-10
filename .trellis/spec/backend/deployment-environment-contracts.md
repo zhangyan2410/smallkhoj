@@ -79,14 +79,15 @@ Current Caddy route signatures:
   - `AUTH_BRIDGE_SECRET`
   - `BACKEND_CORS_ORIGINS` when using a domain or split origin
   - `MINIMUM_DAEMON_VERSION` when daemon upgrade gating is enabled
+  - `DAEMON_RELEASE_VERSION` for the self-hosted Daemon package advertised by onboarding and reconnect commands
 - Daemon onboarding commands shown to users must be a single npx command, not a split install/connect workflow:
-  - Default self-hosted shape: `npx -y <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz --server-url <public-base-url> --api-key <sk_connect_or_sk_machine_token> # <server-name>`
-  - Optional npm-registry shape after publishing: `npx -y @smallkhoj/smallkhoj-daemon@latest --server-url <public-base-url> --api-key <sk_connect_or_sk_machine_token> # <server-name>`
+  - Default self-hosted shape: `npx -y --package <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz aura --server-url <public-base-url> --api-key <sk_connect_or_sk_machine_token> # <server-name>`
+  - Optional npm-registry shape after publishing: `npx -y --package @smallkhoj/smallkhoj-daemon@latest aura --server-url <public-base-url> --api-key <sk_connect_or_sk_machine_token> # <server-name>`
   - `--server-url` must come from the public browser origin or configured public API base, never from the internal Docker/backend URL.
   - `--api-key` is the one-time `sk_connect_...` ticket for first connect or `sk_machine_...` token for reconnect.
   - The shell comment is required as a human-visible Server identifier. Sanitize it to a single line; it must not affect execution.
   - `DAEMON_NPX_PACKAGE` may override the default hosted tgz URL for staging or npm-registry release, but the default must work without npm account/auth by serving the tgz from `/downloads/smallkhoj-daemon/`.
-  - The daemon package name must match the npx executable convention: package `@smallkhoj/smallkhoj-daemon`, bin `smallkhoj-daemon`.
+  - The daemon package name must match the npx executable convention: package `@smallkhoj/smallkhoj-daemon`, product bin `aura`, with `smallkhoj-daemon` retained as a compatibility alias.
 - Secrets and provider credentials must live outside the repository, usually in the server-side env file used by `docker compose --env-file`.
 - The current mainland China cloud instance can be used for IP-only HTTP smoke tests. A custom public domain on a mainland instance requires ICP readiness before normal public release.
 
@@ -170,7 +171,65 @@ Show curl install, install command, and connect command together so advanced use
 #### Correct
 
 ```text
-Show one copyable onboarding command: npx -y <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz --server-url <public-base-url> --api-key <token> # <server-name>.
+Show one copyable onboarding command: npx -y --package <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz aura --server-url <public-base-url> --api-key <token> # <server-name>.
+```
+
+## Scenario: Compatible Daemon Package Rollout
+
+### 1. Scope / Trigger
+
+Use this when a Daemon package changes its executable, packaging contents, or version while a cloud server may still have connected clients running an earlier compatible version.
+
+### 2. Signatures
+
+```text
+MINIMUM_DAEMON_VERSION=0.2.0
+DAEMON_RELEASE_VERSION=0.2.1
+
+npx -y --package <base>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.1.tgz aura --server-url <base> --api-key <token>
+```
+
+### 3. Contracts
+
+- `MINIMUM_DAEMON_VERSION` is an admission gate for Daemon connect, register, and heartbeat requests; it is not the package URL version.
+- `DAEMON_RELEASE_VERSION` selects the generated self-hosted package URL for onboarding and reconnect commands.
+- A release package at `DAEMON_RELEASE_VERSION` must be regenerated from the matching source and copied into the backend image's `release-artifacts/smallkhoj-daemon/` directory.
+- The package manifest must expose the `aura` bin. Existing `smallkhoj-daemon` bins may remain for command compatibility.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| `DAEMON_RELEASE_VERSION` is newer than `MINIMUM_DAEMON_VERSION` | New onboarding commands use the new package while compatible older clients continue to register and heartbeat. |
+| Backend advertises `aura` but its bundled tgz has no `aura` bin | Release blocker; regenerate the package before building the backend image. |
+| `MINIMUM_DAEMON_VERSION` is raised only to advertise a new package | Compatibility regression; revert the gate and configure `DAEMON_RELEASE_VERSION` separately. |
+| Hosted `0.2.1` tgz is absent after deployment | Daemon onboarding blocker; do not claim release readiness. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: keep `MINIMUM_DAEMON_VERSION=0.2.0`, publish a tested `0.2.1` package, and confirm the generated command downloads and runs `aura`.
+- Base: intentionally raise both values only when the new package requires an incompatible protocol change and an upgrade window is communicated.
+- Bad: overwrite a `0.2.0` artifact at the same URL or raise the minimum version merely to change the command alias.
+
+### 6. Tests Required
+
+- Backend command-generation tests assert that a release version newer than the minimum produces the new hosted tgz URL.
+- Daemon package tests assert that package metadata and register/connect payloads use the released version and expose `aura`.
+- Smoke tests request the exact released tgz from `/downloads/smallkhoj-daemon/` after deployment.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+MINIMUM_DAEMON_VERSION=0.2.1  # Required only because the new package is 0.2.1
+```
+
+#### Correct
+
+```text
+MINIMUM_DAEMON_VERSION=0.2.0  # Compatibility gate
+DAEMON_RELEASE_VERSION=0.2.1 # Recommended package
 ```
 
 ## Scenario: Direct Image Archive Cloud Deployment

@@ -39,7 +39,7 @@ class FakeDeploymentHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"openapi": "3.1.0", "paths": {"/api/health": {}}}).encode())
             return
-        if self.path == "/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.0.tgz":
+        if self.path == "/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.1.tgz":
             self.send_response(self.daemon_package_status)
             self.send_header("Content-Type", "application/x-tar")
             self.end_headers()

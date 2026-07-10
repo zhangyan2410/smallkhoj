@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     backend_cors_origins: str = ""
     auth_bridge_secret: str = ""
     minimum_daemon_version: str = "0.2.0"
+    daemon_release_version: str = "0.2.1"
     daemon_download_base_url: str = ""
     daemon_npx_package: str = ""
 
