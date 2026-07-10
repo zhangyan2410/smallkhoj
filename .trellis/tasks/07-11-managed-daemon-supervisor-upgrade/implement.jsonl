@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "Existing daemon/runtime/control contracts to extend, not replace"}
+{"file": ".trellis/spec/backend/event-delivery-contracts.md", "reason": "Upgrade events must remain control-plane safe and not inflate agent prompts"}
+{"file": ".trellis/spec/backend/deployment-environment-contracts.md", "reason": "Service packaging and real environment validation requirements"}
+{"file": ".trellis/tasks/archive/2026-06/06-29-06-29-initial-release-daemon-distribution-versioning/prd.md", "reason": "Existing artifact, install, version, upgrade, and rollback baseline"}
+{"file": ".trellis/tasks/07-11-managed-daemon-supervisor-upgrade/research/raft-computer-local-observation.md", "reason": "Comparative evidence for supervisor/runner and web upgrade behavior"}
