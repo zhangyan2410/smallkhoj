@@ -45,6 +45,17 @@ class UpdateProdEnvFromStdinTests(unittest.TestCase):
             self.assertIn("FEISHU_WORKER_BOT_OPEN_ID=\n", env_file.read_text(encoding="utf-8"))
             self.assertEqual(result.sanitized_details()["updated"], {"FEISHU_WORKER_BOT_OPEN_ID": "<empty>"})
 
+    def test_daemon_release_version_is_an_allowed_non_secret_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / ".env.prod"
+            env_file.write_text("MINIMUM_DAEMON_VERSION=0.2.0\n", encoding="utf-8")
+
+            result = updater.update_env_file(env_file, "DAEMON_RELEASE_VERSION=0.2.1\n")
+
+            self.assertIn("DAEMON_RELEASE_VERSION=0.2.1\n", env_file.read_text(encoding="utf-8"))
+            self.assertEqual(result.added_keys, ["DAEMON_RELEASE_VERSION"])
+            self.assertEqual(result.sanitized_details()["added"], {"DAEMON_RELEASE_VERSION": "<set>"})
+
     def test_unknown_key_is_rejected_before_writing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             env_file = Path(tmp) / ".env.prod"
