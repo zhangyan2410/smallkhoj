@@ -2,7 +2,8 @@
 
 ## 1. Problem Statement
 
-The current SmallKhoj daemon distribution is versioned and installable, but the
+The current SmallKhoj-named daemon distribution is versioned and installable,
+but the target product brand is 灵韵/Aura. The
 running process is still fundamentally a user-started daemon. Upgrading changes
 the installed launcher target and requires a manual restart. The web product can
 control individual agent workspaces but cannot manage the Computer process or
@@ -16,7 +17,7 @@ upgrading" from "the process being upgraded".
 
 ```text
 OS service manager
-└── smallkhoj-computer supervisor
+└── aura-computer supervisor
     ├── local IPC server
     ├── version/install/upgrade manager
     ├── per-server attachment registry
@@ -42,7 +43,7 @@ OS service manager
 
 ### Runner responsibilities
 
-- authenticate one Computer attachment to one SmallKhoj Server;
+- authenticate one Computer attachment to one Aura/灵韵 Server;
 - preserve current daemon event/control protocol;
 - register/heartbeat runtime inventory and versions;
 - execute workspace start/stop/restart;
@@ -81,10 +82,11 @@ upgrade reliably.
 ## 4. Local Filesystem Layout
 
 ```text
-~/.smallkhoj/
+~/.aura/
 ├── bin/
-│   ├── smallkhoj-computer        # stable CLI/launcher
-│   └── smallkhoj-daemon          # compatibility alias during migration
+│   ├── aura-computer             # stable managed Computer CLI/launcher
+│   ├── aura                      # current compatibility/product CLI alias
+│   └── smallkhoj-daemon          # legacy compatibility alias during migration
 ├── computer/
 │   ├── state.json                # login/service summary, no raw secret output
 │   ├── service.pid
@@ -102,12 +104,14 @@ upgrade reliably.
 └── daemon/
     └── versions/v<semver>-<platform>/
         ├── manifest.json
-        ├── smallkhoj-computer
+        ├── aura-computer
         ├── runner payload
         └── runtime dependencies
 ```
 
-Credentials retain restrictive permissions and never enter normal status/log
+The first implementation may read/adopt existing `~/.smallkhoj/` state and
+leave a compatibility pointer; destructive movement of state belongs to the
+dedicated brand migration plan. Credentials retain restrictive permissions and never enter normal status/log
 payloads. Upgrade state files must be crash-safe: write temporary file, fsync
 where practical, then atomic rename.
 
@@ -350,7 +354,13 @@ The distribution should package:
 - manifest and payload checksums;
 - service definition template/helper;
 - install/setup command;
-- compatibility alias for `smallkhoj-daemon` during migration.
+- compatibility aliases for `aura` and `smallkhoj-daemon` during migration.
+
+New product-facing text, service labels, and commands use 灵韵/Aura. Existing
+SmallKhoj names in repository paths, package coordinates, artifact URLs,
+environment variables, database fields, and protocol headers remain technical
+compatibility identifiers until a separate brand migration task replaces them
+with dual-read/dual-write or alias support.
 
 Installer becomes idempotent:
 

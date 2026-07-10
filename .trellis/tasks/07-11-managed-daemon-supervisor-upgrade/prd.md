@@ -2,10 +2,11 @@
 
 ## Goal
 
-Design a product-grade local Computer/daemon architecture for SmallKhoj that
+Design a product-grade local Computer/daemon architecture for the product
+**灵韵** (English brand root: **Aura**) that
 does not require a visible terminal window, can be started and diagnosed as an
 operating-system background service, and can receive a safe upgrade request
-from the SmallKhoj web UI.
+from the 灵韵 web UI.
 
 The outcome of this task is planning documentation only. It must leave enough
 detail for a later implementation task to be decomposed, estimated, tested, and
@@ -13,7 +14,7 @@ rolled out without rediscovering the architecture.
 
 ## User Value
 
-- A normal user installs SmallKhoj Computer once and does not keep a terminal
+- A normal user installs 灵韵 Computer once and does not keep a terminal
   window open.
 - An owner/admin can see installed and running versions, request an upgrade,
   and understand whether it is queued, draining agents, installing, restarting,
@@ -25,7 +26,7 @@ rolled out without rediscovering the architecture.
 
 ## Confirmed Existing Capabilities
 
-- SmallKhoj already builds a versioned macOS arm64 daemon archive, SHA-256,
+- The current SmallKhoj-named codebase already builds a versioned macOS arm64 daemon archive, SHA-256,
   manifest, npm package, and install script in
   `scripts/build_daemon_distribution.py`.
 - The installer already uses version directories under
@@ -45,12 +46,30 @@ rolled out without rediscovering the architecture.
   start/stop/restart actions.
 - Current product upgrade is manual: install the new artifact, replace the
   launcher target, and manually restart the running daemon.
+- The current public daemon command constant is already `aura`, which supports
+  using Aura as the English CLI/technical brand while the broader repository,
+  package, download path, headers, and historical identifiers are migrated by
+  a separate future rename task.
+
+## Product Naming Decision
+
+- Chinese product name: **灵韵**.
+- English brand root: **Aura** (working English name unless a later brand task
+  selects a different final English display name).
+- New managed Computer CLI/service command: `aura-computer`.
+- Compatibility during migration: retain `aura` and legacy
+  `smallkhoj-daemon` aliases where required.
+- User-facing new UI and documentation must say 灵韵/Aura, not SmallKhoj.
+- Repository, package scope, artifact path, environment variable, database
+  compatibility field, and `X-SmallKhoj-*` header renaming are out of this
+  supervisor task and must be handled by a dedicated brand migration task with
+  compatibility aliases and a deprecation schedule.
 
 ## Product Scope
 
 ### P0: Managed background service
 
-- Introduce a SmallKhoj Computer supervisor process distinct from the current
+- Introduce an Aura Computer supervisor process distinct from the current
   server-connected daemon runner.
 - The supervisor runs without a terminal and owns runner lifecycle, local IPC,
   installed versions, release channel, upgrade transactions, diagnostics, and
@@ -161,7 +180,7 @@ Terminal alternatives:
 
 ## Compatibility and Migration
 
-- Existing foreground daemon and installed `smallkhoj-daemon` command remain
+- Existing foreground daemon and installed `aura` / `smallkhoj-daemon` commands remain
   available during migration.
 - The managed Computer setup must adopt an existing Computer identity and
   machine credential instead of creating a duplicate Computer record.
@@ -173,7 +192,7 @@ Terminal alternatives:
 
 ## Out of Scope for the First Implementation
 
-- Cloud-hosted Computers supplied by SmallKhoj.
+- Cloud-hosted Computers supplied by 灵韵/Aura.
 - Silent forced upgrades without owner/admin action.
 - Fleet-wide automatic rollout to every Computer in one click.
 - Delta/binary patch updates; full versioned artifact download is sufficient.
@@ -188,7 +207,7 @@ Terminal alternatives:
 
 - [ ] On a fresh macOS arm64 machine, setup installs and starts the supervisor
   through launchd; closing the terminal does not disconnect the Computer.
-- [ ] `smallkhoj-computer status/doctor/logs/start/stop/restart` work without a
+- [ ] `aura-computer status/doctor/logs/start/stop/restart` work without a
   repository checkout.
 - [ ] Foreground mode remains available and is explicitly marked as a developer
   or diagnostic mode.
@@ -247,8 +266,9 @@ Terminal alternatives:
 These do not block the architecture plan but must be resolved before starting
 implementation:
 
-1. Product command/name: evolve `smallkhoj-daemon` into
-   `smallkhoj-computer`, or ship both names with one compatibility alias.
+1. Final English display name: keep **Aura**, use "Aura Computer" only as a
+   technical surface, or select a fuller English brand in the future rename
+   task. This does not block using the `aura-computer` command now.
 2. Artifact signing authority and key-rotation process for production.
 3. Default agent drain timeout and whether the UI may override it.
 4. Whether successfully upgraded autostart runtimes should restart immediately

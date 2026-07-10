@@ -37,7 +37,7 @@ One important failure mode was also observed: installed CLI and runner versions
 had advanced while the detached service was still executing an older binary.
 The CLI warned about service-version skew and recommended service restart.
 
-## Lessons for SmallKhoj
+## Lessons for 灵韵/Aura
 
 - Model installed, supervisor, runner, desired, and backend-observed versions
   separately.

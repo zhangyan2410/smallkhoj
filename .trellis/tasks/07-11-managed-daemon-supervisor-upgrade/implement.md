@@ -16,7 +16,8 @@ validation in one branch.
 - Finalize version bundle and upgrade operation schemas.
 - Define state-transition table and machine-readable error codes.
 - Add protocol fixtures for upgrade command/progress payloads.
-- Decide command naming/compatibility alias and default drain timeout.
+- Confirm the already-selected `aura-computer` command compatibility matrix and
+  decide the default drain timeout.
 - Decide checksum-only pilot vs signed-manifest requirement.
 
 ### Likely files
@@ -101,7 +102,7 @@ safe if frontend/supervisor is not shipped.
 
 ### Rollback point
 
-Legacy `smallkhoj-daemon start --foreground` remains functional and selected by
+Legacy `aura` / `smallkhoj-daemon start --foreground` remains functional and selected by
 feature/config flag.
 
 ## Phase 3 — Packaging and macOS launchd adapter
@@ -249,7 +250,7 @@ dependency contract.
 
 Before `task.py start` on the first implementation child:
 
-- choose product command naming;
+- confirm the future brand-migration task boundary and compatibility lifetime;
 - choose signing requirement for pilot;
 - choose default drain timeout;
 - choose immediate vs lazy runtime restoration;

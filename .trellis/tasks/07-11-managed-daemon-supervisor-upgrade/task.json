@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "Target product brand is 灵韵 with Aura as the English/CLI root. Use aura-computer for the managed service. Full repository/package/protocol rename is a separate future task.",
   "meta": {}
 }
