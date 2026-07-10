@@ -314,3 +314,39 @@ Implemented and validated server invite join flow, one-line daemon onboarding, d
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: Release frontend and compatible daemon package
+
+**Date**: 2026-07-10
+**Task**: Release frontend and compatible daemon package
+**Branch**: `main`
+
+### Summary
+
+Ignored local Remotion and browser-test artifacts, committed frontend and Trellis documentation, separated Daemon release version 0.2.1 from the 0.2.0 compatibility gate, and deployed verified linux/amd64 backend/frontend images to Lighthouse.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `35325e9` | (see git log) |
+| `a0da9db` | (see git log) |
+| `1db6868` | (see git log) |
+| `dc1e64f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
