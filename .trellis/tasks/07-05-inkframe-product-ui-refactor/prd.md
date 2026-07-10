@@ -98,6 +98,31 @@ static paper/ink snapshots.
 - A complete public drawing application.
 - Global "everything is editable WebGL" behavior.
 - Long-lived multi-theme architecture.
+- Auth/login/signup flow refactor. The current task only preserves the existing
+  auth flow and records the UX debt below.
+
+## Deferred Auth And Invite UX Debt
+
+These items were recorded during login-page testing and should become a
+separate product/frontend task before implementation:
+
+- Login and registration should not be two submit buttons on the same always-on
+  form. The current combined page makes the user decide too late and can feel
+  like the same information must be entered twice.
+- Registration should be a separate route or clearly separate mode, with its own
+  copy, validation, and success/error handling.
+- `displayName` should belong to signup only. It should not be visible in the
+  default signin form.
+- The visible prefilled email/password values seen during local testing appear
+  to be browser autofill or restored form state, not hardcoded app defaults. A
+  future auth task should still set intentional `autoComplete` attributes so the
+  browser fills signin/signup fields predictably.
+- Invite-by-share-link exists in the product code path, but needs a UX audit for
+  discoverability and fit with the new object language:
+  - admin/owner invite entry in `members`;
+  - generated join URL and copy action;
+  - `/join/[token]` acceptance page;
+  - clear behavior when the invite recipient is not signed in.
 
 ## Product Decisions
 

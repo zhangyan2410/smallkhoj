@@ -901,3 +901,94 @@ await agentSend(apiKey, agentId, dmChannelName, dmReply)
 ```typescript
 await agentSend(apiKey, agentId, "dm:zy-ean", dmReply)
 ```
+
+## Scenario: Packaged Daemon Resolves Its Generated Slock CLI
+
+### 1. Scope / Trigger
+
+- Trigger: changing daemon packaging, `smallkhoj-daemon` onboarding commands,
+  generated `.slock` wrappers, or the local `slock`/`raft` CLI entrypoint.
+- This is a product onboarding contract: the daemon may be started from the repo
+  wrapper, an installed binary, or an npm/npx `.bin` shim/symlink, but generated
+  runtime wrappers must still execute the package's real CLI file.
+
+### 2. Signatures
+
+- Generated wrappers:
+  - POSIX: `.slock/slock`
+  - Windows CMD: `.slock/slock.cmd`
+  - PowerShell: `.slock/slock.ps1`
+- Package bin:
+  - `smallkhoj-daemon` -> `dist/cmd/main.js`
+  - `slock` -> `dist/slock-cli.js`
+  - `raft` may be a compatibility alias when product naming migrates.
+- Runtime helper:
+  - `defaultSlockCliPath(): string`
+
+### 3. Contracts
+
+- `defaultSlockCliPath()` must resolve to the daemon package's actual
+  `dist/slock-cli.js`, not to a path inferred from an npm `.bin` symlink parent
+  such as `node_modules/slock-cli.js`.
+- When `process.argv[1]` points at an npm/npx `.bin/smallkhoj-daemon` symlink,
+  path resolution must follow the symlink to the real `dist/cmd/main.js` before
+  deriving the sibling CLI path.
+- If the process entrypoint is not a normal file path, for example `node -`,
+  wrapper generation must fall back to the module-relative
+  `dist/slock-cli.js`.
+- Runtime process env may hide raw proxy token variables from Claude. The
+  generated wrapper remains the authority for `SLOCK_AGENT_PROXY_URL`,
+  `SLOCK_AGENT_PROXY_TOKEN_FILE`, `SLOCK_AGENT_ID`, and related fields.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| Repo wrapper starts daemon from local `dist/cmd/main.js` | Generated wrapper calls local `dist/slock-cli.js`. |
+| npm/npx `.bin/smallkhoj-daemon` symlink starts daemon | Generated wrapper calls package `@smallkhoj/smallkhoj-daemon/dist/slock-cli.js`. |
+| Entry point is not realpath-able, e.g. `node -` smoke | Generated wrapper falls back to module-relative `dist/slock-cli.js`. |
+| Generated wrapper points at `node_modules/slock-cli.js` | Regression; agent replies fail with `MODULE_NOT_FOUND`. |
+| Bare global `slock` reports `MISSING_TOKEN` inside runtime | Not sufficient evidence of failure by itself; generated `.slock/slock` is the supported reply path. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a product-generated npx connect command starts the daemon, runtime uses
+  `.slock/slock message send`, and the wrapper executes package
+  `dist/slock-cli.js`.
+- Base: local repo development uses `./smallkhoj-daemon`, which rebuilds local
+  `agent/daemon/aaa-daemon/dist` and generates wrappers pointing at that local
+  dist.
+- Bad: deriving the CLI path from `process.argv[1]` without resolving symlinks;
+  macOS/Linux npm `.bin` launchers then generate `node_modules/slock-cli.js`,
+  which does not exist.
+
+### 6. Tests Required
+
+- Unit: simulate an npm `.bin/smallkhoj-daemon` symlink and assert
+  `defaultSlockCliPath()` resolves to package `dist/slock-cli.js`.
+- Unit/smoke: `writeSlockWrapper()` should generate an executable command whose
+  CLI target exists and does not contain the root `node_modules/slock-cli.js`
+  bad path.
+- Package daemon tests must continue to cover repo wrapper, npx-style onboarding
+  arguments, and generated wrapper execution through the local proxy.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+resolve(process.argv[1], "..", "..", "slock-cli.js")
+```
+
+This works only when `process.argv[1]` is already the real
+`dist/cmd/main.js`; it fails through npm/npx `.bin` symlinks.
+
+#### Correct
+
+```typescript
+const entrypoint = realpathSync(process.argv[1])
+const candidate = resolve(entrypoint, "..", "..", "slock-cli.js")
+```
+
+Verify the candidate exists and fall back to a module-relative CLI path when
+the entrypoint is not realpath-able.
