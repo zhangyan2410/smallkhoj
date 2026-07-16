@@ -55,10 +55,17 @@ From Step 1 you know the current task and status. Check the task directory:
 
 | User intent | Skill |
 |---|---|
+| Broad codebase audit / roadmap discovery / "what should we improve next?" | `improve` (advisor phase only; convert selected plans into Trellis tasks) |
 | New feature / unclear requirements | `trellis-brainstorm` |
 | About to write code | `trellis-before-dev` |
 | Done coding / quality check | `trellis-check` |
 | Stuck / fixed same bug multiple times | `trellis-break-loop` |
 | Learned something worth capturing | `trellis-update-spec` |
+
+For this repository, do not use `improve execute`, `improve reconcile`, or its
+GitHub issue publishing flow as a replacement for Trellis. Follow
+`docs/improve-trellis-usage.md`: use `improve` to discover and specify candidate
+work, then create/select a Trellis task for implementation, verification,
+commits, PRs, and archival.
 
 Full rules + anti-rationalization table in `.trellis/workflow.md`.

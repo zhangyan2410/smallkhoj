@@ -29,4 +29,5 @@ SmallKhoj keeps project rules short in this file; detailed workflows live in ind
 - Real UI/runtime testing: `docs/real-test-sop-template.md` and `docs/real-runtime-dm-reply-sop.md`. Use the project WebDriver wrapper `./twd`; do not call `twd.py` directly, and do not use Playwright for repo UI verification.
 - Runtime/control-plane trace: `./smallkhoj-trace` for backend/frontend logs, daemon sessions, JSON-RPC, service health, and runtime delivery timelines.
 - Worker orchestration: `.agents/skills/smallkhoj-worker-orchestration/SKILL.md`; helper script `.agents/skills/smallkhoj-worker-orchestration/scripts/start-worker-stack.sh`.
+- Advisory codebase audits and roadmap discovery: `.agents/skills/improve/SKILL.md`. Use it before Trellis task selection; after selecting a finding, translate it into a normal Trellis PRD/design/implementation task. Integration and conflict rules: `docs/improve-trellis-usage.md`.
 - CC Switch launcher: `ccs-claude` starts Claude Code with a selected CC Switch provider without changing the global provider. Index: `ccs-claude list`, `ccs-claude current`, `ccs-claude "<provider>" <model>`.
