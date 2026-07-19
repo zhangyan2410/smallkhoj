@@ -14,6 +14,7 @@ services:
   backend:
     image: ${SMALLKHOJ_BACKEND_IMAGE:-smallkhoj-backend:latest}
     restart: unless-stopped
+    command: sh -c "uv run alembic upgrade head && uv run uvicorn main:app --host 0.0.0.0 --port 8000"
     expose:
       - "8000"
     environment:
