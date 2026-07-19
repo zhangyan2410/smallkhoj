@@ -165,22 +165,27 @@ def test_integration_gateway_tables_are_declared_with_contract_columns():
 
 
 @pytest.mark.asyncio
-async def test_startup_seed_emits_integration_gateway_ddl(monkeypatch):
+async def test_startup_seed_does_not_emit_integration_gateway_ddl(monkeypatch):
+    """Schema for the external_* integration-gateway tables (and their indexes,
+    including uq_external_events_connector_dedup and uq_external_sessions_scope)
+    is owned by Alembic — see the ``0001_baseline`` migration. seed.create_tables()
+    must not emit table/index DDL anymore.
+    """
     fake_engine = _SeedEngine()
     monkeypatch.setattr(seed, "engine", fake_engine)
 
     await seed.create_tables()
 
     statements = "\n".join(fake_engine.conn.statements)
-    assert "CREATE TABLE IF NOT EXISTS external_connectors" in statements
-    assert "CREATE TABLE IF NOT EXISTS external_routes" in statements
-    assert "CREATE TABLE IF NOT EXISTS external_events" in statements
-    assert "CREATE TABLE IF NOT EXISTS external_sessions" in statements
-    assert "CREATE TABLE IF NOT EXISTS external_mappings" in statements
-    assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_external_events_connector_dedup" in statements
-    assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_external_sessions_scope" in statements
-    assert "CREATE INDEX IF NOT EXISTS idx_external_mappings_local" in statements
-    assert "CREATE INDEX IF NOT EXISTS idx_external_mappings_external" in statements
+    assert "CREATE TABLE IF NOT EXISTS external_connectors" not in statements
+    assert "CREATE TABLE IF NOT EXISTS external_routes" not in statements
+    assert "CREATE TABLE IF NOT EXISTS external_events" not in statements
+    assert "CREATE TABLE IF NOT EXISTS external_sessions" not in statements
+    assert "CREATE TABLE IF NOT EXISTS external_mappings" not in statements
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_external_events_connector_dedup" not in statements
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_external_sessions_scope" not in statements
+    assert "CREATE INDEX IF NOT EXISTS idx_external_mappings_local" not in statements
+    assert "CREATE INDEX IF NOT EXISTS idx_external_mappings_external" not in statements
 
 
 @pytest.mark.asyncio

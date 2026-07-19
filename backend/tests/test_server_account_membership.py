@@ -169,18 +169,25 @@ def test_server_membership_tables_are_declared():
 
 
 @pytest.mark.asyncio
-async def test_startup_seed_emits_membership_invite_tables_and_backfill(monkeypatch):
+async def test_startup_seed_emits_membership_owner_backfill(monkeypatch):
+    """Schema (server_memberships/server_invites tables) is owned by Alembic —
+    see the ``0001_baseline`` migration for the CREATE TABLE statements.
+    seed.create_tables() now only emits runtime data seeding; this test guards
+    the owner-bootstrap backfill that promotes legacy accounts.
+    """
     fake_engine = _SeedEngine()
     monkeypatch.setattr(seed, "engine", fake_engine)
 
     await seed.create_tables()
 
     statements = "\n".join(fake_engine.conn.statements)
-    assert "CREATE TABLE IF NOT EXISTS server_memberships" in statements
-    assert "CREATE TABLE IF NOT EXISTS server_invites" in statements
     assert "INSERT INTO server_memberships" in statements
     assert "accounts.server_id" in statements
     assert "accounts.member_id" in statements
+    # Schema DDL must NOT be emitted by create_tables() anymore — it lives in
+    # the Alembic baseline migration.
+    assert "CREATE TABLE IF NOT EXISTS server_memberships" not in statements
+    assert "CREATE TABLE IF NOT EXISTS server_invites" not in statements
 
 
 @pytest.mark.asyncio

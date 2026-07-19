@@ -111,16 +111,21 @@ def test_chat_thread_read_cursor_table_contract():
 
 
 @pytest.mark.asyncio
-async def test_startup_seed_emits_chat_thread_read_cursor_ddl(monkeypatch):
+async def test_startup_seed_does_not_emit_chat_thread_read_cursor_ddl(monkeypatch):
+    """Schema for chat_thread_read_cursors (table + uq_chat_thread_read_cursor_scope
+    + idx_chat_thread_read_cursors_member) is owned by Alembic — see the
+    ``0001_baseline`` migration. seed.create_tables() must not emit table/index
+    DDL anymore.
+    """
     fake_engine = _SeedEngine()
     monkeypatch.setattr(seed, "engine", fake_engine)
 
     await seed.create_tables()
 
     statements = "\n".join(fake_engine.conn.statements)
-    assert "CREATE TABLE IF NOT EXISTS chat_thread_read_cursors" in statements
-    assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_thread_read_cursor_scope" in statements
-    assert "CREATE INDEX IF NOT EXISTS idx_chat_thread_read_cursors_member" in statements
+    assert "CREATE TABLE IF NOT EXISTS chat_thread_read_cursors" not in statements
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_thread_read_cursor_scope" not in statements
+    assert "CREATE INDEX IF NOT EXISTS idx_chat_thread_read_cursors_member" not in statements
 
 
 @pytest.mark.asyncio

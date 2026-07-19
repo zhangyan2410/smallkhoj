@@ -1,4 +1,21 @@
-"""Database init: create and upgrade tables only."""
+"""Runtime data seeding.
+
+Schema (tables, indexes, constraints, extensions) is managed by Alembic — run
+``alembic upgrade head`` as a deploy step (the docker-compose backend service does
+this automatically before uvicorn starts). See ``docs/migration-workflow.md``.
+
+This module is intentionally NOT a schema source. The only things it does at startup:
+  1. ``Base.metadata.create_all`` — a defensive no-op on tables Alembic already
+     created; harmless fallback if a deploy somehow skips the migration step.
+  2. Seed builtin ``task_run_templates`` rows (data, not schema).
+  3. Backfill ``server_memberships`` owner rows for legacy accounts created
+     before the membership table existed (one-time data repair).
+  4. Backfill ``members.computer_id`` / ``members.backend`` from the legacy
+     ``config`` JSON column (one-time data repair).
+
+Never add table/index DDL here — that is Alembic's job. Add a new
+``alembic revision --autogenerate`` after editing ``models/slock.py``.
+"""
 
 import asyncio
 import json
@@ -9,94 +26,22 @@ from models import Base, engine
 
 
 async def create_tables():
+    """Runtime data seeding only. Schema is owned by Alembic.
+
+    Kept here (and kept in ``main.py:lifespan``) so that builtin templates and
+    legacy-account backfills run on every boot. Schema creation lives in
+    ``alembic upgrade head``; ``Base.metadata.create_all`` below is a defensive
+    fallback that no-ops on tables Alembic already created.
+    """
     async with engine.begin() as conn:
+        # Defensive fallback: ensure tables exist even if the deploy forgot to run
+        # `alembic upgrade head`. On a correctly-migrated DB this is a no-op.
         await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(text("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS token_hash VARCHAR(64)"))
-        await conn.execute(text("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP WITH TIME ZONE"))
-        await conn.execute(text("ALTER TABLE computers ADD COLUMN IF NOT EXISTS machine_id VARCHAR(80)"))
-        await conn.execute(text("ALTER TABLE computers ADD COLUMN IF NOT EXISTS active_daemon_id VARCHAR(80)"))
-        await conn.execute(text("ALTER TABLE computers ADD COLUMN IF NOT EXISTS daemon_lease_expires_at TIMESTAMP WITH TIME ZONE"))
-        await conn.execute(text(
-            "ALTER TABLE members "
-            "ADD COLUMN IF NOT EXISTS computer_id UUID REFERENCES computers(id) ON DELETE SET NULL"
-        ))
-        await conn.execute(text("ALTER TABLE members ADD COLUMN IF NOT EXISTS backend VARCHAR(40)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_members_computer ON members(computer_id)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_computers_server_machine ON computers(server_id, machine_id)"))
-        await conn.execute(text("""
-            DO $$
-            BEGIN
-              IF NOT EXISTS (
-                SELECT 1
-                FROM computers
-                WHERE machine_id IS NOT NULL
-                GROUP BY server_id, machine_id
-                HAVING count(*) > 1
-              ) THEN
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_computers_server_machine
-                ON computers(server_id, machine_id)
-                WHERE machine_id IS NOT NULL;
-              END IF;
-            END $$;
-        """))
-        await conn.execute(text("""
-            DO $$
-            BEGIN
-              IF NOT EXISTS (
-                SELECT 1 FROM computers GROUP BY server_id, name HAVING count(*) > 1
-              ) THEN
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_computers_server_name
-                ON computers(server_id, name);
-              END IF;
-            END $$;
-        """))
-        await conn.execute(text("""
-            DO $$
-            BEGIN
-              IF NOT EXISTS (
-                SELECT 1 FROM members GROUP BY server_id, display_name HAVING count(*) > 1
-              ) THEN
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_members_server_display_name
-                ON members(server_id, display_name);
-              END IF;
-            END $$;
-        """))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS accounts (
-                id UUID PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                display_name VARCHAR(255),
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-                session_token_hash VARCHAR(64),
-                last_login_at TIMESTAMP WITH TIME ZONE,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            )
-        """))
-        await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS display_name VARCHAR(255)"))
-        await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS session_token_hash VARCHAR(64)"))
-        await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE"))
-        await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_name ON accounts(name)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_accounts_member ON accounts(member_id)"))
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS server_memberships (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-                member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-                role VARCHAR(20) NOT NULL DEFAULT 'member',
-                status VARCHAR(20) NOT NULL DEFAULT 'active',
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT uq_server_memberships_server_account UNIQUE (server_id, account_id),
-                CONSTRAINT ck_server_memberships_role CHECK (role IN ('owner', 'admin', 'member')),
-                CONSTRAINT ck_server_memberships_status CHECK (status IN ('active', 'invited', 'disabled'))
-            )
-        """))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_server_memberships_account ON server_memberships(account_id, status)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_server_memberships_server ON server_memberships(server_id, status)"))
+
+        # ── Data seeding: server_memberships owner bootstrap ────────────────
+        # Legacy accounts (created before server_memberships existed) get an
+        # 'owner' membership for their server, unless an owner/admin already
+        # exists. Idempotent via ON CONFLICT.
         await conn.execute(text("""
             INSERT INTO server_memberships (id, server_id, account_id, member_id, role, status, created_at, updated_at)
             SELECT
@@ -121,84 +66,10 @@ async def create_tables():
               AND accounts.member_id IS NOT NULL
             ON CONFLICT (server_id, account_id) DO NOTHING
         """))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS server_invites (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                token_hash VARCHAR(64) NOT NULL,
-                role VARCHAR(20) NOT NULL DEFAULT 'member',
-                channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
-                invited_name VARCHAR(255),
-                expires_at TIMESTAMP WITH TIME ZONE,
-                revoked_at TIMESTAMP WITH TIME ZONE,
-                accepted_at TIMESTAMP WITH TIME ZONE,
-                accepted_account_id UUID REFERENCES accounts(id) ON DELETE SET NULL,
-                created_by UUID REFERENCES members(id) ON DELETE SET NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT ck_server_invites_role CHECK (role IN ('admin', 'member'))
-            )
-        """))
-        await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_server_invites_token_hash ON server_invites(token_hash)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_server_invites_server ON server_invites(server_id, revoked_at, expires_at)"))
-        await conn.execute(text(
-            "ALTER TABLE channel_members "
-            "ADD COLUMN IF NOT EXISTS last_read_seq BIGINT NOT NULL DEFAULT 0"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE messages "
-            "ADD COLUMN IF NOT EXISTS mentions UUID[] NOT NULL DEFAULT '{}'::uuid[]"
-        ))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS chat_thread_read_cursors (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-                root_message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-                last_read_seq BIGINT NOT NULL DEFAULT 0,
-                last_seen_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            )
-        """))
-        await conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_thread_read_cursor_scope "
-            "ON chat_thread_read_cursors(server_id, member_id, root_message_id)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_chat_thread_read_cursors_member "
-            "ON chat_thread_read_cursors(server_id, member_id, last_read_seq)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_chat_thread_read_cursors_root "
-            "ON chat_thread_read_cursors(root_message_id)"
-        ))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS task_run_templates (
-                id UUID PRIMARY KEY,
-                slug VARCHAR(120) NOT NULL,
-                name TEXT NOT NULL,
-                description TEXT,
-                category VARCHAR(80),
-                system_instruction TEXT NOT NULL,
-                tool_policy JSONB NOT NULL DEFAULT '{}'::jsonb,
-                skill_policy JSONB NOT NULL DEFAULT '{}'::jsonb,
-                memory_policy JSONB NOT NULL DEFAULT '{}'::jsonb,
-                output_policy JSONB NOT NULL DEFAULT '{}'::jsonb,
-                runtime_policy JSONB NOT NULL DEFAULT '{}'::jsonb,
-                start_policy JSONB NOT NULL DEFAULT '{}'::jsonb,
-                role_presets JSONB NOT NULL DEFAULT '[]'::jsonb,
-                visibility VARCHAR(20) NOT NULL DEFAULT 'user',
-                status VARCHAR(20) NOT NULL DEFAULT 'active',
-                created_by UUID REFERENCES members(id) ON DELETE SET NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT uq_task_run_templates_slug UNIQUE (slug),
-                CONSTRAINT ck_task_run_templates_status CHECK (status IN ('active', 'disabled')),
-                CONSTRAINT ck_task_run_templates_visibility CHECK (visibility IN ('builtin', 'server', 'user'))
-            )
-        """))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_run_templates_status ON task_run_templates(status)"))
+
+        # ── Data seeding: builtin task_run_templates ────────────────────────
+        # Two builtin templates (general-task-runner, research-analyst) shipped
+        # with the app. Idempotent via ON CONFLICT (slug) DO NOTHING.
         await conn.execute(text("""
             INSERT INTO task_run_templates (
                 id,
@@ -318,414 +189,8 @@ async def create_tables():
                 "editableFields": ["displayName", "purpose", "instructionTemplate", "outputPolicy"],
             }]),
         })
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS task_assignments (
-                id UUID PRIMARY KEY,
-                task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                assignee_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-                assignee_type VARCHAR(20) NOT NULL DEFAULT 'agent',
-                role VARCHAR(80) NOT NULL DEFAULT 'worker',
-                role_key VARCHAR(80),
-                role_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
-                assignment_mode VARCHAR(40) NOT NULL DEFAULT 'task_created',
-                status VARCHAR(20) NOT NULL DEFAULT 'active',
-                template_id UUID REFERENCES task_run_templates(id) ON DELETE SET NULL,
-                template_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
-                execution_strategy VARCHAR(40) NOT NULL DEFAULT 'parallel',
-                run_order INTEGER,
-                created_by UUID REFERENCES members(id) ON DELETE SET NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT ck_task_assignments_assignee_type CHECK (assignee_type IN ('member', 'agent')),
-                CONSTRAINT ck_task_assignments_mode CHECK (assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created', 'external_feishu')),
-                CONSTRAINT ck_task_assignments_status CHECK (status IN ('active', 'completed', 'cancelled'))
-            )
-        """))
-        await conn.execute(text("ALTER TABLE task_assignments DROP CONSTRAINT IF EXISTS ck_task_assignments_role"))
-        await conn.execute(text("ALTER TABLE task_assignments DROP CONSTRAINT IF EXISTS ck_task_assignments_mode"))
-        await conn.execute(text("""
-            ALTER TABLE task_assignments
-            ADD CONSTRAINT ck_task_assignments_mode
-            CHECK (assignment_mode IN ('leader_designated', 'direct_drag', 'agent_delegated', 'system', 'task_created', 'external_feishu'))
-        """))
-        await conn.execute(text("ALTER TABLE task_assignments ALTER COLUMN role TYPE VARCHAR(80)"))
-        await conn.execute(text("ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS role_key VARCHAR(80)"))
-        await conn.execute(text("ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS role_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb"))
-        await conn.execute(text("ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES task_run_templates(id) ON DELETE SET NULL"))
-        await conn.execute(text("ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS template_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb"))
-        await conn.execute(text("ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS execution_strategy VARCHAR(40) NOT NULL DEFAULT 'parallel'"))
-        await conn.execute(text("ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS run_order INTEGER"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_assignments_task ON task_assignments(task_id)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_assignments_assignee ON task_assignments(assignee_id, status)"))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS task_runs (
-                id UUID PRIMARY KEY,
-                task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                assignment_id UUID REFERENCES task_assignments(id) ON DELETE SET NULL,
-                agent_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-                channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
-                source_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
-                thread_root_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
-                parent_run_id UUID REFERENCES task_runs(id) ON DELETE SET NULL,
-                template_id UUID REFERENCES task_run_templates(id) ON DELETE SET NULL,
-                template_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
-                role_key VARCHAR(80),
-                role_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
-                attempt INTEGER NOT NULL DEFAULT 1,
-                status VARCHAR(20) NOT NULL DEFAULT 'queued',
-                trigger_type VARCHAR(40) NOT NULL DEFAULT 'task_created',
-                runtime_workspace_id UUID REFERENCES agent_workspaces(id) ON DELETE SET NULL,
-                computer_id UUID REFERENCES computers(id) ON DELETE SET NULL,
-                daemon_id VARCHAR(80),
-                runtime VARCHAR(40),
-                runtime_provider VARCHAR(80),
-                runtime_model VARCHAR(120),
-                prompt_profile VARCHAR(80) NOT NULL DEFAULT 'task.worker',
-                workspace_session_id VARCHAR(255),
-                runtime_session_id VARCHAR(255),
-                context_session_id VARCHAR(255) NOT NULL,
-                cwd TEXT,
-                context_scope VARCHAR(20) NOT NULL DEFAULT 'task',
-                context_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
-                context_usage JSONB NOT NULL DEFAULT '{}'::jsonb,
-                token_usage JSONB NOT NULL DEFAULT '{}'::jsonb,
-                tool_usage_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
-                completion_policy VARCHAR(40) NOT NULL DEFAULT 'single_turn_result',
-                output_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
-                output_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
-                failure_code VARCHAR(80),
-                failure_reason TEXT,
-                started_at TIMESTAMP WITH TIME ZONE,
-                completed_at TIMESTAMP WITH TIME ZONE,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT ck_task_runs_status CHECK (status IN ('queued', 'dispatched', 'running', 'awaiting_input', 'completed', 'failed', 'cancelled')),
-                CONSTRAINT ck_task_runs_context_scope CHECK (context_scope IN ('channel', 'thread', 'task', 'run'))
-            )
-        """))
-        await conn.execute(text("ALTER TABLE task_runs ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES task_run_templates(id) ON DELETE SET NULL"))
-        await conn.execute(text("ALTER TABLE task_runs ADD COLUMN IF NOT EXISTS template_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb"))
-        await conn.execute(text("ALTER TABLE task_runs ADD COLUMN IF NOT EXISTS role_key VARCHAR(80)"))
-        await conn.execute(text("ALTER TABLE task_runs ADD COLUMN IF NOT EXISTS role_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb"))
-        await conn.execute(text("ALTER TABLE task_runs ADD COLUMN IF NOT EXISTS completion_policy VARCHAR(40) NOT NULL DEFAULT 'single_turn_result'"))
-        await conn.execute(text("ALTER TABLE task_runs ADD COLUMN IF NOT EXISTS output_refs JSONB NOT NULL DEFAULT '[]'::jsonb"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs(task_id, created_at)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_agent ON task_runs(agent_id, status)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_assignment ON task_runs(assignment_id)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_runs_workspace ON task_runs(runtime_workspace_id)"))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS external_connectors (
-                id UUID PRIMARY KEY,
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                provider VARCHAR(40) NOT NULL,
-                name VARCHAR(255) NOT NULL,
-                status VARCHAR(20) NOT NULL DEFAULT 'active',
-                config JSONB NOT NULL DEFAULT '{}'::jsonb,
-                secret_ref TEXT,
-                encrypted_config JSONB,
-                last_error_code VARCHAR(80),
-                last_error_reason TEXT,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT ck_external_connectors_status CHECK (status IN ('active', 'disabled', 'error'))
-            )
-        """))
-        await conn.execute(text("""
-            ALTER TABLE external_connectors
-            ADD COLUMN IF NOT EXISTS encrypted_config JSONB
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_external_connectors_server_provider
-            ON external_connectors(server_id, provider, status)
-        """))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS external_routes (
-                id UUID PRIMARY KEY,
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                connector_id UUID NOT NULL REFERENCES external_connectors(id) ON DELETE CASCADE,
-                name VARCHAR(255) NOT NULL,
-                status VARCHAR(20) NOT NULL DEFAULT 'active',
-                source_selector JSONB NOT NULL DEFAULT '{}'::jsonb,
-                channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
-                task_template_id UUID REFERENCES task_run_templates(id) ON DELETE SET NULL,
-                default_assignee_id UUID REFERENCES members(id) ON DELETE SET NULL,
-                runtime_rule JSONB NOT NULL DEFAULT '{}'::jsonb,
-                writeback_policy JSONB NOT NULL DEFAULT '{}'::jsonb,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT ck_external_routes_status CHECK (status IN ('active', 'disabled'))
-            )
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_external_routes_connector_status
-            ON external_routes(connector_id, status)
-        """))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_external_routes_channel ON external_routes(channel_id)"))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS external_sessions (
-                id UUID PRIMARY KEY,
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                connector_id UUID NOT NULL REFERENCES external_connectors(id) ON DELETE CASCADE,
-                provider VARCHAR(40) NOT NULL,
-                external_scope_type VARCHAR(40) NOT NULL,
-                external_scope_id TEXT NOT NULL,
-                channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
-                thread_root_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
-                task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
-                member_id UUID REFERENCES members(id) ON DELETE SET NULL,
-                status VARCHAR(20) NOT NULL DEFAULT 'active',
-                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT ck_external_sessions_scope_type CHECK (external_scope_type IN ('chat', 'thread', 'topic', 'issue', 'project')),
-                CONSTRAINT ck_external_sessions_status CHECK (status IN ('active', 'archived', 'disabled'))
-            )
-        """))
-        await conn.execute(text("""
-            CREATE UNIQUE INDEX IF NOT EXISTS uq_external_sessions_scope
-            ON external_sessions(connector_id, external_scope_type, external_scope_id)
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_external_sessions_local_task
-            ON external_sessions(server_id, task_id)
-            WHERE task_id IS NOT NULL
-        """))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS external_events (
-                id UUID PRIMARY KEY,
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                connector_id UUID NOT NULL REFERENCES external_connectors(id) ON DELETE CASCADE,
-                route_id UUID REFERENCES external_routes(id) ON DELETE SET NULL,
-                session_id UUID REFERENCES external_sessions(id) ON DELETE SET NULL,
-                provider VARCHAR(40) NOT NULL,
-                source_event_id TEXT,
-                source_message_id TEXT,
-                source_thread_id TEXT,
-                dedup_key TEXT NOT NULL,
-                status VARCHAR(20) NOT NULL DEFAULT 'received',
-                event_type VARCHAR(80) NOT NULL,
-                actor_external_id TEXT,
-                normalized JSONB NOT NULL DEFAULT '{}'::jsonb,
-                raw_ref TEXT,
-                channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
-                message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
-                task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
-                task_run_id UUID REFERENCES task_runs(id) ON DELETE SET NULL,
-                failure_code VARCHAR(80),
-                failure_reason TEXT,
-                received_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                processed_at TIMESTAMP WITH TIME ZONE,
-                completed_at TIMESTAMP WITH TIME ZONE,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT ck_external_events_status CHECK (status IN ('received', 'accepted', 'dropped', 'failed', 'completed', 'writeback_failed'))
-            )
-        """))
-        await conn.execute(text("""
-            CREATE UNIQUE INDEX IF NOT EXISTS uq_external_events_connector_dedup
-            ON external_events(connector_id, dedup_key)
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_external_events_server_created
-            ON external_events(server_id, created_at DESC)
-        """))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_external_events_status ON external_events(server_id, status)"))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_external_events_task_run
-            ON external_events(task_run_id)
-            WHERE task_run_id IS NOT NULL
-        """))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS external_mappings (
-                id UUID PRIMARY KEY,
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                connector_id UUID NOT NULL REFERENCES external_connectors(id) ON DELETE CASCADE,
-                provider VARCHAR(40) NOT NULL,
-                local_type VARCHAR(40) NOT NULL,
-                local_id UUID NOT NULL,
-                external_type VARCHAR(40) NOT NULL,
-                external_id TEXT NOT NULL,
-                external_url TEXT,
-                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            )
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_external_mappings_local
-            ON external_mappings(server_id, local_type, local_id)
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_external_mappings_external
-            ON external_mappings(connector_id, external_type, external_id)
-        """))
-        await conn.execute(text("""
-            CREATE UNIQUE INDEX IF NOT EXISTS uq_external_mappings_pair
-            ON external_mappings(connector_id, local_type, local_id, external_type, external_id)
-        """))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS saved_items (
-                id UUID PRIMARY KEY,
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-                member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-                item_type VARCHAR(20) NOT NULL,
-                item_id UUID NOT NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT uq_saved_items_account_item UNIQUE (account_id, item_type, item_id)
-            )
-        """))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_saved_items_account ON saved_items(account_id, created_at)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_saved_items_server ON saved_items(server_id, created_at)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_saved_items_item ON saved_items(item_type, item_id)"))
-        await conn.execute(text("ALTER TABLE event_records DROP COLUMN IF EXISTS activity_id"))
-        await conn.execute(text("""
-            DO $$
-            BEGIN
-              IF EXISTS (
-                SELECT 1
-                FROM pg_constraint
-                WHERE conrelid = 'event_records'::regclass
-                  AND contype = 'p'
-                  AND conname = 'event_records_pkey'
-                  AND pg_get_constraintdef(oid) LIKE 'PRIMARY KEY (seq)%'
-              ) THEN
-                ALTER TABLE event_records DROP CONSTRAINT event_records_pkey;
-              END IF;
 
-              IF NOT EXISTS (
-                SELECT 1
-                FROM pg_constraint
-                WHERE conrelid = 'event_records'::regclass
-                  AND contype = 'p'
-              ) THEN
-                ALTER TABLE event_records ADD PRIMARY KEY (id);
-              END IF;
-
-              IF NOT EXISTS (
-                SELECT 1
-                FROM pg_constraint
-                WHERE conrelid = 'event_records'::regclass
-                  AND conname = 'uq_event_records_server_seq'
-              ) THEN
-                ALTER TABLE event_records
-                ADD CONSTRAINT uq_event_records_server_seq UNIQUE (server_id, seq);
-              END IF;
-            END $$;
-        """))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_messages_parent "
-            "ON messages(parent_id) WHERE parent_id IS NOT NULL"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_event_records_server_seq "
-            "ON event_records(server_id, seq)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_event_records_server_channel_seq "
-            "ON event_records(server_id, channel_id, seq) WHERE channel_id IS NOT NULL"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_event_records_server_actor_seq "
-            "ON event_records(server_id, actor_id, seq) WHERE actor_id IS NOT NULL"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_event_records_server_type_seq "
-            "ON event_records(server_id, event_type, seq)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_event_records_created "
-            "ON event_records(server_id, created_at DESC)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_event_records_message "
-            "ON event_records(message_id) WHERE message_id IS NOT NULL"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_event_records_task "
-            "ON event_records(task_id) WHERE task_id IS NOT NULL"
-        ))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS memory_entries (
-                id UUID PRIMARY KEY,
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                scope_type VARCHAR(20) NOT NULL,
-                scope_id UUID NOT NULL,
-                path TEXT NOT NULL,
-                title TEXT,
-                entry_kind VARCHAR(40) NOT NULL DEFAULT 'note',
-                content_text TEXT,
-                blob_key TEXT,
-                file_id UUID REFERENCES files(id) ON DELETE SET NULL,
-                mime_type VARCHAR(120),
-                size_bytes BIGINT NOT NULL DEFAULT 0,
-                content_sha256 VARCHAR(64) NOT NULL,
-                version INTEGER NOT NULL DEFAULT 1,
-                source_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
-                source_channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
-                source_thread_id UUID REFERENCES messages(id) ON DELETE SET NULL,
-                source_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
-                source_path TEXT,
-                author_member_id UUID REFERENCES members(id) ON DELETE SET NULL,
-                visibility VARCHAR(20) NOT NULL DEFAULT 'inherited',
-                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                CONSTRAINT ck_memory_entries_scope_type CHECK (scope_type IN ('agent', 'channel', 'task', 'thread'))
-            )
-        """))
-        await conn.execute(text("ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS entry_kind VARCHAR(40) NOT NULL DEFAULT 'note'"))
-        await conn.execute(text("ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS file_id UUID REFERENCES files(id) ON DELETE SET NULL"))
-        await conn.execute(text("ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'inherited'"))
-        await conn.execute(text("""
-            CREATE UNIQUE INDEX IF NOT EXISTS uq_memory_entries_scope_path_active
-            ON memory_entries(server_id, scope_type, scope_id, path)
-            WHERE deleted_at IS NULL
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_memory_entries_scope_updated
-            ON memory_entries(server_id, scope_type, scope_id, updated_at DESC)
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_memory_entries_source_message
-            ON memory_entries(server_id, source_message_id)
-            WHERE source_message_id IS NOT NULL
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_memory_entries_source_task
-            ON memory_entries(server_id, source_task_id)
-            WHERE source_task_id IS NOT NULL
-        """))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS memory_proposals (
-                id UUID PRIMARY KEY,
-                server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                scope_type VARCHAR(20) NOT NULL,
-                scope_id UUID NOT NULL,
-                path TEXT NOT NULL,
-                base_entry_id UUID REFERENCES memory_entries(id) ON DELETE SET NULL,
-                base_sha256 VARCHAR(64),
-                proposed_content_text TEXT,
-                proposed_blob_key TEXT,
-                author_member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-                reason TEXT,
-                status VARCHAR(20) NOT NULL DEFAULT 'open',
-                reviewer_member_id UUID REFERENCES members(id) ON DELETE SET NULL,
-                review_note TEXT,
-                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                resolved_at TIMESTAMP WITH TIME ZONE,
-                CONSTRAINT ck_memory_proposals_scope_type CHECK (scope_type IN ('agent', 'channel', 'task', 'thread')),
-                CONSTRAINT ck_memory_proposals_status CHECK (status IN ('open', 'accepted', 'rejected', 'superseded'))
-            )
-        """))
-        await conn.execute(text("ALTER TABLE memory_proposals ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb"))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_memory_proposals_scope_status
-            ON memory_proposals(server_id, scope_type, scope_id, status, updated_at DESC)
-        """))
+        # ── Data backfill: members.computer_id from legacy config JSON ──────
         await conn.execute(text("""
             UPDATE members AS m
             SET computer_id = (m.config->>'computerId')::uuid
@@ -738,13 +203,15 @@ async def create_tables():
                 WHERE c.id = (m.config->>'computerId')::uuid
               )
         """))
+
+        # ── Data backfill: members.backend from legacy config JSON ──────────
         await conn.execute(text("""
             UPDATE members
             SET backend = config->>'backend'
             WHERE backend IS NULL
               AND config ? 'backend'
         """))
-    print("[DB] Tables ready")
+    print("[DB] Runtime data seeding complete")
 
 
 async def main():

@@ -110,25 +110,30 @@ class _SeedEngine:
 
 
 @pytest.mark.asyncio
-async def test_startup_seed_emits_task_assignment_and_run_table_ddl(monkeypatch):
+async def test_startup_seed_emits_builtin_task_run_templates(monkeypatch):
+    """Schema (tables/indexes/constraints) is owned by Alembic — see the
+    ``0001_baseline`` migration for task_assignments/task_runs/task_run_templates
+    DDL and the ck_task_assignments_mode CHECK (incl. 'external_feishu').
+    seed.create_tables() now only emits runtime data seeding; this test guards
+    the builtin-template INSERTs that ship with the app.
+    """
     fake_engine = _SeedEngine()
     monkeypatch.setattr(seed, "engine", fake_engine)
 
     await seed.create_tables()
 
     statements = "\n".join(fake_engine.conn.statements)
-    assert "CREATE TABLE IF NOT EXISTS task_assignments" in statements
-    assert "CREATE TABLE IF NOT EXISTS task_runs" in statements
-    assert "CREATE TABLE IF NOT EXISTS task_run_templates" in statements
     assert "INSERT INTO task_run_templates" in statements
     assert "general-task-runner" in statements
     assert "research-analyst" in statements
     assert "created_at" in statements
     assert "updated_at" in statements
-    assert "CREATE INDEX IF NOT EXISTS idx_task_runs_task" in statements
-    assert "CREATE INDEX IF NOT EXISTS idx_task_assignments_assignee" in statements
-    assert "ALTER TABLE task_assignments DROP CONSTRAINT IF EXISTS ck_task_assignments_role" in statements
-    assert "external_feishu" in statements
+    # Schema DDL must NOT be emitted by create_tables() anymore — it lives in
+    # the Alembic baseline migration. If any of these appear, schema has crept
+    # back into seed.py.
+    assert "CREATE TABLE IF NOT EXISTS task_assignments" not in statements
+    assert "CREATE TABLE IF NOT EXISTS task_run_templates" not in statements
+    assert "CREATE INDEX IF NOT EXISTS idx_task_runs_task" not in statements
 
 
 def test_task_run_tables_are_declared_with_runtime_context_columns():
