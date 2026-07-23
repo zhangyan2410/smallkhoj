@@ -7,8 +7,10 @@ import json
 import re
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import cast
 
 from fastapi import (
     APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile,
@@ -16,16 +18,24 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from config import settings
 from models import (
-    get_db, ActivityLog, AgentWorkspace, ApiKey, Channel, ChannelMember, Computer,
+    async_session, get_db, ActivityLog, AgentWorkspace, ApiKey, Channel, ChannelMember, Computer,
     ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction,
     Reminder, Server, Task, TaskRun, ThreadSummary,
 )
 from routers.auth import resolve_agent, resolve_machine
+from routers.serialization_prefetch import (
+    UNSET,
+    MessageSerializationContext,
+    TaskSerializationContext,
+    load_message_serialization_context,
+    load_task_serialization_context,
+)
 from services.daemon_control import (
     PENDING_RUNTIME_START_STATUS,
     daemon_control_hub,
@@ -35,6 +45,13 @@ from services.daemon_control import (
     push_latest_events_for_server,
 )
 from services.latency_trace import LatencyTrace, trace_id_from_request
+from services.pagination import (
+    PaginationCursorError,
+    decode_task_cursor,
+    decode_thread_cursor,
+    encode_task_cursor,
+    encode_thread_cursor,
+)
 from services.memory_store import build_memory_context_manifest
 from services.memory_api import (
     create_memory_proposal,
@@ -79,10 +96,53 @@ from services.thread_summary import (
     thread_participant_ids,
     thread_reply_count,
 )
+from services.upload_storage import (
+    close_upload,
+    rollback_and_cleanup_upload,
+    stage_upload,
+)
 
 router = APIRouter(prefix="/internal/agent-api", tags=["agent-api"])
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / ".data" / "uploads"
+MAX_UPLOAD_SIZE = settings.upload_max_bytes
 DAEMON_LEASE_SECONDS = 90
+
+
+@dataclass(frozen=True)
+class AgentEventStreamClaims:
+    member_id: uuid.UUID
+    server_id: uuid.UUID
+
+
+async def resolve_agent_event_stream_claims(
+    authorization: str = Header(..., alias="Authorization"),
+    x_agent_id: str = Header(..., alias="X-Agent-Id"),
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> AgentEventStreamClaims:
+    member, server = await resolve_agent(
+        authorization=authorization,
+        x_agent_id=x_agent_id,
+        db=db,
+    )
+    return AgentEventStreamClaims(member_id=member.id, server_id=server.id)
+
+
+async def _load_agent_event_stream_entities(
+    db: AsyncSession,
+    claims: AgentEventStreamClaims,
+) -> tuple[Member, Server]:
+    member_result = await db.execute(
+        select(Member).where(
+            Member.id == claims.member_id,
+            Member.server_id == claims.server_id,
+        )
+    )
+    member = member_result.scalar_one_or_none()
+    server_result = await db.execute(select(Server).where(Server.id == claims.server_id))
+    server = server_result.scalar_one_or_none()
+    if member is None or server is None:
+        raise HTTPException(401, "Agent event stream identity no longer exists")
+    return member, server
 
 
 async def _push_committed_events(db: AsyncSession, *, server_id: uuid.UUID) -> int:
@@ -616,21 +676,31 @@ async def _resolve_workspace_agent(
     raise HTTPException(400, "Missing agentId or agentHandle")
 
 
-async def _serialize_task(db: AsyncSession, task: Task) -> dict:
-    channel_result = await db.execute(select(Channel).where(Channel.id == task.channel_id))
-    channel = channel_result.scalar_one_or_none()
-
-    creator_result = await db.execute(select(Member).where(Member.id == task.creator_id))
-    creator = creator_result.scalar_one_or_none()
-
-    assignee = None
-    if task.assignee_id:
-        assignee_result = await db.execute(select(Member).where(Member.id == task.assignee_id))
-        assignee = assignee_result.scalar_one_or_none()
-    runs_result = await db.execute(
-        select(TaskRun).where(TaskRun.task_id == task.id).order_by(TaskRun.created_at.desc())
-    )
-    runs = runs_result.scalars().all()
+async def _serialize_task(
+    db: AsyncSession,
+    task: Task,
+    *,
+    _context: TaskSerializationContext | object = UNSET,
+) -> dict:
+    if _context is UNSET:
+        channel_result = await db.execute(select(Channel).where(Channel.id == task.channel_id))
+        channel = channel_result.scalar_one_or_none()
+        creator_result = await db.execute(select(Member).where(Member.id == task.creator_id))
+        creator = creator_result.scalar_one_or_none()
+        assignee = None
+        if task.assignee_id:
+            assignee_result = await db.execute(select(Member).where(Member.id == task.assignee_id))
+            assignee = assignee_result.scalar_one_or_none()
+        runs_result = await db.execute(
+            select(TaskRun).where(TaskRun.task_id == task.id).order_by(TaskRun.created_at.desc())
+        )
+        runs = list(runs_result.scalars().all())
+    else:
+        context = cast(TaskSerializationContext, _context)
+        channel = context.channels.get(task.channel_id)
+        creator = context.members.get(task.creator_id)
+        assignee = context.members.get(task.assignee_id) if task.assignee_id else None
+        runs = context.runs.get(task.id, [])
 
     return {
         "id": str(task.id),
@@ -700,19 +770,28 @@ def _apply_agent_status_transition(task: Task, new_status: str, member: Member) 
     return old_status, new_status
 
 
-async def _serialize_message(db: AsyncSession, msg: Message) -> dict:
-    channel_result = await db.execute(select(Channel).where(Channel.id == msg.channel_id))
-    channel = channel_result.scalar_one_or_none()
-
-    sender_result = await db.execute(select(Member).where(Member.id == msg.sender_id))
-    sender = sender_result.scalar_one_or_none()
-
-    reply_count_result = await db.execute(
-        select(func.count()).select_from(Message).where(Message.parent_id == msg.id)
-    )
-    reply_count = int(reply_count_result.scalar() or 0)
+async def _serialize_message(
+    db: AsyncSession,
+    msg: Message,
+    *,
+    _context: MessageSerializationContext | object = UNSET,
+) -> dict:
+    if _context is UNSET:
+        channel_result = await db.execute(select(Channel).where(Channel.id == msg.channel_id))
+        channel = channel_result.scalar_one_or_none()
+        sender_result = await db.execute(select(Member).where(Member.id == msg.sender_id))
+        sender = sender_result.scalar_one_or_none()
+        reply_count_result = await db.execute(
+            select(func.count()).select_from(Message).where(Message.parent_id == msg.id)
+        )
+        reply_count = int(reply_count_result.scalar() or 0)
+    else:
+        context = cast(MessageSerializationContext, _context)
+        channel = context.channels.get(msg.channel_id)
+        sender = context.members.get(msg.sender_id)
+        reply_count = context.reply_counts.get(msg.id, 0)
     thread_root_id = msg.parent_id or msg.id
-    reactions = await _serialize_reactions(db, msg.id)
+    reactions = await _serialize_reactions(db, msg.id, _context=_context)
 
     return {
         "id": str(msg.id),
@@ -738,18 +817,32 @@ async def _serialize_message(db: AsyncSession, msg: Message) -> dict:
     }
 
 
-async def _serialize_reactions(db: AsyncSession, message_id: uuid.UUID) -> dict:
-    reactions_result = await db.execute(
-        select(MessageReaction).where(MessageReaction.message_id == message_id)
-        .order_by(MessageReaction.created_at)
-    )
-    reactions = reactions_result.scalars().all()
+async def _serialize_reactions(
+    db: AsyncSession,
+    message_id: uuid.UUID,
+    *,
+    _context: MessageSerializationContext | object = UNSET,
+) -> dict:
+    if _context is UNSET:
+        reactions_result = await db.execute(
+            select(MessageReaction).where(MessageReaction.message_id == message_id)
+            .order_by(MessageReaction.created_at)
+        )
+        reactions = list(reactions_result.scalars().all())
+        members = None
+    else:
+        context = cast(MessageSerializationContext, _context)
+        reactions = context.reactions.get(message_id, [])
+        members = context.members
 
     items = []
     counts: dict[str, int] = {}
     for reaction in reactions:
-        member_result = await db.execute(select(Member).where(Member.id == reaction.member_id))
-        member = member_result.scalar_one_or_none()
+        if members is None:
+            member_result = await db.execute(select(Member).where(Member.id == reaction.member_id))
+            member = member_result.scalar_one_or_none()
+        else:
+            member = members.get(reaction.member_id)
         counts[reaction.reaction] = counts.get(reaction.reaction, 0) + 1
         items.append({
             "id": str(reaction.id),
@@ -1920,10 +2013,10 @@ async def get_events(
     stream: bool = Query(False),
     intervalSeconds: float = Query(1.0),
     heartbeatSeconds: float = Query(15.0),
-    agent: tuple[Member, Server] = Depends(resolve_agent),
-    db: AsyncSession = Depends(get_db),
+    claims: AgentEventStreamClaims = Depends(resolve_agent_event_stream_claims),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
-    member, server = agent
+    member, server = await _load_agent_event_stream_entities(db, claims)
     cursor_key = "eventCursor"
     activity_cursor_key = "activityCursor"
     event_log_cursor_key = "eventLogCursor"
@@ -1987,8 +2080,6 @@ async def get_events(
             raise HTTPException(400, "Invalid since cursor")
         raw_event_log_cursor = raw_event_log_cursor or "0"
 
-    channel_ids = await _visible_channel_ids(db, member)
-
     if wants_sse:
         interval = max(0.25, min(intervalSeconds, 30.0))
         heartbeat = max(interval, min(max(heartbeatSeconds, 1.0), 120.0))
@@ -2009,22 +2100,32 @@ async def get_events(
                 str(cursor),
             )
             while not await request.is_disconnected():
-                records = await _visible_event_records(
-                    db,
-                    server,
-                    member,
-                    channel_ids,
-                    event_log_cursor,
-                )
-                for record in records:
-                    event_log_cursor = str(record.seq)
-                    if _should_suppress_thread_event(member, record):
-                        continue
-                    message_seq = _event_record_message_seq(record)
-                    if message_seq is not None:
-                        cursor = max(cursor, message_seq)
-                    event = await _event_record_event(db, record, member)
-                    yield _sse_frame(event["type"], event, f"event:{record.seq}")
+                frames: list[str] = []
+                async with async_session() as poll_db:
+                    poll_member, poll_server = await _load_agent_event_stream_entities(
+                        poll_db,
+                        claims,
+                    )
+                    poll_channel_ids = await _visible_channel_ids(poll_db, poll_member)
+                    records = await _visible_event_records(
+                        poll_db,
+                        poll_server,
+                        poll_member,
+                        poll_channel_ids,
+                        event_log_cursor,
+                    )
+                    for record in records:
+                        event_log_cursor = str(record.seq)
+                        if _should_suppress_thread_event(poll_member, record):
+                            continue
+                        message_seq = _event_record_message_seq(record)
+                        if message_seq is not None:
+                            cursor = max(cursor, message_seq)
+                        event = await _event_record_event(poll_db, record, poll_member)
+                        frames.append(_sse_frame(event["type"], event, f"event:{record.seq}"))
+
+                for frame in frames:
+                    yield frame
 
                 now = _utcnow()
                 if (now - last_heartbeat).total_seconds() >= heartbeat:
@@ -2048,6 +2149,7 @@ async def get_events(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    channel_ids = await _visible_channel_ids(db, member)
     events = [*control_events]
     next_cursor = cursor
     event_log_cursor = raw_event_log_cursor or "0"
@@ -2094,8 +2196,8 @@ async def get_events_stream(
     since: str = Query("latest", alias="since"),
     intervalSeconds: float = Query(1.0),
     heartbeatSeconds: float = Query(15.0),
-    agent: tuple[Member, Server] = Depends(resolve_agent),
-    db: AsyncSession = Depends(get_db),
+    claims: AgentEventStreamClaims = Depends(resolve_agent_event_stream_claims),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     return await get_events(
         request=request,
@@ -2105,7 +2207,7 @@ async def get_events_stream(
         stream=True,
         intervalSeconds=intervalSeconds,
         heartbeatSeconds=heartbeatSeconds,
-        agent=agent,
+        claims=claims,
         db=db,
     )
 
@@ -2144,11 +2246,17 @@ async def get_history(
     msgs_result = await db.execute(q)
     messages = list(reversed(msgs_result.scalars().all()))
 
-    # Load sender info
+    sender_ids = {message.sender_id for message in messages}
+    sender_result = await db.execute(
+        select(Member).options(noload("*")).where(Member.id.in_(sender_ids))
+    ) if sender_ids else None
+    senders = {
+        sender.id: sender
+        for sender in (sender_result.scalars().all() if sender_result is not None else [])
+    }
     result_messages = []
     for msg in messages:
-        sender_result = await db.execute(select(Member).where(Member.id == msg.sender_id))
-        sender = sender_result.scalar_one_or_none()
+        sender = senders.get(msg.sender_id)
 
         result_messages.append({
             "seq": msg.seq,
@@ -2202,7 +2310,8 @@ async def search_messages(
 
     result = await db.execute(q_stmt.order_by(Message.seq.desc()).limit(min(limit, 100)))
     messages = list(reversed(result.scalars().all()))
-    items = [await _serialize_message(db, item) for item in messages]
+    context = await load_message_serialization_context(db, messages)
+    items = [await _serialize_message(db, item, _context=context) for item in messages]
     return {"messages": items, "results": items, "count": len(items), "query": term}
 
 
@@ -2337,23 +2446,72 @@ async def remove_message_reaction(
 async def list_tasks(
     channel: str | None = Query(None),
     status: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(None),
     agent: tuple[Member, Server] = Depends(resolve_agent),
     db: AsyncSession = Depends(get_db),
 ):
     member, server = agent
 
     q = select(Task).join(Channel).where(Channel.server_id == server.id)
+    channel_id = None
     if channel:
         ch = await _resolve_channel(db, server, channel, member=member)
-        q = q.where(Task.channel_id == ch.id)
+        channel_id = ch.id
+        q = q.where(Task.channel_id == channel_id)
     if status:
         q = q.where(Task.status == status)
 
-    result = await db.execute(q.order_by(Task.task_number))
-    tasks = result.scalars().all()
+    if cursor:
+        try:
+            cursor_number, cursor_channel_id, cursor_id = decode_task_cursor(
+                cursor,
+                endpoint="agent.tasks",
+                server_id=server.id,
+                channel_id=channel_id,
+                status=status,
+            )
+        except PaginationCursorError:
+            raise HTTPException(400, "Invalid pagination cursor")
+        q = q.where(or_(
+            Task.task_number > cursor_number,
+            and_(
+                Task.task_number == cursor_number,
+                Task.channel_id > cursor_channel_id,
+            ),
+            and_(
+                Task.task_number == cursor_number,
+                Task.channel_id == cursor_channel_id,
+                Task.id > cursor_id,
+            ),
+        ))
+
+    result = await db.execute(
+        q.options(noload("*")).order_by(
+            Task.task_number.asc(),
+            Task.channel_id.asc(),
+            Task.id.asc(),
+        ).limit(limit + 1)
+    )
+    rows = list(result.scalars().all())
+    tasks = rows[:limit]
+    context = await load_task_serialization_context(db, tasks)
+    next_cursor = None
+    if len(rows) > limit and tasks:
+        last = tasks[-1]
+        next_cursor = encode_task_cursor(
+            endpoint="agent.tasks",
+            server_id=server.id,
+            channel_id=channel_id,
+            status=status,
+            task_number=last.task_number,
+            position_channel_id=last.channel_id,
+            task_id=last.id,
+        )
     return {
-        "tasks": [await _serialize_task(db, task) for task in tasks],
+        "tasks": [await _serialize_task(db, task, _context=context) for task in tasks],
         "count": len(tasks),
+        "nextCursor": next_cursor,
     }
 
 
@@ -2981,14 +3139,17 @@ async def leave_channel(
 @router.get("/threads")
 async def list_threads(
     channel: str | None = Query(None),
-    limit: int = Query(50),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(None),
     agent: tuple[Member, Server] = Depends(resolve_agent),
     db: AsyncSession = Depends(get_db),
 ):
     member, server = agent
     channel_ids = None
+    channel_id = None
     if channel:
         ch = await _resolve_channel(db, server, channel, member=member)
+        channel_id = ch.id
         channel_ids = [ch.id]
     else:
         channel_result = await db.execute(
@@ -2997,32 +3158,59 @@ async def list_threads(
         channel_ids = [row[0] for row in channel_result.all()]
 
     if not channel_ids:
-        return {"threads": [], "count": 0}
+        return {"threads": [], "count": 0, "nextCursor": None}
 
-    roots_result = await db.execute(
-        select(Message).where(
+    reply_counts = (
+        select(Message.parent_id.label("root_id"), func.count().label("reply_count"))
+        .where(Message.parent_id.is_not(None))
+        .group_by(Message.parent_id)
+        .subquery()
+    )
+    roots_query = select(Message).join(reply_counts, reply_counts.c.root_id == Message.id).where(
             Message.channel_id.in_(channel_ids),
             Message.parent_id.is_(None),
-        ).order_by(Message.created_at.desc()).limit(limit * 3)
-    )
-    roots = roots_result.scalars().all()
-
-    threads = []
-    for root in roots:
-        reply_count_result = await db.execute(
-            select(func.count()).select_from(Message).where(Message.parent_id == root.id)
         )
-        reply_count = int(reply_count_result.scalar() or 0)
-        if reply_count == 0:
-            continue
-        serialized = await _serialize_message(db, root)
-        serialized["replyCount"] = reply_count
+    if cursor:
+        try:
+            cursor_created_at, cursor_id = decode_thread_cursor(
+                cursor,
+                endpoint="agent.threads",
+                server_id=server.id,
+                channel_id=channel_id,
+            )
+        except PaginationCursorError:
+            raise HTTPException(400, "Invalid pagination cursor")
+        roots_query = roots_query.where(or_(
+            Message.created_at < cursor_created_at,
+            and_(
+                Message.created_at == cursor_created_at,
+                Message.id < cursor_id,
+            ),
+        ))
+    roots_result = await db.execute(
+        roots_query.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit + 1)
+    )
+    rows = list(roots_result.scalars().all())
+    roots = rows[:limit]
+    context = await load_message_serialization_context(db, roots)
+
+    threads: list[dict] = []
+    for root in roots:
+        serialized = await _serialize_message(db, root, _context=context)
         serialized["following"] = _is_thread_following(member, root.id)
         threads.append(serialized)
-        if len(threads) >= limit:
-            break
 
-    return {"threads": threads, "count": len(threads)}
+    next_cursor = None
+    if len(rows) > limit and roots:
+        last = roots[-1]
+        next_cursor = encode_thread_cursor(
+            endpoint="agent.threads",
+            server_id=server.id,
+            channel_id=channel_id,
+            created_at=last.created_at,
+            message_id=last.id,
+        )
+    return {"threads": threads, "count": len(threads), "nextCursor": next_cursor}
 
 
 @router.get("/threads/{thread_id}")
@@ -3048,11 +3236,17 @@ async def get_thread(
         select(ThreadSummary).where(ThreadSummary.root_message_id == root.id)
     )
     summary = summary_result.scalar_one_or_none()
+    messages = [root, *replies]
+    context = await load_message_serialization_context(db, messages)
+    serialized_messages = [
+        await _serialize_message(db, item, _context=context)
+        for item in messages
+    ]
 
     return {
-        "thread": await _serialize_message(db, root),
-        "replies": [await _serialize_message(db, item) for item in replies],
-        "messages": [await _serialize_message(db, item) for item in [root, *replies]],
+        "thread": serialized_messages[0],
+        "replies": serialized_messages[1:],
+        "messages": serialized_messages,
         "replyCount": len(replies),
         "following": _is_thread_following(member, root.id),
         "threadSummary": serialize_thread_summary(summary),
@@ -3427,57 +3621,70 @@ async def upload_attachment(
     agent: tuple[Member, Server] = Depends(resolve_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    member, server = agent
-    _require_permission(member, "fileWrite")
-    channel_id = None
-    if channelId:
-        try:
-            channel_id = uuid.UUID(channelId)
-        except ValueError:
-            raise HTTPException(400, "Invalid channelId")
-        result = await db.execute(
-            select(Channel).where(Channel.id == channel_id, Channel.server_id == server.id)
+    try:
+        member, server = agent
+        _require_permission(member, "fileWrite")
+        channel_id = None
+        if channelId:
+            try:
+                channel_id = uuid.UUID(channelId)
+            except ValueError:
+                raise HTTPException(400, "Invalid channelId")
+            result = await db.execute(
+                select(Channel).where(Channel.id == channel_id, Channel.server_id == server.id)
+            )
+            if not result.scalar_one_or_none():
+                raise HTTPException(404, "Channel not found")
+
+        file_id = uuid.uuid4()
+        safe_name = Path(file.filename or "attachment").name
+        storage_path = UPLOAD_ROOT / str(server.id) / f"{file_id}-{safe_name}"
+        staged = await stage_upload(
+            file,
+            final_path=storage_path,
+            max_bytes=MAX_UPLOAD_SIZE,
+            empty_detail="Empty file",
         )
-        if not result.scalar_one_or_none():
-            raise HTTPException(404, "Channel not found")
 
-    data = await file.read()
-    if not data:
-        raise HTTPException(400, "Empty file")
+        entry = FileEntry(
+            id=file_id,
+            server_id=server.id,
+            channel_id=channel_id,
+            uploaded_by=member.id,
+            file_name=safe_name,
+            original_name=safe_name,
+            mime_type=mimeType or file.content_type or "application/octet-stream",
+            size=staged.size,
+            storage_path=str(storage_path),
+            metadata_json={},
+        )
+        try:
+            db.add(entry)
+            await db.flush()
+            await _record_activity(
+                db,
+                server,
+                member,
+                "file_created",
+                f"@{member.display_name} uploaded {safe_name}",
+                {
+                    "attachmentId": str(entry.id),
+                    "fileName": safe_name,
+                    "size": staged.size,
+                },
+                channel_id=channel_id,
+            )
+            staged.promote()
+            await db.commit()
+        except BaseException:
+            await rollback_and_cleanup_upload(db, staged)
+            raise
 
-    file_id = uuid.uuid4()
-    safe_name = Path(file.filename or "attachment").name
-    storage_dir = UPLOAD_ROOT / str(server.id)
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    storage_path = storage_dir / f"{file_id}-{safe_name}"
-    storage_path.write_bytes(data)
-
-    entry = FileEntry(
-        id=file_id,
-        server_id=server.id,
-        channel_id=channel_id,
-        uploaded_by=member.id,
-        file_name=safe_name,
-        original_name=safe_name,
-        mime_type=mimeType or file.content_type or "application/octet-stream",
-        size=len(data),
-        storage_path=str(storage_path),
-        metadata_json={},
-    )
-    db.add(entry)
-    await db.flush()
-    await _record_activity(
-        db,
-        server,
-        member,
-        "file_created",
-        f"@{member.display_name} uploaded {safe_name}",
-        {"attachmentId": str(entry.id), "fileName": safe_name, "size": len(data)},
-        channel_id=channel_id,
-    )
-    await db.commit()
-    await db.refresh(entry)
-    return {"uploaded": True, "attachment": _serialize_file(entry), "file": _serialize_file(entry)}
+        await db.refresh(entry)
+        serialized = _serialize_file(entry)
+        return {"uploaded": True, "attachment": serialized, "file": serialized}
+    finally:
+        await close_upload(file)
 
 
 @router.get("/attachments/{attachment_id}")
@@ -3814,47 +4021,59 @@ async def update_profile_avatar(
     agent: tuple[Member, Server] = Depends(resolve_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    member, server = agent
-    _require_permission(member, "updateProfile")
+    try:
+        member, server = agent
+        _require_permission(member, "updateProfile")
 
-    data = await avatar.read()
-    if not data:
-        raise HTTPException(400, "Empty avatar")
+        avatar_id = uuid.uuid4()
+        safe_name = Path(avatar.filename or "avatar").name
+        storage_path = UPLOAD_ROOT / str(server.id) / "avatars" / f"{avatar_id}-{safe_name}"
+        staged = await stage_upload(
+            avatar,
+            final_path=storage_path,
+            max_bytes=MAX_UPLOAD_SIZE,
+            empty_detail="Empty avatar",
+        )
 
-    avatar_id = uuid.uuid4()
-    safe_name = Path(avatar.filename or "avatar").name
-    storage_dir = UPLOAD_ROOT / str(server.id) / "avatars"
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    storage_path = storage_dir / f"{avatar_id}-{safe_name}"
-    storage_path.write_bytes(data)
+        entry = FileEntry(
+            id=avatar_id,
+            server_id=server.id,
+            uploaded_by=member.id,
+            file_name=safe_name,
+            original_name=safe_name,
+            mime_type=mimeType or avatar.content_type or "application/octet-stream",
+            size=staged.size,
+            storage_path=str(storage_path),
+            metadata_json={"kind": "avatar", "memberId": str(member.id)},
+        )
+        try:
+            db.add(entry)
+            await db.flush()
 
-    entry = FileEntry(
-        id=avatar_id,
-        server_id=server.id,
-        uploaded_by=member.id,
-        file_name=safe_name,
-        original_name=safe_name,
-        mime_type=mimeType or avatar.content_type or "application/octet-stream",
-        size=len(data),
-        storage_path=str(storage_path),
-        metadata_json={"kind": "avatar", "memberId": str(member.id)},
-    )
-    db.add(entry)
-    await db.flush()
+            member.avatar_url = f"/api/attachments/{entry.id}/download"
+            await _record_activity(
+                db,
+                server,
+                member,
+                "profile_updated",
+                f"@{member.display_name} updated avatar",
+                {"attachmentId": str(entry.id), "avatarUrl": member.avatar_url},
+            )
+            staged.promote()
+            await db.commit()
+        except BaseException:
+            await rollback_and_cleanup_upload(db, staged)
+            raise
 
-    member.avatar_url = f"/api/attachments/{entry.id}/download"
-    await _record_activity(
-        db,
-        server,
-        member,
-        "profile_updated",
-        f"@{member.display_name} updated avatar",
-        {"attachmentId": str(entry.id), "avatarUrl": member.avatar_url},
-    )
-    await db.commit()
-    await db.refresh(member)
-    await db.refresh(entry)
-    return {"updated": True, "profile": _serialize_member(member), "avatar": _serialize_file(entry)}
+        await db.refresh(member)
+        await db.refresh(entry)
+        return {
+            "updated": True,
+            "profile": _serialize_member(member),
+            "avatar": _serialize_file(entry),
+        }
+    finally:
+        await close_upload(avatar)
 
 
 # ── Integrations ─────────────────────────────────────────────

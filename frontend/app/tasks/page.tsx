@@ -28,6 +28,7 @@ import { TaskListPanel } from "@/components/task-list-panel"
 import { TaskMaterialStateProvider, TaskRouteDetailMaterialFrame } from "@/components/task-material-state"
 import { TaskFormDialogs } from "@/components/task-form-dialogs"
 import { API_BASE, apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
+import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 import { TaskDndBoard } from "@/components/task-dnd-board"
@@ -196,7 +197,10 @@ type ActivityItem = {
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
 async function getTasks(sessionToken?: string | null, activeServerId?: string | null) {
-  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }, sessionToken, activeServerId)
+  const tasks = await fetchAllTaskPages<Task>((path) => (
+    apiGet<TaskCursorPage<Task>>(path, { tasks: [], nextCursor: null }, sessionToken, activeServerId)
+  ))
+  return { tasks }
 }
 
 async function getChannels(sessionToken?: string | null, activeServerId?: string | null) {

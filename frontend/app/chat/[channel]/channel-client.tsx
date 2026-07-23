@@ -33,6 +33,7 @@ import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { EmptyState, RuntimeChip } from "@/components/product-ui"
 import { MarkdownMessage } from "@/components/markdown-message"
+import { useRealtimeSubscription } from "@/components/realtime-provider"
 import { AgentActivityList } from "@/components/agent-activity-list"
 import { AttachmentSheet, AvatarObject, ChannelDivider, ChatComposerSurface, ChatTaskToggle, EventBadge, MemberNameTag, MessageToolStrip } from "@/components/inkframe-object-ui"
 import { TaskBoard } from "@/components/task-board"
@@ -53,12 +54,8 @@ import {
   BROWSER_API_BASE,
 } from "@/lib/control-plane"
 import {
-  applyHighWater,
-  connectRealtimeEvents,
   mergeMessageById,
   shouldHandleRealtimeEvent,
-  type HighWater,
-  type PublicEventEnvelope,
 } from "@/lib/realtime-events"
 import { chatReadCursorRequestForThread, hasUnreadThreadActivity, markChatUnreadScope } from "@/lib/chat-unread-state"
 import { channelMemberAddPayload } from "@/lib/channel-members"
@@ -318,7 +315,7 @@ export function ChannelClient({
   const chatDeskMaterialLayerRef = useRef<HTMLDivElement>(null)
   const chatDeskPointerForwardingRef = useRef(false)
   const messageEndRef = useRef<HTMLDivElement>(null)
-  const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
+  const realtimeCatchUpTimerRef = useRef<number | null>(null)
   const [messageScrollState, setMessageScrollState] = useState({ progress: 0, visible: false })
 
   const storedThreadWidth = useSyncExternalStore(
@@ -786,22 +783,15 @@ export function ChannelClient({
     }
   }, [sessionToken])
 
-  useEffect(() => {
-    const controller = new AbortController()
-    let catchUpTimer: number | null = null
+  useRealtimeSubscription(({ event, decision }) => {
     const scheduleCatchUp = () => {
-      if (catchUpTimer) window.clearTimeout(catchUpTimer)
-      catchUpTimer = window.setTimeout(() => {
+      if (realtimeCatchUpTimerRef.current) window.clearTimeout(realtimeCatchUpTimerRef.current)
+      realtimeCatchUpTimerRef.current = window.setTimeout(() => {
         void refreshMessages()
         if (activeThreadId) void refreshThread(activeThreadId)
-        catchUpTimer = null
+        realtimeCatchUpTimerRef.current = null
       }, 120)
     }
-    const stop = connectRealtimeEvents({
-      headers: apiHeaders(sessionToken),
-      signal: controller.signal,
-      scope: channelId ? { kind: "channel", id: channelId } : undefined,
-      onEvent: (event: PublicEventEnvelope) => {
         if (event.type === "member.status.updated" || event.type === "member.updated") {
           void refreshChannelsAndDms()
           void refreshMembers()
@@ -822,7 +812,6 @@ export function ChannelClient({
           void refreshChannelsAndDms()
           return
         }
-        const decision = applyHighWater(realtimeHighWaterRef.current, event)
         if (decision.action === "drop") {
           console.debug("[realtime] duplicate dropped", event.id)
           return
@@ -859,18 +848,11 @@ export function ChannelClient({
         if (event.type === "reaction.updated" || event.type === "message.updated" || event.type === "message.deleted") {
           scheduleCatchUp()
         }
-      },
-      onStatus: (status) => {
-        if (status.state === "error") console.warn("[realtime] chat stream error", status.error)
-        if (status.state === "reconnecting") console.info("[realtime] chat reconnect", status.attempt, status.delayMs)
-      },
-    })
-    return () => {
-      stop()
-      controller.abort()
-      if (catchUpTimer) window.clearTimeout(catchUpTimer)
-    }
-  }, [activeThreadId, channelId, channelName, refreshChannelsAndDms, refreshMembers, refreshAllMembers, refreshMemory, refreshMessages, refreshThread, sessionToken])
+  })
+
+  useEffect(() => () => {
+    if (realtimeCatchUpTimerRef.current) window.clearTimeout(realtimeCatchUpTimerRef.current)
+  }, [])
 
   async function openThread(message: ChannelMessage) {
     const threadId = message.threadId || message.id

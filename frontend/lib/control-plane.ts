@@ -1,9 +1,22 @@
 import { resolveApiBase, resolvePublicApiBase, resolvePublicApiKey } from "./runtime-url"
 
-export const BROWSER_API_BASE = resolvePublicApiBase(process.env, "browser")
-export const SERVER_API_BASE = resolveApiBase(process.env, "server")
+export const PUBLIC_RUNTIME_ENV = {
+  NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  NEXT_PUBLIC_WS_BASE_URL: process.env.NEXT_PUBLIC_WS_BASE_URL,
+  NEXT_PUBLIC_API_KEY: process.env.NEXT_PUBLIC_API_KEY,
+  NEXT_PUBLIC_DEPLOYMENT_ENV: process.env.NEXT_PUBLIC_DEPLOYMENT_ENV,
+  NODE_ENV: process.env.NODE_ENV,
+}
+
+const SERVER_RUNTIME_ENV = {
+  ...PUBLIC_RUNTIME_ENV,
+  INTERNAL_API_BASE_URL: process.env.INTERNAL_API_BASE_URL,
+}
+
+export const BROWSER_API_BASE = resolvePublicApiBase(PUBLIC_RUNTIME_ENV, "browser")
+export const SERVER_API_BASE = resolveApiBase(SERVER_RUNTIME_ENV, "server")
 export const API_BASE = typeof window === "undefined" ? SERVER_API_BASE : BROWSER_API_BASE
-export const PUBLIC_KEY = resolvePublicApiKey(process.env)
+export const PUBLIC_KEY = resolvePublicApiKey(PUBLIC_RUNTIME_ENV)
 export const SESSION_COOKIE_NAME = "smallkhoj_session"
 export const ACTIVE_SERVER_COOKIE_NAME = "smallkhoj_active_server"
 

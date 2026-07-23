@@ -68,6 +68,7 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
         sessionToken={sessionToken}
         onTaskMoved={handleTaskMoved}
         onSelectTask={handleSelectTask}
+        taskFilters={filters}
       />
     </div>
   )

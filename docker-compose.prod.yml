@@ -4,6 +4,7 @@ services:
   db:
     image: ${SMALLKHOJ_POSTGRES_IMAGE:-pgvector/pgvector:pg16}
     restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS:-100}"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-smallkhoj}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD outside repo}
@@ -14,7 +15,7 @@ services:
   backend:
     image: ${SMALLKHOJ_BACKEND_IMAGE:-smallkhoj-backend:latest}
     restart: unless-stopped
-    command: sh -c "uv run alembic upgrade head && uv run uvicorn main:app --host 0.0.0.0 --port 8000"
+    command: sh -c "uv run alembic upgrade head && uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-1}"
     expose:
       - "8000"
     environment:
@@ -23,6 +24,18 @@ services:
       DEBUG: ${DEBUG:-false}
       PUBLIC_API_KEY: ${PUBLIC_API_KEY:?set PUBLIC_API_KEY outside repo}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-smallkhoj}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD outside repo}@db:5432/${POSTGRES_DB:-smallkhoj}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+      BACKEND_WORKERS: ${BACKEND_WORKERS:-1}
+      POSTGRES_MAX_CONNECTIONS: ${POSTGRES_MAX_CONNECTIONS:-100}
+      POSTGRES_CONNECTION_HEADROOM: ${POSTGRES_CONNECTION_HEADROOM:-5}
+      NOTIFY_PUBLISHER_POOL_SIZE: ${NOTIFY_PUBLISHER_POOL_SIZE:-2}
+      NOTIFY_CONNECT_TIMEOUT_SECONDS: ${NOTIFY_CONNECT_TIMEOUT_SECONDS:-3}
+      NOTIFY_OPERATION_TIMEOUT_SECONDS: ${NOTIFY_OPERATION_TIMEOUT_SECONDS:-3}
+      NOTIFY_RECONNECT_INITIAL_SECONDS: ${NOTIFY_RECONNECT_INITIAL_SECONDS:-0.25}
+      NOTIFY_RECONNECT_MAX_SECONDS: ${NOTIFY_RECONNECT_MAX_SECONDS:-5}
+      NOTIFY_SHUTDOWN_TIMEOUT_SECONDS: ${NOTIFY_SHUTDOWN_TIMEOUT_SECONDS:-5}
+      NOTIFY_PUBLISH_ATTEMPTS: ${NOTIFY_PUBLISH_ATTEMPTS:-2}
       AUTH_BRIDGE_SECRET: ${AUTH_BRIDGE_SECRET:?set AUTH_BRIDGE_SECRET outside repo}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-}
       MINIMUM_DAEMON_VERSION: ${MINIMUM_DAEMON_VERSION:-0.2.0}
@@ -36,6 +49,9 @@ services:
       FEISHU_REPLY_BASE_URL: ${FEISHU_REPLY_BASE_URL:-https://open.feishu.cn}
       FEISHU_REPLY_ACCESS_TOKEN: ${FEISHU_REPLY_ACCESS_TOKEN:-}
       THREAD_SUMMARY_SCHEDULER_ENABLED: ${THREAD_SUMMARY_SCHEDULER_ENABLED:-false}
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-52428800}
+      UPLOAD_READ_CHUNK_BYTES: ${UPLOAD_READ_CHUNK_BYTES:-65536}
+      UPLOAD_CLEANUP_TIMEOUT_SECONDS: ${UPLOAD_CLEANUP_TIMEOUT_SECONDS:-5}
     depends_on:
       - db
 
@@ -92,6 +108,7 @@ services:
       - "${SMALLKHOJ_HTTPS_PORT:-443}:443"
     environment:
       SMALLKHOJ_SITE_ADDRESS: ${SMALLKHOJ_SITE_ADDRESS:-:80}
+      SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX: ${SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX:-55MB}
     volumes:
       - caddy_data:/data
       - caddy_config:/config

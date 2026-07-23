@@ -184,11 +184,27 @@ SMALLKHOJ_BACKEND_IMAGE=<registry>/smallkhoj-backend:<tag>
 SMALLKHOJ_FRONTEND_IMAGE=<registry>/smallkhoj-frontend:<tag>
 SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:latest
 POSTGRES_PASSWORD=<set-outside-repo>
+DATABASE_POOL_SIZE=5
+DATABASE_MAX_OVERFLOW=10
+BACKEND_WORKERS=1
+POSTGRES_MAX_CONNECTIONS=100
+POSTGRES_CONNECTION_HEADROOM=5
+NOTIFY_PUBLISHER_POOL_SIZE=2
+NOTIFY_CONNECT_TIMEOUT_SECONDS=3
+NOTIFY_OPERATION_TIMEOUT_SECONDS=3
+NOTIFY_RECONNECT_INITIAL_SECONDS=0.25
+NOTIFY_RECONNECT_MAX_SECONDS=5
+NOTIFY_SHUTDOWN_TIMEOUT_SECONDS=5
+NOTIFY_PUBLISH_ATTEMPTS=2
 PUBLIC_API_KEY=<generate-outside-repo>
 AUTH_BRIDGE_SECRET=<generate-outside-repo>
 BETTER_AUTH_SECRET=<generate-outside-repo>
 BETTER_AUTH_URL=https://smallkhoj.example.com
 BACKEND_CORS_ORIGINS=https://smallkhoj.example.com
+UPLOAD_MAX_BYTES=52428800
+UPLOAD_READ_CHUNK_BYTES=65536
+UPLOAD_CLEANUP_TIMEOUT_SECONDS=5
+SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX=55MB
 ```
 
 When using `production_image_transfer.py`, replace the image values with the local-release tags loaded on the server:
@@ -209,6 +225,27 @@ NEXT_PUBLIC_WS_BASE_URL=
 
 `INTERNAL_API_BASE_URL` is for server-side Next.js fetches inside Docker. It must not be used in daemon connect commands or browser-visible links. The frontend derives public URLs from the request host or browser origin when public overrides are empty.
 
+PostgreSQL connection capacity is an explicit deployment budget, not a
+per-process estimate:
+
+```text
+per_process = DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW
+            + NOTIFY_PUBLISHER_POOL_SIZE + 1 listener
+deployment  = per_process * BACKEND_WORKERS
+required    = deployment + POSTGRES_CONNECTION_HEADROOM
+```
+
+With the defaults this is `(5 + 10 + 2 + 1) * 1 + 5 = 23` required
+connections against `POSTGRES_MAX_CONNECTIONS=100`. Three backend workers
+would require `18 * 3 + 5 = 59`. Backend settings fail closed at startup when
+the configured requirement exceeds the configured PostgreSQL capacity, and
+Compose passes the same `POSTGRES_MAX_CONNECTIONS` to the database server.
+Publisher and listener connections are visible in `pg_stat_activity` as
+`smallkhoj-notify-publisher` and `smallkhoj-notify-listener`. Publisher
+operations, reconnect backoff, and shutdown are bounded by the `NOTIFY_*`
+timeouts; a failed wake-up is logged as degraded instead of silently falling
+back to an unbudgeted one-shot connection.
+
 Do not add a separate `NEXT_PUBLIC_API_KEY` value to `.env.prod`.
 `docker-compose.prod.yml` bridges the canonical `PUBLIC_API_KEY` into the
 frontend runtime environment, while the image build consumes the same variable
@@ -223,6 +260,22 @@ Public HTTP and SSE requests send the public-client credential in
 `smallkhoj.public-key.<base64url>` requested subprotocol and negotiate only the
 fixed `smallkhoj.chat.v1` application protocol. Do not put the credential in a
 URL, query string, build plan, log, screenshot, or error message.
+
+Upload limits are deliberately layered rather than described as one
+"streaming limit":
+
+| Boundary | Default | Meaning |
+|---|---:|---|
+| Caddy request body | `55MB` total request | Rejects oversized multipart requests at ingress before proxying. The allowance is larger than the file cap because multipart headers and boundaries consume bytes too. |
+| Starlette `UploadFile` spool | `1 MiB` current framework default | Multipart parsing happens before route code. Small parts may remain in memory; larger parts spool to parser-owned temporary disk. This is not configured by `UPLOAD_MAX_BYTES`. |
+| Application file cap | `50 MiB` | Public files, agent attachments, and avatars are read in `64 KiB` chunks into a local staging file. The application never joins the allowed payload into one bytes object. |
+| Durable local storage | one completed file | A same-directory `.uploading` file is atomically promoted only after validation and DB flush. Read/write/flush/commit/cancellation failures rollback and remove staging/final residue. |
+
+`SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX` is a Caddy size string and limits the
+whole request. `UPLOAD_MAX_BYTES` and `UPLOAD_READ_CHUNK_BYTES` are integer
+byte counts consumed by the backend. Keep the proxy allowance above the
+application file cap; setting it below valid multipart overhead will reject
+otherwise valid uploads at ingress.
 
 Integration/runtime values, when enabled:
 
@@ -533,6 +586,10 @@ AUTH_BRIDGE_SECRET=sk_local_prod_smoke_auth_bridge_secret_min_32_chars
 BETTER_AUTH_SECRET=sk_local_prod_smoke_better_auth_secret_min_32_chars
 BETTER_AUTH_URL=http://127.0.0.1:18080
 BACKEND_CORS_ORIGINS=http://127.0.0.1:18080
+UPLOAD_MAX_BYTES=52428800
+UPLOAD_READ_CHUNK_BYTES=65536
+UPLOAD_CLEANUP_TIMEOUT_SECONDS=5
+SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX=55MB
 EOF
 ```
 

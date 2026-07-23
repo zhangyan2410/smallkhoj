@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react"
 import useWebSocket from "react-use-websocket"
 
-import { PUBLIC_KEY } from "@/lib/control-plane"
+import { PUBLIC_KEY, PUBLIC_RUNTIME_ENV } from "@/lib/control-plane"
 import { resolveChatWebSocketProtocols, resolveChatWebSocketUrl } from "@/lib/runtime-url"
 
 export interface WSMessage {
@@ -17,7 +17,7 @@ export function useChatWebSocket() {
   const [messages, setMessages] = useState<string[]>([])
   const [isThinking, setIsThinking] = useState(false)
 
-  const { sendJsonMessage, readyState } = useWebSocket(() => resolveChatWebSocketUrl(), {
+  const { sendJsonMessage, readyState } = useWebSocket(() => resolveChatWebSocketUrl(PUBLIC_RUNTIME_ENV), {
     protocols: resolveChatWebSocketProtocols(PUBLIC_KEY),
     onMessage: (event) => {
       const data: WSMessage = JSON.parse(event.data)

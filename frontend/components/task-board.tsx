@@ -35,13 +35,15 @@ import {
 } from "lucide-react"
 
 import { EmptyState, RuntimeChip, StatusPill } from "@/components/product-ui"
+import { useRealtimeSubscription } from "@/components/realtime-provider"
 import { EvidenceSurface, InkframeObjectSurface, ObjectToggleField, ReviewStamp, TaskMaterialSurface } from "@/components/inkframe-object-ui"
 import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
 import { Textarea } from "@/components/ui/form"
 import { Button } from "@/components/ui/button"
-import { apiGet, apiHeaders, apiPatch, apiPost,  formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
+import { apiGet, apiPatch, apiPost, formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
+import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { AGENT_DRAG_MIME, parseAgentDragPayload, type AgentDragPayload } from "@/lib/drag-data"
-import { applyHighWater, connectRealtimeEvents, type HighWater } from "@/lib/realtime-events"
+import { TASK_DATA_INVALIDATED_EVENT } from "@/lib/realtime-owner"
 
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
 const TASK_BOARD_DND_CONTEXT_ID = "smallkhoj-task-board"
@@ -515,7 +517,6 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
 function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionToken?: string | null }) {
   const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [loadingTaskId, setLoadingTaskId] = useState(taskId)
-  const highWaterRef = useRef(new Map<string, HighWater>())
 
   const refreshMemory = useCallback(async () => {
     const data = await apiGet<{ entries: MemoryEntry[] }>(
@@ -544,27 +545,12 @@ function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionTok
     }
   }, [taskId, sessionToken])
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const stop = connectRealtimeEvents({
-      headers: apiHeaders(sessionToken),
-      signal: controller.signal,
-      scope: { kind: "task", id: taskId },
-      onEvent: (event) => {
-        if (!event.type.startsWith("memory.")) return
-        const decision = applyHighWater(highWaterRef.current, event)
-        if (decision.action === "drop") return
-        void refreshMemory()
-      },
-      onStatus: (status) => {
-        if (status.state === "error") console.warn("[realtime] task memory stream error", status.error)
-      },
-    })
-    return () => {
-      stop()
-      controller.abort()
-    }
-  }, [refreshMemory, sessionToken, taskId])
+  useRealtimeSubscription(({ event }) => {
+    if (!event.type.startsWith("memory.")) return
+    const payloadTaskId = typeof event.payload.taskId === "string" ? event.payload.taskId : null
+    if (event.scope.id !== taskId && payloadTaskId !== taskId) return
+    void refreshMemory()
+  })
 
   const loading = loadingTaskId === taskId
 
@@ -674,6 +660,13 @@ export type TaskBoardProps = {
   /** Optional override: clicking a card navigates (e.g. to ?task=) instead of
       toggling local selection. When provided, handleSelect calls this. */
   onSelectTask?: (task: Task) => void
+  /** Filters to reapply when realtime task invalidation refetches preloaded data. */
+  taskFilters?: {
+    channel?: string
+    creator?: string
+    assignee?: string
+    status?: string
+  }
 }
 
 export function TaskBoard({
@@ -688,6 +681,7 @@ export function TaskBoard({
   initialSelectedTaskId,
   onTaskMoved,
   onSelectTask,
+  taskFilters,
 }: TaskBoardProps) {
   const [view, setView] = useState<"board" | "list">(initialView)
   const [tasks, setTasks] = useState<Task[]>(preloadedTasks ?? [])
@@ -700,58 +694,47 @@ export function TaskBoard({
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [overStatus, setOverStatus] = useState<string | null>(null)
   const [recentlyUpdatedTaskId, setRecentlyUpdatedTaskId] = useState<string | null>(null)
-  const highWaterRef = useRef(new Map<string, HighWater>())
+  const taskRefreshTimerRef = useRef<number | null>(null)
 
   const refreshTasks = useCallback(async () => {
-    if (preloadedTasks) return
     setLoading(true)
-    const data = await apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] })
-    let filtered = data.tasks || []
-    if (channelName) {
-      filtered = filtered.filter((t) => t.channel === channelName)
-    }
+    const fetchedTasks = await fetchAllTaskPages<Task>((path) => (
+      apiGet<TaskCursorPage<Task>>(path, { tasks: [], nextCursor: null })
+    ))
+    const filtered = fetchedTasks.filter((task) => {
+      if (channelName && task.channel !== channelName) return false
+      if (taskFilters?.channel && task.channel !== taskFilters.channel) return false
+      if (taskFilters?.creator && task.creator !== taskFilters.creator) return false
+      if (taskFilters?.assignee && task.assignee !== taskFilters.assignee) return false
+      if (taskFilters?.status && task.status !== taskFilters.status) return false
+      return true
+    })
     setTasks(filtered)
     setLoading(false)
-  }, [preloadedTasks, channelName])
+  }, [channelName, taskFilters])
 
   useEffect(() => {
+    if (preloadedTasks) return
     const timer = window.setTimeout(() => {
       void refreshTasks()
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [refreshTasks])
+  }, [preloadedTasks, refreshTasks])
 
   useEffect(() => {
-    if (preloadedTasks) return
-    const controller = new AbortController()
-    let refreshTimer: number | null = null
     const scheduleRefresh = () => {
-      if (refreshTimer) window.clearTimeout(refreshTimer)
-      refreshTimer = window.setTimeout(() => {
+      if (taskRefreshTimerRef.current) window.clearTimeout(taskRefreshTimerRef.current)
+      taskRefreshTimerRef.current = window.setTimeout(() => {
         void refreshTasks()
-        refreshTimer = null
+        taskRefreshTimerRef.current = null
       }, 150)
     }
-    const stop = connectRealtimeEvents({
-      headers: apiHeaders(),
-      signal: controller.signal,
-      scope: { kind: "task" },
-      onEvent: (event) => {
-        if (event.type !== "task.created" && event.type !== "task.updated" && !event.type.startsWith("memory.")) return
-        const decision = applyHighWater(highWaterRef.current, event)
-        if (decision.action === "drop") return
-        scheduleRefresh()
-      },
-      onStatus: (status) => {
-        if (status.state === "error") console.warn("[realtime] task stream error", status.error)
-      },
-    })
+    window.addEventListener(TASK_DATA_INVALIDATED_EVENT, scheduleRefresh)
     return () => {
-      stop()
-      controller.abort()
-      if (refreshTimer) window.clearTimeout(refreshTimer)
+      window.removeEventListener(TASK_DATA_INVALIDATED_EVENT, scheduleRefresh)
+      if (taskRefreshTimerRef.current) window.clearTimeout(taskRefreshTimerRef.current)
     }
-  }, [preloadedTasks, refreshTasks])
+  }, [refreshTasks])
 
   // Load activity when task selected
   useEffect(() => {

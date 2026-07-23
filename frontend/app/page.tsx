@@ -26,6 +26,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { API_BASE, apiGet, formatTime, type Computer, type Member } from "@/lib/control-plane"
+import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
@@ -93,7 +94,10 @@ async function getMembers(sessionToken?: string | null, activeServerId?: string 
 }
 
 async function getTasks(sessionToken?: string | null, activeServerId?: string | null) {
-  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }, sessionToken, activeServerId)
+  const tasks = await fetchAllTaskPages<Task>((path) => (
+    apiGet<TaskCursorPage<Task>>(path, { tasks: [], nextCursor: null }, sessionToken, activeServerId)
+  ))
+  return { tasks }
 }
 
 async function getComputers(sessionToken?: string | null, activeServerId?: string | null) {

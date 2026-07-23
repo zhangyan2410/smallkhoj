@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 import {
@@ -76,6 +77,21 @@ test("local development public API key fallback is explicit", () => {
     resolvePublicApiKey({ NEXT_PUBLIC_DEPLOYMENT_ENV: "local-dev" }),
     "sk_public_local",
   )
+})
+
+test("control plane statically reads public environment variables for Next client inlining", async () => {
+  const source = await readFile(new URL("../lib/control-plane.ts", import.meta.url), "utf8")
+  const websocketSource = await readFile(new URL("../hooks/use-websocket.ts", import.meta.url), "utf8")
+  const productCreateSource = await readFile(new URL("../components/product-create-panel.tsx", import.meta.url), "utf8")
+
+  assert.doesNotMatch(source, /resolve(?:PublicApiBase|PublicApiKey)\(process\.env/)
+  assert.match(source, /NEXT_PUBLIC_API_BASE_URL:\s*process\.env\.NEXT_PUBLIC_API_BASE_URL/)
+  assert.match(source, /NEXT_PUBLIC_WS_BASE_URL:\s*process\.env\.NEXT_PUBLIC_WS_BASE_URL/)
+  assert.match(source, /NEXT_PUBLIC_API_KEY:\s*process\.env\.NEXT_PUBLIC_API_KEY/)
+  assert.match(source, /NEXT_PUBLIC_DEPLOYMENT_ENV:\s*process\.env\.NEXT_PUBLIC_DEPLOYMENT_ENV/)
+  assert.match(source, /INTERNAL_API_BASE_URL:\s*process\.env\.INTERNAL_API_BASE_URL/)
+  assert.match(websocketSource, /resolveChatWebSocketUrl\(PUBLIC_RUNTIME_ENV\)/)
+  assert.match(productCreateSource, /resolvePublicApiBase\(PUBLIC_RUNTIME_ENV\)/)
 })
 
 test("chat websocket keeps credentials in subprotocols and out of URL", () => {

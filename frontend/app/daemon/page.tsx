@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { StatusPill } from "@/components/product-ui"
 import { API_BASE, dotClass, statusLabel } from "@/lib/control-plane"
+import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
 type Channel = {
@@ -241,12 +242,14 @@ async function updateMemberAction(formData: FormData) {
 }
 
 async function getDashboardData(): Promise<DashboardData> {
-  const [channelsData, membersData, computersData, tasksData, activityData, filesData, remindersData] =
+  const [channelsData, membersData, computersData, tasks, activityData, filesData, remindersData] =
     await Promise.all([
       apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] }),
       apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }),
       apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] }),
-      apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }),
+      fetchAllTaskPages<Task>((path) => (
+        apiGet<TaskCursorPage<Task>>(path, { tasks: [], nextCursor: null })
+      )),
       apiGet<{ activity: ActivityItem[] }>("/api/v1/activity?limit=25&compact=true", { activity: [] }),
       apiGet<{ files: FileItem[] }>("/api/v1/files?limit=12", { files: [] }),
       apiGet<{ reminders: Reminder[] }>("/api/v1/reminders?limit=12", { reminders: [] }),
@@ -275,7 +278,7 @@ async function getDashboardData(): Promise<DashboardData> {
     channels: channelsData.channels,
     members: membersData.members,
     computers: computersData.computers,
-    tasks: tasksData.tasks,
+    tasks,
     activity: activityData.activity.filter((item) => !item.type.startsWith("runtime_")),
     files: filesData.files,
     reminders: remindersData.reminders,
@@ -283,7 +286,7 @@ async function getDashboardData(): Promise<DashboardData> {
     backendOnline:
       channelsData.channels.length > 0 ||
       computersData.computers.length > 0 ||
-      tasksData.tasks.length > 0 ||
+      tasks.length > 0 ||
       activityData.activity.length > 0,
   }
 }
