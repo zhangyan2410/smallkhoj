@@ -1,16 +1,16 @@
-from types import SimpleNamespace
-from pathlib import Path
 import uuid
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from routers import public_api
 import models.seed as seed
 from models import Base, Channel, ChannelMember
 from models.slock import ChatThreadReadCursor
+from routers import public_api
 from services.chat_read_cursors import (
-    read_state_from_message_seq,
     mark_channel_read,
+    read_state_from_message_seq,
     serialize_channel_read_cursor,
     serialize_thread_read_cursor,
     upsert_thread_read_cursor,

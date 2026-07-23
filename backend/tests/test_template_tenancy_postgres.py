@@ -1,14 +1,13 @@
 import os
-from pathlib import Path
 import subprocess
 import sys
 import uuid
+from pathlib import Path
 
 import asyncpg
 import pytest
 
 from tests.postgres_test_support import disposable_postgres, run_alembic
-
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 PRE_TEMPLATE_TENANCY_REVISION = "0003_messages_seq_auto"

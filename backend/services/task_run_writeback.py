@@ -1,8 +1,9 @@
 """TaskRun terminal-state external write-back hooks."""
 
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from sqlalchemy import select
 
@@ -15,7 +16,6 @@ from services.integration_gateway import (
 from services.jira_rest import JIRA_CREDENTIALS_MISSING, JiraRestError
 from services.release_loop import ReleaseLoopError, write_back_task_run_to_jira
 from services.task_runs import TERMINAL_TASK_RUN_STATUSES
-
 
 TASK_RUN_WRITEBACK_NON_TERMINAL = "TASK_RUN_WRITEBACK_NON_TERMINAL"
 TASK_RUN_WRITEBACK_ALREADY_WRITTEN = "TASK_RUN_WRITEBACK_ALREADY_WRITTEN"

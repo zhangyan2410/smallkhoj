@@ -1,8 +1,8 @@
 import base64
-from datetime import datetime, timedelta, timezone
 import json
-from urllib.parse import quote
 import uuid
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 import httpx
 import pytest

@@ -1,16 +1,16 @@
 import asyncio
 import json
-from pathlib import Path
 import sys
 import uuid
+from pathlib import Path
 
 import asyncpg
 import pytest
+from postgres_test_support import disposable_postgres
 from pydantic import ValidationError
 
 import services.public_events as public_events
 from config import Settings
-from postgres_test_support import disposable_postgres
 
 
 async def _eventually(predicate, *, timeout=0.5):

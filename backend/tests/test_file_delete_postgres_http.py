@@ -6,6 +6,7 @@ import uuid
 
 import httpx
 import pytest
+from postgres_test_support import disposable_postgres, run_alembic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -22,7 +23,6 @@ from models import (
     Server,
     ServerMembership,
 )
-from postgres_test_support import disposable_postgres, run_alembic
 from routers import public_api
 
 

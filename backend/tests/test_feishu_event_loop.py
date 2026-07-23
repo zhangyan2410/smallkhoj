@@ -1,6 +1,6 @@
-from types import SimpleNamespace
 import inspect
 import uuid
+from types import SimpleNamespace
 
 import pytest
 

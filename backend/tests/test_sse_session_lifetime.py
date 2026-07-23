@@ -1,13 +1,13 @@
 import asyncio
-from types import SimpleNamespace
 import uuid
+from types import SimpleNamespace
 
 import pytest
+from postgres_test_support import disposable_postgres
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from main import app
-from postgres_test_support import disposable_postgres
 from routers import agent_api, public_api
 
 

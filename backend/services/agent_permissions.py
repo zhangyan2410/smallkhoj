@@ -1,6 +1,5 @@
 from collections.abc import Mapping
 
-
 AGENT_PERMISSION_CAPABILITIES = frozenset(
     {
         "sendMessage",

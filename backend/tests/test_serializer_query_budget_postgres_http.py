@@ -32,7 +32,6 @@ from routers.serialization_prefetch import (
 )
 from tests.postgres_test_support import disposable_postgres, run_alembic
 
-
 # These ceilings include the authenticated active-Server/agent resolution
 # queries, not only the endpoint body. They are intentionally just above the
 # measured fixed costs so a future per-row regression remains visible.

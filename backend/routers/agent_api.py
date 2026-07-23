@@ -13,8 +13,17 @@ from pathlib import Path
 from typing import cast
 
 from fastapi import (
-    APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile,
-    WebSocket, WebSocketDisconnect,
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
 )
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -24,9 +33,25 @@ from sqlalchemy.orm import noload
 
 from config import settings
 from models import (
-    async_session, get_db, ActivityLog, AgentWorkspace, ApiKey, Channel, ChannelMember, Computer,
-    ConnectTicket, EventRecord, FileEntry, Member, Message, MessageReaction,
-    Reminder, Server, Task, TaskRun, ThreadSummary,
+    ActivityLog,
+    AgentWorkspace,
+    ApiKey,
+    Channel,
+    ChannelMember,
+    Computer,
+    ConnectTicket,
+    EventRecord,
+    FileEntry,
+    Member,
+    Message,
+    MessageReaction,
+    Reminder,
+    Server,
+    Task,
+    TaskRun,
+    ThreadSummary,
+    async_session,
+    get_db,
 )
 from routers.auth import resolve_agent, resolve_machine
 from routers.serialization_prefetch import (
@@ -36,6 +61,10 @@ from routers.serialization_prefetch import (
     load_message_serialization_context,
     load_task_serialization_context,
 )
+from services.agent_permissions import (
+    AGENT_PERMISSION_CAPABILITIES,
+    agent_permissions_for_creation,
+)
 from services.daemon_control import (
     PENDING_RUNTIME_START_STATUS,
     daemon_control_hub,
@@ -44,15 +73,17 @@ from services.daemon_control import (
     pending_runtime_commands,
     push_latest_events_for_server,
 )
-from services.latency_trace import LatencyTrace, trace_id_from_request
-from services.pagination import (
-    PaginationCursorError,
-    decode_task_cursor,
-    decode_thread_cursor,
-    encode_task_cursor,
-    encode_thread_cursor,
+from services.feishu_reply_orchestration import (
+    send_task_run_feishu_terminal_reply,
+    serialize_feishu_reply_orchestration_outcome,
 )
-from services.memory_store import build_memory_context_manifest
+from services.integration_runtime import (
+    build_feishu_reply_dependencies,
+    build_task_run_writeback_dependencies,
+    close_feishu_reply_dependencies,
+    close_task_run_writeback_dependencies,
+)
+from services.latency_trace import LatencyTrace, trace_id_from_request
 from services.memory_api import (
     create_memory_proposal,
     delete_memory_entry,
@@ -65,24 +96,18 @@ from services.memory_api import (
     search_memory,
     serialize_memory_entry,
     serialize_memory_proposal,
-    write_task_memory_summary,
     write_memory_entry,
+    write_task_memory_summary,
 )
-from services.integration_runtime import (
-    build_feishu_reply_dependencies,
-    build_task_run_writeback_dependencies,
-    close_feishu_reply_dependencies,
-    close_task_run_writeback_dependencies,
-)
-from services.agent_permissions import (
-    AGENT_PERMISSION_CAPABILITIES,
-    agent_permissions_for_creation,
+from services.memory_store import build_memory_context_manifest
+from services.pagination import (
+    PaginationCursorError,
+    decode_task_cursor,
+    decode_thread_cursor,
+    encode_task_cursor,
+    encode_thread_cursor,
 )
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
-from services.feishu_reply_orchestration import (
-    send_task_run_feishu_terminal_reply,
-    serialize_feishu_reply_orchestration_outcome,
-)
 from services.task_run_writeback import handle_terminal_task_run_writeback, serialize_task_run_writeback_outcome
 from services.task_runs import (
     TERMINAL_TASK_RUN_STATUSES,

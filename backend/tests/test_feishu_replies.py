@@ -10,8 +10,8 @@ from services.feishu_replies import (
     FEISHU_REPLY_CREDENTIALS_MISSING,
     FEISHU_REPLY_RESPONSE_MISSING_MESSAGE_ID,
     FEISHU_REPLY_TEXT_MISSING,
-    FeishuReplyError,
     FeishuReplyConfig,
+    FeishuReplyError,
     send_feishu_text_reply,
 )
 

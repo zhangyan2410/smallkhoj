@@ -9,9 +9,8 @@ from dataclasses import dataclass
 
 import asyncpg
 
-from models import Base
 import models.slock  # noqa: F401 - register the complete schema metadata
-
+from models import Base
 
 BASELINE_REVISION = "77b8b147f689"
 

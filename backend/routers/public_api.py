@@ -14,8 +14,7 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import quote, urlsplit
 
-from fastapi import HTTPException
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import and_, delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -24,9 +23,28 @@ from sqlalchemy.orm import noload
 
 from config import settings
 from models import (
-    get_db, Account, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
-    ChatThreadReadCursor, Computer, ConnectTicket, Member, Message, MessageReaction, EventRecord, FileEntry, Reminder, SavedItem,
-    Server, ServerMembership, Task, TaskRun, ThreadSummary,
+    Account,
+    ActivityLog,
+    AgentWorkspace,
+    ApiKey,
+    Channel,
+    ChannelMember,
+    ChatThreadReadCursor,
+    Computer,
+    ConnectTicket,
+    EventRecord,
+    FileEntry,
+    Member,
+    Message,
+    MessageReaction,
+    Reminder,
+    SavedItem,
+    Server,
+    ServerMembership,
+    Task,
+    TaskRun,
+    ThreadSummary,
+    get_db,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
 from routers.serialization_prefetch import (
@@ -38,44 +56,60 @@ from routers.serialization_prefetch import (
     load_task_serialization_context,
 )
 from services.agent_permissions import agent_permissions_for_creation
+from services.chat_read_cursors import (
+    mark_channel_read,
+    read_state_from_message_seq,
+    serialize_channel_read_cursor,
+    serialize_thread_read_cursor,
+    upsert_thread_read_cursor,
+)
 from services.daemon_control import (
-    clear_workspace_reference,
-    mark_runtime_provider_unavailable,
     PENDING_RUNTIME_START_STATUS,
     RUNTIME_ACTIVE_STATUSES,
+    clear_workspace_reference,
     daemon_control_hub,
+    mark_runtime_provider_unavailable,
     push_latest_events_for_server,
+    runtime_control_command,
     runtime_provider_available,
     runtime_provider_available_for,
     runtime_provider_unavailable_message,
     runtime_provider_unavailable_message_for,
-    runtime_control_command,
     runtime_start_command,
 )
 from services.latency_trace import LatencyTrace, trace_id_from_request
-from services.pagination import (
-    PaginationCursorError,
-    decode_task_cursor,
-    encode_task_cursor,
-)
 from services.memory_api import (
     create_memory_proposal,
     delete_memory_entry,
     get_memory_entry,
     list_memory_entries,
     list_memory_proposals,
-    resolve_memory_scope,
     resolve_memory_proposal,
+    resolve_memory_scope,
     search_memory,
     serialize_memory_entry,
     serialize_memory_proposal,
     write_memory_entry,
+)
+from services.pagination import (
+    PaginationCursorError,
+    decode_task_cursor,
+    encode_task_cursor,
 )
 from services.public_events import (
     public_event_heartbeat_frame,
     public_event_hub,
     public_event_sse_frame,
     should_deliver_public_event,
+)
+from services.server_invites import (
+    accept_server_invite as accept_server_invite_record,
+)
+from services.server_invites import (
+    create_server_invite as create_server_invite_record,
+)
+from services.server_invites import (
+    inspect_server_invite,
 )
 from services.server_membership import (
     create_server_for_account,
@@ -88,11 +122,6 @@ from services.server_membership import (
     require_admin_role,
     resolve_active_server_context,
 )
-from services.server_invites import (
-    accept_server_invite as accept_server_invite_record,
-    create_server_invite as create_server_invite_record,
-    inspect_server_invite,
-)
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.task_run_templates import (
     create_template,
@@ -100,17 +129,12 @@ from services.task_run_templates import (
     get_template_by_ref,
     list_templates,
     serialize_task_run_template,
-    template_snapshot as task_run_template_snapshot,
     update_template,
 )
-from services.task_runs import create_task_assignment_and_run, serialize_task_run
-from services.chat_read_cursors import (
-    mark_channel_read,
-    read_state_from_message_seq,
-    serialize_channel_read_cursor,
-    serialize_thread_read_cursor,
-    upsert_thread_read_cursor,
+from services.task_run_templates import (
+    template_snapshot as task_run_template_snapshot,
 )
+from services.task_runs import create_task_assignment_and_run, serialize_task_run
 from services.thread_summary import (
     load_thread_metadata,
     resolve_thread_root,

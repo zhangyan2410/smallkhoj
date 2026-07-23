@@ -9,9 +9,18 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from main import app
-from models import Account, Base, Channel, ChannelMember, ChatThreadReadCursor, Member, Message, Server, ServerMembership
+from models import (
+    Account,
+    Base,
+    Channel,
+    ChannelMember,
+    ChatThreadReadCursor,
+    Member,
+    Message,
+    Server,
+    ServerMembership,
+)
 from routers import public_api
-
 
 TEST_DATABASE_URL = os.environ.get(
     "SMALLKHOJ_TEST_DATABASE_URL",

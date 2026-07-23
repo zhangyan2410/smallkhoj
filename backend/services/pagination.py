@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
 import json
 import uuid
+from datetime import datetime
 from typing import Any
-
 
 CURSOR_VERSION = 1
 MAX_CURSOR_LENGTH = 4096

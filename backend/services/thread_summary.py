@@ -12,11 +12,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
-    async_session, Channel, ChannelMember, Computer, EventRecord, Member, Message,
+    Channel,
+    ChannelMember,
+    Computer,
+    EventRecord,
+    Member,
+    Message,
     ThreadSummary,
+    async_session,
 )
 from services.daemon_control import push_latest_events_for_server
-
 
 SUMMARY_MAX_CHARS = 300
 SUMMARY_REQUEST_INTERVAL_SECONDS = 600

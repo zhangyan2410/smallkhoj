@@ -1,18 +1,18 @@
 import base64
 import inspect
 import os
-from pathlib import Path
 import subprocess
 import sys
-from types import SimpleNamespace
 import uuid
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, WebSocketDisconnect
 from pydantic import ValidationError
 
-from config import Settings
 import models.seed as seed
+from config import Settings
 from models import Account, Member, ServerMembership
 from routers import agent_api, chat, public_api
 

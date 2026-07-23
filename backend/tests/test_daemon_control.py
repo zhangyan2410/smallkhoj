@@ -1,9 +1,9 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-import uuid
 
-from fastapi import HTTPException
 import pytest
+from fastapi import HTTPException
 
 import routers.agent_api as agent_api
 import routers.public_api as public_api
@@ -16,8 +16,8 @@ from routers.agent_api import (
 )
 from routers.public_api import compact_activity_feed
 from services.daemon_control import (
-    clear_workspace_reference,
     DaemonControlHub,
+    clear_workspace_reference,
     initial_daemon_event_cursor,
     mark_missing_runtimes_pending_start,
     parse_positive_event_cursor,

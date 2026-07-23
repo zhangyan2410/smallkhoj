@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import uuid
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Channel, ChannelMember, EventRecord, MemoryEntry, MemoryProposal, Member, Message, Server, Task
+from models import Channel, ChannelMember, EventRecord, Member, MemoryEntry, MemoryProposal, Message, Server, Task
 from services.memory_store import (
     MemoryConflict,
     MemoryScope,

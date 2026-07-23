@@ -8,7 +8,6 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import text
 
-
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 

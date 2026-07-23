@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import AgentWorkspace, Channel, ChannelMember, Computer, EventRecord, Member, Message, Task
 from services.public_events import publish_latest_public_events
 
-
 PENDING_RUNTIME_START_STATUS = "pending_start"
 RUNTIME_CONFIGURATION_FAILED_STATUS = "failed"
 RUNTIME_ACTIVE_STATUSES = {"running", "active", "idle"}

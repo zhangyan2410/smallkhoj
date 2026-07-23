@@ -1,9 +1,9 @@
 import asyncio
-from datetime import datetime, timezone
-from types import SimpleNamespace
 import json
 import sys
 import uuid
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 

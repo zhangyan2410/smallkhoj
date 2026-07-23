@@ -8,13 +8,14 @@ SSE subscribers.
 from __future__ import annotations
 
 import asyncio
-from collections import OrderedDict
-from contextlib import asynccontextmanager
 import json
 import logging
 import re
 import uuid
-from typing import Any, AsyncIterator
+from collections import OrderedDict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,7 +109,7 @@ public_event_hub = PublicEventHub()
 class PublicEventSubscription:
     def __init__(
         self,
-        hub: "InMemoryPublicEventHub",
+        hub: InMemoryPublicEventHub,
         *,
         scope_kind: str | None,
         scope_id: str | None,

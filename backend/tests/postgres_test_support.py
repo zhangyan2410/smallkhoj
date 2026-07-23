@@ -21,7 +21,6 @@ from urllib.parse import SplitResult, urlsplit, urlunsplit
 import asyncpg
 import pytest
 
-
 ADMIN_URL_ENV = "SMALLKHOJ_MIGRATION_TEST_ADMIN_URL"
 DATABASE_URL_ENV = "SMALLKHOJ_MIGRATION_TEST_DATABASE_URL"
 _SAFE_DATABASE_MARKERS = ("test", "audit", "remediation", "disposable")

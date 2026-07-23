@@ -7,7 +7,6 @@ from pathlib import Path
 
 from models import seed
 
-
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 PROJECT_DIR = BACKEND_DIR.parent
 

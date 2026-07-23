@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Channel, EventRecord, Member, Server, Task
 
-
 OUTPUT_DIRECTION_LABELS = {
     "final_summary": "final summary",
     "evidence": "evidence",

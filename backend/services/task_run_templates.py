@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import TaskRunTemplate
 from services.task_runs import DEFAULT_TASK_RUN_TEMPLATE_SNAPSHOT
 
-
 TEMPLATE_STATUSES = {"active", "disabled"}
 TEMPLATE_VISIBILITIES = {"builtin", "server", "user"}
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,118}[a-z0-9]$")

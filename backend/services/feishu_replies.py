@@ -9,7 +9,6 @@ from urllib.parse import quote
 from models import ExternalMapping
 from services.integration_gateway import create_external_mapping
 
-
 FEISHU_REPLY_CONFIG_MISSING_BASE_URL = "FEISHU_REPLY_CONFIG_MISSING_BASE_URL"
 FEISHU_REPLY_CREDENTIALS_MISSING = "FEISHU_REPLY_CREDENTIALS_MISSING"
 FEISHU_REPLY_CHAT_MISSING = "FEISHU_REPLY_CHAT_MISSING"

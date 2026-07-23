@@ -8,12 +8,11 @@ from datetime import datetime, timezone
 
 import asyncpg
 import pytest
+from postgres_test_support import disposable_postgres, run_alembic
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from postgres_test_support import disposable_postgres, run_alembic
 from scripts.legacy_schema_preflight import inspect_legacy_schema
 from services.schema_readiness import SchemaReadinessError, assert_schema_at_head
-
 
 BASELINE_REVISION = "77b8b147f689"
 IDENTITY_REVISION = "0002_messages_seq"

@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import AgentWorkspace, Member, Task, TaskAssignment, TaskRun
 
-
 RUN_READY_WORKSPACE_STATUSES = {"running", "active", "idle", "busy"}
 TASK_RUN_STATUSES = {"queued", "dispatched", "running", "awaiting_input", "completed", "failed", "cancelled"}
 TERMINAL_TASK_RUN_STATUSES = {"completed", "failed", "cancelled"}

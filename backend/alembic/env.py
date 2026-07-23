@@ -12,11 +12,10 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import models.slock  # noqa: F401 — register all tables on Base.metadata
 from alembic import context
-
 from config import settings
 from models import Base
-import models.slock  # noqa: F401 — register all tables on Base.metadata
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

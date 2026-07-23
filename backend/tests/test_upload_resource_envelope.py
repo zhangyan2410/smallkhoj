@@ -19,7 +19,6 @@ from routers import agent_api, public_api
 from services import upload_storage
 from tests.postgres_test_support import disposable_postgres, run_alembic
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 

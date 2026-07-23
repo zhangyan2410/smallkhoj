@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import ExternalConnector, ExternalEvent, ExternalMapping, ExternalRoute, ExternalSession
 
-
 SENSITIVE_KEY_PARTS = ("token", "secret", "password", "credential", "authorization")
 EXTERNAL_ROUTE_NOT_FOUND = "EXTERNAL_ROUTE_NOT_FOUND"
 EXTERNAL_ROUTE_DISABLED = "EXTERNAL_ROUTE_DISABLED"
