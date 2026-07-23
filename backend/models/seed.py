@@ -5,12 +5,10 @@ Schema (tables, indexes, constraints, extensions) is managed by Alembic — run
 this automatically before uvicorn starts). See ``docs/migration-workflow.md``.
 
 This module is intentionally NOT a schema source. The only things it does at startup:
-  1. ``Base.metadata.create_all`` — a defensive no-op on tables Alembic already
-     created; harmless fallback if a deploy somehow skips the migration step.
-  2. Seed builtin ``task_run_templates`` rows (data, not schema).
-  3. Backfill ``server_memberships`` owner rows for legacy accounts created
+  1. Seed builtin ``task_run_templates`` rows (data, not schema).
+  2. Backfill ``server_memberships`` owner rows for legacy accounts created
      before the membership table existed (one-time data repair).
-  4. Backfill ``members.computer_id`` / ``members.backend`` from the legacy
+  3. Backfill ``members.computer_id`` / ``members.backend`` from the legacy
      ``config`` JSON column (one-time data repair).
 
 Never add table/index DDL here — that is Alembic's job. Add a new
@@ -22,22 +20,17 @@ import json
 
 from sqlalchemy import text
 
-from models import Base, engine
+from models import engine
 
 
 async def create_tables():
-    """Runtime data seeding only. Schema is owned by Alembic.
+    """Run idempotent runtime data seeds; the legacy name is retained for callers.
 
     Kept here (and kept in ``main.py:lifespan``) so that builtin templates and
-    legacy-account backfills run on every boot. Schema creation lives in
-    ``alembic upgrade head``; ``Base.metadata.create_all`` below is a defensive
-    fallback that no-ops on tables Alembic already created.
+    legacy-account backfills run on every boot. Schema creation and upgrades live
+    exclusively in ``alembic upgrade head`` and must succeed before app startup.
     """
     async with engine.begin() as conn:
-        # Defensive fallback: ensure tables exist even if the deploy forgot to run
-        # `alembic upgrade head`. On a correctly-migrated DB this is a no-op.
-        await conn.run_sync(Base.metadata.create_all)
-
         # ── Data seeding: server_memberships owner bootstrap ────────────────
         # Legacy accounts (created before server_memberships existed) get an
         # 'owner' membership for their server, unless an owner/admin already

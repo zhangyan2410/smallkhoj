@@ -5,7 +5,7 @@ import contextlib
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import ActivityLog, Channel, EventRecord, Message, Reminder, async_session
@@ -36,11 +36,6 @@ def _reminder_message_content(reminder: Reminder) -> str:
     if reminder.description:
         return f"Reminder: {reminder.title}\n\n{reminder.description}"
     return f"Reminder: {reminder.title}"
-
-
-async def _next_message_seq(db: AsyncSession) -> int:
-    result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
-    return int(result.scalar() or 0) + 1
 
 
 async def fire_due_reminders(db: AsyncSession, limit: int = 50) -> int:
@@ -84,7 +79,6 @@ async def fire_due_reminders(db: AsyncSession, limit: int = 50) -> int:
                     parent_id=reminder.message_id,
                     content=_reminder_message_content(reminder),
                     channel_type="thread" if reminder.message_id else channel.kind,
-                    seq=await _next_message_seq(db),
                 )
                 db.add(message)
                 await db.flush()

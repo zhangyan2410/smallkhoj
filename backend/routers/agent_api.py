@@ -1834,10 +1834,6 @@ async def send_message(
             thread_target_short_id = root.short_id
 
     with trace.time("backend.agent_send.db_flush"):
-        # Get next seq (global)
-        seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
-        last_seq = seq_result.scalar() or 0
-
         # Generate short_id
         short_id = uuid.uuid4().hex[:8]
 
@@ -1849,7 +1845,6 @@ async def send_message(
             content=body.content,
             channel_type="thread" if parent_id else channel.kind,
             mentions=await _parse_mentions(db, server, body.content),
-            seq=last_seq + 1,
         )
         db.add(msg)
         await db.flush()

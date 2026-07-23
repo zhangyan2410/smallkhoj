@@ -8,8 +8,11 @@ from datetime import datetime, timezone
 
 import asyncpg
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from postgres_test_support import disposable_postgres, run_alembic
+from scripts.legacy_schema_preflight import inspect_legacy_schema
+from services.schema_readiness import SchemaReadinessError, assert_schema_at_head
 
 
 BASELINE_REVISION = "77b8b147f689"
@@ -106,6 +109,74 @@ async def test_fresh_database_upgrades_to_head():
 
 
 @pytest.mark.asyncio
+async def test_schema_readiness_rejects_missing_and_behind_revisions_then_accepts_head():
+    async with disposable_postgres() as postgres:
+        engine = create_async_engine(postgres.database_url)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with sessions() as db:
+                with pytest.raises(SchemaReadinessError, match="alembic upgrade head"):
+                    await assert_schema_at_head(db)
+
+            run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
+            async with sessions() as db:
+                with pytest.raises(SchemaReadinessError, match="alembic upgrade head"):
+                    await assert_schema_at_head(db)
+
+            run_alembic(postgres.database_url, "upgrade", "head")
+            async with sessions() as db:
+                await assert_schema_at_head(db)
+        finally:
+            await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_compatible_legacy_database_preflights_then_stamps_baseline_only():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            await connection.execute("DROP TABLE alembic_version")
+        finally:
+            await connection.close()
+
+        report = await inspect_legacy_schema(postgres.database_url)
+        assert report.compatible, report.issues
+        assert report.issues == ()
+
+        run_alembic(postgres.database_url, "stamp", BASELINE_REVISION)
+        run_alembic(postgres.database_url, "upgrade", "head")
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            revision = await connection.fetchval("SELECT version_num FROM alembic_version")
+            assert revision == "0003_messages_seq_auto"
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_preflight_rejects_schema_drift_without_writing_revision_state():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            await connection.execute("DROP TABLE alembic_version")
+            await connection.execute("DROP TABLE saved_items")
+        finally:
+            await connection.close()
+
+        report = await inspect_legacy_schema(postgres.database_url)
+        assert not report.compatible
+        assert any("saved_items" in issue for issue in report.issues)
+
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            assert await connection.fetchval("SELECT to_regclass('public.alembic_version')") is None
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
 async def test_identity_migration_starts_above_historical_message_seq():
     async with disposable_postgres() as postgres:
         run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
@@ -149,6 +220,8 @@ async def test_head_reconciles_explicit_transition_writes_before_automatic_only_
         try:
             generated = await _insert_message(connection, channel_id, member_id, seq=None)
             assert generated > 100
+            with pytest.raises(asyncpg.GeneratedAlwaysError):
+                await _insert_message(connection, channel_id, member_id, seq=101)
         finally:
             await connection.close()
 
@@ -172,4 +245,3 @@ async def test_head_allocates_unique_message_seq_under_concurrency():
 
         generated = await asyncio.gather(*(insert_one() for _ in range(20)))
         assert len(generated) == len(set(generated)) == 20
-

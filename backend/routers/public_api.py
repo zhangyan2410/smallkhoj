@@ -1984,7 +1984,6 @@ async def create_channel_message(
             thread_target_short_id = root.short_id
 
     with trace.time("backend.public_message.db_flush"):
-        seq_result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
         msg = Message(
             short_id=uuid.uuid4().hex[:8],
             channel_id=channel.id,
@@ -1993,7 +1992,6 @@ async def create_channel_message(
             content=content,
             channel_type="thread" if parent_id else channel.kind,
             mentions=await _parse_mentions(db, server, content),
-            seq=int(seq_result.scalar() or 0) + 1,
         )
         db.add(msg)
         await db.flush()
