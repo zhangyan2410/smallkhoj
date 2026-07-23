@@ -27,11 +27,11 @@ import { FieldLabel, Select, Textarea } from "@/components/ui/form"
 import { TaskListPanel } from "@/components/task-list-panel"
 import { TaskMaterialStateProvider, TaskRouteDetailMaterialFrame } from "@/components/task-material-state"
 import { TaskFormDialogs } from "@/components/task-form-dialogs"
-import { API_BASE, apiGet, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
+import TaskDndBoardLazy from "@/components/task-dnd-board-lazy"
+import { API_BASE, apiGet, apiGetCritical, dotClass, formatTime, statusLabel, type Member, type MemoryEntry, type TaskRunTemplate } from "@/lib/control-plane"
 import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 
-import { TaskDndBoard } from "@/components/task-dnd-board"
 import { TaskDetailDialog } from "@/components/task-detail-dialog"
 
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
@@ -198,21 +198,21 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
 async function getTasks(sessionToken?: string | null, activeServerId?: string | null) {
   const tasks = await fetchAllTaskPages<Task>((path) => (
-    apiGet<TaskCursorPage<Task>>(path, { tasks: [], nextCursor: null }, sessionToken, activeServerId)
+    apiGetCritical<TaskCursorPage<Task>>(path, sessionToken, activeServerId)
   ))
   return { tasks }
 }
 
 async function getChannels(sessionToken?: string | null, activeServerId?: string | null) {
-  return apiGet<{ channels: Channel[] }>("/api/v1/channels", { channels: [] }, sessionToken, activeServerId)
+  return apiGetCritical<{ channels: Channel[] }>("/api/v1/channels", sessionToken, activeServerId)
 }
 
 async function getMembers(sessionToken?: string | null, activeServerId?: string | null) {
-  return apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }, sessionToken, activeServerId)
+  return apiGetCritical<{ members: Member[] }>("/api/v1/members", sessionToken, activeServerId)
 }
 
 async function getTaskRunTemplates(sessionToken?: string | null, activeServerId?: string | null) {
-  return apiGet<{ templates: TaskRunTemplate[] }>("/api/v1/task-run-templates", { templates: [] }, sessionToken, activeServerId)
+  return apiGetCritical<{ templates: TaskRunTemplate[] }>("/api/v1/task-run-templates", sessionToken, activeServerId)
 }
 
 async function getTaskActivity(taskId: string, sessionToken?: string | null, activeServerId?: string | null) {
@@ -848,7 +848,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
         </form>
         </InkframeObjectSurface>
 
-        <TaskDndBoard
+        <TaskDndBoardLazy
           tasks={visibleTasks}
           filters={filterRecord}
           view={view}

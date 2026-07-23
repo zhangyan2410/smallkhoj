@@ -13,7 +13,12 @@
     "manageComputers": "Manage computers",
     "loading": "Loading…",
     "search": "Search",
-    "searchPlaceholder": "Search messages, files, tasks, members…"
+    "searchPlaceholder": "Search messages, files, tasks, members…",
+    "routeLoading": "Loading workspace…",
+    "taskBoardLoading": "Loading task board…",
+    "routeError": "Something went wrong.",
+    "routeErrorDesc": "This view could not load. Check your connection and try again.",
+    "tryAgain": "Try again"
   },
   "nav": {
     "chat": "Chat",

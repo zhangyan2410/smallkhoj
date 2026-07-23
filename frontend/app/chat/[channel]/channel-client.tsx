@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import {
@@ -32,11 +33,9 @@ import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { EmptyState, RuntimeChip } from "@/components/product-ui"
-import { MarkdownMessage } from "@/components/markdown-message"
 import { useRealtimeSubscription } from "@/components/realtime-provider"
 import { AgentActivityList } from "@/components/agent-activity-list"
 import { AttachmentSheet, AvatarObject, ChannelDivider, ChatComposerSurface, ChatTaskToggle, EventBadge, MemberNameTag, MessageToolStrip } from "@/components/inkframe-object-ui"
-import { TaskBoard } from "@/components/task-board"
 import { ChannelMemorySurface, MemoryProposalQueue } from "@/components/memory-entry-surface"
 import { INKFRAME_DESK_PAPER_TINT, MaterialSurface, type MaterialPointerMode, type MaterialSurfaceMode } from "@/components/inkframe/material-surface"
 import type { MaterialResource } from "@/components/inkframe/material-resource"
@@ -60,6 +59,25 @@ import {
 import { chatReadCursorRequestForThread, hasUnreadThreadActivity, markChatUnreadScope } from "@/lib/chat-unread-state"
 import { channelMemberAddPayload } from "@/lib/channel-members"
 import { memberForMessageSender } from "@/lib/member-avatar"
+
+function LazyWidgetLoading() {
+  const t = useTranslations("common")
+  return (
+    <span role="status" aria-live="polite" className="text-sm text-muted-foreground">
+      {t("loading")}
+    </span>
+  )
+}
+
+const MarkdownMessage = dynamic(
+  () => import("@/components/markdown-message").then((module) => ({ default: module.MarkdownMessage })),
+  { ssr: false, loading: () => <LazyWidgetLoading /> },
+)
+
+const TaskBoard = dynamic(
+  () => import("@/components/task-board").then((module) => ({ default: module.TaskBoard })),
+  { ssr: false, loading: () => <LazyWidgetLoading /> },
+)
 
 type ChannelInfo = {
   id: string

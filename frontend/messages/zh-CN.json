@@ -13,7 +13,12 @@
     "manageComputers": "管理电脑",
     "loading": "加载中…",
     "search": "搜索",
-    "searchPlaceholder": "搜索消息、文件、任务、成员…"
+    "searchPlaceholder": "搜索消息、文件、任务、成员…",
+    "routeLoading": "正在加载工作台…",
+    "taskBoardLoading": "正在加载任务板…",
+    "routeError": "无法加载此页面。",
+    "routeErrorDesc": "请检查网络连接后重试。",
+    "tryAgain": "重试"
   },
   "nav": {
     "chat": "聊天",

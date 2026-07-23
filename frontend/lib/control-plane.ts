@@ -271,6 +271,59 @@ export async function apiGet<T>(path: string, fallback: T, sessionToken?: string
   }
 }
 
+export async function apiGetCritical<T>(
+  path: string,
+  sessionToken?: string | null,
+  activeServerId?: string | null,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<T> {
+  const timeoutMs = options.timeoutMs ?? 15_000
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("Critical GET timeout must be a positive finite number")
+  }
+
+  const controller = new AbortController()
+  let abortSource: "caller" | "timeout" | null = null
+  const abortFromCaller = () => {
+    if (abortSource) return
+    abortSource = "caller"
+    controller.abort(options.signal?.reason)
+  }
+
+  if (options.signal?.aborted) {
+    abortFromCaller()
+  } else {
+    options.signal?.addEventListener("abort", abortFromCaller, { once: true })
+  }
+
+  const timeout = setTimeout(() => {
+    if (abortSource) return
+    abortSource = "timeout"
+    controller.abort(new DOMException("Request timed out", "TimeoutError"))
+  }, timeoutMs)
+
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      cache: "no-store",
+      headers: apiHeaders(sessionToken, false, activeServerId),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(apiErrorMessage(error, `HTTP ${response.status}`))
+    }
+    return response.json()
+  } catch (error) {
+    if (abortSource === "timeout") {
+      throw new Error(`Request timed out after ${timeoutMs}ms`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+    options.signal?.removeEventListener("abort", abortFromCaller)
+  }
+}
+
 export async function apiPost<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
