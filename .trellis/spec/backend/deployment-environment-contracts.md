@@ -94,6 +94,7 @@ Current Caddy route signatures:
 - Secrets and provider credentials must live outside the repository, usually in the server-side env file used by `docker compose --env-file`.
 - The deployed public-client credential has one operator input, `PUBLIC_API_KEY`. Backend runtime reads it directly; frontend production builds receive it only through `--secret id=public_api_key,env=PUBLIC_API_KEY`; Compose bridges it to `NEXT_PUBLIC_API_KEY` for the frontend container. Do not put it in build args, CLI plan JSON, URLs, logs, screenshots, or error details.
 - `NEXT_PUBLIC_*` values are compiled into the browser bundle. Rotating `PUBLIC_API_KEY` therefore requires rebuilding the frontend image and restarting backend/frontend with the same value; changing only container runtime env leaves an old browser bundle.
+- Client-reachable modules must adapt environment values through explicit static property reads such as `process.env.NEXT_PUBLIC_API_KEY`. Passing the complete `process.env` object to a resolver is not supported: Next.js does not guarantee dynamic property discovery/inlining in client chunks. Keep public and server adapters separate so `INTERNAL_API_BASE_URL` is never added to the public adapter.
 - The public-client credential is browser-visible after compilation and is not an account/session identity. HTTP and SSE use `X-Public-Key`; chat WebSocket uses the requested `smallkhoj.public-key.<base64url>` subprotocol and negotiates only `smallkhoj.chat.v1`. Better Auth sessions, the server-to-server auth bridge secret, and agent/machine tokens remain separate principals and transports.
 - The current mainland China cloud instance can be used for IP-only HTTP smoke tests. A custom public domain on a mainland instance requires ICP readiness before normal public release.
 
@@ -114,6 +115,7 @@ Current Caddy route signatures:
 | Login/signup on `localhost:3000` shows `Invalid auth bridge secret` | Backend and frontend have mismatched `AUTH_BRIDGE_SECRET` values. |
 | `NEXT_PUBLIC_API_BASE_URL` points at localhost in a production image | Production image is invalid; rebuild with same-origin empty value or the real public host. |
 | Production frontend build has no `PUBLIC_API_KEY` BuildKit secret | Build fails before emitting an image and does not echo a credential. |
+| Browser throws the production public-key error even though the Next process has local/public env | Inspect the client adapter for dynamic `process.env` passing; restore explicit `process.env.NEXT_PUBLIC_*` reads without weakening fail-closed validation. |
 | Production frontend build is given `NEXT_PUBLIC_API_KEY` only as a build arg | Invalid production invocation; build args are accepted only for explicit `local-dev`. |
 | Chat WebSocket URL contains `api_key` or another reusable credential | Authentication contract violation; reject the URL path and use the reviewed subprotocol transport. |
 | Computer UI shows separate install and connect commands | Product bug; show only the single npx onboarding command. |
@@ -138,6 +140,7 @@ Current Caddy route signatures:
 For deployment/proxy/auth changes:
 
 - Run frontend lint and build with the required Better Auth env values.
+- Run the runtime URL contract test that rejects dynamic `resolve*(process.env)` client calls and requires explicit public env property reads; a successful `next build` alone is not browser-runtime proof.
 - Run `scripts/post_deploy_smoke.py` against the actual target base URL.
 - Run `scripts/initial_release_foundation_gate.py` for release-level gates.
 - Verify `/api/health`, `/docs`, `/login`, and daemon WebSocket routing on the chosen environment.

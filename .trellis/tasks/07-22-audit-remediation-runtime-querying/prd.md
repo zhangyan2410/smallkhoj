@@ -110,21 +110,33 @@ Out of scope:
 
 ## Acceptance criteria
 
-- [ ] 50/100-row fixtures stay inside documented constant query budgets and canonical
+- [x] 50/100-row fixtures stay inside documented constant query budgets and canonical
       JSON snapshots remain unchanged.
-- [ ] No serializer ambiguously uses `None` for supplied and absent prefetch state.
-- [ ] Oversized/interrupted uploads leave zero rows and zero partial durable files;
+- [x] No serializer ambiguously uses `None` for supplied and absent prefetch state.
+- [x] Oversized/interrupted uploads leave zero rows and zero partial durable files;
       proxy/parser/app limits are documented separately.
-- [ ] NOTIFY tests prove recovery, no duplicate listener, bounded shutdown and a valid
+- [x] NOTIFY tests prove recovery, no duplicate listener, bounded shutdown and a valid
       per-worker connection budget.
-- [ ] ASGI tests prove public and agent SSE release DB sessions before the open stream
+- [x] ASGI tests prove public and agent SSE release DB sessions before the open stream
       finishes and clean subscriptions after disconnect.
-- [ ] Cross-channel tasks and reply-bearing threads traverse all eligible rows once.
-- [ ] Frontend tests prove every required page consumes `nextCursor` or exposes an
+- [x] Cross-channel tasks and reply-bearing threads traverse all eligible rows once.
+- [x] Frontend tests prove every required page consumes `nextCursor` or exposes an
       honest load-more contract.
-- [ ] One page/server scope opens one SSE connection and applies each event once with
+- [x] One page/server scope opens one SSE connection and applies each event once with
       targeted invalidation.
-- [ ] Focused and full backend/frontend gates pass; `git diff --check` is clean.
+- [x] Focused and full backend/frontend gates pass; `git diff --check` is clean.
+
+## Acceptance evidence
+
+| Contract | Final evidence |
+| --- | --- |
+| Serializer budgets and shape | Real PostgreSQL/ASGI request counters stay constant at 50/100 rows; explicit missing-prefetch tests execute no fallback SQL; the backend full suite is `421 passed`. |
+| Upload envelope | All three routes cover exact/over limit, interruption, cancellation and persistence failure; the real migrated PostgreSQL case leaves one intended row/blob and no `.uploading` residue; the tracked Caddy topology separately proves ingress 413. |
+| NOTIFY ownership | The disposable PostgreSQL test terminates live listener and publisher connections, observes replacement PIDs and exactly-once delivery, and leaves zero named owner connections after bounded double stop. |
+| SSE lifetime | Controlled ASGI/HTTP finalization plus `pool_size=1,max_overflow=0` proves public and agent request sessions return before an open stream completes. |
+| Pagination | Real PostgreSQL tests cover ties, deletion, insertion, scope/filter/version rejection and complete duplicate-free traversal; `./twd` shows items 000, 199 and 204 from a 205-item collection. |
+| Browser realtime | One established browser-to-backend SSE socket remains stable while `REAL_REALTIME_OWNER_20260723` appears once; task-board data invalidates without claiming every server-rendered summary is client-live. |
+| Full gates | Backend `421 passed in 37.52s`; Ruff clean; frontend `164 passed`, lint and TypeScript clean; production build generated 13 static pages; deployment tests `16 passed`; compose config and `git diff --check` pass. |
 
 ## Dependencies and stop conditions
 

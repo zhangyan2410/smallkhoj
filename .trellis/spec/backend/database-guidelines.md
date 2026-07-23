@@ -1851,6 +1851,136 @@ Allocate optimistically, catch only the task-number unique constraint, rollback,
 
 ---
 
+## Scenario: Bounded Serialization and Stable Task/Thread Cursors
+
+### 1. Scope / Trigger
+- Trigger: changing list/search/history serializers, task/thread ordering, cursor fields, endpoint filters, or a frontend consumer that assumes a complete collection.
+
+### 2. Signatures
+- Prefetch sentinel: `routers.serialization_prefetch.UNSET`.
+- Page contexts: `MessageSerializationContext`, `TaskSerializationContext`, `MemberSerializationContext`.
+- Task order: `(task_number ASC, channel_id ASC, id ASC)`.
+- Thread order: `(created_at DESC, id DESC)` after SQL qualification that the root has replies.
+- Cursor codec: base64url JSON, `v=1`, bound to `endpoint`, `serverId`, normalized filters, and the complete position tuple.
+- Task limits: `limit` defaults to 50 and is constrained to `1..200`; responses add `nextCursor`.
+
+### 3. Contracts
+- List work may grow by page count, not returned row count. Relationship/workspace/reaction/reply-count/TaskRun data is loaded once per page and serializers project from immutable maps.
+- `UNSET` means no context was supplied. A supplied map miss or explicit `None` is authoritative and must not trigger fallback SQL.
+- Public and agent response keys/null/defaults remain unchanged except for the additive pagination envelope field.
+- SQL `ORDER BY`, cursor position fields, and seek predicates use the same tuple/directions. `id` is the final unique tie-breaker.
+- `task_number` is channel-scoped and must never be the only server-wide cursor field.
+- Thread roots are joined/qualified against replies before seek/order/limit; Python filtering after limit is forbidden.
+- Cursor endpoint, Server, filter, version, type, timezone, UUID, and length mismatches all return the same non-disclosing `400 {"detail":"Invalid pagination cursor"}`.
+- Seek cursors are row-position tokens: deleting the boundary row does not invalidate continuation. Inserts before the boundary do not flow into later pages.
+
+### 4. Validation & Error Matrix
+- Missing/invalid cursor JSON/base64/type/version -> `400 Invalid pagination cursor`.
+- Cursor from another endpoint or Server -> the same 400; disclose no foreign scope details.
+- Cursor reused with a different status/channel filter -> the same 400.
+- Task tie across channels -> order by channel UUID then task UUID; return each task once.
+- Equal thread timestamp -> order/seek by message UUID descending.
+- No eligible reply-bearing roots -> empty page with `nextCursor: null`.
+
+### 5. Good/Base/Bad Cases
+- Good: 50-row and 100-row request statement counts remain equal or under their named constant ceiling while canonical JSON snapshots match.
+- Good: delete the boundary task/thread between pages and traverse every remaining eligible row once.
+- Base: serializer is called outside a list with `_context=UNSET`; its documented single-row fallback may query relations.
+- Bad: using `None` for both “not prefetched” and “known missing,” or `limit * 3` followed by Python reply filtering.
+- Bad: cursor contains only `task_number` or `created_at`, or frontend stops after the first 50/200 rows.
+
+### 6. Tests Required
+- Real PostgreSQL/ASGI whole-request counters at representative 50/100 rows for public and agent messages/search/history/tasks/members.
+- Exact canonical snapshots for empty, missing relation, reactions, TaskRuns, and nested Member shapes.
+- A no-SQL session assertion for a supplied missing prefetch value.
+- PostgreSQL task/thread traversal with ties, deletion, insertion before boundary, full duplicate-free traversal, filter mismatch, version mismatch, foreign Server, and cross-channel cursor reuse.
+- Frontend tests must prove every required consumer follows `nextCursor` with repeated-cursor and page-bound guards.
+
+### 7. Wrong vs Correct
+#### Wrong
+```python
+for task in tasks:
+    await db.execute(select(Channel).where(Channel.id == task.channel_id))
+cursor = {"taskNumber": task.task_number}
+```
+
+#### Correct
+```python
+context = await load_task_serialization_context(db, tasks)
+items = [await serialize(db, task, _context=context) for task in tasks]
+cursor = encode_task_cursor(task_number=last.task_number,
+                            position_channel_id=last.channel_id,
+                            task_id=last.id, ...)
+```
+
+## Scenario: Upload Resource Envelope and Compensation
+
+### 1. Scope / Trigger
+- Trigger: public file, agent attachment, or avatar multipart ingestion; upload limits; Caddy body limits; local durable storage; or FileEntry transaction changes.
+
+### 2. Signatures
+- Entrypoints: `POST /api/v1/files`, `POST /internal/agent-api/upload`, `POST /internal/agent-api/profile/avatar`.
+- Shared service: `services.upload_storage.stage_upload`, `StagedUpload.promote/cleanup`, `rollback_and_cleanup_upload`, `close_upload`.
+- Env: `UPLOAD_MAX_BYTES`, `UPLOAD_READ_CHUNK_BYTES`, `UPLOAD_CLEANUP_TIMEOUT_SECONDS`, and Caddy `SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX`.
+- Default application cap/read chunk: 50 MiB / 64 KiB.
+
+### 3. Contracts
+- Caddy request-body rejection, Starlette multipart spooling, application reads/staging, and final durable storage are separate resource boundaries and must be reported separately.
+- Every route uses the same application cap unless a reviewed product-specific lower cap is explicit.
+- The application reads at most one configured chunk at a time into a same-directory hidden `.uploading` staging file. It does not accumulate the complete body in a byte array.
+- Exact-limit input is accepted; one byte over returns stable 413. Content-Length is not trusted as the sole guard.
+- The durable blob is exposed with atomic same-filesystem `os.replace` only after validation and database flush. Commit success is the only committed terminal state.
+- Read/write/fsync/flush/promote/commit failure and cancellation roll back within a bounded wait and remove staging/final residue. Every path closes the parser-owned `UploadFile`.
+- Do not claim that application chunking rejects network ingress before Starlette has parsed/spooled multipart data.
+
+### 4. Validation & Error Matrix
+- Empty public file/avatar/attachment -> stable 400 detail for that route; no row/blob.
+- Body exceeds application cap -> 413; close handle; no row/staging/final file.
+- Invalid channel/message/mime metadata -> 4xx before durable commit; upload handle still closes.
+- Interrupted read or cancellation -> re-raise the original exception after cleanup.
+- Local write/fsync/promote failure -> rollback/cleanup; no committed row.
+- Database flush/commit failure after promotion -> rollback and unlink promoted blob.
+- Caddy body cap exceeded -> proxy 413 before backend; distinguish this evidence from application 413.
+
+### 5. Good/Base/Bad Cases
+- Good: migrated PostgreSQL accepts one exact-limit multipart file and rejects the next, leaving one FileEntry, one durable blob, and zero `.uploading` files.
+- Good: forced commit failure for all three routes leaves zero rows and zero blobs.
+- Base: Starlette spools a large multipart part to temporary disk before route code applies the 50 MiB application cap; docs state both boundaries.
+- Bad: `content = await file.read()`, `chunks.append` plus `b''.join(chunks)`, or direct writes to the final served path.
+- Bad: commit a FileEntry then attempt best-effort storage without compensating missing/partial files.
+
+### 6. Tests Required
+- Each route: exact limit, one byte over, multi-chunk input, misleading/missing content length, empty input, invalid metadata, interrupted read, cancellation, write/fsync failure, DB flush/commit failure, and handle close.
+- Filesystem assertions: no hidden staging or promoted residue on every non-commit terminal path.
+- Real migrated PostgreSQL/ASGI success and 413 cases with row/blob counts.
+- Exact tracked Caddy image/config probe: below ingress cap reaches backend; above cap returns 413 at Caddy.
+
+### 7. Wrong vs Correct
+#### Wrong
+```python
+content = await upload.read()
+path.write_bytes(content)
+db.add(FileEntry(storage_path=str(path)))
+await db.commit()
+```
+
+#### Correct
+```python
+staged = await stage_upload(upload, final_path=path, max_bytes=limit, ...)
+try:
+    db.add(FileEntry(size=staged.size, storage_path=str(path), ...))
+    await db.flush()
+    staged.promote()
+    await db.commit()
+except BaseException:
+    await rollback_and_cleanup_upload(db, staged)
+    raise
+finally:
+    await close_upload(upload)
+```
+
+---
+
 ## Naming Conventions
 
 <!-- Table names, column names, index names -->

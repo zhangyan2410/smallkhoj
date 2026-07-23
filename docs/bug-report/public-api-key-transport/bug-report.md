@@ -21,6 +21,19 @@
 - **Repair direction:** Introduce a canonical backend setting with an explicit local-dev exception, make production preflight fail closed, accept HTTP headers only, authenticate WebSocket through a reviewed non-URL channel, and update all clients/deployment docs together.
 - **Verification:** Tests must prove both acceptance of the approved channel and absence/rejection of URL credentials. A static constant assertion or warning is insufficient.
 
+## Browser runtime environment regression capsule
+
+| Field | Content |
+|---|---|
+| **1. Symptom** | The real `/tasks` page renders the Next global error boundary with `NEXT_PUBLIC_API_KEY must be configured with a non-development value for production builds`, even though the frontend process was started with `NODE_ENV=development`, `NEXT_PUBLIC_DEPLOYMENT_ENV=local-dev`, and `NEXT_PUBLIC_API_KEY=sk_public_local`. Expected: the guarded local-development page loads with the configured public credential while production remains fail-closed. |
+| **2. Evidence** | Dedicated runtime: frontend `127.0.0.1:3000`, PID `44990`, started `2026-07-23 15:46:56 +08:00`, worktree HEAD `397db8c`. `./twd` reached the authenticated `/tasks` tab and a React error-fiber inspection returned the exact `resolvePublicApiKey` exception. `frontend/lib/control-plane.ts` passed the complete `process.env` object to all runtime URL/key resolvers instead of reading `NEXT_PUBLIC_*` properties explicitly. |
+| **3. Confirmed root cause** | Next.js only guarantees client-bundle substitution for statically referenced `process.env.NEXT_PUBLIC_*` properties. Passing the dynamic `process.env` object prevents those public values from being inlined into the browser chunk, so the resolver sees an empty/production-like environment and correctly triggers its fail-closed branch. The credential policy is correct; its client environment adapter is not. |
+| **4. Diagnostic strategy** | Preserve the fail-closed resolver unchanged. Add a source-level bundler-boundary contract requiring explicit `process.env.NEXT_PUBLIC_*` reads, then split public and server runtime environment adapters so `INTERNAL_API_BASE_URL` does not enter the browser adapter. Re-run focused tests and verify the rebuilt real page through `./twd`. |
+| **5. Timeout strategy** | If explicit property reads do not restore the browser page in one implementation cycle, inspect the emitted client chunk for substituted values and stop before weakening credential validation or adding a browser fallback. |
+| **6. Warning strategy** | Any fix that accepts a missing production key, embeds `INTERNAL_API_BASE_URL` in the public adapter, or restores a reusable credential in a URL is invalid. A second runtime failure returns the investigation to emitted-bundle evidence rather than accumulating compatibility branches. |
+| **7. User-visible correction** | Authenticated local-development pages load normally; production builds and startup still reject missing or repository-known development credentials. |
+| **8. Acceptance** | RED: the control-plane bundler-boundary test fails while resolvers receive `process.env` dynamically. GREEN: focused frontend tests, TypeScript, ESLint, and guarded `./twd` evidence show `/tasks` outside the global error boundary with the expected API connectivity. |
+
 ## Candidate patch disposition
 
 - `91a8189`: reuse the settings indirection concept; reject its repository-known production default and warning-only startup behavior.
@@ -88,3 +101,30 @@ correct_key=accepted selected=smallkhoj.chat.v1
 Backend startup ran all revisions through `0004_template_tenancy`. Its handshake
 logs contained only `/api/chat/ws`, denial status, and accepted/closed state; neither
 the requested credential protocol nor the credential value was logged.
+
+### Browser runtime environment adapter RED/GREEN
+
+The real Next dev page reproduced the adapter regression at `/tasks` even with
+the expected local env. The source contract then failed for the intended reason:
+
+```text
+13 passed, 1 failed
+failure: resolvePublicApiBase(process.env, ...) / resolvePublicApiKey(process.env)
+```
+
+`control-plane.ts` now constructs an explicit `PUBLIC_RUNTIME_ENV` using static
+`process.env.NEXT_PUBLIC_*` property reads and a separate server adapter for
+`INTERNAL_API_BASE_URL`. Chat WebSocket and computer-connect public URL
+resolution reuse the public adapter. Production validation remains fail-closed.
+
+```text
+runtime URL focused tests: 14 passed
+frontend full suite: 164 passed
+lint + TypeScript: passed
+production Next build: 13 static pages, exit 0
+```
+
+Guarded `./twd` reopened tab `1617512415` at
+`http://127.0.0.1:3000/tasks`; the page rendered the task workspace with no
+global error or credential exception. A production-like non-default key runtime
+then rendered the same page and the 205-item pagination proof.
