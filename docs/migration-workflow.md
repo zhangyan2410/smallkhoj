@@ -17,6 +17,15 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000
 应用也会只读检查 `alembic_version`：revision 缺失、落后或不是当前唯一 head 时
 会拒绝启动，并提示执行迁移；应用生命周期不会用 `create_all` 补表。
 
+当前 revision 链为：
+
+```text
+77b8b147f689 (baseline)
+  -> 0002_messages_seq
+  -> 0003_messages_seq_auto
+  -> 0004_template_tenancy (head)
+```
+
 ## 接管 Alembic 之前创建的旧数据库
 
 旧库不能直接运行 baseline，也绝不能执行 `alembic stamp head`。前者会和已有
@@ -44,6 +53,13 @@ stamp 的对象只能是 baseline revision `77b8b147f689`。指纹报告缺表�
 缺索引、缺约束、已有 Alembic 状态或 `messages.seq` 已是 identity 时必须停止，
 先调查漂移，不能强行 stamp。
 
+指纹实现以 `0001` baseline 为比较目标，而不是把当前 ORM metadata 直接当作旧库
+指纹。每次 head 增加新列、索引或约束时，都要在
+`backend/scripts/legacy_schema_preflight.py` 的 post-baseline 排除集合中登记；反之，
+baseline 独有、后续 migration 会删除的对象仍必须在旧库中存在。例如
+`uq_task_run_templates_slug` 是 baseline 接管前置条件，不能因为当前 ORM 已改为
+partial indexes 就从指纹检查中消失。
+
 ## 日常 schema 变更
 
 1. 先修改 `backend/models/slock.py`。
@@ -56,6 +72,40 @@ stamp 的对象只能是 baseline revision `77b8b147f689`。指纹报告缺表�
 已经进入 `main` 或共享环境的 revision 不得原地改写；用新的 revision 修正。
 破坏性 DDL 应设置合理的 `lock_timeout`，在无应用写入窗口执行，并准备针对
 该 revision 的恢复步骤。
+
+## `TaskRunTemplate` 租户迁移契约
+
+`0004_template_tenancy` 将模板分成两种终态：
+
+- 仓库内置模板：`visibility='builtin'`、`server_id IS NULL`，只允许受信任的
+  seed/migration 代码管理；
+- 人工模板：`visibility IN ('server', 'user')`、`server_id IS NOT NULL`，由
+  `created_by` 对应 Member 的 `server_id` 回填。
+
+迁移只把以下两条固定 identity 识别为可证明的 builtin：
+
+```text
+11111111-1111-4111-8111-111111111111 / general-task-runner
+22222222-2222-4222-8222-222222222222 / research-analyst
+```
+
+如果旧库存在其他 builtin，或 `server/user` 模板的 `created_by` 为空、已失效、
+无法关联 Member，migration 会抛出：
+
+```text
+ambiguous legacy task_run_templates rows require explicit operator classification
+```
+
+这是 STOP 条件，不是可忽略告警。事务必须整体回滚：不写
+`alembic_version`、不留下 `server_id` 列或部分索引。操作员应先备份，列出每条
+歧义记录，根据业务来源明确修正为受信 builtin 或绑定到正确 Server/Member，
+复核后再重跑 `alembic upgrade head`。禁止直接 `stamp head`，也禁止为了过迁移
+而随意猜测租户或删除记录。
+
+终态索引/约束为：builtin slug 全局唯一、人工模板 `(server_id, slug)` 租户内
+唯一、`ck_task_run_templates_tenant_scope` 保证 visibility 与 `server_id` 一致。
+真实分类、失败回滚和 catalog 证明位于
+`backend/tests/test_template_tenancy_postgres.py`。
 
 ## `messages.seq` 迁移契约
 

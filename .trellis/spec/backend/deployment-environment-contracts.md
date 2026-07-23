@@ -57,6 +57,7 @@ Current Caddy route signatures:
 - `cloud-prod` is the current user/product acceptance surface until a formal domain and HTTPS endpoint replace the IP-only URL.
 - `dev.sh` is a convenience script for `local-dev` only. It must not be used as release evidence, but it must keep local auth env coherent so browser signup/login works during development.
 - `dev.sh` must start backend and frontend with the same `AUTH_BRIDGE_SECRET`. The backend rejects Better Auth bridge calls with `503 Auth bridge secret is not configured` when the backend secret is missing, and with `401 Invalid auth bridge secret` when the frontend-provided secret does not match.
+- `dev.sh` derives the backend `PUBLIC_API_KEY` and frontend `NEXT_PUBLIC_API_KEY` from one local-dev source: `${PUBLIC_API_KEY:-sk_public_local}`. A separate `NEXT_PUBLIC_API_KEY` override is not supported by the script.
 - `dev.sh` frontend startup must set local Better Auth env:
   - `BETTER_AUTH_SECRET`
   - `BETTER_AUTH_URL`
@@ -68,7 +69,8 @@ Current Caddy route signatures:
   - `NEXT_PUBLIC_WS_BASE_URL=`
 - Production frontend env must include:
   - `INTERNAL_API_BASE_URL=http://backend:8000`
-  - `NEXT_PUBLIC_API_KEY=sk_public_local` or the deployed public key
+  - `NEXT_PUBLIC_DEPLOYMENT_ENV=production`
+  - `NEXT_PUBLIC_API_KEY` bridged by Compose from the canonical deployment `PUBLIC_API_KEY`
   - `BETTER_AUTH_SECRET`
   - `BETTER_AUTH_URL`
   - `BETTER_AUTH_DATABASE_URL`
@@ -76,6 +78,7 @@ Current Caddy route signatures:
 - Frontend Docker builds must also provide build-time Better Auth placeholders before `bun run build`, because Next production build loads `/api/auth/[...all]` while collecting page data. These build-time values must not be real production secrets; real values are supplied by runtime compose env.
 - Production backend env must include:
   - `DATABASE_URL`
+  - `PUBLIC_API_KEY`; missing values and the known `sk_public_local` development value are startup errors when `DEBUG=false`
   - `AUTH_BRIDGE_SECRET`
   - `BACKEND_CORS_ORIGINS` when using a domain or split origin
   - `MINIMUM_DAEMON_VERSION` when daemon upgrade gating is enabled
@@ -89,6 +92,9 @@ Current Caddy route signatures:
   - `DAEMON_NPX_PACKAGE` may override the default hosted tgz URL for staging or npm-registry release, but the default must work without npm account/auth by serving the tgz from `/downloads/smallkhoj-daemon/`.
   - The daemon package name must match the npx executable convention: package `@smallkhoj/smallkhoj-daemon`, product bin `aura`, with `smallkhoj-daemon` retained as a compatibility alias.
 - Secrets and provider credentials must live outside the repository, usually in the server-side env file used by `docker compose --env-file`.
+- The deployed public-client credential has one operator input, `PUBLIC_API_KEY`. Backend runtime reads it directly; frontend production builds receive it only through `--secret id=public_api_key,env=PUBLIC_API_KEY`; Compose bridges it to `NEXT_PUBLIC_API_KEY` for the frontend container. Do not put it in build args, CLI plan JSON, URLs, logs, screenshots, or error details.
+- `NEXT_PUBLIC_*` values are compiled into the browser bundle. Rotating `PUBLIC_API_KEY` therefore requires rebuilding the frontend image and restarting backend/frontend with the same value; changing only container runtime env leaves an old browser bundle.
+- The public-client credential is browser-visible after compilation and is not an account/session identity. HTTP and SSE use `X-Public-Key`; chat WebSocket uses the requested `smallkhoj.public-key.<base64url>` subprotocol and negotiates only `smallkhoj.chat.v1`. Better Auth sessions, the server-to-server auth bridge secret, and agent/machine tokens remain separate principals and transports.
 - The current mainland China cloud instance can be used for IP-only HTTP smoke tests. A custom public domain on a mainland instance requires ICP readiness before normal public release.
 
 ### 4. Validation & Error Matrix
@@ -107,6 +113,9 @@ Current Caddy route signatures:
 | Login/signup on `localhost:3000` shows `Auth bridge secret is not configured` | Backend was started without `AUTH_BRIDGE_SECRET`; restart local-dev with coherent backend/frontend auth env. |
 | Login/signup on `localhost:3000` shows `Invalid auth bridge secret` | Backend and frontend have mismatched `AUTH_BRIDGE_SECRET` values. |
 | `NEXT_PUBLIC_API_BASE_URL` points at localhost in a production image | Production image is invalid; rebuild with same-origin empty value or the real public host. |
+| Production frontend build has no `PUBLIC_API_KEY` BuildKit secret | Build fails before emitting an image and does not echo a credential. |
+| Production frontend build is given `NEXT_PUBLIC_API_KEY` only as a build arg | Invalid production invocation; build args are accepted only for explicit `local-dev`. |
+| Chat WebSocket URL contains `api_key` or another reusable credential | Authentication contract violation; reject the URL path and use the reviewed subprotocol transport. |
 | Computer UI shows separate install and connect commands | Product bug; show only the single npx onboarding command. |
 | Generated daemon command starts with `smallkhoj-daemon connect` or a source-checkout path | Product bug; command is not production-installable. |
 | Default generated command points at `@smallkhoj/smallkhoj-daemon@latest` before npm publishing | Release blocker; leave `DAEMON_NPX_PACKAGE` empty so the command uses the self-hosted tgz URL. |
@@ -274,6 +283,7 @@ Default local archive path if not overridden:
 - Choose `--platform` from the actual server architecture. The current Lighthouse Docker image target has been validated as `linux/amd64` unless a new host probe says otherwise.
 - `--use-vpn-proxy` passes Docker build proxy args for `http://host.docker.internal:7897`.
 - Server env files and secrets are never baked into the image archive and never committed.
+- Before a real `production_image_transfer.py` build, export `PUBLIC_API_KEY` in the caller environment and place the same value in the server-side `.env.prod`. The frontend step uses `--secret id=public_api_key,env=PUBLIC_API_KEY`; dry-run/JSON command plans contain only that reference and never the value.
 - After loading images, the server compose env must reference the loaded `local-release` tags or explicit registry tags.
 - A successful upload/load is not enough. Always run post-deploy smoke against the public base URL.
 

@@ -77,6 +77,7 @@ LIMIT 5;
 - Fresh/known database: `cd backend && uv run alembic upgrade head`.
 - Read-only legacy fingerprint: `DATABASE_URL=<explicit-url> uv run python -m scripts.legacy_schema_preflight`.
 - Compatible legacy adoption: `uv run alembic stamp 77b8b147f689` followed by `uv run alembic upgrade head`.
+- Current chain: `77b8b147f689 -> 0002_messages_seq -> 0003_messages_seq_auto -> 0004_template_tenancy`.
 - Runtime guard: `services.schema_readiness.assert_schema_at_head(db)`.
 - Isolated migration test env: `SMALLKHOJ_MIGRATION_TEST_ADMIN_URL` and `SMALLKHOJ_MIGRATION_TEST_DATABASE_URL`.
 
@@ -84,22 +85,27 @@ LIMIT 5;
 - Docker/local-prod runs `alembic upgrade head` before uvicorn. Direct uvicorn performs a read-only exact-head check and refuses missing/behind/unknown revisions.
 - FastAPI lifespan and runtime seed code must not call `Base.metadata.create_all` or execute schema DDL.
 - Legacy fingerprint reads required tables, columns, indexes, constraints, version state and the historical `messages.seq` non-identity state. It never stamps automatically.
+- Legacy fingerprint compares with historical `0001`, not terminal `Base.metadata`. Each later revision must register its added columns/indexes/constraints in the preflight post-baseline exclusion sets, while baseline-only objects such as `uq_task_run_templates_slug` remain required before stamping.
 - The only valid legacy stamp target is baseline `77b8b147f689`; `stamp head` is forbidden.
 - `messages.seq` transitions through `0002_messages_seq` (`BY DEFAULT` plus atomic historical high-water alignment) and `0003_messages_seq_auto` (final alignment plus `ALWAYS`). Production writers omit `seq`.
+- `0004_template_tenancy` classifies repository-known builtins as `server_id NULL`, backfills `server/user` rows from a valid creator Member, replaces global slug uniqueness with builtin and `(server_id, slug)` partial unique indexes, and enforces `ck_task_run_templates_tenant_scope`.
 
 ### 4. Validation & Error Matrix
 - Missing `alembic_version` at app startup -> refuse startup and name the migration/preflight command.
 - Current revision differs from the checkout's unique head -> refuse startup; do not create missing objects.
 - Legacy fingerprint missing a required object or already containing identity/version state -> incompatible; make zero writes.
 - Migration lock/DDL/constraint failure -> deployment stops before uvicorn.
+- Ambiguous legacy template (unknown builtin or non-builtin without a valid creator Member) -> transactional `0004` failure; revision remains `0003`, `server_id` and partial indexes remain absent, and an operator must explicitly classify the row before retry.
 - Migration test URLs absent -> local optional suite may skip; the required release command supplies explicit isolated URLs and permits no skip.
 
 ### 5. Good/Base/Bad Cases
 - Good: empty disposable PostgreSQL -> actual revisions -> head -> application starts.
 - Good: compatible unversioned legacy schema -> read-only preflight -> operator-reviewed baseline stamp -> upgrade head.
+- Good: two Server-owned human templates use the same slug; a duplicate inside one Server fails.
 - Base: already-versioned database runs ordinary upgrade and exact-head readiness.
 - Bad: `Base.metadata.create_all` as startup fallback or migration proof.
 - Bad: `alembic stamp head`, automatic stamp on fingerprint failure, or destructive tests against a shared database.
+- Bad: silently hide, delete, or guess the Server for an ambiguous legacy template so migration can continue.
 
 ### 6. Tests Required
 - Execute actual revisions for empty-to-head, baseline-to-head and legacy-preflight/baseline-stamp/head paths.
@@ -108,6 +114,7 @@ LIMIT 5;
 - Seed an explicit transition value 100, apply final reconcile and assert the next implicit value is greater than 100.
 - Commit concurrent implicit inserts and assert uniqueness; test all production writers omit `seq`.
 - Assert startup seed source has no `create_all` or schema DDL.
+- Execute `0003 -> 0004` with defensible builtins/human rows, then assert classification, partial indexes, tenant checks and scoped uniqueness. Execute an ambiguous case and assert full DDL/revision rollback.
 
 ### 7. Wrong vs Correct
 #### Wrong
@@ -119,6 +126,11 @@ uvicorn startup -> create_all/handwritten ALTER -> stamp head -> schema appears 
 ```text
 deployment -> alembic upgrade head -> read-only exact-head guard -> data-only seed -> runtime
 legacy -> read-only fingerprint -> explicit baseline stamp -> upgrade head
+```
+
+```text
+wrong: ambiguous template -> stamp head / guess tenant
+correct: ambiguous template -> transactional STOP -> operator classification -> rerun 0004
 ```
 
 ## Scenario: Destructive Writes with Tombstone Audit and Local Blob Compensation
@@ -188,11 +200,15 @@ await publish_committed_events()
 - Service module: `services.server_membership`.
 - Active Server resolver: `resolve_active_server_context(db, account, requested_server_id=None)`.
 - Public API wrapper: `routers.public_api._resolve_active_server_context(db, request)`.
+- Actor resolver: `routers.public_api._resolve_human_actor(...) -> Member`.
+- Bootstrap owner serialization: PostgreSQL `pg_advisory_xact_lock(BOOTSTRAP_OWNER_LOCK_NAMESPACE, BOOTSTRAP_OWNER_LOCK_SCOPE)` held through commit/rollback.
 
 ### 3. Contracts
 - `Server` is the product-level team/workspace boundary. Do not introduce another workspace abstraction for the same scope.
 - Existing `Account.server_id` and `Account.member_id` remain as compatibility mirrors; new authorization must use `server_memberships`.
 - Human public API routes must resolve the active Server from the current account membership, not `select(Server).limit(1)`.
+- Actor input is normalized once inside the active Server. Omission, exact display, `@display`, and viewer UUID resolve to the same canonical Member UUID; authorization compares UUIDs and actor lookup never creates a Member.
+- Installation bootstrap registration takes the transaction-scoped advisory lock before checking for an active owner. One concurrent winner becomes owner and later successful registrations become members. Explicit creation of a new Server remains a separate per-Server owner rule.
 - `X-Server-Id` may select an active Server only when the current account has an active membership for that Server.
 - Owner/admin role is required for initial Computer/Agent administration paths.
 - Computer identity is currently Server-scoped. Daemon connect resolves or creates `Computer` by `server_id + machine_id`; the same physical `machine_id` under two Servers produces two `computers` rows.
@@ -208,16 +224,22 @@ await publish_committed_events()
 - Agent creation with a Computer from another Server -> `404`.
 - Same daemon `machine_id` connecting with tickets from two different Servers -> two Server-local `Computer` rows, not one global row.
 - Existing account without a membership after deployment migration -> startup backfill should create one.
+- Foreign actor alias/UUID -> `403`; ambiguous case-insensitive alias -> `400`; unknown/cross-Server reference -> non-disclosing `404`.
+- Concurrent first registrations -> both may succeed, but committed bootstrap scope contains exactly one owner. Rollback releases the lock and leaves no Account/Member/Membership orphan.
 
 ### 5. Good/Base/Bad Cases
 - Good: login creates or reuses an Account and ensures an active `server_memberships` row.
 - Good: channel message read/write resolves `context.server` and checks private channel membership before returning content.
 - Good: Agent creation verifies both owner/admin role and selected-Server Computer ownership.
 - Good: daemon connect reuses a Computer only inside the ConnectTicket's Server scope.
+- Good: every legal self alias resolves to the membership Member UUID before authorization.
+- Good: two independent first-signup transactions commit one owner and one member; rollback/retry can still produce the first owner.
 - Base: compatibility fields continue to point at the primary Server/member until the UI fully supports switching.
 - Bad: `server = await _get_server(db)` in an authenticated human route.
 - Bad: accepting `X-Server-Id` without checking `server_memberships`.
 - Bad: using `machine_id` alone to decide that a Computer belongs to the active Server.
+- Bad: authorize `actor`, `sender`, or `creator` by comparing raw text, or auto-create a Member from untrusted actor input.
+- Bad: choose owner with application `SELECT` then `INSERT` without a cross-process PostgreSQL serialization primitive.
 
 ### 6. Tests Required
 - Metadata test for `server_memberships` and `server_invites`.
@@ -226,6 +248,8 @@ await publish_committed_events()
 - Private channel access rejects non-members.
 - Computer/Agent scoping rejects cross-Server Computer binding.
 - Static or route-level test proving migrated human routes call active Server resolution instead of `_get_server()`.
+- Actor matrix covers omitted/display/handle/UUID self forms, every foreign form, ambiguity, unknown input and cross-Server UUID without creation side effects.
+- Real PostgreSQL tests use independent transactions, repeat the bootstrap race, inspect committed roles, and cover rollback/retry/no-orphan state.
 
 ### 7. Wrong vs Correct
 #### Wrong
@@ -236,6 +260,11 @@ human route -> _get_server() -> first Server -> query channels/messages/computer
 #### Correct
 ```text
 human route -> current account token -> server_memberships -> active Server context -> scoped query
+```
+
+```text
+wrong: raw actor string / stale owner read -> authorize or insert
+correct: scoped canonical Member UUID / pg advisory xact lock -> authorize or assign role
 ```
 
 ## Scenario: External Integration Gateway Foundation
@@ -1257,7 +1286,6 @@ POSTGRES_PASSWORD=<set-outside-repo>
   - `--proxy-url <url>`
   - `--next-public-api-base-url <url>`
   - `--next-public-ws-base-url <url>`
-  - `--next-public-api-key <public-key>`
   - `--dry-run`
   - `--json`
 
@@ -1268,8 +1296,9 @@ POSTGRES_PASSWORD=<set-outside-repo>
 - The CLI must save all three app images into one Docker archive, upload the archive to the remote directory, and run `docker load -i <remote-archive>`.
 - `--output-archive` is a local path and may point to `/Volumes/ORICO/...`; `--remote-dir` is a server path and should remain a normal host directory such as `/opt/smallkhoj`.
 - `--use-vpn-proxy` must add Docker build args for `HTTP_PROXY`, `HTTPS_PROXY`, `http_proxy`, and `https_proxy`, using `http://host.docker.internal:7897` by default because the proxy is reached from inside build containers.
-- Frontend builds must pass `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_WS_BASE_URL`, and `NEXT_PUBLIC_API_KEY` as build args; same-origin release mode keeps the first two empty by default.
-- The CLI must not read, upload, or print `.env.prod` or credential-shaped environment values.
+- Frontend builds pass `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_WS_BASE_URL` as build args; same-origin release mode keeps both empty by default. Production public-key material is never a build arg.
+- The caller must export `PUBLIC_API_KEY` in the process environment. The CLI passes only `--secret id=public_api_key,env=PUBLIC_API_KEY`; its command plan and JSON never contain the value or a `NEXT_PUBLIC_API_KEY=...` assignment.
+- The CLI must not read, upload, or print `.env.prod` or credential-shaped environment values. Missing `PUBLIC_API_KEY` is allowed in `--dry-run` planning but the real frontend Docker build fails closed because the BuildKit secret is absent.
 - After using this CLI, `.env.prod` must point `SMALLKHOJ_BACKEND_IMAGE`, `SMALLKHOJ_FRONTEND_IMAGE`, and `SMALLKHOJ_CADDY_IMAGE` at the loaded tags, and compose startup must avoid pulling those local tags.
 
 ### 4. Validation & Error Matrix

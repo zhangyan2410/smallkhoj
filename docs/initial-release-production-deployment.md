@@ -85,19 +85,30 @@ The frontend Dockerfile copies Next.js standalone output from `.next/standalone`
 For a registry-based deployment, build and push images from a stronger machine or CI:
 
 ```bash
+export PUBLIC_API_KEY='<generate-outside-repo>'
+
 docker build -t <registry>/smallkhoj-backend:<tag> ./backend
 docker build \
   --build-arg NEXT_PUBLIC_API_BASE_URL= \
   --build-arg NEXT_PUBLIC_WS_BASE_URL= \
-  --build-arg NEXT_PUBLIC_API_KEY=sk_public_local \
+  --build-arg NEXT_PUBLIC_DEPLOYMENT_ENV=production \
+  --secret id=public_api_key,env=PUBLIC_API_KEY \
   -t <registry>/smallkhoj-frontend:<tag> ./frontend
 docker push <registry>/smallkhoj-backend:<tag>
 docker push <registry>/smallkhoj-frontend:<tag>
 ```
 
+`PUBLIC_API_KEY` is the single deployment input used by the backend verifier and
+the frontend build. Production builds accept it only through the BuildKit secret
+mount, so the value is not written into the build command, image config, or image
+history. It is still a browser-visible public-client credential after compilation,
+not an account identity or a substitute for authorization.
+
 For the first Lighthouse test, a registry-free flow is usually simpler: build images locally, save them into one Docker archive, upload the archive over SSH, and run `docker load` on the server:
 
 ```bash
+export PUBLIC_API_KEY='<generate-outside-repo>'
+
 python3 scripts/production_image_transfer.py \
   --host <server-ip> \
   --user ubuntu \
@@ -115,6 +126,11 @@ python3 scripts/production_image_transfer.py \
   --platform linux/amd64 \
   --use-vpn-proxy
 ```
+
+The transfer plan contains only
+`--secret id=public_api_key,env=PUBLIC_API_KEY`; `--dry-run --json` must never
+contain the value. Keep the same exported value in the server-side `.env.prod`
+used to start Compose.
 
 Choose `--platform` after confirming the Lighthouse host architecture with the host probe or console. Apple Silicon local Docker builds default to `linux/arm64`; those images must not be reused on a `linux/amd64` Lighthouse host. If the host is ARM, use `--platform linux/arm64`; if it is x86_64, use `--platform linux/amd64`.
 
@@ -168,6 +184,10 @@ SMALLKHOJ_BACKEND_IMAGE=<registry>/smallkhoj-backend:<tag>
 SMALLKHOJ_FRONTEND_IMAGE=<registry>/smallkhoj-frontend:<tag>
 SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:latest
 POSTGRES_PASSWORD=<set-outside-repo>
+PUBLIC_API_KEY=<generate-outside-repo>
+AUTH_BRIDGE_SECRET=<generate-outside-repo>
+BETTER_AUTH_SECRET=<generate-outside-repo>
+BETTER_AUTH_URL=https://smallkhoj.example.com
 BACKEND_CORS_ORIGINS=https://smallkhoj.example.com
 ```
 
@@ -185,10 +205,24 @@ Frontend URL values:
 INTERNAL_API_BASE_URL=http://backend:8000
 NEXT_PUBLIC_API_BASE_URL=
 NEXT_PUBLIC_WS_BASE_URL=
-NEXT_PUBLIC_API_KEY=sk_public_local
 ```
 
 `INTERNAL_API_BASE_URL` is for server-side Next.js fetches inside Docker. It must not be used in daemon connect commands or browser-visible links. The frontend derives public URLs from the request host or browser origin when public overrides are empty.
+
+Do not add a separate `NEXT_PUBLIC_API_KEY` value to `.env.prod`.
+`docker-compose.prod.yml` bridges the canonical `PUBLIC_API_KEY` into the
+frontend runtime environment, while the image build consumes the same variable
+through `--secret id=public_api_key,env=PUBLIC_API_KEY`. Because Next.js embeds
+`NEXT_PUBLIC_*` values at build time, changing only the running container's env
+does not rotate an already-built browser bundle: rebuild the frontend image and
+restart backend/frontend with the same value. Missing values and the known
+`sk_public_local` development value fail closed in production.
+
+Public HTTP and SSE requests send the public-client credential in
+`X-Public-Key`. Chat WebSocket clients send it in the
+`smallkhoj.public-key.<base64url>` requested subprotocol and negotiate only the
+fixed `smallkhoj.chat.v1` application protocol. Do not put the credential in a
+URL, query string, build plan, log, screenshot, or error message.
 
 Integration/runtime values, when enabled:
 
@@ -494,8 +528,21 @@ SMALLKHOJ_BACKEND_IMAGE=smallkhoj-backend:local-smoke
 SMALLKHOJ_FRONTEND_IMAGE=smallkhoj-frontend:local-smoke
 SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:local-smoke
 POSTGRES_PASSWORD=local-smoke-password
+PUBLIC_API_KEY=sk_local_prod_smoke_public_key
+AUTH_BRIDGE_SECRET=sk_local_prod_smoke_auth_bridge_secret_min_32_chars
+BETTER_AUTH_SECRET=sk_local_prod_smoke_better_auth_secret_min_32_chars
+BETTER_AUTH_URL=http://127.0.0.1:18080
 BACKEND_CORS_ORIGINS=http://127.0.0.1:18080
 EOF
+```
+
+Export that temporary env file before the frontend build so BuildKit can read
+the same `PUBLIC_API_KEY` that Compose will pass to the backend:
+
+```bash
+set -a
+. /tmp/smallkhoj-prod-smoke.env
+set +a
 ```
 
 Build local images. Use the VPN proxy build args when network pulls or dependency installs time out:
@@ -515,7 +562,8 @@ docker build \
   --build-arg https_proxy=http://host.docker.internal:7897 \
   --build-arg NEXT_PUBLIC_API_BASE_URL= \
   --build-arg NEXT_PUBLIC_WS_BASE_URL= \
-  --build-arg NEXT_PUBLIC_API_KEY=sk_public_local \
+  --build-arg NEXT_PUBLIC_DEPLOYMENT_ENV=production \
+  --secret id=public_api_key,env=PUBLIC_API_KEY \
   -t smallkhoj-frontend:local-smoke ./frontend
 
 docker build -t smallkhoj-caddy:local-smoke ./deploy/caddy
