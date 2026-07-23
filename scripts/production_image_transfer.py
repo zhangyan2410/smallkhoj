@@ -38,7 +38,6 @@ class TransferOptions:
     proxy_url: str = DEFAULT_PROXY_URL
     next_public_api_base_url: str = ""
     next_public_ws_base_url: str = ""
-    next_public_api_key: str = "sk_public_local"
 
 
 @dataclass(frozen=True)
@@ -125,7 +124,9 @@ def build_steps(options: TransferOptions) -> list[PlanStep]:
             "--build-arg",
             f"NEXT_PUBLIC_WS_BASE_URL={options.next_public_ws_base_url}",
             "--build-arg",
-            f"NEXT_PUBLIC_API_KEY={options.next_public_api_key}",
+            "NEXT_PUBLIC_DEPLOYMENT_ENV=production",
+            "--secret",
+            "id=public_api_key,env=PUBLIC_API_KEY",
             "-t",
             options.frontend_image,
             "./frontend",
@@ -211,7 +212,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--proxy-url", default=DEFAULT_PROXY_URL, help=f"Docker build-container proxy URL. Default: {DEFAULT_PROXY_URL}")
     parser.add_argument("--next-public-api-base-url", default="", help="Frontend NEXT_PUBLIC_API_BASE_URL build arg. Default: empty same-origin mode.")
     parser.add_argument("--next-public-ws-base-url", default="", help="Frontend NEXT_PUBLIC_WS_BASE_URL build arg. Default: empty same-origin mode.")
-    parser.add_argument("--next-public-api-key", default="sk_public_local", help="Frontend public API key build arg. Default: sk_public_local")
     parser.add_argument("--dry-run", action="store_true", help="Print the command plan without executing it.")
     parser.add_argument("--json", action="store_true", help="Print the command plan as JSON. Implies dry-run.")
     return parser
@@ -234,7 +234,6 @@ def options_from_args(args: argparse.Namespace) -> TransferOptions:
         proxy_url=args.proxy_url,
         next_public_api_base_url=args.next_public_api_base_url,
         next_public_ws_base_url=args.next_public_ws_base_url,
-        next_public_api_key=args.next_public_api_key,
     )
 
 

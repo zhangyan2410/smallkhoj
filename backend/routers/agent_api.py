@@ -57,6 +57,10 @@ from services.integration_runtime import (
     close_feishu_reply_dependencies,
     close_task_run_writeback_dependencies,
 )
+from services.agent_permissions import (
+    AGENT_PERMISSION_CAPABILITIES,
+    agent_permissions_for_creation,
+)
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.feishu_reply_orchestration import (
     send_task_run_feishu_terminal_reply,
@@ -1262,13 +1266,20 @@ async def _record_computer_status_event(
 
 
 def _require_permission(member: Member, permission: str) -> None:
+    if permission not in AGENT_PERMISSION_CAPABILITIES:
+        raise HTTPException(403, f"Permission denied: {permission}")
     permissions = (member.config or {}).get("permissions")
-    if permissions is None:
-        return
-    if not permissions.get(permission):
+    if not isinstance(permissions, dict) or permissions.get(permission) is not True:
         raise HTTPException(403, f"Permission denied: {permission}")
-    if not permissions[permission]:
-        raise HTTPException(403, f"Permission denied: {permission}")
+
+
+def _agent_permissions_for_creation(requested: object) -> dict[str, bool]:
+    if requested is not None and not isinstance(requested, dict):
+        raise HTTPException(400, "Agent permissions must be an object")
+    try:
+        return agent_permissions_for_creation(requested)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 def _serialize_file(file_entry: FileEntry) -> dict:

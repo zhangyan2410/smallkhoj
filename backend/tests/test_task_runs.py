@@ -332,6 +332,7 @@ async def test_agent_assignment_snapshots_task_run_template_and_role_policies():
 @pytest.mark.asyncio
 async def test_task_run_template_service_validates_structured_role_presets():
     db = _FakeSession()
+    server_id = uuid.uuid4()
 
     with pytest.raises(ValueError, match="rolePresets\\[0\\]\\.roleKey"):
         await create_template(
@@ -342,6 +343,7 @@ async def test_task_run_template_service_validates_structured_role_presets():
                 "systemInstruction": "Do work.",
                 "rolePresets": [{"displayName": "Missing Key"}],
             },
+            server_id=server_id,
         )
 
     template = await create_template(
@@ -373,6 +375,7 @@ async def test_task_run_template_service_validates_structured_role_presets():
                 }
             ],
         },
+        server_id=server_id,
     )
 
     assert isinstance(template, TaskRunTemplate)
@@ -380,7 +383,12 @@ async def test_task_run_template_service_validates_structured_role_presets():
     assert template.role_presets[0]["roleKey"] == "researcher"
     assert db.flushed is True
 
-    updated = await update_template(db, template, {"name": "Updated Research Notes"})
+    updated = await update_template(
+        db,
+        template,
+        {"name": "Updated Research Notes"},
+        server_id=server_id,
+    )
 
     assert updated.name == "Updated Research Notes"
     assert updated.updated_at.tzinfo == timezone.utc
@@ -388,7 +396,9 @@ async def test_task_run_template_service_validates_structured_role_presets():
 
 @pytest.mark.asyncio
 async def test_public_task_run_template_routes_create_update_disable_and_list(monkeypatch):
-    _patch_active_server_context(monkeypatch, SimpleNamespace(id=uuid.uuid4()))
+    server = SimpleNamespace(id=uuid.uuid4())
+    member = SimpleNamespace(id=uuid.uuid4())
+    _patch_active_server_context(monkeypatch, server, member=member)
 
     create_db = _FakeSession()
     created = await public_api.create_task_run_template(
@@ -497,8 +507,9 @@ async def test_public_task_assignment_endpoint_auto_starts_with_template_snapsho
         assert role == "task assignment actor"
         return actor
 
-    async def fake_get_template_by_ref(_db, template_ref):
+    async def fake_get_template_by_ref(_db, template_ref, *, server_id):
         assert template_ref == "research-analyst"
+        assert server_id == server.id
         return template
 
     async def fake_create_assignment_and_run(_db, **kwargs):
@@ -1382,7 +1393,6 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
     )
     db = _FakeSession(
         _ExecuteResult(channel),
-        _ExecuteResult(creator),
         _ExecuteResult(assignee),
         _ExecuteResult(0),
         _ExecuteResult(creator),
@@ -1402,8 +1412,12 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
     async def fake_push(_db, *, server_id):
         return 0
 
+    async def fake_resolve_human_actor(*_args, **_kwargs):
+        return creator
+
     monkeypatch.setattr(public_api, "create_task_assignment_and_run", fake_create_task_assignment_and_run)
     monkeypatch.setattr(public_api, "_push_committed_events", fake_push)
+    monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
     _patch_active_server_context(monkeypatch, server)
 
     response = await public_api.create_task(
@@ -1432,7 +1446,7 @@ async def test_agent_create_task_targets_worker_and_creates_task_run(monkeypatch
         id=uuid.uuid4(),
         display_name="architect",
         kind="agent",
-        config={},
+        config={"permissions": {"createTask": True}},
     )
     worker = SimpleNamespace(id=uuid.uuid4(), display_name="worker", kind="agent")
     run_id = uuid.uuid4()

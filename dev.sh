@@ -224,6 +224,8 @@ cmd_stop() {
 }
 
 cmd_start() {
+  local local_public_api_key="${PUBLIC_API_KEY:-sk_public_local}"
+
   ensure_dirs
 
   # 清空旧日志
@@ -249,7 +251,7 @@ cmd_start() {
     log "Backend database: ${db_url}"
     log "Backend command: ${backend_cmd}"
     # shellcheck disable=SC2086
-    start_background "$BACKEND_PID_FILE" "$LOG_DIR/backend.log" env DATABASE_URL="$db_url" AUTH_BRIDGE_SECRET="$LOCAL_AUTH_BRIDGE_SECRET" $backend_cmd
+    start_background "$BACKEND_PID_FILE" "$LOG_DIR/backend.log" env DATABASE_URL="$db_url" PUBLIC_API_KEY="$local_public_api_key" AUTH_BRIDGE_SECRET="$LOCAL_AUTH_BRIDGE_SECRET" $backend_cmd
     be_pid="$STARTED_PID"
     cd "$ROOT_DIR"
   fi
@@ -278,7 +280,7 @@ cmd_start() {
     log "Starting frontend on :$FRONTEND_PORT..."
     cd "$FRONTEND_DIR"
     frontend_db_url=$(frontend_database_url)
-    start_background "$FRONTEND_PID_FILE" "$LOG_DIR/frontend.log" env INTERNAL_API_BASE_URL="${INTERNAL_API_BASE_URL:-http://127.0.0.1:$BACKEND_PORT}" NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-http://localhost:$BACKEND_PORT}" NEXT_PUBLIC_API_KEY="${NEXT_PUBLIC_API_KEY:-sk_public_local}" BETTER_AUTH_SECRET="$LOCAL_BETTER_AUTH_SECRET" BETTER_AUTH_URL="$LOCAL_BETTER_AUTH_URL" BETTER_AUTH_DATABASE_URL="$frontend_db_url" AUTH_BRIDGE_SECRET="$LOCAL_AUTH_BRIDGE_SECRET" npm run dev
+    start_background "$FRONTEND_PID_FILE" "$LOG_DIR/frontend.log" env INTERNAL_API_BASE_URL="${INTERNAL_API_BASE_URL:-http://127.0.0.1:$BACKEND_PORT}" NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-http://localhost:$BACKEND_PORT}" NEXT_PUBLIC_DEPLOYMENT_ENV=local-dev NEXT_PUBLIC_API_KEY="$local_public_api_key" BETTER_AUTH_SECRET="$LOCAL_BETTER_AUTH_SECRET" BETTER_AUTH_URL="$LOCAL_BETTER_AUTH_URL" BETTER_AUTH_DATABASE_URL="$frontend_db_url" AUTH_BRIDGE_SECRET="$LOCAL_AUTH_BRIDGE_SECRET" npm run dev
     fe_pid="$STARTED_PID"
     cd "$ROOT_DIR"
   fi

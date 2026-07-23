@@ -21,6 +21,7 @@ import json
 from sqlalchemy import text
 
 from models import engine
+from services.agent_permissions import DEFAULT_LEGACY_AGENT_PERMISSIONS
 
 
 async def create_tables():
@@ -121,7 +122,9 @@ async def create_tables():
                 now(),
                 now()
             )
-            ON CONFLICT (slug) DO NOTHING
+            ON CONFLICT (slug)
+            WHERE visibility = 'builtin' AND server_id IS NULL
+            DO NOTHING
         """), {
             "general_tool_policy": json.dumps({"allowedToolGroups": ["slock", "read", "shell"], "writeSlockCommands": True}),
             "general_skill_policy": json.dumps({"allowAdditionalSkills": True}),
@@ -181,6 +184,25 @@ async def create_tables():
                 "contextPolicy": {"suggestSummaryAtContextRatio": 0.85},
                 "editableFields": ["displayName", "purpose", "instructionTemplate", "outputPolicy"],
             }]),
+        })
+
+        # ── Data backfill: explicit permissions for legacy agents ──────────
+        # Agents created before explicit default-deny permissions existed had
+        # no permissions key and implicitly received all known capabilities.
+        # Preserve that compatibility by materializing the old effective
+        # policy. An explicitly empty map remains empty/default-deny.
+        await conn.execute(text("""
+            UPDATE members
+            SET config = COALESCE(config, '{}'::jsonb)
+                || jsonb_build_object('permissions', CAST(:agent_permissions AS JSONB))
+            WHERE type = 'agent'
+              AND (
+                  config IS NULL
+                  OR NOT (config ? 'permissions')
+                  OR config->'permissions' = 'null'::jsonb
+              )
+        """), {
+            "agent_permissions": json.dumps(DEFAULT_LEGACY_AGENT_PERMISSIONS),
         })
 
         # ── Data backfill: members.computer_id from legacy config JSON ──────

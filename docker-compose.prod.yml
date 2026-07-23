@@ -21,6 +21,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       DEBUG: ${DEBUG:-false}
+      PUBLIC_API_KEY: ${PUBLIC_API_KEY:?set PUBLIC_API_KEY outside repo}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-smallkhoj}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD outside repo}@db:5432/${POSTGRES_DB:-smallkhoj}
       AUTH_BRIDGE_SECRET: ${AUTH_BRIDGE_SECRET:?set AUTH_BRIDGE_SECRET outside repo}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-}
@@ -48,7 +49,8 @@ services:
       INTERNAL_API_BASE_URL: http://backend:8000
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
       NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-}
-      NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-sk_public_local}
+      NEXT_PUBLIC_DEPLOYMENT_ENV: production
+      NEXT_PUBLIC_API_KEY: ${PUBLIC_API_KEY:?set PUBLIC_API_KEY outside repo and build the frontend image with the same value}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET outside repo}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL to the public frontend origin}
       BETTER_AUTH_DATABASE_URL: postgresql://${POSTGRES_USER:-smallkhoj}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD outside repo}@db:5432/${POSTGRES_DB:-smallkhoj}

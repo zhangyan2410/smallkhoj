@@ -15,6 +15,27 @@ import models.slock  # noqa: F401 - register the complete schema metadata
 
 BASELINE_REVISION = "77b8b147f689"
 
+# ``Base.metadata`` describes the checkout's terminal schema, while this
+# preflight fingerprints the historical 0001 baseline that an operator may
+# explicitly stamp.  Every post-baseline schema revision must record its new
+# objects here so a legitimate legacy DB is not rejected merely because the
+# application model advanced.
+POST_BASELINE_COLUMNS = {
+    "task_run_templates": {"server_id"},
+}
+POST_BASELINE_INDEXES = {
+    "idx_task_run_templates_server",
+    "uq_task_run_templates_builtin_slug",
+    "uq_task_run_templates_server_slug",
+}
+POST_BASELINE_CONSTRAINTS = {
+    "ck_task_run_templates_tenant_scope",
+    "fk_task_run_templates_server_id",
+}
+BASELINE_ONLY_CONSTRAINTS = {
+    "uq_task_run_templates_slug",
+}
+
 
 @dataclass(frozen=True)
 class LegacyPreflightReport:
@@ -47,7 +68,10 @@ async def inspect_legacy_schema(database_url: str) -> LegacyPreflightReport:
             identity_columns[(row["table_name"], row["column_name"])] = row["is_identity"]
 
         required_columns = {
-            table.name: {column.name for column in table.columns}
+            table.name: (
+                {column.name for column in table.columns}
+                - POST_BASELINE_COLUMNS.get(table.name, set())
+            )
             for table in Base.metadata.sorted_tables
         }
         for table_name, columns in sorted(required_columns.items()):
@@ -76,7 +100,7 @@ async def inspect_legacy_schema(database_url: str) -> LegacyPreflightReport:
             for table in Base.metadata.sorted_tables
             for index in table.indexes
             if index.name
-        }
+        } - POST_BASELINE_INDEXES
         missing_indexes = sorted(required_indexes - actual_indexes)
         if missing_indexes:
             issues.append(f"missing required baseline indexes: {', '.join(missing_indexes)}")
@@ -91,12 +115,15 @@ async def inspect_legacy_schema(database_url: str) -> LegacyPreflightReport:
                 """
             )
         }
-        required_constraints = {
-            constraint.name
-            for table in Base.metadata.sorted_tables
-            for constraint in table.constraints
-            if constraint.name
-        }
+        required_constraints = (
+            {
+                constraint.name
+                for table in Base.metadata.sorted_tables
+                for constraint in table.constraints
+                if constraint.name
+            }
+            - POST_BASELINE_CONSTRAINTS
+        ) | BASELINE_ONLY_CONSTRAINTS
         missing_constraints = sorted(required_constraints - actual_constraints)
         if missing_constraints:
             issues.append(

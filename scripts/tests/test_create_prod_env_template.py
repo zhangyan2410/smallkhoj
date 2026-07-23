@@ -13,6 +13,8 @@ class CreateProdEnvTemplateTests(unittest.TestCase):
         self.assertIn("SMALLKHOJ_BACKEND_IMAGE=<registry>/smallkhoj-backend:<tag>", content)
         self.assertIn("SMALLKHOJ_FRONTEND_IMAGE=<registry>/smallkhoj-frontend:<tag>", content)
         self.assertIn("POSTGRES_PASSWORD=<set-outside-repo>", content)
+        self.assertIn("PUBLIC_API_KEY=<set-outside-repo>", content)
+        self.assertNotIn("NEXT_PUBLIC_API_KEY=", content)
         self.assertIn("BACKEND_CORS_ORIGINS=<public-origin>", content)
         self.assertIn("FEISHU_WORKER_APP_SECRET=<optional-set-outside-repo>", content)
         self.assertNotIn("sk_live", content)

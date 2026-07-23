@@ -77,6 +77,25 @@ class ProductionImageTransferTests(unittest.TestCase):
         self.assertIn("NEXT_PUBLIC_API_BASE_URL=", build_commands)
         self.assertIn("NEXT_PUBLIC_WS_BASE_URL=", build_commands)
 
+    def test_frontend_production_key_uses_buildkit_secret_without_value_in_plan(self) -> None:
+        options = transfer.TransferOptions(
+            host="203.0.113.10",
+            user="ubuntu",
+            remote_dir="/opt/smallkhoj",
+            output_archive=Path("/tmp/smallkhoj-images.tar"),
+        )
+
+        frontend = next(
+            step for step in transfer.build_plan(options).steps
+            if step.label == "build-frontend-image"
+        )
+        command = " ".join(frontend.argv)
+
+        self.assertIn("--secret id=public_api_key,env=PUBLIC_API_KEY", command)
+        self.assertIn("NEXT_PUBLIC_DEPLOYMENT_ENV=production", command)
+        self.assertNotIn("sk_public_local", command)
+        self.assertNotIn("NEXT_PUBLIC_API_KEY=", command)
+
     def test_platform_is_added_to_all_docker_builds_when_selected(self) -> None:
         options = transfer.TransferOptions(
             host="203.0.113.10",

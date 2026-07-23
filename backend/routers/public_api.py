@@ -16,7 +16,7 @@ from urllib.parse import quote, urlsplit
 from fastapi import HTTPException
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,9 +24,10 @@ from config import settings
 from models import (
     get_db, Account, AgentWorkspace, ActivityLog, ApiKey, Channel, ChannelMember,
     ChatThreadReadCursor, Computer, ConnectTicket, Member, Message, MessageReaction, EventRecord, FileEntry, Reminder, SavedItem,
-    Server, ServerMembership, Task, TaskRun, TaskRunTemplate, ThreadSummary,
+    Server, ServerMembership, Task, TaskRun, ThreadSummary,
 )
 from routers.member_serialization import member_backend, member_computer_id, serialize_member
+from services.agent_permissions import agent_permissions_for_creation
 from services.daemon_control import (
     clear_workspace_reference,
     mark_runtime_provider_unavailable,
@@ -80,7 +81,9 @@ from services.server_invites import (
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.task_run_templates import (
     create_template,
+    disable_template,
     get_template_by_ref,
+    list_templates,
     serialize_task_run_template,
     template_snapshot as task_run_template_snapshot,
     update_template,
@@ -103,7 +106,7 @@ router = APIRouter(prefix="/api/v1", tags=["public"])
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_API_KEY = "sk_public_local"
+PUBLIC_API_KEY = settings.public_api_key
 DAEMON_CLI_COMMAND = "aura"
 DAEMON_DOWNLOAD_PATH = "/downloads/smallkhoj-daemon"
 DAEMON_NPX_PACKAGE_PREFIX = "smallkhoj-smallkhoj-daemon"
@@ -128,6 +131,8 @@ DANGEROUS_MIME_TYPES = {
 ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 AUTH_BRIDGE_SECRET_HEADER = "X-Auth-Bridge-Secret"
 TASK_NUMBER_RETRY_LIMIT = 5
+BOOTSTRAP_OWNER_LOCK_NAMESPACE = 0x534B484A
+BOOTSTRAP_OWNER_LOCK_SCOPE = 1
 DELETE_BLOCKING_WORKSPACE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"busy", "starting", "restarting"}
 STALE_STARTING_WORKSPACE_GRACE = timedelta(minutes=5)
 
@@ -265,12 +270,12 @@ def _lease_expired(value: datetime | None) -> bool:
 
 
 async def verify_public_api_key(request: Request, db: AsyncSession = Depends(get_db)):
-    """Validate public API key from X-Public-Key header or ?api_key query param."""
-    key = request.headers.get("X-Public-Key") or request.query_params.get("api_key")
+    """Validate a public API key transported only in the X-Public-Key header."""
+    key = request.headers.get("X-Public-Key")
     if not key:
-        raise HTTPException(401, "Missing API key: set X-Public-Key header or api_key param")
+        raise HTTPException(401, "Missing API key: set X-Public-Key header")
     # Check against seed public key
-    if key == PUBLIC_API_KEY:
+    if hmac.compare_digest(key, PUBLIC_API_KEY):
         return
     token_hash = hashlib.sha256(key.encode()).hexdigest()
     result = await db.execute(select(ApiKey).where(ApiKey.key_prefix == key[:20], ApiKey.revoked_at.is_(None)))
@@ -420,11 +425,9 @@ def _better_auth_personal_server_name(visible_name: str) -> str:
 
 def _verify_auth_bridge_secret(request: Request) -> None:
     configured_secret = getattr(settings, "auth_bridge_secret", "") or ""
-    provided_secret = (getattr(request, "headers", {}) or {}).get(AUTH_BRIDGE_SECRET_HEADER)
     if not configured_secret:
-        if getattr(settings, "debug", False):
-            return
         raise HTTPException(503, "Auth bridge secret is not configured")
+    provided_secret = request.headers.get(AUTH_BRIDGE_SECRET_HEADER)
     if not provided_secret or not hmac.compare_digest(provided_secret, configured_secret):
         raise HTTPException(401, "Invalid auth bridge secret")
 
@@ -459,6 +462,16 @@ async def _bootstrap_account(
     display_name: str | None = None,
 ) -> tuple[Account, Server, Member, str]:
     account_name = _normalize_account_name(name)
+    await db.execute(
+        text(
+            "SELECT pg_advisory_xact_lock("
+            ":bootstrap_owner_namespace, :bootstrap_owner_scope)"
+        ),
+        {
+            "bootstrap_owner_namespace": BOOTSTRAP_OWNER_LOCK_NAMESPACE,
+            "bootstrap_owner_scope": BOOTSTRAP_OWNER_LOCK_SCOPE,
+        },
+    )
     server = await _ensure_server(db)
     result = await db.execute(select(Account).where(Account.name == account_name))
     account = result.scalar_one_or_none()
@@ -483,12 +496,22 @@ async def _bootstrap_account(
     member.status = "online"
     if display_name:
         account.display_name = display_name
+    owner_result = await db.execute(
+        select(ServerMembership.id)
+        .where(
+            ServerMembership.server_id == server.id,
+            ServerMembership.role == "owner",
+            ServerMembership.status == "active",
+        )
+        .limit(1)
+    )
+    default_role = "member" if owner_result.scalar_one_or_none() else "owner"
     await ensure_account_membership(
         db,
         account=account,
         server=server,
         member=member,
-        default_role="owner",
+        default_role=default_role,
     )
     token = f"sk_session_{secrets.token_urlsafe(32)}"
     account.session_token_hash = _hash_token(token)
@@ -573,33 +596,79 @@ async def _resolve_human_actor(
     role: str,
     required: bool = True,
 ) -> Member | None:
-    if explicit_name:
-        return await _ensure_human_member(db, server, explicit_name)
     account = await _current_account(db, request)
-    if account:
-        membership_result = await db.execute(
-            select(ServerMembership, Member)
-            .join(Member, Member.id == ServerMembership.member_id)
-            .where(
-                ServerMembership.account_id == account.id,
-                ServerMembership.server_id == server.id,
-                ServerMembership.status == "active",
+    if not account:
+        if required:
+            raise HTTPException(401, f"Login required for {role}")
+        return None
+
+    membership_result = await db.execute(
+        select(ServerMembership, Member)
+        .join(Member, Member.id == ServerMembership.member_id)
+        .where(
+            ServerMembership.account_id == account.id,
+            ServerMembership.server_id == server.id,
+            ServerMembership.status == "active",
+        )
+    )
+    membership_row = membership_result.one_or_none()
+    if membership_row:
+        _membership, viewer = membership_row
+    else:
+        member_result = await db.execute(
+            select(Member).where(
+                Member.id == account.member_id,
+                Member.server_id == server.id,
+                Member.kind == "human",
             )
         )
-        membership_row = membership_result.one_or_none()
-        if membership_row:
-            _membership, member = membership_row
-            return member
-        member_result = await db.execute(
-            select(Member).where(Member.id == account.member_id, Member.server_id == server.id)
+        viewer = member_result.scalar_one_or_none()
+    if not viewer:
+        if required:
+            raise HTTPException(401, f"Login required for {role}")
+        return None
+
+    if not explicit_name:
+        return viewer
+
+    actor_ref = str(explicit_name).strip()
+    if not actor_ref:
+        return viewer
+    try:
+        actor_id = uuid.UUID(actor_ref)
+    except ValueError:
+        actor_id = None
+
+    if actor_id:
+        actor_result = await db.execute(
+            select(Member).where(
+                Member.id == actor_id,
+                Member.server_id == server.id,
+                Member.kind == "human",
+            )
         )
-        member = member_result.scalar_one_or_none()
-        if member:
-            return member
-        return await _ensure_human_member(db, server, account.name)
-    if required:
-        raise HTTPException(401, f"Login required for {role}")
-    return None
+        actor = actor_result.scalar_one_or_none()
+    else:
+        display_name = actor_ref.lstrip("@").strip()
+        if not display_name:
+            raise HTTPException(400, "Invalid actor reference")
+        actor_result = await db.execute(
+            select(Member).where(
+                Member.server_id == server.id,
+                Member.kind == "human",
+                func.lower(Member.display_name) == display_name.lower(),
+            )
+        )
+        candidates = list(actor_result.scalars().all())
+        if len(candidates) > 1:
+            raise HTTPException(400, "Ambiguous actor reference")
+        actor = candidates[0] if candidates else None
+
+    if not actor:
+        raise HTTPException(404, "Actor not found")
+    if actor.id != viewer.id:
+        raise HTTPException(403, "Actor must match the current account")
+    return viewer
 
 
 async def _resolve_memory_viewer(db: AsyncSession, server: Server, request: Request) -> Member:
@@ -2413,11 +2482,8 @@ async def list_task_run_templates(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    await _resolve_active_server_context(db, request)
-    result = await db.execute(
-        select(TaskRunTemplate).order_by(TaskRunTemplate.status, TaskRunTemplate.name)
-    )
-    templates = result.scalars().all()
+    context = await _resolve_active_server_context(db, request)
+    templates = await list_templates(db, server_id=context.server.id)
     return {"templates": [serialize_task_run_template(template) for template in templates]}
 
 
@@ -2427,15 +2493,23 @@ async def create_task_run_template(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    await _resolve_active_server_context(db, request)
+    context = await _resolve_active_server_context(db, request)
     try:
         body = await request.json()
     except json.JSONDecodeError:
         raise HTTPException(400, "Invalid JSON body")
     try:
-        template = await create_template(db, body)
+        template = await create_template(
+            db,
+            body,
+            server_id=context.server.id,
+            created_by=context.member.id,
+        )
         await db.commit()
         await db.refresh(template)
+    except PermissionError as exc:
+        await db.rollback()
+        raise HTTPException(403, str(exc))
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(400, str(exc))
@@ -2452,8 +2526,12 @@ async def update_task_run_template(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    await _resolve_active_server_context(db, request)
-    template = await get_template_by_ref(db, template_ref)
+    context = await _resolve_active_server_context(db, request)
+    template = await get_template_by_ref(
+        db,
+        template_ref,
+        server_id=context.server.id,
+    )
     if template is None:
         raise HTTPException(404, "TaskRun template not found")
     try:
@@ -2461,9 +2539,17 @@ async def update_task_run_template(
     except json.JSONDecodeError:
         raise HTTPException(400, "Invalid JSON body")
     try:
-        template = await update_template(db, template, body)
+        template = await update_template(
+            db,
+            template,
+            body,
+            server_id=context.server.id,
+        )
         await db.commit()
         await db.refresh(template)
+    except LookupError:
+        await db.rollback()
+        raise HTTPException(404, "TaskRun template not found")
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(400, str(exc))
@@ -2480,15 +2566,25 @@ async def disable_task_run_template(
     _auth: None = Depends(verify_public_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    await _resolve_active_server_context(db, request)
-    template = await get_template_by_ref(db, template_ref)
+    context = await _resolve_active_server_context(db, request)
+    template = await get_template_by_ref(
+        db,
+        template_ref,
+        server_id=context.server.id,
+    )
     if template is None:
         raise HTTPException(404, "TaskRun template not found")
-    template.status = "disabled"
-    template.updated_at = datetime.now(timezone.utc)
-    await db.flush()
-    await db.commit()
-    await db.refresh(template)
+    try:
+        template = await disable_template(
+            db,
+            template,
+            server_id=context.server.id,
+        )
+        await db.commit()
+        await db.refresh(template)
+    except LookupError:
+        await db.rollback()
+        raise HTTPException(404, "TaskRun template not found")
     return {"disabled": True, "template": serialize_task_run_template(template)}
 
 
@@ -2507,11 +2603,16 @@ def _role_preset_from_snapshot(snapshot: dict, role_key: str | None) -> dict:
     return {}
 
 
-async def _resolve_task_run_template_request(db: AsyncSession, body: dict) -> tuple[uuid.UUID | None, dict | None, str | None, dict | None]:
+async def _resolve_task_run_template_request(
+    db: AsyncSession,
+    body: dict,
+    *,
+    server_id: uuid.UUID,
+) -> tuple[uuid.UUID | None, dict | None, str | None, dict | None]:
     template_ref = body.get("template") or body.get("templateId") or body.get("templateSlug")
     if not template_ref:
         return None, None, body.get("roleKey"), None
-    template = await get_template_by_ref(db, template_ref)
+    template = await get_template_by_ref(db, template_ref, server_id=server_id)
     if template is None:
         raise HTTPException(404, "TaskRun template not found")
     snapshot = task_run_template_snapshot(template)
@@ -2546,7 +2647,11 @@ async def create_task_assignment(
     if getattr(assignee, "kind", None) != "agent":
         raise HTTPException(400, "TaskRun auto-start currently requires an agent assignee")
     actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="task assignment actor")
-    template_id, snapshot, role_key, role_snapshot = await _resolve_task_run_template_request(db, body)
+    template_id, snapshot, role_key, role_snapshot = await _resolve_task_run_template_request(
+        db,
+        body,
+        server_id=server.id,
+    )
     role = role_key or body.get("role") or "general"
     assignment, task_run = await create_task_assignment_and_run(
         db,
@@ -2919,7 +3024,11 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
     execution_strategy = body.get("executionStrategy") or "parallel"
     if has_runtime_assignment and execution_strategy != "parallel":
         raise HTTPException(400, "Only parallel TaskRun assignment is implemented")
-    template_id, template_snapshot, role_key, role_snapshot = await _resolve_task_run_template_request(db, body)
+    template_id, template_snapshot, role_key, role_snapshot = await _resolve_task_run_template_request(
+        db,
+        body,
+        server_id=server.id,
+    )
     parsed_message_id = None
     source_payload = None
     if body.get("messageId"):
@@ -3749,6 +3858,7 @@ def _channel_member_ids_from_body(body: dict) -> list[uuid.UUID]:
 @router.patch("/members/{member_id}")
 async def update_member(member_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
     server = context.server
     member = await _resolve_member(db, server, member_id)
     if not member:
@@ -4351,6 +4461,13 @@ async def create_agent(
     auto_start = _agent_auto_start_enabled(body)
     desired_status = "running" if auto_start else "stopped"
     workspace_status = PENDING_RUNTIME_START_STATUS if auto_start else "stopped"
+    requested_permissions = body.get("permissions") if "permissions" in body else None
+    if requested_permissions is not None and not isinstance(requested_permissions, dict):
+        raise HTTPException(400, "Agent permissions must be an object")
+    try:
+        permissions = agent_permissions_for_creation(requested_permissions)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     agent = Member(
         server_id=server.id,
@@ -4365,6 +4482,7 @@ async def create_agent(
             "runtimeProvider": runtime_provider,
             "provider": provider_name,
             "runtimeDesiredStatus": desired_status,
+            "permissions": permissions,
         },
     )
     db.add(agent)

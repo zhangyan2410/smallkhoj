@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import TaskRunTemplate
@@ -55,6 +55,7 @@ def template_snapshot(template: TaskRunTemplate | None) -> dict[str, Any]:
 def serialize_task_run_template(template: TaskRunTemplate) -> dict[str, Any]:
     return {
         "id": str(template.id),
+        "serverId": str(template.server_id) if template.server_id else None,
         "slug": template.slug,
         "name": template.name,
         "description": template.description,
@@ -149,7 +150,35 @@ def _validate_template_payload(payload: dict[str, Any], *, partial: bool = False
     return data
 
 
-async def get_template_by_ref(db: AsyncSession, ref: str | uuid.UUID | None) -> TaskRunTemplate | None:
+def _visible_template_filter(server_id: uuid.UUID):
+    return or_(
+        and_(
+            TaskRunTemplate.visibility == "builtin",
+            TaskRunTemplate.server_id.is_(None),
+        ),
+        TaskRunTemplate.server_id == server_id,
+    )
+
+
+async def list_templates(
+    db: AsyncSession,
+    *,
+    server_id: uuid.UUID,
+) -> list[TaskRunTemplate]:
+    result = await db.execute(
+        select(TaskRunTemplate)
+        .where(_visible_template_filter(server_id))
+        .order_by(TaskRunTemplate.status, TaskRunTemplate.name)
+    )
+    return list(result.scalars().all())
+
+
+async def get_template_by_ref(
+    db: AsyncSession,
+    ref: str | uuid.UUID | None,
+    *,
+    server_id: uuid.UUID,
+) -> TaskRunTemplate | None:
     if not ref:
         return None
     parsed: uuid.UUID | None = ref if isinstance(ref, uuid.UUID) else None
@@ -158,28 +187,53 @@ async def get_template_by_ref(db: AsyncSession, ref: str | uuid.UUID | None) -> 
             parsed = uuid.UUID(str(ref))
         except (TypeError, ValueError):
             parsed = None
-    stmt = select(TaskRunTemplate).where(TaskRunTemplate.status == "active")
+    stmt = select(TaskRunTemplate).where(
+        TaskRunTemplate.status == "active",
+        _visible_template_filter(server_id),
+    )
     if parsed:
         stmt = stmt.where(TaskRunTemplate.id == parsed)
     else:
-        stmt = stmt.where(TaskRunTemplate.slug == str(ref).strip().lower())
+        stmt = stmt.where(TaskRunTemplate.slug == str(ref).strip().lower()).order_by(
+            case((TaskRunTemplate.server_id == server_id, 0), else_=1)
+        )
     result = await db.execute(stmt.limit(1))
     return result.scalar_one_or_none()
 
 
 async def get_default_template(db: AsyncSession) -> TaskRunTemplate | None:
-    return await get_template_by_ref(db, "general-task-runner")
+    result = await db.execute(
+        select(TaskRunTemplate).where(
+            TaskRunTemplate.slug == "general-task-runner",
+            TaskRunTemplate.visibility == "builtin",
+            TaskRunTemplate.server_id.is_(None),
+            TaskRunTemplate.status == "active",
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def create_template(
     db: AsyncSession,
     payload: dict[str, Any],
     *,
+    server_id: uuid.UUID | None,
     created_by: uuid.UUID | None = None,
     visibility: str = "user",
+    allow_builtin: bool = False,
 ) -> TaskRunTemplate:
     data = _validate_template_payload({**payload, "visibility": payload.get("visibility", visibility)})
+    resolved_visibility = data.get("visibility") or visibility
+    if resolved_visibility == "builtin":
+        if not allow_builtin:
+            raise PermissionError("Builtin templates are system-managed")
+        resolved_server_id = None
+    else:
+        if server_id is None:
+            raise ValueError("server_id is required for non-builtin templates")
+        resolved_server_id = server_id
     template = TaskRunTemplate(
+        server_id=resolved_server_id,
         slug=data["slug"],
         name=data["name"],
         description=data.get("description"),
@@ -192,7 +246,7 @@ async def create_template(
         runtime_policy=data.get("runtimePolicy") or {},
         start_policy=data.get("startPolicy") or {"autoStart": True, "executionStrategy": "parallel"},
         role_presets=data.get("rolePresets") or [],
-        visibility=data.get("visibility") or visibility,
+        visibility=resolved_visibility,
         status=data.get("status") or "active",
         created_by=created_by,
     )
@@ -201,8 +255,22 @@ async def create_template(
     return template
 
 
-async def update_template(db: AsyncSession, template: TaskRunTemplate, payload: dict[str, Any]) -> TaskRunTemplate:
+def _assert_writable(template: TaskRunTemplate, *, server_id: uuid.UUID) -> None:
+    if template.visibility == "builtin" or template.server_id != server_id:
+        raise LookupError("TaskRun template not found")
+
+
+async def update_template(
+    db: AsyncSession,
+    template: TaskRunTemplate,
+    payload: dict[str, Any],
+    *,
+    server_id: uuid.UUID,
+) -> TaskRunTemplate:
+    _assert_writable(template, server_id=server_id)
     data = _validate_template_payload(payload, partial=True)
+    if "visibility" in data:
+        raise ValueError("TaskRun template visibility is immutable")
     field_map = {
         "systemInstruction": "system_instruction",
         "toolPolicy": "tool_policy",
@@ -215,6 +283,19 @@ async def update_template(db: AsyncSession, template: TaskRunTemplate, payload: 
     }
     for key, value in data.items():
         setattr(template, field_map.get(key, key), value)
+    template.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    return template
+
+
+async def disable_template(
+    db: AsyncSession,
+    template: TaskRunTemplate,
+    *,
+    server_id: uuid.UUID,
+) -> TaskRunTemplate:
+    _assert_writable(template, server_id=server_id)
+    template.status = "disabled"
     template.updated_at = datetime.now(timezone.utc)
     await db.flush()
     return template

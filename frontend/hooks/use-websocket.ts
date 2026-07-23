@@ -3,7 +3,8 @@
 import { useCallback, useState } from "react"
 import useWebSocket from "react-use-websocket"
 
-import { resolveChatWebSocketUrl } from "@/lib/runtime-url"
+import { PUBLIC_KEY } from "@/lib/control-plane"
+import { resolveChatWebSocketProtocols, resolveChatWebSocketUrl } from "@/lib/runtime-url"
 
 export interface WSMessage {
   type: "status" | "message" | "error"
@@ -17,6 +18,7 @@ export function useChatWebSocket() {
   const [isThinking, setIsThinking] = useState(false)
 
   const { sendJsonMessage, readyState } = useWebSocket(() => resolveChatWebSocketUrl(), {
+    protocols: resolveChatWebSocketProtocols(PUBLIC_KEY),
     onMessage: (event) => {
       const data: WSMessage = JSON.parse(event.data)
       if (data.type === "status" && data.status === "thinking") {

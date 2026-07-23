@@ -149,7 +149,7 @@ async def test_compatible_legacy_database_preflights_then_stamps_baseline_only()
         connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
         try:
             revision = await connection.fetchval("SELECT version_num FROM alembic_version")
-            assert revision == "0003_messages_seq_auto"
+            assert revision == "0004_template_tenancy"
         finally:
             await connection.close()
 

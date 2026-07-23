@@ -4,10 +4,16 @@ export type RuntimeUrlEnv = {
   NEXT_PUBLIC_API_BASE_URL?: string
   INTERNAL_API_BASE_URL?: string
   NEXT_PUBLIC_WS_BASE_URL?: string
+  NEXT_PUBLIC_API_KEY?: string
+  NEXT_PUBLIC_DEPLOYMENT_ENV?: string
+  NODE_ENV?: string
 } & Record<string, string | undefined>
 
 const LOCAL_API_BASE = "http://localhost:8000"
 const LOCAL_WS_BASE = "ws://localhost:8000"
+const DEVELOPMENT_PUBLIC_API_KEY = "sk_public_local"
+const CHAT_WEBSOCKET_PROTOCOL = "smallkhoj.chat.v1"
+const CHAT_WEBSOCKET_KEY_PROTOCOL_PREFIX = "smallkhoj.public-key."
 
 function cleanBaseUrl(value?: string) {
   const trimmed = value?.trim()
@@ -41,6 +47,35 @@ export function joinUrlPath(base: string, path: string) {
   const cleanPath = path.startsWith("/") ? path : `/${path}`
   if (!cleanBase) return cleanPath
   return `${cleanBase}${cleanPath}`
+}
+
+export function resolvePublicApiKey(env: RuntimeUrlEnv = process.env) {
+  const deployment = env.NEXT_PUBLIC_DEPLOYMENT_ENV?.trim()
+    || (env.NODE_ENV === "development" || env.NODE_ENV === "test" ? "local-dev" : "production")
+  const configured = env.NEXT_PUBLIC_API_KEY?.trim() || ""
+  if (deployment === "local-dev") {
+    return configured || DEVELOPMENT_PUBLIC_API_KEY
+  }
+  if (!configured || configured === DEVELOPMENT_PUBLIC_API_KEY) {
+    throw new Error(
+      "NEXT_PUBLIC_API_KEY must be configured with a non-development value for production builds",
+    )
+  }
+  return configured
+}
+
+function base64UrlEncode(value: string) {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ""
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
+}
+
+export function resolveChatWebSocketProtocols(publicApiKey: string) {
+  return [
+    CHAT_WEBSOCKET_PROTOCOL,
+    `${CHAT_WEBSOCKET_KEY_PROTOCOL_PREFIX}${base64UrlEncode(publicApiKey)}`,
+  ]
 }
 
 export function resolveApiBase(

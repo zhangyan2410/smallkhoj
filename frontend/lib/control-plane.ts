@@ -1,9 +1,9 @@
-import { resolveApiBase, resolvePublicApiBase } from "./runtime-url"
+import { resolveApiBase, resolvePublicApiBase, resolvePublicApiKey } from "./runtime-url"
 
 export const BROWSER_API_BASE = resolvePublicApiBase(process.env, "browser")
 export const SERVER_API_BASE = resolveApiBase(process.env, "server")
 export const API_BASE = typeof window === "undefined" ? SERVER_API_BASE : BROWSER_API_BASE
-export const PUBLIC_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "sk_public_local"
+export const PUBLIC_KEY = resolvePublicApiKey(process.env)
 export const SESSION_COOKIE_NAME = "smallkhoj_session"
 export const ACTIVE_SERVER_COOKIE_NAME = "smallkhoj_active_server"
 
