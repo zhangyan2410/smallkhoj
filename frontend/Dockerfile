@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM oven/bun:1 AS builder
+FROM oven/bun:1.3.14 AS builder
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
@@ -32,7 +32,7 @@ RUN --mount=type=secret,id=public_api_key \
     fi; \
     NEXT_PUBLIC_API_KEY="$public_api_key" bun run build
 
-FROM oven/bun:1 AS runner
+FROM oven/bun:1.3.14 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

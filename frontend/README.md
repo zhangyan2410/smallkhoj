@@ -1,55 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SmallKhoj frontend
 
-## Getting Started
+The frontend is a Next.js App Router application. Bun is the only supported
+package manager; `frontend/bun.lock` is the dependency truth used by local
+development, CI and the production Docker build.
 
-First, run the development server:
+## Install and run
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install --frozen-lockfile
+bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`. The standard Next development server is the normal
+product frontend. `server.ts` remains a compatibility/custom-server entrypoint
+for its explicit WebSocket use cases:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+bun run server:dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Do not generate npm, Yarn or pnpm lockfiles. Dependency changes use `bun add`,
+`bun remove` and a reviewed `bun.lock` update.
 
-## Learn More
+## Canonical checks
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+bun install --frozen-lockfile
+bun run test
+bun run lint
+bun run typecheck
+bun run build
+test -f .next/standalone/server.js
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Production builds require the non-secret test/runtime shape documented in
+`../docs/initial-release-production-deployment.md`, including Better Auth,
+bridge and public-client environment values. CI supplies ephemeral values only.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Automated flow versus UI acceptance
 
-## Daemon MVP API + WebSocket
+`bun run e2e` runs the committed Playwright integration flow from `../e2e/`.
+That suite verifies a deterministic authenticated cross-layer flow and is a CI
+gate; it is not UI acceptance.
 
-This project includes a daemon protocol MVP with in-memory store and real-time WebSocket push.
+Repository browser-visible acceptance, interactive investigation, DOM markers
+and screenshots use the project wrapper from the repository root:
 
-### Startup Modes
+```bash
+./twd --compact tabs
+```
 
-| Command | HTTP | WebSocket | Notes |
-|---|---|---|---|
-| `npm run dev` | ✅ | ❌ | Standard Next.js dev server; **no WebSocket** |
-| `npm run start` | ✅ | ❌ | Standard Next.js production server; **no WebSocket** |
-| `npm run server:dev` | ✅ | ✅ | Custom server (Next.js + WS); use for **Phase 3 dev** |
-| `npm run server` | ✅ | ✅ | Custom server (Next.js + WS); use for **Phase 3 production** |
+Follow `../docs/real-test-sop-template.md`. Do not call `twd.py` directly and do
+not substitute one-off Playwright scripts for `./twd` evidence.
 
-> ⚠️ **Important**: Phase 3 WebSocket requires the custom server (`server.ts`). `npm run dev` / `npm run start` will NOT enable WebSocket connections because they use the standard Next.js server without the `ws` upgrade handler.
+## Runtime URLs
 
-### Why a Custom Server?
-
-The daemon MVP API routes (`/internal/agent-api/*`) share an in-memory store. WebSocket connections must be on the same HTTP server to access this store. A separate WS process cannot share memory with Next.js API routes, so `server.ts` integrates both on the same port.
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Server-side frontend requests use `INTERNAL_API_BASE_URL`.
+- Browser requests use same-origin paths unless `NEXT_PUBLIC_API_BASE_URL` is
+  explicitly configured at build time.
+- The public client key is browser-visible and is not a human account/session.
+- Production client environment reads must remain explicit static
+  `process.env.NEXT_PUBLIC_*` property accesses so Next.js can inline them.

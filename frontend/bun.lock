@@ -12,7 +12,6 @@
         "@dnd-kit/sortable": "^10.0.0",
         "@dnd-kit/utilities": "^3.2.2",
         "@tailwindcss/oxide-darwin-arm64": "^4.3.0",
-        "@types/ws": "^8.18.1",
         "better-auth": "^1.6.22",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
@@ -25,7 +24,6 @@
         "react": "19.2.4",
         "react-dom": "19.2.4",
         "react-markdown": "^10.1.0",
-        "react-use-websocket": "^4.13.0",
         "remark-gfm": "^4.0.1",
         "shadcn": "^4.5.0",
         "tailwind-merge": "^3.5.0",
@@ -40,6 +38,7 @@
         "@types/pg": "^8.20.0",
         "@types/react": "^19",
         "@types/react-dom": "^19",
+        "@types/ws": "^8.18.1",
         "cross-env": "^10.1.0",
         "eslint": "^9",
         "eslint-config-next": "16.2.4",
@@ -1449,8 +1448,6 @@
     "react-is": ["react-is@16.13.1", "https://registry.npmmirror.com/react-is/-/react-is-16.13.1.tgz", {}, "sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ=="],
 
     "react-markdown": ["react-markdown@10.1.0", "https://registry.npmmirror.com/react-markdown/-/react-markdown-10.1.0.tgz", { "dependencies": { "@types/hast": "^3.0.0", "@types/mdast": "^4.0.0", "devlop": "^1.0.0", "hast-util-to-jsx-runtime": "^2.0.0", "html-url-attributes": "^3.0.0", "mdast-util-to-hast": "^13.0.0", "remark-parse": "^11.0.0", "remark-rehype": "^11.0.0", "unified": "^11.0.0", "unist-util-visit": "^5.0.0", "vfile": "^6.0.0" }, "peerDependencies": { "@types/react": ">=18", "react": ">=18" } }, "sha512-qKxVopLT/TyA6BX3Ue5NwabOsAzm0Q7kAPwq6L+wWDwisYs7R8vZ0nRXqq6rkueboxpkjvLGU9fWifiX/ZZFxQ=="],
-
-    "react-use-websocket": ["react-use-websocket@4.13.0", "https://registry.npmmirror.com/react-use-websocket/-/react-use-websocket-4.13.0.tgz", {}, "sha512-anMuVoV//g2N76Wxqvqjjo1X48r9Np3y1/gMl7arX84tAPXdy5R7sB5lO5hvCzQRYjqXwV8XMAiEBOUbyrZFrw=="],
 
     "recast": ["recast@0.23.11", "https://registry.npmmirror.com/recast/-/recast-0.23.11.tgz", { "dependencies": { "ast-types": "^0.16.1", "esprima": "~4.0.0", "source-map": "~0.6.1", "tiny-invariant": "^1.3.3", "tslib": "^2.0.1" } }, "sha512-YTUo+Flmw4ZXiWfQKGcwwc11KnoRAYgzAE2E7mXKCjSviTKShtxBsN6YUUBB2gtaBzKzeKunxhUwNHQuRryhWA=="],
 
