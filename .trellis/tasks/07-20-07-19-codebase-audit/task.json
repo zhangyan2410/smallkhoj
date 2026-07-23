@@ -1,0 +1,28 @@
+{
+  "id": "07-19-codebase-audit",
+  "name": "07-19-codebase-audit",
+  "title": "SmallKhoj codebase audit 2026-07-19",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-07-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-22-codebase-audit-remediation"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
