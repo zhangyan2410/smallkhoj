@@ -1,5 +1,4 @@
 import base64
-from types import SimpleNamespace
 import uuid
 
 import pytest

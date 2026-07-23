@@ -1,5 +1,4 @@
 """LLM 调用服务。后续可扩展为多 provider 支持（参考 khoj processor/conversation/）。"""
-import os
 from typing import AsyncIterator
 
 import httpx

@@ -1,5 +1,4 @@
 """WebSocket 聊天路由。参考 khoj 的 /api/chat/ws 协议。"""
-import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 

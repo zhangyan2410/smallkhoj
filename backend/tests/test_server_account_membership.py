@@ -9,7 +9,7 @@ from sqlalchemy.exc import MultipleResultsFound
 
 import models.seed as seed
 import routers.public_api as public_api
-from models import Account, Base, Channel, ChannelMember, Computer, Member, Server, ServerInvite, ServerMembership
+from models import Account, Base, Channel, Computer, Member, Server, ServerInvite, ServerMembership
 from services import server_invites, server_membership
 
 

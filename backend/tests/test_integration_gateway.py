@@ -1,4 +1,3 @@
-from types import SimpleNamespace
 import uuid
 
 import pytest
