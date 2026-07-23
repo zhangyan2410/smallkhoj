@@ -1,0 +1,175 @@
+"""Real PostgreSQL acceptance tests for Alembic schema transitions."""
+
+from __future__ import annotations
+
+import asyncio
+import uuid
+from datetime import datetime, timezone
+
+import asyncpg
+import pytest
+
+from postgres_test_support import disposable_postgres, run_alembic
+
+
+BASELINE_REVISION = "77b8b147f689"
+IDENTITY_REVISION = "0002_messages_seq"
+
+
+async def _seed_message_context(connection: asyncpg.Connection) -> tuple[uuid.UUID, uuid.UUID]:
+    server_id = uuid.uuid4()
+    member_id = uuid.uuid4()
+    channel_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    await connection.execute(
+        "INSERT INTO servers (id, name, created_at, updated_at) VALUES ($1, $2, $3, $3)",
+        server_id,
+        "migration-test-server",
+        now,
+    )
+    await connection.execute(
+        """
+        INSERT INTO members (
+            id, server_id, type, display_name, status, skills, config, created_at, updated_at
+        ) VALUES ($1, $2, 'human', $3, 'active', '[]'::jsonb, '{}'::jsonb, $4, $4)
+        """,
+        member_id,
+        server_id,
+        f"migration-member-{member_id.hex[:8]}",
+        now,
+    )
+    await connection.execute(
+        """
+        INSERT INTO channels (id, server_id, name, type, creator_id, created_at, updated_at)
+        VALUES ($1, $2, $3, 'public', $4, $5, $5)
+        """,
+        channel_id,
+        server_id,
+        f"migration-channel-{channel_id.hex[:8]}",
+        member_id,
+        now,
+    )
+    return channel_id, member_id
+
+
+async def _insert_message(
+    connection: asyncpg.Connection,
+    channel_id: uuid.UUID,
+    member_id: uuid.UUID,
+    *,
+    seq: int | None,
+) -> int:
+    message_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    if seq is None:
+        return await connection.fetchval(
+            """
+            INSERT INTO messages (
+                id, short_id, channel_id, sender_id, content, channel_type,
+                mentions, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, 'migration test', 'channel', '{}', $5, $5)
+            RETURNING seq
+            """,
+            message_id,
+            message_id.hex[:12],
+            channel_id,
+            member_id,
+            now,
+        )
+    return await connection.fetchval(
+        """
+        INSERT INTO messages (
+            id, short_id, channel_id, sender_id, content, channel_type,
+            mentions, seq, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, 'migration test', 'channel', '{}', $5, $6, $6)
+        RETURNING seq
+        """,
+        message_id,
+        message_id.hex[:12],
+        channel_id,
+        member_id,
+        seq,
+        now,
+    )
+
+
+@pytest.mark.asyncio
+async def test_fresh_database_upgrades_to_head():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", "head")
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            revision = await connection.fetchval("SELECT version_num FROM alembic_version")
+            assert revision
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_identity_migration_starts_above_historical_message_seq():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            channel_id, member_id = await _seed_message_context(connection)
+            for seq in (1, 2, 3):
+                await _insert_message(connection, channel_id, member_id, seq=seq)
+        finally:
+            await connection.close()
+
+        run_alembic(postgres.database_url, "upgrade", IDENTITY_REVISION)
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            generated = await _insert_message(connection, channel_id, member_id, seq=None)
+            assert generated > 3
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_head_reconciles_explicit_transition_writes_before_automatic_only_writers():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            channel_id, member_id = await _seed_message_context(connection)
+            await _insert_message(connection, channel_id, member_id, seq=1)
+        finally:
+            await connection.close()
+
+        run_alembic(postgres.database_url, "upgrade", IDENTITY_REVISION)
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            await _insert_message(connection, channel_id, member_id, seq=100)
+        finally:
+            await connection.close()
+
+        run_alembic(postgres.database_url, "upgrade", "head")
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            generated = await _insert_message(connection, channel_id, member_id, seq=None)
+            assert generated > 100
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_head_allocates_unique_message_seq_under_concurrency():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", "head")
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            channel_id, member_id = await _seed_message_context(connection)
+        finally:
+            await connection.close()
+
+        async def insert_one() -> int:
+            worker = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+            try:
+                return await _insert_message(worker, channel_id, member_id, seq=None)
+            finally:
+                await worker.close()
+
+        generated = await asyncio.gather(*(insert_one() for _ in range(20)))
+        assert len(generated) == len(set(generated)) == 20
+
