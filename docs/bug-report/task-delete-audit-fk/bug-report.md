@@ -40,3 +40,19 @@ runtime/model work and must not participate in message freshness.
 A successful response means the entity deletion and its tombstone audit/event committed
 together. Any database or storage failure returns failure and leaves a mutually
 consistent recoverable state; no event is published before commit.
+
+## RED / GREEN evidence (2026-07-23)
+
+- Independent raw PostgreSQL RED reproduced both advisor failures:
+  `activity_logs_task_id_fkey` and `event_records_task_id_fkey` after deleting the
+  referenced Task. The current synchronized base additionally returned HTTP 405 for
+  the first permanent route test because no DELETE route existed yet.
+- GREEN: 11 real PostgreSQL Task/File route cases cover owner success, member denial,
+  missing/foreign scope, dependent rows, saved items, old-FK SET NULL, tombstone
+  Activity/Event, forced commit rollback, local blob purge, quarantine fallback and
+  blob restoration on DB failure.
+- Independent observer sessions assert entity absence before `_push_committed_events`;
+  daemon tests explicitly classify `task.deleted`, `task_deleted` and `file.deleted`
+  as non-runtime and passed inside the complete 265-test daemon suite.
+- Integrated dedicated-container backend result: `347 passed`; touched/full Ruff and
+  `git diff --check` passed before task validation.

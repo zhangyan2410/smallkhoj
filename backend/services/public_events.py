@@ -274,7 +274,7 @@ def _event_scope(record: EventRecord) -> dict[str, Any]:
         elif isinstance(channel_name, str) and channel_name:
             scope["name"] = channel_name
         return scope
-    if event_type.startswith("message.") or event_type == "reaction.updated":
+    if event_type.startswith("message.") or event_type.startswith("file.") or event_type == "reaction.updated":
         scope: dict[str, Any] = {"kind": "channel"}
         channel_id = record.channel_id or payload.get("channelId")
         if channel_id:

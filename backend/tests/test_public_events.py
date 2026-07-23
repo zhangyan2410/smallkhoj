@@ -79,6 +79,45 @@ def test_task_event_scope_prefers_task_id_over_channel_id():
     assert event["payload"]["channelId"] == str(channel_id)
 
 
+def test_deleted_task_uses_payload_tombstone_for_browser_scope_without_fk():
+    task_id = uuid.uuid4()
+    channel_id = uuid.uuid4()
+    record = _record(
+        event_type="task.deleted",
+        channel_id=channel_id,
+        task_id=None,
+        payload={
+            "taskId": str(task_id),
+            "tombstone": {"taskId": str(task_id), "taskNumber": 7},
+        },
+    )
+
+    event = public_event_envelope_from_record(record)
+
+    assert event["type"] == "task.deleted"
+    assert event["scope"] == {"kind": "task", "id": str(task_id)}
+    assert event["payload"]["tombstone"]["taskNumber"] == 7
+
+
+def test_deleted_file_remains_a_channel_scoped_browser_event():
+    file_id = uuid.uuid4()
+    channel_id = uuid.uuid4()
+    record = _record(
+        event_type="file.deleted",
+        channel_id=channel_id,
+        payload={"fileId": str(file_id), "channel": "#files"},
+    )
+
+    event = public_event_envelope_from_record(record)
+
+    assert event["type"] == "file.deleted"
+    assert event["scope"] == {
+        "kind": "channel",
+        "id": str(channel_id),
+        "name": "files",
+    }
+
+
 def test_channel_memory_event_uses_channel_scope():
     channel_id = uuid.uuid4()
     memory_id = uuid.uuid4()

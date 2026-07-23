@@ -67,7 +67,113 @@ LIMIT 5;
 
 ## Migrations
 
-<!-- How to create and run migrations -->
+## Scenario: Alembic Schema Authority and Legacy Adoption
+
+### 1. Scope / Trigger
+- Trigger: any table/column/index/constraint/extension/identity change, application startup change, or adoption of a database created before Alembic.
+- Alembic revision files are the only deployed schema writers. ORM metadata maps the schema; `models/seed.py` performs data-only idempotent seeds/backfills.
+
+### 2. Signatures
+- Fresh/known database: `cd backend && uv run alembic upgrade head`.
+- Read-only legacy fingerprint: `DATABASE_URL=<explicit-url> uv run python -m scripts.legacy_schema_preflight`.
+- Compatible legacy adoption: `uv run alembic stamp 77b8b147f689` followed by `uv run alembic upgrade head`.
+- Runtime guard: `services.schema_readiness.assert_schema_at_head(db)`.
+- Isolated migration test env: `SMALLKHOJ_MIGRATION_TEST_ADMIN_URL` and `SMALLKHOJ_MIGRATION_TEST_DATABASE_URL`.
+
+### 3. Contracts
+- Docker/local-prod runs `alembic upgrade head` before uvicorn. Direct uvicorn performs a read-only exact-head check and refuses missing/behind/unknown revisions.
+- FastAPI lifespan and runtime seed code must not call `Base.metadata.create_all` or execute schema DDL.
+- Legacy fingerprint reads required tables, columns, indexes, constraints, version state and the historical `messages.seq` non-identity state. It never stamps automatically.
+- The only valid legacy stamp target is baseline `77b8b147f689`; `stamp head` is forbidden.
+- `messages.seq` transitions through `0002_messages_seq` (`BY DEFAULT` plus atomic historical high-water alignment) and `0003_messages_seq_auto` (final alignment plus `ALWAYS`). Production writers omit `seq`.
+
+### 4. Validation & Error Matrix
+- Missing `alembic_version` at app startup -> refuse startup and name the migration/preflight command.
+- Current revision differs from the checkout's unique head -> refuse startup; do not create missing objects.
+- Legacy fingerprint missing a required object or already containing identity/version state -> incompatible; make zero writes.
+- Migration lock/DDL/constraint failure -> deployment stops before uvicorn.
+- Migration test URLs absent -> local optional suite may skip; the required release command supplies explicit isolated URLs and permits no skip.
+
+### 5. Good/Base/Bad Cases
+- Good: empty disposable PostgreSQL -> actual revisions -> head -> application starts.
+- Good: compatible unversioned legacy schema -> read-only preflight -> operator-reviewed baseline stamp -> upgrade head.
+- Base: already-versioned database runs ordinary upgrade and exact-head readiness.
+- Bad: `Base.metadata.create_all` as startup fallback or migration proof.
+- Bad: `alembic stamp head`, automatic stamp on fingerprint failure, or destructive tests against a shared database.
+
+### 6. Tests Required
+- Execute actual revisions for empty-to-head, baseline-to-head and legacy-preflight/baseline-stamp/head paths.
+- Assert drifted legacy schema is rejected and `alembic_version` remains absent.
+- Seed historical message seq 1/2/3, then assert first implicit value is greater than 3.
+- Seed an explicit transition value 100, apply final reconcile and assert the next implicit value is greater than 100.
+- Commit concurrent implicit inserts and assert uniqueness; test all production writers omit `seq`.
+- Assert startup seed source has no `create_all` or schema DDL.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+uvicorn startup -> create_all/handwritten ALTER -> stamp head -> schema appears current
+```
+
+#### Correct
+```text
+deployment -> alembic upgrade head -> read-only exact-head guard -> data-only seed -> runtime
+legacy -> read-only fingerprint -> explicit baseline stamp -> upgrade head
+```
+
+## Scenario: Destructive Writes with Tombstone Audit and Local Blob Compensation
+
+### 1. Scope / Trigger
+- Trigger: deleting an entity referenced by ActivityLog/EventRecord or deleting a database row that owns a local filesystem blob.
+
+### 2. Signatures
+- Task API: `DELETE /api/v1/tasks/{task_id}` -> `{deleted, taskId, taskNumber}`.
+- File API: `DELETE /api/v1/files/{file_id}` -> `{deleted, fileId, storageCleanup: "deleted" | "quarantined"}`.
+- Durable UI events: `task.deleted`, `file.deleted`; runtime delivery classification is false.
+
+### 3. Contracts
+- Capture primitive UUID/number/name/channel fields before DELETE or rollback can expire ORM state.
+- Delete saved/dependent/entity rows first; write deletion ActivityLog/EventRecord with the deleted entity FK set to `NULL`.
+- Preserve the old ID only in `details.tombstone` / `payload.tombstone` and top-level JSON routing fields such as `payload.taskId`.
+- Commit before browser publication. Rollback leaves entity, dependencies and audit mutually consistent.
+- Local file deletion uses quarantine-then-delete: atomically move the blob under `UPLOAD_ROOT/.deleted`, commit DB deletion, then purge. DB failure restores the original path; purge failure returns `storageCleanup="quarantined"` and never claims filesystem atomicity.
+
+### 4. Validation & Error Matrix
+- Non-admin deletion -> `403`, no entity/audit/storage mutation.
+- Missing or foreign-server ID -> `404`, no existence disclosure.
+- Unsafe/missing file path -> fail before DB mutation.
+- DB commit failure after quarantine -> rollback and restore original blob; no success response.
+- Post-commit quarantine purge failure -> DB remains deleted and response says `quarantined`.
+
+### 5. Good/Base/Bad Cases
+- Good: Task dependencies cascade, old nullable references become NULL, new tombstone event has `task_id=NULL`, then committed event publishes.
+- Good: File blob is quarantined before metadata deletion and disappears after successful purge.
+- Base: purge fails after commit; the blob remains only in non-served quarantine and the response reports it.
+- Bad: delete Task then insert ActivityLog/EventRecord with `task_id=<deleted UUID>`.
+- Bad: unlink blob after commit and always return success without reporting cleanup failure.
+
+### 6. Tests Required
+- Real PostgreSQL authenticated route tests for owner/admin success, member denial, missing/foreign scope and forced commit rollback.
+- Assert Task, assignment/run and saved-item state; old FK `SET NULL`; new Activity/Event tombstone JSON with NULL FK.
+- Assert File saved-item removal, memory `file_id SET NULL`, blob purge, quarantine fallback and DB-failure restoration.
+- Assert event publication observes committed state from an independent connection.
+- Assert daemon runtime allowlist rejects dotted and legacy deletion event names.
+
+### 7. Wrong vs Correct
+#### Wrong
+```python
+await db.execute(delete(Task).where(Task.id == task.id))
+await _record_activity(..., task_id=task.id)  # FK violation / rollback
+```
+
+#### Correct
+```python
+tombstone = {"taskId": str(task.id), "taskNumber": task.task_number, "title": task.title}
+await db.execute(delete(Task).where(Task.id == task.id))
+await _record_activity(..., details={"taskId": tombstone["taskId"], "tombstone": tombstone}, task_id=None)
+await db.commit()
+await publish_committed_events()
+```
 
 ## Scenario: Server Account Membership Foundation
 
@@ -92,7 +198,7 @@ LIMIT 5;
 - Computer identity is currently Server-scoped. Daemon connect resolves or creates `Computer` by `server_id + machine_id`; the same physical `machine_id` under two Servers produces two `computers` rows.
 - Do not treat `machine_id` as a global physical-device identifier unless a product/architecture change introduces a global machine identity and per-Server binding layer.
 - Private and DM channels require `channel_members` membership for read/write visibility.
-- Startup DDL must create membership/invite tables and backfill existing accounts from `accounts.server_id` / `accounts.member_id`.
+- Alembic revisions create membership/invite schema; the data-only runtime seed may idempotently backfill existing accounts from `accounts.server_id` / `accounts.member_id` after the revision guard passes.
 
 ### 4. Validation & Error Matrix
 - Account selects a Server without active membership -> `403`.
@@ -151,7 +257,7 @@ human route -> current account token -> server_memberships -> active Server cont
 - External adapters must not execute runtime/provider work directly. Runtime execution stays behind TaskRun and daemon/runtime services.
 - Deduplication is database-backed through `uq_external_events_connector_dedup` on `(connector_id, dedup_key)`.
 - External sessions are unique by `(connector_id, external_scope_type, external_scope_id)`.
-- Startup DDL in `backend/models/seed.py` must be updated in the same change as ORM declarations in `backend/models/slock.py`.
+- ORM declarations in `backend/models/slock.py` and an ordered Alembic revision must be updated in the same schema change; never add gateway DDL to `backend/models/seed.py`.
 - Connector secrets and credential-shaped payload keys must not leak through event `normalized` payloads or generic serializers.
 
 ### 4. Validation & Error Matrix
@@ -625,7 +731,7 @@ FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_
   - Jira connector: `(server_id, provider="jira", name)`.
 - Route upsert key: `(server_id, connector_id, name)`.
 - Feishu route selector: `{"chatId": ..., "chatType": ..., "command": "jira_analysis"}`.
-- TaskRun DB compatibility: `task_assignments.assignment_mode` must allow `external_feishu` in both `models/slock.py` and startup DDL in `models/seed.py`.
+- TaskRun DB compatibility: `task_assignments.assignment_mode` must allow `external_feishu` in both `models/slock.py` and the owning Alembic baseline/follow-up revision.
 
 ### 3. Contracts
 - Bootstrap requires existing `Server`, `Channel`, creator `Member`, and assignee `Member` rows. It must not silently create product identity records.

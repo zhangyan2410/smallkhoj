@@ -40,3 +40,19 @@ After every supported migration/transition sequence, the next committed implicit
 `messages.seq` is strictly greater than every committed explicit or historical value
 observed before that insert. Application writers may stop allocating `MAX(seq)+1` only
 after this invariant is proven by actual revisions.
+
+## RED / GREEN evidence (2026-07-23)
+
+- RED on advisor `0002`: `test_identity_migration_starts_above_historical_message_seq`
+  raised `UniqueViolationError`, `Key (seq)=(1) already exists` after historical
+  values 1/2/3.
+- RED after the first fix: the explicit-transition test generated `2` after an
+  explicit `100`, proving a second reconciliation barrier was required.
+- GREEN: `backend/tests/test_alembic_migrations_postgres.py` passed all 7 actual
+  revision/readiness/legacy cases; message allocation and schema-authority guard
+  tests passed 6 additional focused assertions.
+- Integrated command with explicit dedicated-container URLs: backend `347 passed`
+  with no PostgreSQL skip; full Ruff returned `All checks passed`.
+- The disposable harness created a unique database per case and dropped it in
+  `finally`; container `smallkhoj-audit-remediation-pg` on port 55433 was the only
+  destructive target.

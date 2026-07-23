@@ -97,7 +97,6 @@ from services.thread_summary import (
     load_thread_metadata,
     resolve_thread_root,
     serialize_thread_summary,
-    thread_reply_count,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
@@ -137,6 +136,8 @@ PUBLIC_ACTIVITY_EVENT_TYPES = {
     "supervisor_task_created": "task.created",
     "supervisor_task_assigned": "task.created",
     "supervisor_task_updated": "task.updated",
+    "supervisor_task_deleted": "task.deleted",
+    "supervisor_file_deleted": "file.deleted",
     "supervisor_member_updated": "member.updated",
     "supervisor_member_created": "member.created",
     "message_reaction_added": "reaction.updated",
@@ -153,6 +154,8 @@ EVENT_TYPE_ALIASES = {
     "reaction.updated": "reaction_updated",
     "task.created": "task_created",
     "task.updated": "task_updated",
+    "task.deleted": "task_deleted",
+    "file.deleted": "file_deleted",
     "task.memory_requested": "task_memory_requested",
     "member.updated": "member_updated",
     "member.created": "member_created",
@@ -1027,6 +1030,7 @@ async def _delete_saved_item_references(
     channel_ids: list[uuid.UUID] | None = None,
     message_ids: list[uuid.UUID] | None = None,
     task_ids: list[uuid.UUID] | None = None,
+    file_ids: list[uuid.UUID] | None = None,
 ) -> None:
     conditions = []
     if channel_ids:
@@ -1035,6 +1039,8 @@ async def _delete_saved_item_references(
         conditions.append((SavedItem.item_type == "message") & SavedItem.item_id.in_(message_ids))
     if task_ids:
         conditions.append((SavedItem.item_type == "task") & SavedItem.item_id.in_(task_ids))
+    if file_ids:
+        conditions.append((SavedItem.item_type == "file") & SavedItem.item_id.in_(file_ids))
     if conditions:
         await db.execute(delete(SavedItem).where(or_(*conditions)))
 
@@ -1152,7 +1158,8 @@ async def _serialize_activity(db: AsyncSession, activity: ActivityLog) -> dict:
 def compact_activity_feed(items: list[ActivityLog], limit: int) -> list[ActivityLog]:
     latest_heartbeats_by_agent: dict[uuid.UUID, ActivityLog] = {}
     visible_items: list[ActivityLog] = []
-    sort_key = lambda item: item.occurred_at or datetime.min.replace(tzinfo=timezone.utc)
+    def sort_key(item: ActivityLog) -> datetime:
+        return item.occurred_at or datetime.min.replace(tzinfo=timezone.utc)
 
     for item in items:
         if item.kind in HEARTBEAT_ACTIVITY_TYPES:
@@ -3082,6 +3089,60 @@ async def update_task(task_id: str, request: Request, _auth: None = Depends(veri
     return {"updated": True, "task": await _serialize_task(db, task)}
 
 
+@router.delete("/tasks/{task_id}")
+async def delete_task(
+    task_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete one server-scoped task and retain its identity as JSON tombstone data."""
+
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
+    task = await _resolve_task_by_id_or_number(db, server, task_id)
+    actor = await _resolve_human_actor(db, server, request, None, role="task deletion actor")
+
+    # Preserve only primitive values before DELETE/rollback can expire ORM state.
+    deleted_task_id = task.id
+    deleted_task_number = task.task_number
+    deleted_title = task.title
+    deleted_channel_id = task.channel_id
+    tombstone = {
+        "taskId": str(deleted_task_id),
+        "taskNumber": deleted_task_number,
+        "title": deleted_title,
+    }
+
+    try:
+        await _delete_saved_item_references(db, task_ids=[deleted_task_id])
+        # Core DELETE lets PostgreSQL enforce the declared CASCADE/SET NULL graph:
+        # task assignments/runs cascade; durable references become NULL.
+        await db.execute(delete(Task).where(Task.id == deleted_task_id))
+        await _record_activity(
+            db,
+            server,
+            actor,
+            "supervisor_task_deleted",
+            f"@{actor.display_name} deleted task #{deleted_task_number}",
+            {"taskId": str(deleted_task_id), "tombstone": tombstone},
+            channel_id=deleted_channel_id,
+            task_id=None,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    await _push_committed_events(db, server_id=server.id)
+    return {
+        "deleted": True,
+        "taskId": str(deleted_task_id),
+        "taskNumber": deleted_task_number,
+    }
+
+
 @router.get("/computers")
 async def list_computers(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     context = await _resolve_active_server_context(db, request)
@@ -3438,6 +3499,109 @@ async def upload_file(
     await db.refresh(entry)
 
     return _serialize_file(entry)
+
+
+def _quarantine_file_for_deletion(path: Path, file_id: uuid.UUID) -> Path:
+    """Atomically remove a local blob from its served path before DB deletion."""
+
+    quarantine_root = UPLOAD_ROOT.resolve() / ".deleted"
+    quarantine_root.mkdir(parents=True, exist_ok=True)
+    quarantine_path = quarantine_root / f"{file_id}-{path.name}"
+    if quarantine_path.exists():
+        raise HTTPException(409, "File deletion is already quarantined")
+    try:
+        path.replace(quarantine_path)
+    except OSError as exc:
+        logger.exception("Failed to quarantine file blob %s", path)
+        raise HTTPException(500, "Could not quarantine file storage") from exc
+    return quarantine_path
+
+
+def _restore_quarantined_file(quarantine_path: Path, original_path: Path) -> None:
+    """Compensate a failed DB transaction by restoring the served blob."""
+
+    original_path.parent.mkdir(parents=True, exist_ok=True)
+    quarantine_path.replace(original_path)
+
+
+def _purge_quarantined_file(quarantine_path: Path) -> bool:
+    """Best-effort post-commit purge; False means a non-served orphan remains."""
+
+    try:
+        quarantine_path.unlink(missing_ok=True)
+        return True
+    except OSError:
+        logger.exception("Failed to purge quarantined file blob %s", quarantine_path)
+        return False
+
+
+@router.delete("/files/{file_id}")
+async def delete_file(
+    file_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete file metadata transactionally and quarantine local storage safely."""
+
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
+    file_entry = await _get_public_attachment(db, server, file_id)
+    actor = await _resolve_human_actor(db, server, request, None, role="file deletion actor")
+
+    deleted_file_id = file_entry.id
+    deleted_channel_id = file_entry.channel_id
+    deleted_file_name = file_entry.file_name
+    deleted_original_name = file_entry.original_name
+    original_path = _safe_attachment_path(file_entry)
+    tombstone = {
+        "fileId": str(deleted_file_id),
+        "fileName": deleted_file_name,
+        "originalName": deleted_original_name,
+    }
+
+    # Filesystem and PostgreSQL are not one transaction.  Quarantine first so a
+    # successful DB delete never leaves the blob publicly resolvable; compensate
+    # by restoring the path if the DB transaction fails.
+    quarantine_path = _quarantine_file_for_deletion(original_path, deleted_file_id)
+    try:
+        await _delete_saved_item_references(db, file_ids=[deleted_file_id])
+        await db.execute(delete(FileEntry).where(FileEntry.id == deleted_file_id))
+        await _record_activity(
+            db,
+            server,
+            actor,
+            "supervisor_file_deleted",
+            f"@{actor.display_name} deleted file {deleted_original_name or deleted_file_name}",
+            {
+                "fileId": str(deleted_file_id),
+                "tombstone": tombstone,
+                "storagePolicy": "quarantine-then-delete",
+            },
+            channel_id=deleted_channel_id,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        try:
+            _restore_quarantined_file(quarantine_path, original_path)
+        except OSError:
+            logger.critical(
+                "DB file deletion rolled back but blob restore failed quarantine=%s original=%s",
+                quarantine_path,
+                original_path,
+                exc_info=True,
+            )
+        raise
+
+    storage_cleanup = "deleted" if _purge_quarantined_file(quarantine_path) else "quarantined"
+    await _push_committed_events(db, server_id=server.id)
+    return {
+        "deleted": True,
+        "fileId": str(deleted_file_id),
+        "storageCleanup": storage_cleanup,
+    }
 
 
 async def _get_public_attachment(db: AsyncSession, server: Server, attachment_id: str) -> FileEntry:
