@@ -1,11 +1,13 @@
 """Shared member serialization helpers for public and agent APIs."""
 
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import AgentWorkspace, Computer, Member
+from routers.serialization_prefetch import UNSET
 
 
 def _now_for(value: datetime | None) -> datetime:
@@ -60,7 +62,13 @@ async def member_workspace_id(db: AsyncSession, member: Member) -> str | None:
     return str(workspace_id) if workspace_id else config.get("workspaceId")
 
 
-async def serialize_member(db: AsyncSession, member: Member, *, _computer: Computer | None = None) -> dict:
+async def serialize_member(
+    db: AsyncSession,
+    member: Member,
+    *,
+    _computer: Computer | None | object = UNSET,
+    _workspace_id: str | None | object = UNSET,
+) -> dict:
     config = member.config or {}
     profile = {
         "displayName": member.display_name,
@@ -70,14 +78,20 @@ async def serialize_member(db: AsyncSession, member: Member, *, _computer: Compu
 
     status = member.status
     if member.kind == "agent" and member.computer_id and status in {"online", "active", "running", "idle"}:
-        computer = _computer
-        if computer is None:
+        if _computer is UNSET:
             result = await db.execute(
                 select(Computer).where(Computer.id == member.computer_id)
             )
             computer = result.scalar_one_or_none()
+        else:
+            computer = cast(Computer | None, _computer)
         if _lease_expired(computer):
             status = "offline"
+
+    if _workspace_id is UNSET:
+        workspace_id = await member_workspace_id(db, member)
+    else:
+        workspace_id = cast(str | None, _workspace_id)
 
     return {
         "id": str(member.id),
@@ -93,7 +107,7 @@ async def serialize_member(db: AsyncSession, member: Member, *, _computer: Compu
         "skills": member.skills or [],
         "config": config,
         "computerId": member_computer_id(member),
-        "workspaceId": await member_workspace_id(db, member),
+        "workspaceId": workspace_id,
         "backend": member_backend(member),
         "runtimeProvider": member_runtime_provider(member),
         "permissions": config.get("permissions") or {},

@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react"
+import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import {
@@ -27,24 +28,27 @@ import {
 } from "lucide-react"
 
 import { MessageFrame } from "@/components/message-frame"
+import { DestructiveActionDialog } from "@/components/destructive-action-dialog"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { EmptyState, RuntimeChip } from "@/components/product-ui"
-import { MarkdownMessage } from "@/components/markdown-message"
+import { useRealtimeSubscription } from "@/components/realtime-provider"
 import { AgentActivityList } from "@/components/agent-activity-list"
-import { AttachmentSheet, AvatarObject, ChannelDivider, ChatComposerSurface, ChatTaskToggle, EventBadge, MemberNameTag, MessageToolStrip } from "@/components/inkframe-object-ui"
-import { TaskBoard } from "@/components/task-board"
+import { AttachmentSheet, AvatarObject, ChannelDivider, ChatComposerSurface, ChatTaskToggle, EventBadge, InkframeObjectSurface, MemberNameTag, MessageToolStrip } from "@/components/inkframe-object-ui"
 import { ChannelMemorySurface, MemoryProposalQueue } from "@/components/memory-entry-surface"
 import { INKFRAME_DESK_PAPER_TINT, MaterialSurface, type MaterialPointerMode, type MaterialSurfaceMode } from "@/components/inkframe/material-surface"
 import type { MaterialResource } from "@/components/inkframe/material-resource"
 import { resolveAppDeskMaterialAction, type AppDeskMaterialAction } from "@/components/inkframe/app-desk-background"
 import {
   apiGet,
+  apiGetCritical,
   apiPost,
   apiDelete,
   apiHeaders,
+  isFileDeleteResult,
+  type FileDeleteResult,
   type Member,
   type MemoryEntry,
   type MemoryProposal,
@@ -53,16 +57,37 @@ import {
   BROWSER_API_BASE,
 } from "@/lib/control-plane"
 import {
-  applyHighWater,
-  connectRealtimeEvents,
+  channelFilesReducer,
+  createChannelFilesState,
+  projectChannelFileEvent,
+  type ChannelFileItem,
+} from "@/lib/channel-files-state"
+import {
   mergeMessageById,
   shouldHandleRealtimeEvent,
-  type HighWater,
-  type PublicEventEnvelope,
 } from "@/lib/realtime-events"
 import { chatReadCursorRequestForThread, hasUnreadThreadActivity, markChatUnreadScope } from "@/lib/chat-unread-state"
 import { channelMemberAddPayload } from "@/lib/channel-members"
 import { memberForMessageSender } from "@/lib/member-avatar"
+
+function LazyWidgetLoading() {
+  const t = useTranslations("common")
+  return (
+    <span role="status" aria-live="polite" className="text-sm text-muted-foreground">
+      {t("loading")}
+    </span>
+  )
+}
+
+const MarkdownMessage = dynamic(
+  () => import("@/components/markdown-message").then((module) => ({ default: module.MarkdownMessage })),
+  { ssr: false, loading: () => <LazyWidgetLoading /> },
+)
+
+const TaskBoard = dynamic(
+  () => import("@/components/task-board").then((module) => ({ default: module.TaskBoard })),
+  { ssr: false, loading: () => <LazyWidgetLoading /> },
+)
 
 type ChannelInfo = {
   id: string
@@ -146,22 +171,6 @@ type ThreadData = {
   replyCount?: number
   threadSummary?: ThreadSummary | null
 }
-type FileItem = {
-  id: string
-  attachmentId: string
-  serverId: string
-  channelId: string | null
-  messageId: string | null
-  uploadedBy: string
-  fileName: string
-  originalName: string
-  mimeType: string
-  size: number
-  url: string
-  previewUrl: string | null
-  metadata: Record<string, unknown>
-  createdAt: string | null
-}
 type SavedItem = {
   id: string
   itemType: string
@@ -198,6 +207,50 @@ function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function ChannelFileDeleteAction({
+  file,
+  sessionToken,
+  activeServerId,
+  onDeleted,
+}: {
+  file: ChannelFileItem
+  sessionToken?: string | null
+  activeServerId: string
+  onDeleted: (result: FileDeleteResult) => void
+}) {
+  const tChat = useTranslations("chat")
+  const tCommon = useTranslations("common")
+
+  return (
+    <DestructiveActionDialog
+      key={file.id}
+      triggerLabel={tChat("deleteFile")}
+      title={tChat("deleteFile")}
+      targetName={file.originalName}
+      consequence={tChat("deleteFileConsequence")}
+      confirmLabel={tCommon("delete")}
+      cancelLabel={tCommon("cancel")}
+      submittingLabel={tChat("deletingFile")}
+      retryLabel={tCommon("tryAgain")}
+      failureLabel={tChat("fileDeleteFailed")}
+      closeLabel={tCommon("close")}
+      onConfirm={async () => {
+        const result = await apiDelete<unknown>(
+          `/api/v1/files/${encodeURIComponent(file.id)}`,
+          sessionToken,
+          activeServerId,
+          { timeoutMs: 15_000 },
+        )
+        if (!isFileDeleteResult(result, file.id)) {
+          throw new Error(tChat("fileDeleteInvalidResponse"))
+        }
+        return result
+      }}
+      onSuccess={onDeleted}
+    />
+  )
 }
 
 function createLatencyTraceId(prefix = "chat") {
@@ -237,6 +290,8 @@ export function ChannelClient({
   initialDms = [],
   initialChannelId = "",
   sessionToken,
+  activeServerId,
+  canManageServer = false,
   currentMemberId,
   initialThreadId,
   initialMessageId,
@@ -249,6 +304,8 @@ export function ChannelClient({
   initialDms?: DmInfo[]
   initialChannelId?: string
   sessionToken?: string | null
+  activeServerId: string
+  canManageServer?: boolean
   currentMemberId?: string | null
   initialThreadId?: string
   initialMessageId?: string
@@ -256,6 +313,7 @@ export function ChannelClient({
   const [channelName, setChannelName] = useState(initialChannel)
   const [messages, setMessages] = useState<ChannelMessage[]>(initialMessages)
   const tChat = useTranslations("chat")
+  const tCommon = useTranslations("common")
   const channelMemoryCopy = {
     title: tChat("tabMemory"),
     entryCount: (count: number) => tChat("memoryEntryCount", { count }),
@@ -301,8 +359,17 @@ export function ChannelClient({
   const [taskLinks, setTaskLinks] = useState<Record<string, string>>({})
   const [asTask, setAsTask] = useState(false)
   const [activeTab, setActiveTab] = useState<"chat" | "tasks" | "memory" | "files" | "activity">("chat")
-  const [files, setFiles] = useState<FileItem[]>([])
-  const [filesLoading, setFilesLoading] = useState(false)
+  const filesChannelName = channelName === initialChannel ? channelName : null
+  const filesChannelId = filesChannelName ? channelId : ""
+  const filesScopeKey = `${activeServerId}:${filesChannelId}`
+  const [filesState, dispatchFiles] = useReducer(
+    channelFilesReducer,
+    filesScopeKey,
+    createChannelFilesState,
+  )
+  const filesStateIsCurrent = filesState.scopeKey === filesScopeKey
+  const files = filesStateIsCurrent ? filesState.files : []
+  const filesLoading = filesStateIsCurrent && filesState.phase === "loading"
   const [memoryEntries, setMemoryEntries] = useState<MemoryEntry[]>([])
   const [memoryProposals, setMemoryProposals] = useState<MemoryProposal[]>([])
   const [memoryLoading, setMemoryLoading] = useState(false)
@@ -318,7 +385,9 @@ export function ChannelClient({
   const chatDeskMaterialLayerRef = useRef<HTMLDivElement>(null)
   const chatDeskPointerForwardingRef = useRef(false)
   const messageEndRef = useRef<HTMLDivElement>(null)
-  const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
+  const realtimeCatchUpTimerRef = useRef<number | null>(null)
+  const fileRequestGenerationRef = useRef(0)
+  const fileRequestAbortRef = useRef<AbortController | null>(null)
   const [messageScrollState, setMessageScrollState] = useState({ progress: 0, visible: false })
 
   const storedThreadWidth = useSyncExternalStore(
@@ -501,9 +570,10 @@ export function ChannelClient({
       const decodedChannel = initialChannel
       const encodedChannel = channelPathSegment(decodedChannel)
       setChannelName(decodedChannel)
+      setChannelId("")
       setActiveThreadId(initialThreadId ?? null)
       setThreadData(null)
-      const h = apiHeaders(sessionToken)
+      const h = apiHeaders(sessionToken, false, activeServerId)
       const msgsRes = await fetch(`${API_BASE}/api/v1/channels/${encodedChannel}/messages?limit=50&threadMode=roots`, { headers: h })
       if (msgsRes.ok) { const d = await msgsRes.json(); if (!cancelled) setMessages(d.messages || []) }
       const [chsRes, dmsRes] = await Promise.all([
@@ -545,7 +615,7 @@ export function ChannelClient({
     }
     void loadChannel()
     return () => { cancelled = true }
-  }, [initialChannel, initialThreadId, markVisibleThreadRead, sessionToken])
+  }, [activeServerId, initialChannel, initialThreadId, markVisibleThreadRead, sessionToken])
 
   useEffect(() => {
     if (!initialMessageId) return
@@ -565,23 +635,50 @@ export function ChannelClient({
     return () => window.cancelAnimationFrame(frame)
   }, [activeTab, channelName, initialMessageId, messages.length])
 
+  useEffect(() => {
+    fileRequestAbortRef.current?.abort()
+    fileRequestAbortRef.current = null
+    const generation = ++fileRequestGenerationRef.current
+    dispatchFiles({ type: "scopeChanged", scopeKey: filesScopeKey, generation })
+  }, [filesScopeKey])
+
+  useEffect(() => () => fileRequestAbortRef.current?.abort(), [])
+
   const refreshFiles = useCallback(async () => {
-    if (!channelId) return
-    setFilesLoading(true)
+    if (!filesChannelId) return
+    fileRequestAbortRef.current?.abort()
+    const controller = new AbortController()
+    fileRequestAbortRef.current = controller
+    const generation = ++fileRequestGenerationRef.current
+    dispatchFiles({ type: "loadStarted", scopeKey: filesScopeKey, generation })
     try {
-      const data = await apiGet<{ files: FileItem[]; count: number }>(
-        `/api/v1/files?channelId=${encodeURIComponent(channelId)}`,
-        { files: [], count: 0 },
+      const data = await apiGetCritical<{ files: ChannelFileItem[]; count: number }>(
+        `/api/v1/files?channelId=${encodeURIComponent(filesChannelId)}`,
         sessionToken,
+        activeServerId,
+        { signal: controller.signal, timeoutMs: 15_000 },
       )
-      setFiles(data.files || [])
+      dispatchFiles({
+        type: "loadSucceeded",
+        scopeKey: filesScopeKey,
+        generation,
+        files: data.files || [],
+      })
     } catch (e) {
+      if (controller.signal.aborted) return
       console.error("Refresh files failed:", e)
-      setFiles([])
+      dispatchFiles({
+        type: "loadFailed",
+        scopeKey: filesScopeKey,
+        generation,
+        error: e instanceof Error ? e.message : tChat("filesLoadFailed"),
+      })
     } finally {
-      setFilesLoading(false)
+      if (fileRequestAbortRef.current === controller) {
+        fileRequestAbortRef.current = null
+      }
     }
-  }, [channelId, sessionToken])
+  }, [activeServerId, filesChannelId, filesScopeKey, sessionToken, tChat])
 
   const refreshMemory = useCallback(async () => {
     if (!channelId) {
@@ -647,13 +744,13 @@ export function ChannelClient({
   }, [refreshSavedItems])
 
   async function handleFileUpload(file: File) {
-    if (!channelId || !file) return
+    if (!filesChannelId || !file) return
     setUploading(true)
     try {
       const formData = new FormData()
       formData.append("file", file)
-      const h = apiHeaders(sessionToken)
-      const url = `${API_BASE}/api/v1/files?channelId=${encodeURIComponent(channelId)}`
+      const h = apiHeaders(sessionToken, false, activeServerId)
+      const url = `${API_BASE}/api/v1/files?channelId=${encodeURIComponent(filesChannelId)}`
       const response = await fetch(url, {
         method: "POST",
         headers: h,
@@ -688,7 +785,7 @@ export function ChannelClient({
     if (!e.dataTransfer.types.includes("Files")) return
     e.preventDefault()
     e.stopPropagation()
-    e.dataTransfer.dropEffect = channelId ? "copy" : "none"
+    e.dataTransfer.dropEffect = filesChannelId ? "copy" : "none"
   }
 
   function handleDragLeave(e: React.DragEvent) {
@@ -707,7 +804,7 @@ export function ChannelClient({
     setIsDragOver(false)
     const droppedFiles = Array.from(e.dataTransfer.files)
     if (droppedFiles.length === 0) return
-    if (!channelId) {
+    if (!filesChannelId) {
       alert("No channel selected. Cannot upload file.")
       return
     }
@@ -786,91 +883,99 @@ export function ChannelClient({
     }
   }, [sessionToken])
 
-  useEffect(() => {
-    const controller = new AbortController()
-    let catchUpTimer: number | null = null
+  useRealtimeSubscription(({ event, decision }) => {
     const scheduleCatchUp = () => {
-      if (catchUpTimer) window.clearTimeout(catchUpTimer)
-      catchUpTimer = window.setTimeout(() => {
+      if (realtimeCatchUpTimerRef.current) window.clearTimeout(realtimeCatchUpTimerRef.current)
+      realtimeCatchUpTimerRef.current = window.setTimeout(() => {
         void refreshMessages()
         if (activeThreadId) void refreshThread(activeThreadId)
-        catchUpTimer = null
+        realtimeCatchUpTimerRef.current = null
       }, 120)
     }
-    const stop = connectRealtimeEvents({
-      headers: apiHeaders(sessionToken),
-      signal: controller.signal,
-      scope: channelId ? { kind: "channel", id: channelId } : undefined,
-      onEvent: (event: PublicEventEnvelope) => {
-        if (event.type === "member.status.updated" || event.type === "member.updated") {
-          void refreshChannelsAndDms()
-          void refreshMembers()
-          void refreshAllMembers()
-          return
-        }
-        if (!shouldHandleRealtimeEvent(event, { channelId, channelName })) {
-          // Event belongs to another channel/DM or to a non-chat scope:
-          // refresh sidebar lists so unread/new channels are visible.
-          if (event.type === "message.created" && (event.scope.kind === "channel" || event.scope.kind === "dm")) {
-            markChatUnreadScope(
-              typeof window === "undefined" ? undefined : window.localStorage,
-              typeof window === "undefined" ? undefined : window,
-              event.scope,
-              event.seq,
-            )
-          }
-          void refreshChannelsAndDms()
-          return
-        }
-        const decision = applyHighWater(realtimeHighWaterRef.current, event)
-        if (decision.action === "drop") {
-          console.debug("[realtime] duplicate dropped", event.id)
-          return
-        }
-        if (decision.action === "catch_up") {
-          console.info("[realtime] catch-up triggered", decision.reason, event)
-          scheduleCatchUp()
-          return
-        }
-        if (event.type === "message.created") {
-          const message = event.payload.message
-          if (message && typeof message === "object" && "id" in message) {
-            const channelMessage = message as ChannelMessage
-            if (channelMessage.parentId) {
-              const rootId = channelMessage.threadId || channelMessage.parentId
-              if (rootId && rootId !== activeThreadId) {
-                setThreadUnreadRootIds((previous) => {
-                  const next = new Set(previous)
-                  next.add(rootId)
-                  return next
-                })
-              }
-            }
-            setMessages((previous) => mergeMessageById(previous, channelMessage))
-          } else {
-            scheduleCatchUp()
-          }
-          return
-        }
-        if (event.type.startsWith("memory.")) {
-          void refreshMemory()
-          return
-        }
-        if (event.type === "reaction.updated" || event.type === "message.updated" || event.type === "message.deleted") {
-          scheduleCatchUp()
-        }
-      },
-      onStatus: (status) => {
-        if (status.state === "error") console.warn("[realtime] chat stream error", status.error)
-        if (status.state === "reconnecting") console.info("[realtime] chat reconnect", status.attempt, status.delayMs)
-      },
-    })
-    return () => {
-      stop()
-      controller.abort()
-      if (catchUpTimer) window.clearTimeout(catchUpTimer)
+
+    if (decision.action === "drop") {
+      console.debug("[realtime] duplicate dropped", event.id)
+      return
     }
-  }, [activeThreadId, channelId, channelName, refreshChannelsAndDms, refreshMembers, refreshAllMembers, refreshMemory, refreshMessages, refreshThread, sessionToken])
+
+    if (event.type === "member.status.updated" || event.type === "member.updated") {
+      void refreshChannelsAndDms()
+      void refreshMembers()
+      void refreshAllMembers()
+      return
+    }
+
+    const fileProjection = projectChannelFileEvent(event, {
+      channelId: filesChannelId,
+      channelName: filesChannelName,
+    })
+    if (fileProjection) {
+      if (fileProjection.kind === "ignore") return
+      if (decision.action === "catch_up" || fileProjection.kind === "refresh") {
+        void refreshFiles()
+        return
+      }
+      const removedFile = files.find((file) => file.id === fileProjection.fileId)
+      dispatchFiles({
+        type: "fileRemoved",
+        scopeKey: filesScopeKey,
+        fileId: fileProjection.fileId,
+        fileName: removedFile?.originalName ?? fileProjection.fileId,
+      })
+      return
+    }
+
+    if (!shouldHandleRealtimeEvent(event, { channelId, channelName })) {
+      // Event belongs to another channel/DM or to a non-chat scope:
+      // refresh sidebar lists so unread/new channels are visible.
+      if (event.type === "message.created" && (event.scope.kind === "channel" || event.scope.kind === "dm")) {
+        markChatUnreadScope(
+          typeof window === "undefined" ? undefined : window.localStorage,
+          typeof window === "undefined" ? undefined : window,
+          event.scope,
+          event.seq,
+        )
+      }
+      void refreshChannelsAndDms()
+      return
+    }
+    if (decision.action === "catch_up") {
+      console.info("[realtime] catch-up triggered", decision.reason, event)
+      scheduleCatchUp()
+      return
+    }
+    if (event.type === "message.created") {
+      const message = event.payload.message
+      if (message && typeof message === "object" && "id" in message) {
+        const channelMessage = message as ChannelMessage
+        if (channelMessage.parentId) {
+          const rootId = channelMessage.threadId || channelMessage.parentId
+          if (rootId && rootId !== activeThreadId) {
+            setThreadUnreadRootIds((previous) => {
+              const next = new Set(previous)
+              next.add(rootId)
+              return next
+            })
+          }
+        }
+        setMessages((previous) => mergeMessageById(previous, channelMessage))
+      } else {
+        scheduleCatchUp()
+      }
+      return
+    }
+    if (event.type.startsWith("memory.")) {
+      void refreshMemory()
+      return
+    }
+    if (event.type === "reaction.updated" || event.type === "message.updated" || event.type === "message.deleted") {
+      scheduleCatchUp()
+    }
+  })
+
+  useEffect(() => () => {
+    if (realtimeCatchUpTimerRef.current) window.clearTimeout(realtimeCatchUpTimerRef.current)
+  }, [])
 
   async function openThread(message: ChannelMessage) {
     const threadId = message.threadId || message.id
@@ -1489,8 +1594,43 @@ export function ChannelClient({
                     <h2 className="text-sm font-semibold">{tChat("filesTitle")}</h2>
                     <span className="text-xs text-sand-muted">{tChat("fileCount", { count: files.length })}</span>
                   </div>
-                  {filesLoading && <p className="py-12 text-center text-sm text-muted-foreground">{tChat("filesLoading")}</p>}
-                  {!filesLoading && files.length === 0 && (
+                  {filesStateIsCurrent && filesState.cleanupWarnings.map((warning) => (
+                    <InkframeObjectSurface
+                      key={warning.fileId}
+                      material="drying"
+                      role="alert"
+                      data-slot="file-cleanup-warning"
+                      className="mb-3 space-y-1 p-3"
+                    >
+                      <p className="text-sm font-medium">{tChat("fileQuarantineWarningTitle")}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {tChat("fileQuarantineWarningDesc", { name: warning.fileName })}
+                      </p>
+                    </InkframeObjectSurface>
+                  ))}
+                  {filesLoading ? (
+                    <p role="status" aria-live="polite" className="mb-3 text-sm text-muted-foreground">
+                      {tChat("filesLoading")}
+                    </p>
+                  ) : null}
+                  {filesStateIsCurrent && filesState.phase === "error" ? (
+                    <InkframeObjectSurface
+                      material="blocked"
+                      role="alert"
+                      data-slot="files-load-error"
+                      className="mb-3 flex items-start justify-between gap-3 p-3"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-sm font-medium text-destructive">{tChat("filesLoadFailed")}</p>
+                        <p className="text-xs text-muted-foreground">{tChat("filesLoadFailedDesc")}</p>
+                        {filesState.error ? <p className="break-words text-xs text-destructive">{filesState.error}</p> : null}
+                      </div>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void refreshFiles()}>
+                        {tCommon("tryAgain")}
+                      </Button>
+                    </InkframeObjectSurface>
+                  ) : null}
+                  {filesStateIsCurrent && filesState.phase === "ready" && files.length === 0 && (
                     <p className="py-12 text-center text-sm text-muted-foreground">{tChat("noFiles", { channel: currentTitle })}</p>
                   )}
                   <ul className="space-y-2">
@@ -1557,6 +1697,22 @@ export function ChannelClient({
                               >
                                 <Files className="size-3.5" />
                               </a>
+                              {canManageServer ? (
+                                <ChannelFileDeleteAction
+                                  file={file}
+                                  sessionToken={sessionToken}
+                                  activeServerId={activeServerId}
+                                  onDeleted={(result) => {
+                                    dispatchFiles({
+                                      type: "fileRemoved",
+                                      scopeKey: filesScopeKey,
+                                      fileId: file.id,
+                                      fileName: file.originalName,
+                                      storageCleanup: result.storageCleanup,
+                                    })
+                                  }}
+                                />
+                              ) : null}
                             </div>
                           </AttachmentSheet>
                         </li>
@@ -1732,7 +1888,7 @@ export function ChannelClient({
                   size="icon"
                   aria-label={tChat("attachFile")}
                   title={tChat("attachFile")}
-                  disabled={uploading || !channelId}
+                  disabled={uploading || !filesChannelId}
                   onClick={() => openFilePicker()}
                 >
                   <Paperclip className="size-3.5" />

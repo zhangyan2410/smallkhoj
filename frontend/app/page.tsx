@@ -16,31 +16,28 @@ import {
   User,
 } from "lucide-react"
 
-import { AgentSealMark, EvidenceSurface, MemberNameTag, ObjectMetric, TaskTicket } from "@/components/inkframe-object-ui"
+import { AgentSealMark, EvidenceSurface, MemberNameTag, ObjectMetric } from "@/components/inkframe-object-ui"
 import { MemberAvatar } from "@/components/member-avatar"
 import { ProductShell } from "@/components/product-shell"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
+import { TaskDashboardProjection } from "@/components/task-dashboard-projection"
+import { TaskProjectionProvider } from "@/components/task-projection-provider"
 import { EmptyState, RuntimeChip, Toolbar } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { API_BASE, apiGet, formatTime, type Computer, type Member } from "@/lib/control-plane"
+import { API_BASE, apiGet, apiGetCritical, formatTime, type Computer, type Member } from "@/lib/control-plane"
+import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import type { TaskProjectionTask as Task } from "@/lib/task-projection"
 
 type Channel = {
   id: string
   name: string
   type: string
   description?: string
-}
-
-type Task = {
-  id: string
-  number: number
-  title: string
-  status: string
 }
 
 type ActivityItem = {
@@ -93,7 +90,10 @@ async function getMembers(sessionToken?: string | null, activeServerId?: string 
 }
 
 async function getTasks(sessionToken?: string | null, activeServerId?: string | null) {
-  return apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }, sessionToken, activeServerId)
+  const tasks = await fetchAllTaskPages<Task>((path) => (
+    apiGetCritical<TaskCursorPage<Task>>(path, sessionToken, activeServerId)
+  ))
+  return { tasks }
 }
 
 async function getComputers(sessionToken?: string | null, activeServerId?: string | null) {
@@ -242,9 +242,6 @@ export default async function Home({
     const bucket = getStatusBucket(member.status)
     return bucket === "ACTIVE" || bucket === "THINKING" || bucket === "STARTING"
   })
-  const openTasks = tasks.filter((task) => task.status === "open")
-  const inProgressTasks = tasks.filter((task) => task.status === "in_progress")
-  const pendingTasks = [...openTasks, ...inProgressTasks]
   const onlineComputers = computers.filter((computer) => computer.status === "online" || computer.status === "active")
 
   const nonHeartbeat = activity.filter((a) => a.type !== "workspace_heartbeat")
@@ -254,6 +251,12 @@ export default async function Home({
   const recentMessages = recentActivity.filter((a) => a.type.includes("message_sent")).slice(0, 8)
 
   return (
+    <TaskProjectionProvider
+      scopeKey={`${session.account.id}:${activeServerId}`}
+      initialTasks={tasks}
+      sessionToken={sessionToken}
+      activeServerId={activeServerId}
+    >
     <ProductShell
       active="search"
       title={t("brand")}
@@ -316,7 +319,7 @@ export default async function Home({
       }
     >
       <div className="space-y-5">
-        <RealtimeRefresh eventTypes={["member.status.updated", "member.updated", "message.created", "task.created", "task.updated"]} />
+        <RealtimeRefresh eventTypes={["member.status.updated", "member.updated", "message.created"]} />
 
         <form action="/" method="get" className="flex items-center gap-2">
           <Toolbar>
@@ -423,51 +426,7 @@ export default async function Home({
                 </CardContent>
               </Card>
 
-              {/* Pending Tasks */}
-              <Card className="lg:col-span-2 lg:col-start-2">
-                <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-                  <div>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <CheckSquare className="size-4 text-accent-rose" />
-                      {t("pendingTasks")}
-                    </CardTitle>
-                    <CardDescription>{t("pendingTasksDesc")}</CardDescription>
-                  </div>
-                  <Link href="/tasks">
-                    <Button variant="ghost" size="sm">
-                      {tCommon("allTasks")} <ArrowRight className="size-3" />
-                    </Button>
-                  </Link>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-3 flex gap-2">
-                    <RuntimeChip tone="paper" className="gap-1 py-1">
-                      <span className="size-1.5 shrink-0 rounded-full bg-warning" />
-                      {t("openCount", { count: openTasks.length })}
-                    </RuntimeChip>
-                    <RuntimeChip tone="paper" className="gap-1 py-1">
-                      <span className="size-1.5 shrink-0 rounded-full bg-info" />
-                      {t("inProgressCount", { count: inProgressTasks.length })}
-                    </RuntimeChip>
-                  </div>
-                  {pendingTasks.length === 0 ? (
-                    <EmptyState title={t("noPendingTasks")} description={t("noPendingTasksDesc")} />
-                  ) : (
-                    <div className="space-y-1">
-                      {pendingTasks.slice(0, 6).map((task) => (
-                        <TaskTicket key={task.id} href="/tasks" status={task.status} className="w-full justify-start">
-                          <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
-                          <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                          <RuntimeChip tone="paper" className="gap-1 uppercase">
-                            <span className={`size-1.5 shrink-0 rounded-full ${task.status === "in_progress" ? "bg-info" : "bg-warning"}`} />
-                            {task.status}
-                          </RuntimeChip>
-                        </TaskTicket>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <TaskDashboardProjection />
 
               {/* Quick stats sidebar card (computers + saved) */}
               <Card>
@@ -492,5 +451,6 @@ export default async function Home({
         )}
       </div>
     </ProductShell>
+    </TaskProjectionProvider>
   )
 }

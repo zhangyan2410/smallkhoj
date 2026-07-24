@@ -8,7 +8,7 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import get_db, ApiKey, Computer, Member, Server
+from models import ApiKey, Computer, Member, Server, get_db
 
 
 async def resolve_agent(

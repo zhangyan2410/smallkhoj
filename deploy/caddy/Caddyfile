@@ -1,6 +1,14 @@
 {$SMALLKHOJ_SITE_ADDRESS:localhost} {
 	encode zstd gzip
 
+	# Multipart overhead sits above the 50 MiB application file cap. This is a
+	# request-body ingress limit; Starlette spooling and application chunk reads
+	# remain separate resource boundaries.
+	@upload_requests path /api/v1/files /internal/agent-api/upload /internal/agent-api/profile/avatar
+	request_body @upload_requests {
+		max_size {$SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX:55MB}
+	}
+
 	@backend_api path /api /api/*
 	reverse_proxy @backend_api backend:8000
 

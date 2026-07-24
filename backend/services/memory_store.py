@@ -6,12 +6,12 @@ search, and retrieval-manifest contracts testable without a database session.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import posixpath
 import re
 import uuid
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 
 from fastapi import HTTPException
 

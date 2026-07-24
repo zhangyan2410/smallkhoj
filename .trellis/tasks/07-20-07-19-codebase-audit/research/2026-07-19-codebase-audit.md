@@ -1,10 +1,135 @@
 # SmallKhoj 代码审计报告 — 2026-07-19
 
-> **审计方法**：`improve` 技能（只读审计 + 自包含执行计划）。审计提交 `47848e8`，9 大类覆盖（correctness / security / performance / tests / tech-debt / deps / DX / docs / direction）。
-> **执行方式**：每个 finding 写成 `plans/NNN-*.md`，派发执行子代理到隔离 worktree 实现，主代理（reviewer）独立复核 diff 后给 APPROVE / REVISE / BLOCK 判决。本报告是所有 finding 的归档与维护索引。
-> **维护规则**：发现已修复 → 更新本文件的"状态"列；发现新问题 → 追加到"未解决问题"并按格式记录；merge 后 → 在"merge 清单"勾选。
+> **历史审计方法**：`improve` 技能（只读审计 + 自包含执行计划）。审计提交 `47848e8`，9 大类覆盖（correctness / security / performance / tests / tech-debt / deps / DX / docs / direction）。
+> **历史执行方式**：每个 finding 写成 `plans/NNN-*.md`，advisor 子代理在隔离 worktree 实现并自报状态。2026-07-23 的独立复核证明，原 `DONE`/`APPROVE` 不能当作集成或发布事实。
+> **当前维护规则**：先读下面的 current-candidate overlay；其后的 2026-07-19 advisor 状态、merge 清单和“已修/未修”文字仅保留为历史基线，不再作为当前真相源。
 
-## 速查：发现清单
+## Current-candidate overlay — 2026-07-24
+
+### State and release ordering
+
+```text
+branch: feat/2026-07-audit-remediation
+location: local remediation worktree only
+not yet: clean-candidate commits / PR / squash merge / main / deploy / release
+
+required order:
+  local code + production-shape + critical UI validation
+  -> precise commits
+  -> rebuild from the clean candidate SHA + formal capacity/full gates
+  -> PR + squash merge
+  -> linux/amd64 build and deploy from merged code
+  -> validate the newly deployed cloud version
+```
+
+The current cloud deployment contains older images. It must not be tested or
+benchmarked as evidence for this candidate.
+
+### Approved important-bug scope
+
+Included:
+
+- security, authentication and tenancy boundaries;
+- schema/data consistency, transactions and concurrency races;
+- PostgreSQL connection budget, SSE, `LISTEN/NOTIFY`, pagination and cleanup;
+- upload/delete boundaries;
+- CI, Docker images and delivery blockers.
+
+Excluded from this release: broad Router extraction, `ChannelClient`
+decomposition, chat-state-owner consolidation, observer integration, durable
+Work Item and `/control/*` route redesign.
+
+### Candidate status by workstream
+
+| Workstream | Direct candidate status | Remaining release work |
+|---|---|---|
+| schema-integrity | implemented locally; focused gates passed | clean candidate, final full gate, commits, merge |
+| auth-tenancy | implemented locally; focused gates passed | clean candidate, final full gate, commits, merge |
+| runtime-querying | implemented locally; focused gates passed | formal 30-minute Caddy capacity, full gate, commits, merge |
+| delivery-ui | local Caddy smoke and critical `./twd` evidence passed | precise commits, capacity/full gate, PR/merge |
+| cloud release | current candidate not deployed | post-merge amd64 deploy, then new-cloud validation |
+
+Plan 003a is repaired in the current candidate even though the advisor commit was
+not in its ancestry. The accepted behavior is scheduler exception logging,
+capped exponential backoff with success reset, and daemon send-failure logging.
+Focused evidence: RED `5 failed, 50 passed`; GREEN `55 passed`; Ruff passed.
+Diagnostic: `docs/bug-report/scheduler-loop-silent-failure/bug-report.md`.
+
+Two additional delivery blockers were found and guarded:
+
+1. The repository-root `.dockerignore` recursively excludes dotenv files while
+   retaining examples, so a backend build with repository-root context cannot
+   silently include a local `backend/.env`. Diagnostic:
+   `docs/bug-report/backend-image-secret-context/bug-report.md`.
+2. Production frontend image builds continue to inject the public key through a
+   BuildKit secret but disable build-layer cache reuse. Secret contents are not
+   cache keys, while Next embeds the key in browser assets; a cached layer could
+   retain the prior deployment key. The no-cache rebuild restored successful
+   local registration. Diagnostic:
+   `docs/bug-report/frontend-public-key-build-cache/bug-report.md`.
+
+`docs/migration-workflow.md` exists in the current candidate. `DESIGN.md` is
+still the stale old version; Plan 006 did not rewrite it in this candidate.
+
+### Critical local UI evidence
+
+Marker: `REAL_audit_delivery_ui_20260723235900`.
+
+Environment: disposable `local-prod` stack through Caddy at
+`http://127.0.0.1:19081`. The run did not access or modify the older cloud
+deployment.
+
+- new Better Auth signup/session, active Server, member and owner membership;
+- 201 Task fixtures crossing the `limit=200` cursor into a second UI page;
+- one physical SSE invariant;
+- `task.created` targeted refresh with two Task API page GETs and zero RSC GETs;
+- visible Task confirmation/delete, DB row removal and null-FK
+  `task.deleted` tombstone;
+- `file.deleted` SSE removal with zero File GETs and zero RSC GETs;
+- quarantined storage cleanup with committed DB delete and visible localized
+  `role=alert` warning.
+
+Evidence index:
+
+```text
+../evidence/REAL_audit_delivery_ui_20260723235900-notes.md
+../evidence/REAL_audit_delivery_ui_20260723235900-07-api-db.json
+../evidence/REAL_audit_delivery_ui_20260723235900-08-network-final.json
+```
+
+This is local production-shape evidence only. It is not a cloud result or a
+substitute for the final full gate.
+
+### Formal dispositions for plans 006–011
+
+| Plan | Disposition | Current truth |
+|---|---|---|
+| 006 | `ACCEPT_DOC_TRUTH`; implementation `DEFERRED`; `RELEASE_EXCLUDED` | accept shipped water/dark/shuimo; reconcile `DESIGN.md` later as docs-only work |
+| 007 | `DEFER_LINKED`; `RELEASE_EXCLUDED` | standalone observer task/WIP owns the direction; untouched here |
+| 008 | `DEFER_LINKED`; `RELEASE_EXCLUDED` | durable Work Item is a separate new feature |
+| 009 | `SUPERSEDED_BY_SCHEMA_AND_DELIVERY` | backend and critical local UI passed; final closure waits for clean candidate/full gate/merge |
+| 010 | `DEFER_LINKED`; `RELEASE_EXCLUDED` | keep `/daemon` unchanged |
+| 011 | `DEFER_LINKED`; `RELEASE_EXCLUDED`; `REJECT_DESTRUCTIVE_CLEANUP_IN_AUDIT_SCOPE` | no user-owned Remotion file is touched |
+
+### Cloud capacity facts and evidence boundary
+
+The target Tencent Lighthouse SKU is nominally **4 vCPU / 4 GB**, not
+2 vCPU / 2 GB. The guest is `x86_64`, exposes 4 vCPUs and
+`3,564,584,960` bytes = `3.3198 GiB` (report as `3.32 GiB`) RAM. The
+3 GiB swap is recorded separately and is not steady-state RAM. PostgreSQL
+`max_connections=100`.
+
+All existing cloud observations are from old images. Precise clean-candidate
+commits, the formal 30-minute Caddy capacity run, final full gates, PR/squash
+merge, new amd64 deployment and new-cloud validation remain pending. No
+500-cloud-user claim is proven.
+
+## Historical advisor snapshot — 2026-07-19
+
+Everything below this heading is retained to preserve the original finding and
+advisor execution trail. Its status labels and merge checklist are not current.
+
+## 历史速查：发现清单
 
 按 ID 排序。`ID` 对应 `plans/` 下的执行计划；`finding` 是审计原始编号（SECURITY-NN / CORRECTNESS-NN / PERF-NN / TDA-NN / TEST-NN / DX-NN / DOCS-NN / DIRECTION-NN）。
 
@@ -52,7 +177,7 @@
 
 ---
 
-## 用户已知问题的真正根因（深挖）
+## 历史 advisor 深挖：用户已知问题的根因
 
 > 用户提问："SQL 迁移还没做，目前用的还是 alter"
 >
@@ -85,7 +210,7 @@
 
 ---
 
-## 并发风险专题
+## 历史 advisor 并发风险判断
 
 > 用户提问："多人并发使用会出什么问题？"
 >
@@ -149,7 +274,7 @@
 
 ---
 
-## merge 清单与依赖
+## 历史 advisor merge 清单与依赖（未执行）
 
 ### 依赖图
 
@@ -213,7 +338,7 @@ merge 后在此勾选（[ ] → [x]）：
 
 ---
 
-## 详细 finding 根因（已完成）
+## 历史 advisor finding 根因与自报完成状态
 
 ### Plan 002 — P1 安全批量（5 个授权弱点）
 
@@ -296,7 +421,7 @@ merge 后在此勾选（[ ] → [x]）：
 
 ---
 
-## 执行过程中的 deviation 记录
+## 历史 advisor 执行 deviation 记录
 
 > improve 技能要求执行者撞到 plan 真实矛盾时 STOP 下来问，而不是临场发挥。以下是本审计中执行者正确触发的 STOP 与 reviewer 判决。
 
@@ -310,7 +435,7 @@ merge 后在此勾选（[ ] → [x]）：
 
 ---
 
-## 未解决问题（按优先级）
+## 历史 advisor 待办优先级（已被 current overlay 取代）
 
 ### 🔴 高（建议下一轮做）
 
@@ -347,13 +472,13 @@ merge 后在此勾选（[ ] → [x]）：
 
 ---
 
-## 维护说明
+## 当前维护说明
 
-- **本文件位置**：`docs/audits/2026-07-19-codebase-audit.md`
-- **关联文件**：`plans/README.md`（执行计划索引与状态）、`plans/NNN-*.md`（各计划全文）
-- **更新规则**：
-  - merge 一个 plan → 在"merge checklist"勾选 + 把本文件"速查表"对应行状态改 ✅
-  - 发现新 finding → 追加到"未解决问题"，按 `ID / 类别 / 根因 / 证据 / 优先级` 格式
-  - 修复一个未解决问题 → 移到"详细 finding 根因"对应章节，状态 ✅
-- **下次审计**：直接读本文件 + `plans/README.md` 就能知道上次发现了什么、修了什么、还剩什么。避免重复审计。
-- **审计周期**：建议每个大版本发布前做一次 `improve` 全量审计，对比本文件看哪些新 finding 出现、哪些旧 finding 复发。
+- **本文件位置**：`.trellis/tasks/07-20-07-19-codebase-audit/research/2026-07-19-codebase-audit.md`
+- **关联文件**：`../plans/README.md`、`../plans/NNN-*.md`、
+  `2026-07-22-independent-verification.md`、`../evidence/`。
+- **真相优先级**：current-candidate overlay 和直接 evidence 优先于下方历史 advisor 状态。
+- **状态词边界**：candidate 门禁通过、merged、deployed、cloud healthy 必须分别记录；不得从前者
+  推导后者。
+- **下一次更新**：正式容量和 final full gate 完成后补 candidate SHA/证据；PR squash merge 后
+  单独补 merge SHA；新 amd64 镜像部署并观察后再补 cloud 状态。

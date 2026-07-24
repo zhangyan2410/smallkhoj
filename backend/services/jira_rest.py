@@ -1,14 +1,13 @@
 """Jira Cloud REST helpers for outbound issue lookup and comment write-back."""
 
 import base64
+import uuid
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urlparse
-import uuid
 
 from models import ExternalConnector, ExternalMapping
 from services.integration_gateway import create_external_mapping
-
 
 JIRA_CONFIG_MISSING_SITE_URL = "JIRA_CONFIG_MISSING_SITE_URL"
 JIRA_CONFIG_INVALID_SITE_URL = "JIRA_CONFIG_INVALID_SITE_URL"
@@ -80,7 +79,7 @@ def jira_issue_url(config: JiraConfig, issue_key: str) -> str:
 
 
 def _auth_header(config: JiraConfig) -> str:
-    token = base64.b64encode(f"{config.email}:{config.api_token}".encode("utf-8")).decode("ascii")
+    token = base64.b64encode(f"{config.email}:{config.api_token}".encode()).decode("ascii")
     return f"Basic {token}"
 
 

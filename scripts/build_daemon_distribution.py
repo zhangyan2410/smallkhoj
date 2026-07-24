@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import platform as platform_module
+import re
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,7 @@ ARTIFACT_PREFIX = "smallkhoj-daemon"
 class DaemonDistribution:
     version: str
     platform: str
+    source_revision: str
     artifact: Path
     npm_package: Path
     checksum_file: Path
@@ -132,7 +134,7 @@ def write_manifest(
 def current_git_commit(root: Path) -> str | None:
     try:
         completed = subprocess.run(
-            ["git", "rev-parse", "--short=12", "HEAD"],
+            ["git", "rev-parse", "--verify", "HEAD"],
             cwd=root,
             check=False,
             capture_output=True,
@@ -143,7 +145,28 @@ def current_git_commit(root: Path) -> str | None:
         return None
     if completed.returncode != 0:
         return None
-    return completed.stdout.strip() or None
+    revision = completed.stdout.strip().lower()
+    return revision if re.fullmatch(r"[0-9a-f]{40}", revision) else None
+
+
+def resolve_source_revision(root: Path, requested: str | None) -> str:
+    current = current_git_commit(root)
+    revision = requested.strip().lower() if isinstance(requested, str) else current
+    if revision is None or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        raise ValueError("source revision must be a 40-character Git commit SHA")
+    if current is not None and revision != current:
+        raise ValueError("source revision must equal the current HEAD")
+    return revision
+
+
+def clean_artifact_output(root: Path, daemon_dir: Path, output_dir: Path) -> None:
+    protected = {root.resolve(), daemon_dir.resolve(), Path("/")}
+    if output_dir in protected:
+        raise ValueError("refusing to clean a protected daemon artifact directory")
+    if root.resolve() not in output_dir.parents:
+        raise ValueError("clean daemon artifact output must be inside the project root")
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
 
 
 def create_archive(staging_dir: Path, output_dir: Path, *, version: str, target_platform: str) -> Path:
@@ -254,18 +277,29 @@ def build_distribution(
     target_platform: str | None = None,
     skip_build: bool = False,
     install_production_deps: bool = True,
+    source_revision: str | None = None,
+    clean_output_dir: bool = False,
 ) -> DaemonDistribution:
     root = root.resolve()
     daemon_dir = root / DAEMON_RELATIVE_DIR
+    output_dir = output_dir.resolve()
+    revision = resolve_source_revision(root, source_revision)
+    if clean_output_dir:
+        clean_artifact_output(root, daemon_dir, output_dir)
     package_json = read_package_json(daemon_dir)
     version = str(package_json["version"])
     platform_value = target_platform or default_platform()
 
     if not skip_build:
-        run_command(["npm", "install", "--silent"], cwd=daemon_dir, timeout=180)
+        dist_dir = daemon_dir / "dist"
+        if dist_dir.is_symlink():
+            dist_dir.unlink()
+        elif dist_dir.exists():
+            shutil.rmtree(dist_dir)
+        run_command(["npm", "ci", "--silent"], cwd=daemon_dir, timeout=180)
         run_command(["npm", "run", "build"], cwd=daemon_dir, timeout=120)
 
-    npm_package = create_npm_package(daemon_dir, output_dir.resolve())
+    npm_package = create_npm_package(daemon_dir, output_dir)
 
     with tempfile.TemporaryDirectory(prefix="smallkhoj-daemon-dist-") as tmp:
         staging_dir = Path(tmp) / "staging"
@@ -276,17 +310,22 @@ def build_distribution(
             staging_dir,
             version=version,
             target_platform=platform_value,
-            git_commit=current_git_commit(root),
+            git_commit=revision,
         )
         if install_production_deps:
             run_command(["npm", "install", "--omit=dev", "--silent"], cwd=staging_dir, timeout=180)
-        artifact = create_archive(staging_dir, output_dir.resolve(), version=version, target_platform=platform_value)
+        artifact = create_archive(
+            staging_dir,
+            output_dir,
+            version=version,
+            target_platform=platform_value,
+        )
 
     digest = sha256_file(artifact)
     checksum = artifact.with_suffix(artifact.suffix + ".sha256")
     checksum.write_text(f"{digest}  {artifact.name}\n", encoding="utf-8")
     install_script = write_install_script(
-        output_dir.resolve(),
+        output_dir,
         artifact_name=artifact.name,
         root_name=artifact.name.removesuffix(".tar.gz"),
         version=version,
@@ -294,17 +333,23 @@ def build_distribution(
         sha256=digest,
     )
     manifest = artifact.with_suffix(artifact.suffix + ".manifest.json")
+    generated_files = (artifact, npm_package, checksum, install_script)
     manifest.write_text(
         json.dumps(
             {
                 "name": ARTIFACT_PREFIX,
                 "version": version,
                 "platform": platform_value,
+                "sourceRevision": revision,
                 "artifact": str(artifact),
                 "npmPackage": str(npm_package),
                 "sha256": digest,
                 "checksumFile": str(checksum),
                 "installScript": str(install_script),
+                "files": {
+                    path.name: sha256_file(path)
+                    for path in generated_files
+                },
             },
             ensure_ascii=False,
             indent=2,
@@ -316,6 +361,7 @@ def build_distribution(
     return DaemonDistribution(
         version=version,
         platform=platform_value,
+        source_revision=revision,
         artifact=artifact,
         npm_package=npm_package,
         checksum_file=checksum,
@@ -329,6 +375,7 @@ def report_to_dict(result: DaemonDistribution) -> dict[str, Any]:
     return {
         "version": result.version,
         "platform": result.platform,
+        "sourceRevision": result.source_revision,
         "artifact": str(result.artifact),
         "npmPackage": str(result.npm_package),
         "checksumFile": str(result.checksum_file),
@@ -343,6 +390,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", default=".", help="Project root. Defaults to current directory.")
     parser.add_argument("--output-dir", required=True, help="Directory where the daemon artifact should be written.")
     parser.add_argument("--platform", dest="target_platform", help="Target platform label, e.g. darwin-arm64.")
+    parser.add_argument(
+        "--source-revision",
+        help="40-character Git commit SHA recorded in the release manifest.",
+    )
+    parser.add_argument(
+        "--clean-output-dir",
+        action="store_true",
+        help="Remove stale generated files from the output directory before packaging.",
+    )
     parser.add_argument("--skip-build", action="store_true", help="Do not run npm install/npm run build before packaging.")
     parser.add_argument(
         "--skip-production-deps",
@@ -362,6 +418,8 @@ def main(argv: list[str] | None = None) -> int:
             target_platform=args.target_platform,
             skip_build=args.skip_build,
             install_production_deps=not args.skip_production_deps,
+            source_revision=args.source_revision,
+            clean_output_dir=args.clean_output_dir,
         )
     except Exception as exc:
         print(str(exc), file=sys.stderr)

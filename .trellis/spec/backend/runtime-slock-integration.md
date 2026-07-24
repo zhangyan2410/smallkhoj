@@ -748,10 +748,15 @@ SLOCKMSG
 - `GET /api/v1/channels/{channel_id}/members`
 - `POST /api/v1/dm`
 - Agent send: `POST /internal/agent-api/send`
+- Capability registry: `services.agent_permissions.AGENT_PERMISSION_CAPABILITIES`.
+- Runtime gate: `routers.agent_api._require_permission(member, capability)`.
 
 ### 3. Contracts
 
-- Public management endpoints require `X-Public-Key: sk_public_local` in local test/dev flows.
+- Public management endpoints require `X-Public-Key`. Explicit `local-dev` flows default the canonical `PUBLIC_API_KEY` source to `sk_public_local`; production must use a non-development value and must never put it in a URL.
+- Protected agent operations are explicit default-deny. Only a registry-known capability whose persisted value is boolean `true` allows; missing config, missing/JSON-null permissions, `{}`, absent entries, non-boolean values and unknown future capability names deny.
+- New-agent creation persists a complete registry-shaped permission map. An omitted creation field materializes the historical effective known capabilities as explicit `true`; a partial map sets every omitted known capability to `false`; unknown/non-boolean creation values return `400`.
+- Data-only runtime seed backfills only legacy agent rows whose permission field is absent or JSON null. Explicit `{}` is intentional deny-all and must never be backfilled. Newly added future capabilities remain denied until explicitly persisted.
 - `POST /api/v1/computers/connect-command` request:
   - `name: string`
   - `serverUrl?: string`
@@ -831,6 +836,9 @@ SLOCKMSG
 - Invalid `computerId` for agent creation -> `400 Invalid computerId`.
 - Unknown `computerId` for agent creation -> `404 Computer not found`.
 - Missing channel/member identifiers keep their existing `400`/`404` behavior.
+- Missing/empty permission map or absent capability -> `403 Permission denied: <capability>`.
+- Unknown capability, even if a row stores it as `true` -> `403`.
+- Agent creation with an unknown permission or non-boolean value -> `400`; partial known maps are expanded with omitted capabilities set false.
 
 ### 5. Good/Base/Bad Cases
 
@@ -842,10 +850,12 @@ SLOCKMSG
 - Good: an expired, reused, or invalid connect command cannot kill a healthy same-server daemon; it exits before launching when the server-scoped wrapper lock points at a live process.
 - Good: user creates an agent later on Members and binds it to the connected computer.
 - Good: browser creates a channel, adds the agent by channel id/member id, sends a human message, and verifies an agent-authored response through `/internal/agent-api/send`.
+- Good: an agent created with `{sendMessage: true}` persists every other known capability as false and cannot gain a capability merely because code adds a new registry entry later.
 - Bad: generating a long-lived machine token from the browser and creating a computer before the daemon has proven it can connect.
 - Bad: wrapper startup reads a pid lock, sends `SIGTERM` to that process, and only then attempts `/daemon/connect`; a stale retry with an invalid one-time token can otherwise kill a healthy daemon and fail authentication itself.
 - Bad: putting `--agent-id aaaa...` into the default computer connection command, because daemon connect must not auto-create or steal an agent workspace.
 - Bad: testing agent replies by posting to public `/api/v1/channels/{channel}/messages` with `sender: agentName`; that proves message rendering, not agent-facing auth/send contracts.
+- Bad: `permissions is None -> allow`, truthy/wildcard permission checks, or seed code converting an explicit empty map into allow-all.
 
 ### 6. Tests Required
 
@@ -857,6 +867,9 @@ SLOCKMSG
   - Same-name active computer with a changed `machineId` returns `409` and does not consume the connect ticket.
   - Same online `machineId` returns `409`.
   - Duplicate computer/member names return `409`.
+  - Every registry capability requires explicit boolean true; missing/null/empty/unknown cases deny.
+  - Creation rejects unknown/non-boolean values and expands partial maps default-false.
+- Real PostgreSQL seed test runs twice and proves missing/null legacy maps are materialized while explicit `{}` remains unchanged.
 - Expired or reused connect tokens return `401`/`409`.
 - Daemon version below `MINIMUM_DAEMON_VERSION` returns `426` and does not consume the connect ticket.
 - Daemon tests:
@@ -900,6 +913,23 @@ await agentSend(apiKey, agentId, dmChannelName, dmReply)
 
 ```typescript
 await agentSend(apiKey, agentId, "dm:zy-ean", dmReply)
+```
+
+#### Wrong
+
+```python
+if member.config.get("permissions") is None:
+    return  # implicit allow
+```
+
+#### Correct
+
+```python
+permissions = (member.config or {}).get("permissions")
+if capability not in AGENT_PERMISSION_CAPABILITIES \
+        or not isinstance(permissions, dict) \
+        or permissions.get(capability) is not True:
+    raise HTTPException(403, f"Permission denied: {capability}")
 ```
 
 ## Scenario: Packaged Daemon Resolves Its Generated Slock CLI

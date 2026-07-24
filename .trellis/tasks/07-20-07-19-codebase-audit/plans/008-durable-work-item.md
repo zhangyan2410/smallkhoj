@@ -1,5 +1,19 @@
 # Plan 008 (Direction): Durable SmallKhoj-owned Work Item + dispatch queue
 
+## Current remediation disposition (2026-07-24)
+
+- **Disposition**: `DEFER_LINKED`
+- **Release scope**: `RELEASE_EXCLUDED`
+- **Decision**: durable `WorkItem` / `DispatchAttempt` is a new product feature,
+  not a regression required to close the important-bug audit. It remains linked
+  to the capability-matrix direction and must use a separate reviewed feature
+  task if development resumes.
+- **Current truth**: no Work Item schema, API, scheduler, or migration is claimed
+  by the current audit candidate.
+
+The plan below is retained as historical advisory context. Its design/build
+steps are not part of this remediation release.
+
 > **Executor instructions**: This is a **design plan** for the highest-value
 > next capability. It explicitly does NOT implement the feature — per
 > `.trellis/tasks/07-13-agent-runtime-capability-matrix/core-conclusion.md`,

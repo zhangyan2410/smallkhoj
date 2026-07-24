@@ -2,8 +2,9 @@
 
 import secrets
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -19,7 +20,6 @@ from services.jira_rest import (
     resolve_jira_config,
 )
 from services.task_runs import create_task_assignment_and_run
-
 
 RELEASE_LOOP_FEISHU_OUTCOME_NOT_ACCEPTED = "RELEASE_LOOP_FEISHU_OUTCOME_NOT_ACCEPTED"
 RELEASE_LOOP_UNSUPPORTED_COMMAND = "RELEASE_LOOP_UNSUPPORTED_COMMAND"

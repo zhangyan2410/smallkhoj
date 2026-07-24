@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils"
 import { AppDeskBackground } from "@/components/inkframe/app-desk-background"
 import { InkMaterialRuntimeScript } from "@/components/inkframe/ink-material-engine"
 import { ProductShellBody, type ListPanelConfig } from "@/components/product-shell-body"
+import { RealtimeProvider } from "@/components/realtime-provider"
 import { ServerSwitcher } from "@/components/server-switcher"
 
 type NavKey = "search" | "chat" | "tasks" | "members" | "computers" | "control" | "activity" | "settings"
@@ -75,6 +76,7 @@ export async function ProductShell({
 }) {
   const t = await getTranslations("nav")
   return (
+    <RealtimeProvider serverId={session?.server.id}>
     <main
       data-slot="workbench-desk"
       data-inkframe-background-owner="product-shell"
@@ -155,5 +157,6 @@ export async function ProductShell({
         </ProductShellBody>
       </div>
     </main>
+    </RealtimeProvider>
   )
 }

@@ -3,7 +3,7 @@
   "name": "audit-remediation-delivery-ui",
   "title": "Repair delivery gates and visible UI",
   "description": "修复019/020/021/023及DOCS-01/02：CI、Bun构建、e2e认证、可见UI和项目WebDriver证据。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

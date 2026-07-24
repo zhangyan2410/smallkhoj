@@ -1,5 +1,5 @@
-from types import SimpleNamespace
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -45,9 +45,9 @@ class _FakeTaskSession(_FakeSession):
         return _ScalarResult(self.assignee)
 
 
-def _patch_active_server_context(monkeypatch, server):
+def _patch_active_server_context(monkeypatch, server, *, member=None):
     async def fake_resolve_active_server_context(db, request):
-        return SimpleNamespace(server=server)
+        return SimpleNamespace(server=server, member=member)
 
     monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_resolve_active_server_context)
 
@@ -185,8 +185,25 @@ async def test_public_task_memory_request_route_queues_targeted_reminder(monkeyp
         seen["push_server_id"] = server_id
         return 1
 
-    _patch_active_server_context(monkeypatch, server)
+    async def fake_ensure_task_channel_access(
+        session,
+        resolved_server,
+        resolved_task,
+        member_id,
+    ):
+        seen["task_access"] = (
+            resolved_server,
+            resolved_task,
+            member_id,
+        )
+
+    _patch_active_server_context(monkeypatch, server, member=actor)
     monkeypatch.setattr(public_api, "_resolve_task_by_id_or_number", fake_resolve_task)
+    monkeypatch.setattr(
+        public_api,
+        "_ensure_task_channel_access",
+        fake_ensure_task_channel_access,
+    )
     monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
     monkeypatch.setattr(public_api, "add_task_memory_request_event", fake_add_task_memory_request_event)
     monkeypatch.setattr(public_api, "_push_committed_events", fake_push)
@@ -282,8 +299,25 @@ async def test_public_task_update_to_in_review_queues_memory_request(monkeypatch
     async def fake_serialize_task(session, resolved_task):
         return {"id": str(resolved_task.id), "status": resolved_task.status}
 
-    _patch_active_server_context(monkeypatch, server)
+    async def fake_ensure_task_channel_access(
+        session,
+        resolved_server,
+        resolved_task,
+        member_id,
+    ):
+        seen["task_access"] = (
+            resolved_server,
+            resolved_task,
+            member_id,
+        )
+
+    _patch_active_server_context(monkeypatch, server, member=actor)
     monkeypatch.setattr(public_api, "_resolve_task_by_id_or_number", fake_resolve_task)
+    monkeypatch.setattr(
+        public_api,
+        "_ensure_task_channel_access",
+        fake_ensure_task_channel_access,
+    )
     monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
     monkeypatch.setattr(public_api, "_record_activity", fake_record_activity)
     monkeypatch.setattr(public_api, "add_task_memory_request_event", fake_add_task_memory_request_event)

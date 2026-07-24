@@ -533,6 +533,7 @@ test("Main page object taxonomy documents and preserves aligned object classes",
   ].join("\n")
   const taskSources = [
     readFileSync(new URL("../app/tasks/page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../components/task-route-projection.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/task-board.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/task-list-panel.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/task-dnd-board.tsx", import.meta.url), "utf8"),

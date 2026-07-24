@@ -1,0 +1,29 @@
+{
+  "runMarker": "REAL_audit_delivery_ui_20260723235900",
+  "fixtureCount": 201,
+  "initialPageLimit": 200,
+  "pagination": {
+    "markerAnchors": 201,
+    "firstMarkerInDom": true,
+    "secondPageTailMarkerInDom": true,
+    "secondPageTailVisibleAfterListScroll": true,
+    "visibleCountText": "201 / 201 可见"
+  },
+  "targetedCreate": {
+    "title": "REAL_audit_delivery_ui_20260723235900-SSE-TASK-2",
+    "visible": true,
+    "markerAnchors": 1,
+    "taskGets": 2,
+    "rawRscGets": 0,
+    "rscNonPrefetch": 0
+  },
+  "realtime": {
+    "sseStarts": 1,
+    "sseAborts": 0,
+    "sseActive": 1,
+    "sseResponses": 1,
+    "sseStatuses": [200],
+    "sseErrors": 0
+  },
+  "methodNote": "The Task was created through the authenticated public API in the same browser tab. No React state was edited directly; appearance came from task.created SSE followed by the bounded 200-plus-cursor Task projection refresh."
+}

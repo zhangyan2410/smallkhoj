@@ -44,7 +44,13 @@ REAL_<marker>-trace.json
 
 ## Browser Proof
 
-Use the project WebDriver harness. Do not use Playwright for repository UI verification.
+Use the project WebDriver harness. Do not use Playwright for repository UI acceptance
+or interactive repository verification.
+
+The committed Playwright suite under `e2e/` is a deterministic authenticated,
+cross-layer CI integration gate. It may prove that a supported browser session reaches
+the backend under an isolated test namespace, but it is not UI acceptance and does not
+replace the visible DOM, screenshot and runtime evidence collected with `./twd`.
 
 ```bash
 ./twd --compact tabs

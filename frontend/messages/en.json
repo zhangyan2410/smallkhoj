@@ -3,6 +3,7 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
+    "close": "Close",
     "refresh": "Refresh",
     "send": "Send",
     "start": "Start",
@@ -13,7 +14,12 @@
     "manageComputers": "Manage computers",
     "loading": "Loading…",
     "search": "Search",
-    "searchPlaceholder": "Search messages, files, tasks, members…"
+    "searchPlaceholder": "Search messages, files, tasks, members…",
+    "routeLoading": "Loading workspace…",
+    "taskBoardLoading": "Loading task board…",
+    "routeError": "Something went wrong.",
+    "routeErrorDesc": "This view could not load. Check your connection and try again.",
+    "tryAgain": "Try again"
   },
   "nav": {
     "chat": "Chat",
@@ -102,6 +108,15 @@
     "openMessage": "Open message",
     "preview": "Preview",
     "download": "Download",
+    "deleteFile": "Delete file",
+    "deleteFileConsequence": "This permanently removes the file record and makes the file inaccessible. Storage cleanup may be quarantined for administrator follow-up.",
+    "deletingFile": "Deleting file…",
+    "fileDeleteFailed": "The file could not be deleted",
+    "fileDeleteInvalidResponse": "The server returned an invalid file deletion result.",
+    "filesLoadFailed": "Files could not be refreshed",
+    "filesLoadFailedDesc": "The last successfully loaded file list is still shown. Check the connection and try again.",
+    "fileQuarantineWarningTitle": "Storage cleanup incomplete",
+    "fileQuarantineWarningDesc": "The record for {name} was deleted and the file is no longer accessible. Storage quarantine cleanup is unfinished and may require an administrator.",
     "savedBadge": "Saved",
     "taskBadge": "Task",
     "replyInThread": "Reply in thread",
@@ -313,7 +328,13 @@
     "taskRecoveryOutput": "Output",
     "taskRecoveryNoMemory": "No server-owned task memory has been written yet.",
     "taskRecoveryBreakdown": "Task breakdown",
-    "taskRecoveryOutputs": "Outputs and evidence"
+    "taskRecoveryOutputs": "Outputs and evidence",
+    "deleteTask": "Delete task",
+    "deleteTaskTitle": "Delete this task?",
+    "deleteTaskConsequence": "This permanently deletes the task and its dependent assignment and run records. Only its audit identity is retained.",
+    "deletingTask": "Deleting task…",
+    "taskDeleteFailed": "The task could not be deleted",
+    "taskDeleteInvalidResponse": "The server returned an invalid task deletion result."
   },
   "members": {
     "title": "Members",

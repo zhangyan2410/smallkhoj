@@ -78,26 +78,46 @@ If local network access needs the VPN proxy, pass it to individual calls instead
 
 ## Images
 
-The production compose file uses prebuilt backend/frontend images so a 2-core/2GB server does not have to build Next.js or Python dependencies under memory pressure. Caddy is built from `deploy/caddy/` because it is a tiny image layer that bakes in the tracked reverse-proxy config and avoids fragile host file mounts.
+The production compose file uses prebuilt backend/frontend images so the nominal 4 vCPU / 4 GB host (3.32 GiB guest-visible RAM) never has to build Next.js or Python dependencies under memory pressure. Caddy is built from `deploy/caddy/` because it is a tiny image layer that bakes in the tracked reverse-proxy config and avoids fragile host file mounts.
 
 The frontend Dockerfile copies Next.js standalone output from `.next/standalone`; keep `frontend/next.config.mjs` configured with `output: "standalone"`. A frontend image build must fail the release gate if `.next/standalone/server.js` is missing after `bun run build`.
 
 For a registry-based deployment, build and push images from a stronger machine or CI:
 
 ```bash
+export PUBLIC_API_KEY='<generate-outside-repo>'
+
 docker build -t <registry>/smallkhoj-backend:<tag> ./backend
 docker build \
+  --no-cache \
   --build-arg NEXT_PUBLIC_API_BASE_URL= \
   --build-arg NEXT_PUBLIC_WS_BASE_URL= \
-  --build-arg NEXT_PUBLIC_API_KEY=sk_public_local \
+  --build-arg NEXT_PUBLIC_DEPLOYMENT_ENV=production \
+  --secret id=public_api_key,env=PUBLIC_API_KEY \
   -t <registry>/smallkhoj-frontend:<tag> ./frontend
 docker push <registry>/smallkhoj-backend:<tag>
 docker push <registry>/smallkhoj-frontend:<tag>
 ```
 
+`PUBLIC_API_KEY` is the single deployment input used by the backend verifier and
+the frontend build. Production builds accept it only through the BuildKit secret
+mount, so the value is not written into the build command, image config, or image
+history. It is still a browser-visible public-client credential after compilation,
+not an account identity or a substitute for authorization.
+
+The production frontend build must use `--no-cache`. BuildKit intentionally does
+not include secret contents in a layer cache key, while Next.js embeds this public
+client key into browser assets. Reusing that layer after changing deployments can
+retain the previous key and make login, API, and SSE requests fail with
+`Invalid API key`. Keep the secret mount for safe transport and disable cache for
+this release build; do not replace it with a value-bearing build argument.
+
 For the first Lighthouse test, a registry-free flow is usually simpler: build images locally, save them into one Docker archive, upload the archive over SSH, and run `docker load` on the server:
 
 ```bash
+export PUBLIC_API_KEY='<generate-outside-repo>'
+CAPACITY_REPORT=/absolute/path/to/formal-capacity-report.json
+
 python3 scripts/production_image_transfer.py \
   --host <server-ip> \
   --user ubuntu \
@@ -105,6 +125,7 @@ python3 scripts/production_image_transfer.py \
   --remote-dir /opt/smallkhoj \
   --platform linux/amd64 \
   --use-vpn-proxy \
+  --capacity-report "$CAPACITY_REPORT" \
   --dry-run
 
 python3 scripts/production_image_transfer.py \
@@ -113,8 +134,42 @@ python3 scripts/production_image_transfer.py \
   --identity-file ~/.ssh/<key> \
   --remote-dir /opt/smallkhoj \
   --platform linux/amd64 \
-  --use-vpn-proxy
+  --use-vpn-proxy \
+  --capacity-report "$CAPACITY_REPORT"
 ```
+
+The transfer plan contains only
+`--secret id=public_api_key,env=PUBLIC_API_KEY`; `--dry-run --json` must never
+contain the value. Keep the same exported value in the server-side `.env.prod`
+used to start Compose.
+
+`--capacity-report` is mandatory for every real transfer, including
+`--skip-build`. It must point to the accepted schema-v5
+`formal-300-500-30-v1` report from the clean, fully tested candidate. The
+transfer validator recomputes the raw report instead of trusting its stored
+summary, then requires the report's candidate tree to equal the current clean
+merge `HEAD^{tree}`. A post-squash merge commit may therefore have a different
+SHA from the tested candidate only when both trees are identical. `--dry-run`
+prints the command plan only; including the report path there does not validate
+or accept the report ahead of the real transfer.
+
+The transfer fails closed before release actions for all of these cases:
+
+- a diagnostic `smoke` report (`NON_FORMAL_CAPACITY_PROFILE`) — smoke verifies
+  the harness, not the 300/500/30 capacity target;
+- a failed, incomplete, or forged report, including a stored summary that
+  disagrees with recomputation (`ACCEPTANCE_SUMMARY_MISMATCH`);
+- a stale capacity report whose tested tree differs from the current merge
+  tree, even if its old run passed.
+
+After the archive is uploaded and loaded successfully, the command writes
+`<output-archive>.release-evidence.json` by default and emits the same
+machine-readable evidence as its final JSON event. The evidence binds tested
+candidate HEAD/tree, current merge HEAD/tree, capacity-report path and SHA-256,
+every inspected image ID/revision label/platform, and archive path and SHA-256.
+Use `--release-evidence /absolute/path/release-evidence.json` to select another
+location. Preserve this small JSON file with the capacity report and archive;
+it contains hashes and artifact paths, not deployment secret values.
 
 Choose `--platform` after confirming the Lighthouse host architecture with the host probe or console. Apple Silicon local Docker builds default to `linux/arm64`; those images must not be reused on a `linux/amd64` Lighthouse host. If the host is ARM, use `--platform linux/arm64`; if it is x86_64, use `--platform linux/amd64`.
 
@@ -128,7 +183,9 @@ python3 scripts/production_image_transfer.py \
   --remote-dir /opt/smallkhoj \
   --output-archive /Volumes/ORICO/smallkhoj-deploy/smallkhoj-production-images-amd64.tar \
   --platform linux/amd64 \
-  --use-vpn-proxy
+  --use-vpn-proxy \
+  --capacity-report "$CAPACITY_REPORT" \
+  --release-evidence /Volumes/ORICO/smallkhoj-deploy/smallkhoj-production-images-amd64.release-evidence.json
 ```
 
 This loads these default tags on the server:
@@ -139,7 +196,10 @@ SMALLKHOJ_FRONTEND_IMAGE=smallkhoj-frontend:local-release
 SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:local-release
 ```
 
-If you already built those images locally, add `--skip-build` to only save, upload, and load the archive.
+If you already built those images locally, add `--skip-build` to only save,
+upload, and load the archive. The formal `--capacity-report` remains mandatory,
+and the three existing image IDs, revision labels, and platforms are still
+inspected and recorded before transfer.
 
 If Docker Hub or package downloads time out on the local network, run Docker builds through the local VPN proxy. From the host, the proxy is `127.0.0.1:7897`; from inside Docker build containers, use `host.docker.internal:7897`. The image transfer script's `--use-vpn-proxy` flag adds these build args automatically:
 
@@ -168,7 +228,28 @@ SMALLKHOJ_BACKEND_IMAGE=<registry>/smallkhoj-backend:<tag>
 SMALLKHOJ_FRONTEND_IMAGE=<registry>/smallkhoj-frontend:<tag>
 SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:latest
 POSTGRES_PASSWORD=<set-outside-repo>
+DATABASE_POOL_SIZE=5
+DATABASE_MAX_OVERFLOW=10
+BETTER_AUTH_DATABASE_POOL_SIZE=10
+BACKEND_WORKERS=1
+POSTGRES_MAX_CONNECTIONS=100
+POSTGRES_CONNECTION_HEADROOM=5
+NOTIFY_PUBLISHER_POOL_SIZE=2
+NOTIFY_CONNECT_TIMEOUT_SECONDS=3
+NOTIFY_OPERATION_TIMEOUT_SECONDS=3
+NOTIFY_RECONNECT_INITIAL_SECONDS=0.25
+NOTIFY_RECONNECT_MAX_SECONDS=5
+NOTIFY_SHUTDOWN_TIMEOUT_SECONDS=5
+NOTIFY_PUBLISH_ATTEMPTS=2
+PUBLIC_API_KEY=<generate-outside-repo>
+AUTH_BRIDGE_SECRET=<generate-outside-repo>
+BETTER_AUTH_SECRET=<generate-outside-repo>
+BETTER_AUTH_URL=https://smallkhoj.example.com
 BACKEND_CORS_ORIGINS=https://smallkhoj.example.com
+UPLOAD_MAX_BYTES=52428800
+UPLOAD_READ_CHUNK_BYTES=65536
+UPLOAD_CLEANUP_TIMEOUT_SECONDS=5
+SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX=55MB
 ```
 
 When using `production_image_transfer.py`, replace the image values with the local-release tags loaded on the server:
@@ -185,10 +266,68 @@ Frontend URL values:
 INTERNAL_API_BASE_URL=http://backend:8000
 NEXT_PUBLIC_API_BASE_URL=
 NEXT_PUBLIC_WS_BASE_URL=
-NEXT_PUBLIC_API_KEY=sk_public_local
 ```
 
 `INTERNAL_API_BASE_URL` is for server-side Next.js fetches inside Docker. It must not be used in daemon connect commands or browser-visible links. The frontend derives public URLs from the request host or browser origin when public overrides are empty.
+
+PostgreSQL connection capacity is an explicit deployment budget, not a
+per-process estimate:
+
+```text
+backend_per_process = DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW
+                    + NOTIFY_PUBLISHER_POOL_SIZE + 1 listener
+backend             = backend_per_process * BACKEND_WORKERS
+frontend            = BETTER_AUTH_DATABASE_POOL_SIZE
+feishu_worker       = DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW
+required            = backend + frontend + feishu_worker
+                    + POSTGRES_CONNECTION_HEADROOM
+```
+
+With the defaults this is `(5 + 10 + 2 + 1) * 1 + 10 + (5 + 10) + 5 = 48`
+required connections against `POSTGRES_MAX_CONNECTIONS=100`. Three backend
+workers require `18 * 3 + 10 + 15 + 5 = 84`. The worker reserve is retained
+even when the optional Compose profile is currently disabled, so enabling the
+existing worker cannot consume an unbudgeted pool. Better Auth owns one
+process-global pool with explicit max 10; the worker receives the same explicit
+SQLAlchemy pool settings as backend. Backend settings fail closed at startup
+when the complete deployment requirement exceeds the configured PostgreSQL
+capacity, and Compose passes the same `POSTGRES_MAX_CONNECTIONS` to the database server.
+Publisher and listener connections are visible in `pg_stat_activity` as
+`smallkhoj-notify-publisher` and `smallkhoj-notify-listener`. Publisher
+operations, reconnect backoff, and shutdown are bounded by the `NOTIFY_*`
+timeouts; a failed wake-up is logged as degraded instead of silently falling
+back to an unbudgeted one-shot connection.
+
+Do not add a separate `NEXT_PUBLIC_API_KEY` value to `.env.prod`.
+`docker-compose.prod.yml` bridges the canonical `PUBLIC_API_KEY` into the
+frontend runtime environment, while the image build consumes the same variable
+through `--secret id=public_api_key,env=PUBLIC_API_KEY`. Because Next.js embeds
+`NEXT_PUBLIC_*` values at build time, changing only the running container's env
+does not rotate an already-built browser bundle: rebuild the frontend image and
+restart backend/frontend with the same value. Missing values and the known
+`sk_public_local` development value fail closed in production.
+
+Public HTTP and SSE requests send the public-client credential in
+`X-Public-Key`. Chat WebSocket clients send it in the
+`smallkhoj.public-key.<base64url>` requested subprotocol and negotiate only the
+fixed `smallkhoj.chat.v1` application protocol. Do not put the credential in a
+URL, query string, build plan, log, screenshot, or error message.
+
+Upload limits are deliberately layered rather than described as one
+"streaming limit":
+
+| Boundary | Default | Meaning |
+|---|---:|---|
+| Caddy request body | `55MB` total request | Rejects oversized multipart requests at ingress before proxying. The allowance is larger than the file cap because multipart headers and boundaries consume bytes too. |
+| Starlette `UploadFile` spool | `1 MiB` current framework default | Multipart parsing happens before route code. Small parts may remain in memory; larger parts spool to parser-owned temporary disk. This is not configured by `UPLOAD_MAX_BYTES`. |
+| Application file cap | `50 MiB` | Public files, agent attachments, and avatars are read in `64 KiB` chunks into a local staging file. The application never joins the allowed payload into one bytes object. |
+| Durable local storage | one completed file | A same-directory `.uploading` file is atomically promoted only after validation and DB flush. Read/write/flush/commit/cancellation failures rollback and remove staging/final residue. |
+
+`SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX` is a Caddy size string and limits the
+whole request. `UPLOAD_MAX_BYTES` and `UPLOAD_READ_CHUNK_BYTES` are integer
+byte counts consumed by the backend. Keep the proxy allowance above the
+application file cap; setting it below valid multipart overhead will reject
+otherwise valid uploads at ingress.
 
 Integration/runtime values, when enabled:
 
@@ -216,11 +355,28 @@ Region: ap-shanghai
 Public IPv4: 124.222.40.40
 Private IPv4: 10.0.0.15
 Image: Ubuntu22.04-Docker26 / Ubuntu Server 22.04 LTS 64bit
-Shape: 4 vCPU / 4 GB RAM / 40 GB SSD / 3 Mbps / 300 GB monthly traffic
+Nominal SKU: 4 vCPU / 4 GB RAM / 40 GB SSD / 3 Mbps / 300 GB monthly traffic
+Guest architecture / CPU: x86_64 / 4 vCPU
+Guest-visible RAM: 3,564,584,960 bytes = 3.3198 GiB (report as 3.32 GiB)
+Swap: 3 GiB (record separately; not steady-state RAM)
+PostgreSQL max_connections: 100
 SSH user: ubuntu
 SSH key: /Users/lee/.ssh/tengxun-ssh-key.pem
 Remote probe dir: /home/ubuntu/smallkhoj-deploy
 ```
+
+The nominal SKU is **4 vCPU / 4 GB**, not 2 vCPU / 2 GB. Capacity planning
+must use the guest-visible `3.32 GiB` RAM figure and must not add swap to the
+steady-state memory budget.
+
+> **Old-deployment evidence boundary (2026-07-24):** the provisioning, smoke,
+> browser, daemon and resource observations below were captured from older
+> deployed images. The audit-remediation candidate on
+> `feat/2026-07-audit-remediation` is local only and has not been merged or
+> deployed. Do not test or benchmark the old cloud deployment as proof for that
+> candidate. Finish local focused/UI validation, make precise commits, rebuild
+> and pass capacity/full gates from the clean candidate SHA, merge by PR/squash,
+> build and deploy new `linux/amd64` images, and only then validate cloud-prod.
 
 Provisioning notes captured on 2026-06-29:
 
@@ -236,7 +392,7 @@ Provisioning notes captured on 2026-06-29:
 - `post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json` passed with zero failures and zero warnings. Browser evidence via `./twd` shows the deployed login page at `http://124.222.40.40/login`.
 - The instance is in a Chinese mainland region. Domain-based public release still needs ICP filing readiness; IP-only HTTP and outbound Feishu/Jira validation can proceed before a formal domain is ready.
 
-Core-stack resource baseline captured on 2026-06-29:
+Historical core-stack resource baseline captured on 2026-06-29 (old images):
 
 - Evidence file: `.trellis/tasks/archive/2026-06/06-29-06-29-initial-release-lighthouse-resource-baseline/evidence/lighthouse-resource-baseline-2026-06-29.json` after the task is archived.
 - Host uptime/load during sampling: about 1 hour 40 minutes uptime, load average `0.00, 0.00, 0.00`.
@@ -248,7 +404,7 @@ Core-stack resource baseline captured on 2026-06-29:
 - Docker disk usage: images `2.025 GB` with `972.3 MB` reclaimable, build cache `874.1 MB` reclaimable, volumes `50.22 MB`.
 - Top memory processes are frontend `bun run server.js` around `166 MiB` RSS, `dockerd` around `138 MiB` RSS, and backend `uvicorn` around `114 MiB` RSS.
 - `remote_deploy_evidence.py` returns non-zero on the already-running host because host/runtime preflight report ports 80 and 443 as in-use. For a deployed stack this means Caddy is bound to public ports, not that resource collection failed.
-- Decision: the 4 vCPU / 4 GB Lighthouse instance is suitable for the current control-plane core stack and no-secret integration preparation. This baseline does not prove Feishu long-connection worker, Jira live write-back, daemon TaskRun execution, or concurrent scenario capacity; repeat the resource snapshot after enabling the worker and after the first live Feishu -> TaskRun -> Jira scenario.
+- Historical decision: the 4 vCPU / 4 GB Lighthouse instance was suitable for that old control-plane core stack and no-secret integration preparation. This baseline does not prove the audit-remediation candidate, Feishu long-connection worker, Jira live write-back, daemon TaskRun execution, or concurrent scenario capacity. Repeat resource and capacity evidence only after the merged candidate is deployed.
 
 Daemon remote validation captured on 2026-06-29:
 
@@ -293,7 +449,11 @@ python3 scripts/lighthouse_host_probe.py --json
 
 The bundle includes `docker-compose.prod.yml`, `deploy/caddy/Dockerfile`, `deploy/caddy/Caddyfile`, this runbook, `manifest.json`, and the deployment probe/preflight/smoke scripts. It does not include `.env.prod` or secrets. The host probe reports OS/package-manager access, sudo availability, CPU, memory, swap, disk, Docker, Docker Compose, ports 80/443, and firewall tooling. It may print suggested bootstrap commands for Ubuntu/Debian Docker install, swapfile creation, and UFW port rules, but it does not execute them.
 
-On a 2 vCPU / 2 GB Lighthouse host, missing or small swap should be treated as a deployment warning to fix before repeated live-run testing. Heavy image builds should still happen off-host.
+On the current nominal 4 vCPU / 4 GB Lighthouse host, use the guest-visible
+`3.32 GiB` RAM value for capacity calculations. Missing or small swap is a
+deployment warning, but the configured 3 GiB swap is emergency headroom only
+and does not increase the steady-state memory budget. Heavy image builds should
+still happen off-host.
 
 You can also run the no-secret SSH probe runner from the local machine. Start with `--dry-run` so the exact upload and remote commands are visible before execution:
 
@@ -494,8 +654,26 @@ SMALLKHOJ_BACKEND_IMAGE=smallkhoj-backend:local-smoke
 SMALLKHOJ_FRONTEND_IMAGE=smallkhoj-frontend:local-smoke
 SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:local-smoke
 POSTGRES_PASSWORD=local-smoke-password
+PUBLIC_API_KEY=sk_local_prod_smoke_public_key
+AUTH_BRIDGE_SECRET=sk_local_prod_smoke_auth_bridge_secret_min_32_chars
+BETTER_AUTH_SECRET=sk_local_prod_smoke_better_auth_secret_min_32_chars
+BETTER_AUTH_URL=http://127.0.0.1:18080
+BETTER_AUTH_DATABASE_POOL_SIZE=10
 BACKEND_CORS_ORIGINS=http://127.0.0.1:18080
+UPLOAD_MAX_BYTES=52428800
+UPLOAD_READ_CHUNK_BYTES=65536
+UPLOAD_CLEANUP_TIMEOUT_SECONDS=5
+SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX=55MB
 EOF
+```
+
+Export that temporary env file before the frontend build so BuildKit can read
+the same `PUBLIC_API_KEY` that Compose will pass to the backend:
+
+```bash
+set -a
+. /tmp/smallkhoj-prod-smoke.env
+set +a
 ```
 
 Build local images. Use the VPN proxy build args when network pulls or dependency installs time out:
@@ -509,13 +687,15 @@ docker build \
   -t smallkhoj-backend:local-smoke ./backend
 
 docker build \
+  --no-cache \
   --build-arg HTTP_PROXY=http://host.docker.internal:7897 \
   --build-arg HTTPS_PROXY=http://host.docker.internal:7897 \
   --build-arg http_proxy=http://host.docker.internal:7897 \
   --build-arg https_proxy=http://host.docker.internal:7897 \
   --build-arg NEXT_PUBLIC_API_BASE_URL= \
   --build-arg NEXT_PUBLIC_WS_BASE_URL= \
-  --build-arg NEXT_PUBLIC_API_KEY=sk_public_local \
+  --build-arg NEXT_PUBLIC_DEPLOYMENT_ENV=production \
+  --secret id=public_api_key,env=PUBLIC_API_KEY \
   -t smallkhoj-frontend:local-smoke ./frontend
 
 docker build -t smallkhoj-caddy:local-smoke ./deploy/caddy

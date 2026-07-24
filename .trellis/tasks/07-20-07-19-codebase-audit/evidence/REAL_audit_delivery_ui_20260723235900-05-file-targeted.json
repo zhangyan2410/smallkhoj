@@ -1,0 +1,25 @@
+{
+  "runMarker": "REAL_audit_delivery_ui_20260723235900",
+  "normalFile": "REAL_audit_delivery_ui_20260723235900-normal.txt",
+  "quarantineFile": "REAL_audit_delivery_ui_20260723235900-quarantine.txt",
+  "normalDeleteResponse": {
+    "status": 200,
+    "deleted": true,
+    "storageCleanup": "deleted"
+  },
+  "projection": {
+    "normalRowRemoved": true,
+    "quarantineRowStillVisible": true,
+    "fileGets": 0,
+    "rscGets": 0
+  },
+  "realtime": {
+    "sseStarts": 2,
+    "sseAborts": 1,
+    "sseActive": 1,
+    "sseResponses": 2,
+    "sseStatuses": [200, 200],
+    "sseErrors": 0
+  },
+  "methodNote": "The normal DELETE request was issued through the authenticated public API in the same browser tab. The visible row was not manipulated directly; file.deleted SSE removed it from the route-local projection."
+}

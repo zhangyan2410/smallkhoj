@@ -1,603 +1,424 @@
-import { expect, test, type Page } from "@playwright/test"
-import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
+
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test"
 import WebSocket, { type RawData } from "ws"
 
-const API_BASE = process.env.API_BASE ?? "http://localhost:8000"
-const FRONTEND_BASE = process.env.FRONTEND_BASE ?? "http://localhost:3000"
-const PUBLIC_KEY = "sk_public_local"
-const E2E_DATABASE_URL =
-  process.env.E2E_DATABASE_URL ??
-  process.env.DATABASE_URL?.replace("postgresql+asyncpg://", "postgresql://") ??
-  "postgresql://smallkhoj:smallkhoj@localhost:55432/smallkhoj"
-
-const publicHeaders = { "X-Public-Key": PUBLIC_KEY, "Content-Type": "application/json" }
-
-async function apiPost(path: string, body: Record<string, unknown>) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: publicHeaders,
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    throw new Error(`POST ${path} failed: ${res.status} ${await res.text()}`)
-  }
-  return res.json()
+function requiredEnv(name: string) {
+  const value = process.env[name]?.trim()
+  if (!value) throw new Error(`${name} is required for the authenticated integration flow`)
+  return value
 }
 
-async function connectDaemon(connectToken: string, machineId: string, name: string) {
-  const res = await fetch(`${API_BASE}/internal/agent-api/daemon/connect`, {
-    method: "POST",
+const API_BASE = requiredEnv("API_BASE")
+requiredEnv("FRONTEND_BASE")
+const PUBLIC_KEY = requiredEnv("E2E_PUBLIC_API_KEY")
+const RUN_NAMESPACE = requiredEnv("E2E_RUN_NAMESPACE").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 24)
+const DATABASE_SCOPE = requiredEnv("E2E_DATABASE_SCOPE")
+const DAEMON_VERSION = requiredEnv("E2E_DAEMON_VERSION")
+
+if (!RUN_NAMESPACE) {
+  throw new Error("E2E_RUN_NAMESPACE must contain at least one letter or digit")
+}
+if (DATABASE_SCOPE !== "disposable") {
+  throw new Error("E2E_DATABASE_SCOPE must be 'disposable'; this flow must never target a shared database")
+}
+
+type AccountSession = {
+  account: { id: string; name: string; displayName?: string | null }
+  server: { id: string; name: string }
+  member: { id: string; displayName?: string | null }
+  memberships?: Array<{
+    server: { id: string; name: string }
+    role: string
+    status: string
+  }>
+}
+
+function scopedHeaders(sessionToken: string, serverId: string) {
+  return {
+    "X-Public-Key": PUBLIC_KEY,
+    "X-Account-Token": sessionToken,
+    "X-Server-Id": serverId,
+  }
+}
+
+async function scopedPost<T>(
+  request: APIRequestContext,
+  path: string,
+  body: Record<string, unknown>,
+  sessionToken: string,
+  serverId: string,
+) {
+  const response = await request.post(`${API_BASE}${path}`, {
     headers: {
-      Authorization: `Bearer ${connectToken}`,
+      ...scopedHeaders(sessionToken, serverId),
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      daemonId: `daemon-${machineId}`,
-      machineId,
-      name,
-      os: "e2e-os",
-      daemonVersion: "e2e",
-      status: "online",
-      detectedRuntimes: ["custom"],
-    }),
+    data: body,
   })
-  if (!res.ok) {
-    throw new Error(`daemon connect failed: ${res.status} ${await res.text()}`)
-  }
-  return res.json()
+  expect(response.status(), `POST ${path} must succeed`).toBeGreaterThanOrEqual(200)
+  expect(response.status(), `POST ${path} must succeed`).toBeLessThan(300)
+  return response.json() as Promise<T>
 }
 
-async function createComputerCredential(name: string) {
-  const data = await apiPost("/api/v1/computers/credential", { name, serverUrl: API_BASE })
-  return data as { computerId: string; apiKey: string }
-}
-
-async function agentSend(apiKey: string, agentId: string, target: string, content: string) {
-  const res = await fetch(`${API_BASE}/internal/agent-api/send`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "X-Agent-Id": agentId,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ target, content }),
-  })
-  if (!res.ok) {
-    throw new Error(`agent send failed: ${res.status} ${await res.text()}`)
-  }
-  return res.json()
-}
-
-async function addChannelMember(channelId: string, memberId: string) {
-  return apiPost(`/api/v1/channels/${channelId}/members`, { memberId })
-}
-
-function connectDaemonWs(apiKey: string, computerId: string, cursor?: string) {
+function daemonWebSocket(machineToken: string, computerId: string, cursor?: string) {
   const url = new URL("/internal/agent-api/ws", API_BASE.replace(/^http/, "ws"))
-  if (cursor !== undefined) {
-    url.searchParams.set("eventLogCursor", cursor)
-  }
+  if (cursor !== undefined) url.searchParams.set("eventLogCursor", cursor)
   return new WebSocket(url, {
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${machineToken}`,
       "X-Computer-Id": computerId,
     },
   })
 }
 
-function waitForWsEvent(
+function waitForOpen(ws: WebSocket) {
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      ws.off("open", onOpen)
+      ws.off("error", onError)
+      ws.off("close", onClose)
+    }
+    const onOpen = () => {
+      cleanup()
+      resolve()
+    }
+    const onError = (error: Error) => {
+      cleanup()
+      reject(error)
+    }
+    const onClose = () => {
+      cleanup()
+      reject(new Error("Daemon WebSocket closed before opening"))
+    }
+    ws.once("open", onOpen)
+    ws.once("error", onError)
+    ws.once("close", onClose)
+  })
+}
+
+function observeJsonEvents(ws: WebSocket) {
+  const events: Array<Record<string, unknown>> = []
+  let closed = false
+  let socketError: Error | undefined
+  const onMessage = (data: RawData) => {
+    try {
+      events.push(JSON.parse(data.toString()) as Record<string, unknown>)
+    } catch {
+      // Non-JSON control frames are irrelevant to this delivery contract.
+    }
+  }
+  const onClose = () => {
+    closed = true
+  }
+  const onError = (error: Error) => {
+    socketError = error
+  }
+  ws.on("message", onMessage)
+  ws.on("close", onClose)
+  ws.on("error", onError)
+  return {
+    events,
+    get closed() {
+      return closed
+    },
+    get error() {
+      return socketError
+    },
+    stop() {
+      ws.off("message", onMessage)
+      ws.off("close", onClose)
+      ws.off("error", onError)
+    },
+  }
+}
+
+function waitForEvent(
   ws: WebSocket,
   predicate: (event: Record<string, unknown>) => boolean,
   timeoutMs = 5_000,
-): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
+) {
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer)
       ws.off("message", onMessage)
-      reject(new Error("Timed out waiting for matching websocket event"))
+      ws.off("error", onError)
+      ws.off("close", onClose)
+    }
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error("Timed out waiting for the expected daemon WebSocket event"))
     }, timeoutMs)
+    const onError = (error: Error) => {
+      cleanup()
+      reject(error)
+    }
+    const onClose = () => {
+      cleanup()
+      reject(new Error("Daemon WebSocket closed before the expected live event"))
+    }
     const onMessage = (data: RawData) => {
-      const text = data.toString()
-      let parsed: Record<string, unknown>
+      let event: Record<string, unknown>
       try {
-        parsed = JSON.parse(text) as Record<string, unknown>
+        event = JSON.parse(data.toString()) as Record<string, unknown>
       } catch {
         return
       }
-      if (!predicate(parsed)) return
+      if (!predicate(event)) return
+      cleanup()
+      resolve(event)
+    }
+    ws.on("message", onMessage)
+    ws.once("error", onError)
+    ws.once("close", onClose)
+  })
+}
+
+function waitForObservationWindow(durationMs = 300) {
+  return new Promise<void>((resolve) => setTimeout(resolve, durationMs))
+}
+
+function closeWebSocket(ws: WebSocket, timeoutMs = 5_000) {
+  return new Promise<void>((resolve, reject) => {
+    if (ws.readyState === WebSocket.CLOSED) {
+      resolve()
+      return
+    }
+    const timer = setTimeout(() => {
+      ws.off("close", onClose)
+      reject(new Error("Timed out closing the daemon WebSocket"))
+    }, timeoutMs)
+    const onClose = () => {
       clearTimeout(timer)
-      ws.off("message", onMessage)
-      resolve(parsed)
+      resolve()
     }
-    ws.on("message", onMessage)
+    ws.once("close", onClose)
+    ws.close()
   })
 }
 
-function collectWsEvents(ws: WebSocket, durationMs = 500): Promise<Array<Record<string, unknown>>> {
-  return new Promise((resolve) => {
-    const events: Array<Record<string, unknown>> = []
-    const onMessage = (data: RawData) => {
-      try {
-        events.push(JSON.parse(data.toString()) as Record<string, unknown>)
-      } catch {
-        // Ignore non-JSON frames in diagnostics collection.
+async function assertAuthenticatedPage(page: Page, accountLabel: string, serverName: string) {
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/)
+  const switcher = page.locator('[data-region="server-switcher"]')
+  const summary = switcher.locator("summary")
+  await expect(summary).toHaveAttribute("title", serverName)
+  await summary.click()
+  await expect(switcher).toContainText(accountLabel)
+  await expect(switcher).toContainText(serverName)
+  await summary.click()
+}
+
+async function assertTenantRejections(
+  request: APIRequestContext,
+  sessionToken: string,
+  serverId: string,
+) {
+  const publicKeyOnly = await request.get(`${API_BASE}/api/v1/computers`, {
+    headers: {
+      "X-Public-Key": PUBLIC_KEY,
+      "X-Server-Id": serverId,
+    },
+  })
+  expect(publicKeyOnly.status(), "a public client key is not a human login").toBe(401)
+
+  const foreignServer = await request.get(`${API_BASE}/api/v1/computers`, {
+    headers: scopedHeaders(sessionToken, randomUUID()),
+  })
+  expect(foreignServer.status(), "an authenticated account cannot select a foreign Server").toBe(403)
+}
+
+test.describe("Authenticated management integration", () => {
+  test("signs up, proves account and Server scope, then creates a scoped connect command", async ({
+    page,
+    request,
+    context,
+  }) => {
+    const unique = `${RUN_NAMESPACE}-${randomUUID().slice(0, 8)}`
+    const displayName = `E2E ${unique}`
+    const email = `e2e+${unique.toLowerCase()}@example.test`
+    const password = `Aa1!-${randomUUID()}-${randomUUID()}`
+    const computerName = `e2e-computer-${unique}`
+    const agentName = `e2e-agent-${unique}`
+    const channelName = `e2e-${unique}`
+    let connectToken: string | undefined
+
+    await test.step("establish a supported browser session through the real login form", async () => {
+      await page.goto("/login?returnTo=/computers")
+      await page.locator("#login-email").fill(email)
+      await page.locator("#login-password").fill(password)
+      await page.locator("#login-display-name").fill(displayName)
+      await page.locator('button[name="mode"][value="signup"]').click()
+      await expect(page).toHaveURL(/\/computers(?:\?|$)/)
+      await expect(page.locator('[data-region="server-switcher"]')).toBeVisible()
+    })
+
+    const cookies = await context.cookies()
+    const sessionToken = cookies.find((cookie) => cookie.name === "smallkhoj_session")?.value
+    const activeServerId = cookies.find((cookie) => cookie.name === "smallkhoj_active_server")?.value
+    expect(sessionToken, "login must establish the SmallKhoj account session").toBeTruthy()
+    expect(activeServerId, "login must select an active Server").toBeTruthy()
+
+    const me = await request.get(`${API_BASE}/api/v1/auth/me`, {
+      headers: scopedHeaders(sessionToken!, activeServerId!),
+    })
+    expect(me.status()).toBe(200)
+    const session = (await me.json()) as AccountSession
+    expect(session.server.id).toBe(activeServerId)
+    expect(session.account.displayName).toBe(displayName)
+    expect(session.memberships).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          server: expect.objectContaining({ id: activeServerId }),
+          role: "owner",
+          status: "active",
+        }),
+      ]),
+    )
+
+    await assertTenantRejections(request, sessionToken!, activeServerId!)
+    await assertAuthenticatedPage(page, displayName, session.server.name)
+
+    await test.step("exercise one representative Server-scoped management mutation", async () => {
+      const correctScope = await request.get(`${API_BASE}/api/v1/computers`, {
+        headers: scopedHeaders(sessionToken!, activeServerId!),
+      })
+      expect(correctScope.status()).toBe(200)
+
+      const connectForm = page.locator("form").filter({ has: page.locator("#computer-name") })
+      await connectForm.locator("#computer-name").fill(computerName)
+      await connectForm.locator('button[type="submit"]').click()
+      await expect(page).toHaveURL(/\/computers\?created=/)
+      await expect(page.getByTestId("pending-computer-name")).toHaveText(computerName)
+      await expect(page.getByTestId("pending-server-name")).toHaveText(session.server.name)
+      await expect(page.getByTestId("daemon-connect-command")).toContainText("npx -y --package")
+      await expect(page.getByTestId("daemon-connect-command")).toContainText("--api-key")
+      const command = (await page.getByTestId("daemon-connect-command").textContent()) ?? ""
+      connectToken = /(?:^|\s)--api-key\s+(sk_connect_[A-Za-z0-9_-]+)(?=\s|$)/.exec(command)?.[1]
+      expect(connectToken, "the supported connect command must contain a one-time token").toBeTruthy()
+    })
+
+    await test.step("preserve real daemon WebSocket live/no-replay coverage", async () => {
+      const machineId = `machine-${unique}`
+      const connect = await request.post(`${API_BASE}/internal/agent-api/daemon/connect`, {
+        headers: {
+          Authorization: `Bearer ${connectToken}`,
+          "Content-Type": "application/json",
+        },
+        data: {
+          daemonId: `daemon-${unique}`,
+          machineId,
+          name: computerName,
+          os: "e2e-os",
+          daemonVersion: DAEMON_VERSION,
+          status: "online",
+          detectedRuntimes: ["custom"],
+        },
+      })
+      expect(connect.status()).toBe(200)
+      const machine = (await connect.json()) as {
+        machineToken: string
+        computer: { id: string }
       }
-    }
-    ws.on("message", onMessage)
-    setTimeout(() => {
-      ws.off("message", onMessage)
-      resolve(events)
-    }, durationMs)
-  })
-}
 
-async function daemonRegister(apiKey: string, daemonId: string, workspaces: Array<Record<string, unknown>> = []) {
-  const res = await fetch(`${API_BASE}/internal/agent-api/daemon/register`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      daemonId,
-      name: "e2e-daemon",
-      os: "e2e-os",
-      daemonVersion: "e2e",
-      status: "online",
-      detectedRuntimes: [{ type: "claude_code", status: "available" }],
-      workspaces,
-    }),
-  })
-  if (!res.ok) {
-    throw new Error(`daemon register failed: ${res.status} ${await res.text()}`)
-  }
-  return res.json()
-}
+      const agent = await scopedPost<{ member: { id: string } }>(
+        request,
+        "/api/v1/members/agents",
+        {
+          name: agentName,
+          computerId: machine.computer.id,
+          runtime: "claude_code",
+          backend: "E2E",
+        },
+        sessionToken!,
+        activeServerId!,
+      )
+      const channel = await scopedPost<{ channel: { id: string; name: string } }>(
+        request,
+        "/api/v1/channels",
+        { name: channelName, description: "authenticated daemon delivery integration" },
+        sessionToken!,
+        activeServerId!,
+      )
+      await scopedPost(
+        request,
+        `/api/v1/channels/${channel.channel.id}/members`,
+        { memberId: agent.member.id },
+        sessionToken!,
+        activeServerId!,
+      )
 
-async function agentEvents(apiKey: string, agentId: string, cursor = "0") {
-  const res = await fetch(`${API_BASE}/internal/agent-api/events?since=0&eventLogCursor=${cursor}`, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "X-Agent-Id": agentId,
-    },
-  })
-  if (!res.ok) {
-    throw new Error(`agent events failed: ${res.status} ${await res.text()}`)
-  }
-  return res.json()
-}
+      const historicalContent = `historical-${unique}`
+      await scopedPost(
+        request,
+        `/api/v1/channels/${encodeURIComponent(channel.channel.name)}/messages`,
+        { content: historicalContent },
+        sessionToken!,
+        activeServerId!,
+      )
 
-async function agentEventsLatest(apiKey: string, agentId: string) {
-  const res = await fetch(`${API_BASE}/internal/agent-api/events?since=latest`, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "X-Agent-Id": agentId,
-    },
-  })
-  if (!res.ok) {
-    throw new Error(`agent latest events failed: ${res.status} ${await res.text()}`)
-  }
-  return res.json()
-}
-
-async function findMemberByName(name: string): Promise<{ id: string; workspaceId?: string | null } | undefined> {
-  const res = await fetch(`${API_BASE}/api/v1/members`, { headers: { "X-Public-Key": PUBLIC_KEY } })
-  if (!res.ok) return undefined
-  const data = await res.json() as { members: Array<{ name: string; id: string; workspaceId?: string | null }> }
-  return data.members.find((m) => m.name === name)
-}
-
-async function findDmByName(name: string): Promise<{ id: string; name: string } | undefined> {
-  const res = await fetch(`${API_BASE}/api/v1/dms`, { headers: { "X-Public-Key": PUBLIC_KEY } })
-  if (!res.ok) return undefined
-  const data = await res.json() as { dms: Array<{ id: string; name: string }> }
-  return data.dms.find((dm) => dm.name === name)
-}
-
-async function fillByLabel(page: Page, label: string, value: string) {
-  await page.getByLabel(label).fill(value)
-}
-
-function sqlLiteral(value: string) {
-  return `'${value.replaceAll("'", "''")}'`
-}
-
-function runSql(sql: string) {
-  execFileSync("psql", [E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-q", "-c", sql], {
-    stdio: "inherit",
-  })
-}
-
-function cleanupTestData(stamp: number) {
-  const names = {
-    agent: `e2e-ui-agent-${stamp}`,
-    channel: `e2e-ui-${stamp}`,
-    computer: `e2e-ui-computer-${stamp}`,
-    machine: `e2e-machine-${stamp}`,
-  }
-  const sql = `
-    BEGIN;
-    CREATE TEMP TABLE e2e_members_to_delete ON COMMIT DROP AS
-      SELECT id FROM members WHERE display_name = ${sqlLiteral(names.agent)};
-    CREATE TEMP TABLE e2e_channels_to_delete ON COMMIT DROP AS
-      SELECT id FROM channels WHERE name = ${sqlLiteral(names.channel)}
-      UNION
-      SELECT cm.channel_id
-      FROM channel_members cm
-      JOIN channels c ON c.id = cm.channel_id
-      WHERE c.type = 'dm'
-        AND cm.member_id IN (SELECT id FROM e2e_members_to_delete);
-    CREATE TEMP TABLE e2e_computers_to_delete ON COMMIT DROP AS
-      SELECT id FROM computers WHERE name = ${sqlLiteral(names.computer)} OR machine_id = ${sqlLiteral(names.machine)};
-    DELETE FROM message_reactions
-      WHERE message_id IN (
-        SELECT m.id FROM messages m
-        WHERE m.channel_id IN (SELECT id FROM e2e_channels_to_delete)
-      );
-    DELETE FROM reminders
-      WHERE agent_id IN (SELECT id FROM e2e_members_to_delete)
-         OR channel_id IN (SELECT id FROM e2e_channels_to_delete);
-    DELETE FROM files
-      WHERE channel_id IN (SELECT id FROM e2e_channels_to_delete)
-         OR uploaded_by IN (SELECT id FROM e2e_members_to_delete);
-    DELETE FROM event_records
-      WHERE actor_id IN (SELECT id FROM e2e_members_to_delete)
-         OR channel_id IN (SELECT id FROM e2e_channels_to_delete)
-         OR message_id IN (
-           SELECT m.id FROM messages m
-           WHERE m.channel_id IN (SELECT id FROM e2e_channels_to_delete)
-         );
-    DELETE FROM activity_logs
-      WHERE agent_id IN (SELECT id FROM e2e_members_to_delete)
-         OR channel_id IN (SELECT id FROM e2e_channels_to_delete);
-    DELETE FROM tasks
-      WHERE channel_id IN (SELECT id FROM e2e_channels_to_delete)
-         OR assignee_id IN (SELECT id FROM e2e_members_to_delete);
-    DELETE FROM messages
-      WHERE channel_id IN (SELECT id FROM e2e_channels_to_delete);
-    DELETE FROM channel_members
-      WHERE channel_id IN (SELECT id FROM e2e_channels_to_delete)
-         OR member_id IN (SELECT id FROM e2e_members_to_delete);
-    DELETE FROM channels
-      WHERE id IN (SELECT id FROM e2e_channels_to_delete);
-    DELETE FROM agent_workspaces
-      WHERE agent_id IN (SELECT id FROM e2e_members_to_delete)
-         OR computer_id IN (SELECT id FROM e2e_computers_to_delete);
-    DELETE FROM api_keys
-      WHERE resource_id IN (SELECT id FROM e2e_members_to_delete)
-         OR resource_id IN (SELECT id FROM e2e_computers_to_delete);
-    DELETE FROM connect_tickets
-      WHERE requested_name = ${sqlLiteral(names.computer)};
-    DELETE FROM members
-      WHERE id IN (SELECT id FROM e2e_members_to_delete);
-    DELETE FROM computers
-      WHERE id IN (SELECT id FROM e2e_computers_to_delete);
-    COMMIT;
-  `
-
-  runSql(sql)
-}
-
-test.describe("Management product flow", () => {
-  test("daemon websocket starts at latest event when no cursor is supplied", async () => {
-    const stamp = Date.now()
-    const computerName = `e2e-ui-computer-${stamp}`
-    const agentName = `e2e-ui-agent-${stamp}`
-    const channelName = `e2e-ui-${stamp}`
-    const historyMessage = `historical daemon replay guard ${stamp}`
-    const historySummaryRequest = `historical summary replay guard ${stamp}`
-    const liveMessage = `live daemon delivery guard ${stamp}`
-    let ws: WebSocket | undefined
-
-    try {
-      const credential = await createComputerCredential(computerName)
-      const agentResult = await apiPost("/api/v1/members/agents", {
-        name: agentName,
-        computerId: credential.computerId,
-        runtime: "claude_code",
-        backend: "E2E",
-      }) as { member: { id: string } }
-      const agentId = agentResult.member.id
-      const channelResult = await apiPost("/api/v1/channels", {
-        name: channelName,
-        description: "E2E websocket replay guard",
-      }) as { channel: { id: string; name: string } }
-      await addChannelMember(channelResult.channel.id, agentId)
-
-      const historyResult = await apiPost(`/api/v1/channels/${channelName}/messages`, {
-        sender: "zy-ean",
-        content: historyMessage,
-      }) as { message: { id: string; shortId: string } }
-      runSql(`
-        INSERT INTO event_records (id, server_id, event_type, actor_id, channel_id, message_id, payload, created_at)
-        SELECT gen_random_uuid(),
-               c.server_id,
-               'thread.summary_requested',
-               NULL,
-               c.id,
-               ${sqlLiteral(historyResult.message.id)}::uuid,
-               ${sqlLiteral(JSON.stringify({
-                 type: "thread.summary_requested",
-                 legacyType: "thread_summary_requested",
-                 targetAgentId: agentId,
-                 threadId: historyResult.message.id,
-                 threadShortId: historyResult.message.shortId,
-                 messageId: historyResult.message.id,
-                 shortId: historyResult.message.shortId,
-                 target: `#${channelName}:${historyResult.message.shortId}`,
-                 content: historySummaryRequest,
-                 replyCount: 1,
-                 summaryMaxChars: 300,
-               }))}::jsonb,
-               now()
-        FROM channels c
-        WHERE c.name = ${sqlLiteral(channelName)};
-      `)
-
-      for (const cursor of [undefined, "0", "not-a-number"]) {
-        ws = connectDaemonWs(credential.apiKey, credential.computerId, cursor)
-        const initialEventsPromise = collectWsEvents(ws, 700)
-        await new Promise<void>((resolve, reject) => {
-          ws!.once("open", resolve)
-          ws!.once("error", reject)
-        })
-        const initialEvents = await initialEventsPromise
-        expect(initialEvents).not.toEqual(
-          expect.arrayContaining([
+      const forbiddenReplayContents = [historicalContent]
+      for (const [cursorLabel, cursor] of [
+        ["missing", undefined],
+        ["zero", "0"],
+        ["invalid", "not-a-number"],
+      ] as const) {
+        const ws = daemonWebSocket(machine.machineToken, machine.computer.id, cursor)
+        const observation = observeJsonEvents(ws)
+        const cursorLiveContent = `cursor-live-${unique}-${cursorLabel}`
+        try {
+          await waitForOpen(ws)
+          expect(ws.readyState, `${cursorLabel} cursor socket must open`).toBe(WebSocket.OPEN)
+          const liveEvent = waitForEvent(
+            ws,
+            (event) => event.type === "message.created" && event.content === cursorLiveContent,
+          )
+          await scopedPost(
+            request,
+            `/api/v1/channels/${encodeURIComponent(channel.channel.name)}/messages`,
+            { content: cursorLiveContent },
+            sessionToken!,
+            activeServerId!,
+          )
+          await expect(liveEvent).resolves.toEqual(
             expect.objectContaining({
               type: "message.created",
-              content: historyMessage,
+              content: cursorLiveContent,
+              target: channel.channel.name,
+              targetAgentId: agent.member.id,
             }),
-          ]),
-        )
-        expect(initialEvents).not.toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              type: "thread.summary_requested",
-              content: historySummaryRequest,
-            }),
-          ]),
-        )
-        ws.close()
-        ws = undefined
+          )
+          await waitForObservationWindow()
+          expect(observation.closed, `${cursorLabel} cursor socket must stay open`).toBe(false)
+          expect(observation.error, `${cursorLabel} cursor socket must remain healthy`).toBeUndefined()
+          expect(ws.readyState, `${cursorLabel} cursor socket must stay open`).toBe(WebSocket.OPEN)
+          expect(
+            observation.events.filter(
+              (event) =>
+                event.type === "message.created" &&
+                forbiddenReplayContents.includes(String(event.content)),
+            ),
+            `${cursorLabel} cursor must not replay prior messages`,
+          ).toEqual([])
+        } finally {
+          await closeWebSocket(ws)
+          observation.stop()
+        }
+        forbiddenReplayContents.push(cursorLiveContent)
       }
+    })
 
-      ws = connectDaemonWs(credential.apiKey, credential.computerId)
-      await new Promise<void>((resolve, reject) => {
-        ws!.once("open", resolve)
-        ws!.once("error", reject)
+    await page.goto("/members")
+    await assertAuthenticatedPage(page, displayName, session.server.name)
+
+    await test.step("reject a revoked/stale product session", async () => {
+      const logout = await request.post(`${API_BASE}/api/v1/auth/logout`, {
+        headers: scopedHeaders(sessionToken!, activeServerId!),
       })
-
-      const liveEventPromise = waitForWsEvent(
-        ws,
-        (event) => event.type === "message.created" && event.content === liveMessage,
-      )
-      await apiPost(`/api/v1/channels/${channelName}/messages`, {
-        sender: "zy-ean",
-        content: liveMessage,
+      expect(logout.status()).toBe(200)
+      const staleSession = await request.get(`${API_BASE}/api/v1/computers`, {
+        headers: scopedHeaders(sessionToken!, activeServerId!),
       })
-      const liveEvent = await liveEventPromise
-      expect(liveEvent).toEqual(
-        expect.objectContaining({
-          type: "message.created",
-          content: liveMessage,
-          target: `#${channelName}`,
-          targetAgentId: agentId,
-        }),
-      )
-    } finally {
-      ws?.close()
-      cleanupTestData(stamp)
-    }
-  })
-
-  test("browser flow: daemon connect, computer, agent, channel, message, and DM", async ({ page }) => {
-    const stamp = Date.now()
-    const computerName = `e2e-ui-computer-${stamp}`
-    const agentName = `e2e-ui-agent-${stamp}`
-    const channelName = `e2e-ui-${stamp}`
-    const channelMessage = `hello channel ${stamp} @${agentName}`
-    const channelReply = `agent channel reply ${stamp}`
-    const dmMessage = `private dm ${stamp}`
-    const dmReply = `agent dm reply ${stamp}`
-    const dmReplyViaChannelId = `agent dm channel-id reply ${stamp}`
-    const dmAgentThreadReply = `agent dm thread reply ${stamp}`
-    const channelThreadReply = `thread reply ${stamp}`
-    const dmThreadReply = `dm thread reply ${stamp}`
-
-    try {
-      // 1. Generate one-time daemon connect command on Computers page
-      await page.goto(`${FRONTEND_BASE}/computers`)
-      await expect(page.getByRole("heading", { name: "Computers" })).toBeVisible()
-      await fillByLabel(page, "Computer Name", computerName)
-      await page.getByRole("button", { name: "Generate Connect Command" }).click()
-
-      const command = (await page.getByTestId("connection-command").textContent())?.trim() ?? ""
-      const connectToken = /SLOCK_CONNECT_TOKEN=(sk_connect_[^\s]+)/.exec(command)?.[1]
-      await expect(page.getByTestId("connection-command")).toContainText("agent/daemon/aaa-daemon")
-      await expect(page.getByTestId("connection-command")).toContainText("node dist/cmd/main.js start")
-      await expect(page.getByTestId("connection-command")).toContainText("SLOCK_CONNECT_TOKEN=sk_connect_")
-      await expect(page.getByTestId("connection-command")).toContainText("--proxy-port 0")
-      await expect(page.getByTestId("connection-command")).toContainText("--register-daemon")
-      await expect(page.getByTestId("connection-command")).not.toContainText("@slock-ai/daemon")
-      expect(connectToken).toMatch(/^sk_connect_/)
-
-      // 2. Connect daemon using generated one-time token; computer is created only after this.
-      const machineId = `e2e-machine-${stamp}`
-      const connect = await connectDaemon(connectToken!, machineId, computerName)
-      const apiKey = connect.machineToken as string
-      const daemonId = connect.daemonId as string
-      const computerId = connect.computer.id as string
-      expect(apiKey).toMatch(/^sk_machine_/)
-      expect(daemonId).toMatch(/^daemon-/)
-      expect(computerId).toMatch(/^[0-9a-f-]{36}$/)
-
-      await page.reload()
-      await expect(page.getByText(computerName, { exact: true })).toBeVisible()
-      await expect(page.getByText("e2e-os").first()).toBeVisible()
-      await expect(page.getByText("custom").first()).toBeVisible()
-
-      // 3. Create agent bound to computer/runtime on Members page
-      await page.goto(`${FRONTEND_BASE}/members`)
-      await expect(page.getByRole("heading", { name: "Members" })).toBeVisible()
-      await fillByLabel(page, "Agent Name", agentName)
-      await page.getByLabel("Computer").selectOption({ label: computerName })
-      await page.getByLabel("Runtime").selectOption("claude_code")
-      await fillByLabel(page, "Backend", "E2E")
-      await page.getByRole("button", { name: "Create Agent" }).click()
-      await expect(page.getByText(agentName).first()).toBeVisible()
-
-      // Look up the agent's member ID for agent-api auth
-      const agentMember = await findMemberByName(agentName)
-      const agentId = agentMember?.id
-      const workspaceId = agentMember?.workspaceId
-      expect(agentId).toBeDefined()
-      expect(workspaceId).toBeDefined()
-
-      const initialControl = await daemonRegister(apiKey!, daemonId, [])
-      expect(initialControl.controlCommands).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            command: expect.objectContaining({
-              type: "start_runtime",
-              agentId,
-              workspaceId,
-            }),
-          }),
-        ]),
-      )
-
-      const runningSync = await daemonRegister(apiKey!, daemonId, [
-        {
-          agentId,
-          workspaceId,
-          runtime: "claude_code",
-          runtimeCommand: process.execPath,
-          status: "running",
-          sessionId: `e2e-session-${stamp}`,
-          cwd: process.cwd(),
-          pid: 12345,
-        },
-      ])
-      expect(runningSync.controlCommands).toEqual([])
-
-      const reconnectSync = await daemonRegister(apiKey!, daemonId, [])
-      expect(reconnectSync.controlCommands).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            command: expect.objectContaining({
-              type: "start_runtime",
-              agentId,
-              workspaceId,
-            }),
-          }),
-        ]),
-      )
-
-      // 4. Create channel on home page
-      await page.goto(FRONTEND_BASE)
-      await fillByLabel(page, "New Channel", channelName)
-      await page.getByPlaceholder("description").fill("E2E browser channel")
-      await page.getByRole("button", { name: "Create" }).click()
-      await expect(page.getByRole("link", { name: new RegExp(`#${channelName}`) })).toBeVisible()
-
-      // 5. Open channel, add agent as member
-      await page.getByRole("link", { name: new RegExp(`#${channelName}`) }).click()
-      await expect(page.getByRole("heading", { name: `#${channelName}` })).toBeVisible()
-      await page.getByTestId("add-channel-member-select").selectOption({ label: `${agentName} (agent)` })
-      await page.getByRole("button", { name: "Add member to channel" }).click()
-      await expect(page.getByTestId(`channel-member-${agentName}`)).toBeVisible()
-
-      // 6. Send channel message as human, verify it appears
-      await page.getByPlaceholder("Type a message...").fill(channelMessage)
-      await page.getByRole("button", { name: "Send message" }).click()
-      await expect(page.getByText(channelMessage)).toBeVisible()
-
-      await page.getByRole("button", { name: "Reply" }).first().click()
-      await expect(page.getByRole("complementary", { name: "Thread" })).toBeVisible()
-      await page.getByPlaceholder("Reply in thread...").fill(channelThreadReply)
-      await page.getByRole("button", { name: "Send thread reply" }).click()
-      await expect(page.getByRole("complementary", { name: "Thread" }).getByText(channelThreadReply)).toBeVisible()
-      await page.getByRole("button", { name: "Close thread" }).click()
-      await expect(page.getByText(channelThreadReply)).not.toBeVisible()
-      await expect(page.getByRole("button", { name: /1 replies/ }).first()).toBeVisible()
-
-      // 7. Agent replies via agent-facing API using the daemon-issued machine token
-      await agentSend(apiKey!, agentId!, `#${channelName}`, channelReply)
-      await page.reload()
-      await expect(page.getByText(channelReply)).toBeVisible()
-      await expect(page.locator("span.font-semibold.text-blue-600", { hasText: `@${agentName}` })).toBeVisible()
-
-      // 8. Start DM with agent from home page
-      await page.goto(FRONTEND_BASE)
-      await page.getByLabel("Start DM with").selectOption(agentName)
-      await page.getByRole("button", { name: "DM" }).click()
-      await expect(page).toHaveURL(/\/chat\/dm(%3A|:)/)
-      await expect(page.getByRole("heading", { name: `DM @${agentName}` })).toBeVisible()
-      const dmBaseline = await agentEventsLatest(apiKey!, agentId!)
-      await page.getByPlaceholder("Type a message...").fill(dmMessage)
-      await page.getByRole("button", { name: "Send message" }).click()
-      await expect(page.getByText(dmMessage)).toBeVisible()
-
-      const dmDelivery = await agentEvents(apiKey!, agentId!, dmBaseline.eventLogCursor ?? "0")
-      const dmRootEvent = dmDelivery.events.find((event: { content?: string }) => event.content === dmMessage)
-      expect(dmRootEvent?.shortId).toMatch(/^[0-9a-f]{8}$/)
-      expect(dmDelivery.events).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: "message.created",
-            content: dmMessage,
-            target: "dm:@zy-ean",
-            channelType: "dm",
-          }),
-        ]),
-      )
-
-      await page.getByRole("button", { name: "Reply" }).first().click()
-      await expect(page.getByRole("complementary", { name: "Thread" })).toBeVisible()
-      await page.getByPlaceholder("Reply in thread...").fill(dmThreadReply)
-      await page.getByRole("button", { name: "Send thread reply" }).click()
-      await expect(page.getByRole("complementary", { name: "Thread" }).getByText(dmThreadReply)).toBeVisible()
-      runSql(`
-        UPDATE event_records
-        SET payload = payload - 'target' - 'channel'
-        WHERE message_id IN (
-          SELECT id FROM messages WHERE content = ${sqlLiteral(dmThreadReply)}
-        );
-      `)
-      const dmThreadDelivery = await agentEvents(apiKey!, agentId!, dmDelivery.eventLogCursor ?? "0")
-      expect(dmThreadDelivery.events).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: "message.created",
-            content: dmThreadReply,
-            target: `dm:@zy-ean:${dmRootEvent.shortId}`,
-            channel: `dm:@zy-ean:${dmRootEvent.shortId}`,
-            channelType: "thread",
-          }),
-        ]),
-      )
-      await page.getByRole("button", { name: "Close thread" }).click()
-      await expect(page.getByText(dmThreadReply)).not.toBeVisible()
-
-      // 9. Agent replies in DM via agent-facing API (target format: dm:<peer_name>)
-      const dmChannelName = decodeURIComponent(page.url().split("/chat/").at(-1) ?? "")
-      expect(dmChannelName).toContain("dm:")
-      const dmChannel = await findDmByName(dmChannelName)
-      expect(dmChannel?.id).toMatch(/^[0-9a-f-]{36}$/)
-      await agentSend(apiKey!, agentId!, "dm:zy-ean", dmReply)
-      await page.reload()
-      await expect(page.getByText(dmReply)).toBeVisible()
-      await agentSend(apiKey!, agentId!, `dm:zy-ean:${dmRootEvent.shortId}`, dmAgentThreadReply)
-      await page.reload()
-      await expect(page.getByText(dmAgentThreadReply)).not.toBeVisible()
-      await page.getByRole("button", { name: /2 replies/ }).first().click()
-      await expect(page.getByRole("complementary", { name: "Thread" }).getByText(dmAgentThreadReply)).toBeVisible()
-      await page.getByRole("button", { name: "Close thread" }).click()
-      await agentSend(apiKey!, agentId!, dmChannel!.id, dmReplyViaChannelId)
-      await page.reload()
-      await expect(page.getByText(dmReplyViaChannelId)).toBeVisible()
-    } finally {
-      cleanupTestData(stamp)
-    }
+      expect(staleSession.status()).toBe(401)
+    })
   })
 })

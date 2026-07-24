@@ -1,5 +1,17 @@
 # Plan 011 (Direction): Decide on `remotion/` — commit skeleton or remove
 
+## Current remediation disposition (2026-07-24)
+
+- **Disposition**: `DEFER_LINKED`
+- **Release scope**: `RELEASE_EXCLUDED`
+- **Audit-scope decision**: `REJECT_DESTRUCTIVE_CLEANUP_IN_AUDIT_SCOPE`
+- **Safety boundary**: Remotion files/tasks are user-owned WIP. No Remotion file
+  or directory is deleted, moved, populated, staged, or otherwise modified by
+  this audit remediation.
+
+The plan below is retained as historical advisory context. Its destructive
+options are explicitly not authorized by this disposition.
+
 > **Executor instructions**: This is a **decision + cleanup plan**, not a
 > build task. The goal is to resolve the contradiction between the empty
 > `remotion/` directory and the in-flight Trellis task describing a 6300-

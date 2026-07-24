@@ -29,7 +29,25 @@ class DevScriptLocalAuthEnvTest(unittest.TestCase):
         self.assertIn("BETTER_AUTH_SECRET=", frontend_start)
         self.assertIn("BETTER_AUTH_URL=", frontend_start)
         self.assertIn("BETTER_AUTH_DATABASE_URL=", frontend_start)
+        self.assertIn("BETTER_AUTH_DATABASE_POOL_SIZE=", frontend_start)
         self.assertIn("INTERNAL_API_BASE_URL=", frontend_start)
+
+    def test_start_derives_backend_and_frontend_public_key_from_one_source(self):
+        script = DEV_SH.read_text()
+        backend_start = self._start_line("$BACKEND_PID_FILE")
+        frontend_start = self._start_line("$FRONTEND_PID_FILE")
+
+        self.assertIn(
+            'local_public_api_key="${PUBLIC_API_KEY:-sk_public_local}"',
+            script,
+        )
+        self.assertIn('PUBLIC_API_KEY="$local_public_api_key"', backend_start)
+        self.assertIn(
+            'NEXT_PUBLIC_API_KEY="$local_public_api_key"',
+            frontend_start,
+        )
+        self.assertIn("NEXT_PUBLIC_DEPLOYMENT_ENV=local-dev", frontend_start)
+        self.assertNotIn("${NEXT_PUBLIC_API_KEY:-sk_public_local}", frontend_start)
 
     def test_start_background_is_not_wrapped_in_command_substitution(self):
         script = DEV_SH.read_text()

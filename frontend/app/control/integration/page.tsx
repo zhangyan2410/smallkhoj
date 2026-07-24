@@ -33,6 +33,7 @@ import {
   type Member,
   type RuntimeInfo,
 } from "@/lib/control-plane"
+import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { getSessionToken, requireCurrentAccount } from "@/lib/server-auth"
 import { cn } from "@/lib/utils"
 
@@ -138,15 +139,17 @@ type Gate = {
 }
 
 async function getIntegrationData(sessionToken?: string | null, activeServerId?: string | null) {
-  const [tasksData, computersData, membersData, activityData] = await Promise.all([
-    apiGet<{ tasks: Task[] }>("/api/v1/tasks", { tasks: [] }, sessionToken, activeServerId),
+  const [tasks, computersData, membersData, activityData] = await Promise.all([
+    fetchAllTaskPages<Task>((path) => (
+      apiGet<TaskCursorPage<Task>>(path, { tasks: [], nextCursor: null }, sessionToken, activeServerId)
+    )),
     apiGet<{ computers: Computer[] }>("/api/v1/computers", { computers: [] }, sessionToken, activeServerId),
     apiGet<{ members: Member[] }>("/api/v1/members", { members: [] }, sessionToken, activeServerId),
     apiGet<{ activity: ActivityItem[]; count?: number }>("/api/v1/activity?limit=40", { activity: [] }, sessionToken, activeServerId),
   ])
 
   return {
-    tasks: tasksData.tasks,
+    tasks,
     computers: computersData.computers,
     members: membersData.members,
     activity: activityData.activity,

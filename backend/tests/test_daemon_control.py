@@ -1,12 +1,14 @@
+import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-import uuid
 
-from fastapi import HTTPException
 import pytest
+from fastapi import HTTPException
 
 import routers.agent_api as agent_api
 import routers.public_api as public_api
+import services.daemon_control as daemon_control
 from routers.agent_api import (
     ACTIVITY_EVENT_TYPES,
     _apply_agent_status_transition,
@@ -16,8 +18,8 @@ from routers.agent_api import (
 )
 from routers.public_api import compact_activity_feed
 from services.daemon_control import (
-    clear_workspace_reference,
     DaemonControlHub,
+    clear_workspace_reference,
     initial_daemon_event_cursor,
     mark_missing_runtimes_pending_start,
     parse_positive_event_cursor,
@@ -199,6 +201,67 @@ class _FakeWebSocket:
 
     async def send_json(self, event):
         self.sent.append(event)
+
+
+class _FailingWebSocket:
+    async def send_json(self, _event):
+        raise RuntimeError("websocket send failed")
+
+
+@pytest.mark.asyncio
+async def test_daemon_hub_push_logs_and_removes_failed_websocket(caplog):
+    hub = DaemonControlHub()
+    computer_id = uuid.uuid4()
+    websocket = _FailingWebSocket()
+    hub.add(computer_id, websocket)
+
+    with caplog.at_level(logging.ERROR, logger="services.daemon_control"):
+        delivered = await hub.push(computer_id, {"type": "runtime.start"})
+
+    assert delivered == 0
+    assert hub.connected_computers() == []
+    assert any(
+        record.name == "services.daemon_control"
+        and record.levelno == logging.ERROR
+        and record.exc_info is not None
+        and "daemon control push failed" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_daemon_hub_push_events_logs_and_removes_failed_websocket(monkeypatch, caplog):
+    hub = DaemonControlHub()
+    server_id = uuid.uuid4()
+    computer_id = uuid.uuid4()
+    websocket = _FailingWebSocket()
+    hub.add(computer_id, websocket)
+
+    async def fake_pending_events(*_args, **_kwargs):
+        return ([{"type": "message.created"}], 1)
+
+    monkeypatch.setattr(
+        daemon_control,
+        "pending_visible_events_for_computer",
+        fake_pending_events,
+    )
+
+    with caplog.at_level(logging.ERROR, logger="services.daemon_control"):
+        delivered = await hub.push_events(
+            _FakeSession(),
+            server_id=server_id,
+            computer_id=computer_id,
+        )
+
+    assert delivered == 0
+    assert hub.connected_computers() == []
+    assert any(
+        record.name == "services.daemon_control"
+        and record.levelno == logging.ERROR
+        and record.exc_info is not None
+        and "daemon control event push failed" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_parse_positive_event_cursor():

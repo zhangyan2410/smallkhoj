@@ -1,9 +1,10 @@
 """Feishu Channel SDK transport adapter for the worker runtime."""
 
 import json
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable
+from typing import Any
 
 from config import settings
 from services.feishu_worker_runtime import (
@@ -12,7 +13,6 @@ from services.feishu_worker_runtime import (
     load_feishu_worker_connectors,
     resolve_feishu_worker_config,
 )
-
 
 FEISHU_CHANNEL_TRANSPORT_SDK_MISSING = "FEISHU_CHANNEL_TRANSPORT_SDK_MISSING"
 FEISHU_CHANNEL_TRANSPORT_STARTED = "FEISHU_CHANNEL_TRANSPORT_STARTED"

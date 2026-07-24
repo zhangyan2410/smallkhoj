@@ -1,6 +1,7 @@
 import { ChannelClient } from "./channel-client"
 import { API_BASE, type Member } from "@/lib/control-plane"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { canManageActiveServer } from "@/lib/server-permissions"
 
 type ChannelMessage = {
   id: string
@@ -84,6 +85,8 @@ export default async function ChannelPage({
       initialAllMembers={allMembers}
       initialDms={initialDms}
       sessionToken={sessionToken}
+      activeServerId={session.server.id}
+      canManageServer={canManageActiveServer(session)}
       currentMemberId={session.member.id}
       initialThreadId={firstParam(query.thread)}
       initialMessageId={firstParam(query.message)}

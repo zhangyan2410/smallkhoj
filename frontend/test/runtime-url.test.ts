@@ -1,10 +1,13 @@
 import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 import {
   joinUrlPath,
+  resolveChatWebSocketProtocols,
   resolveApiBase,
   resolveChatWebSocketUrl,
+  resolvePublicApiKey,
   resolvePublicApiBase,
   resolvePublicApiBaseFromHeaders,
   resolveWebSocketBase,
@@ -53,6 +56,57 @@ test("resolveChatWebSocketUrl supports explicit websocket override", () => {
 
 test("resolveChatWebSocketUrl falls back to localhost outside the browser", () => {
   assert.equal(resolveChatWebSocketUrl({}, "server"), "ws://localhost:8000/api/chat/ws")
+})
+
+test("production public API key configuration fails closed", () => {
+  assert.throws(
+    () => resolvePublicApiKey({ NEXT_PUBLIC_DEPLOYMENT_ENV: "production" }),
+    /NEXT_PUBLIC_API_KEY/,
+  )
+  assert.throws(
+    () => resolvePublicApiKey({
+      NEXT_PUBLIC_DEPLOYMENT_ENV: "production",
+      NEXT_PUBLIC_API_KEY: "sk_public_local",
+    }),
+    /NEXT_PUBLIC_API_KEY/,
+  )
+})
+
+test("local development public API key fallback is explicit", () => {
+  assert.equal(
+    resolvePublicApiKey({ NEXT_PUBLIC_DEPLOYMENT_ENV: "local-dev" }),
+    "sk_public_local",
+  )
+})
+
+test("control plane statically reads public environment variables for Next client inlining", async () => {
+  const source = await readFile(new URL("../lib/control-plane.ts", import.meta.url), "utf8")
+  const productCreateSource = await readFile(new URL("../components/product-create-panel.tsx", import.meta.url), "utf8")
+
+  assert.doesNotMatch(source, /resolve(?:PublicApiBase|PublicApiKey)\(process\.env/)
+  assert.match(source, /NEXT_PUBLIC_API_BASE_URL:\s*process\.env\.NEXT_PUBLIC_API_BASE_URL/)
+  assert.match(source, /NEXT_PUBLIC_WS_BASE_URL:\s*process\.env\.NEXT_PUBLIC_WS_BASE_URL/)
+  assert.match(source, /NEXT_PUBLIC_API_KEY:\s*process\.env\.NEXT_PUBLIC_API_KEY/)
+  assert.match(source, /NEXT_PUBLIC_DEPLOYMENT_ENV:\s*process\.env\.NEXT_PUBLIC_DEPLOYMENT_ENV/)
+  assert.match(source, /INTERNAL_API_BASE_URL:\s*process\.env\.INTERNAL_API_BASE_URL/)
+  assert.match(productCreateSource, /resolvePublicApiBase\(PUBLIC_RUNTIME_ENV\)/)
+})
+
+test("chat websocket keeps credentials in subprotocols and out of URL", () => {
+  const key = "sk_rotated_key/with=symbols"
+  const url = resolveChatWebSocketUrl(
+    { NEXT_PUBLIC_WS_BASE_URL: "wss://smallkhoj.example.com" },
+    "browser",
+    "https://smallkhoj.example.com",
+  )
+  const protocols = resolveChatWebSocketProtocols(key)
+
+  assert.equal(url, "wss://smallkhoj.example.com/api/chat/ws")
+  assert.equal(url.includes(key), false)
+  assert.equal(url.includes("api_key"), false)
+  assert.deepEqual(protocols.slice(0, 1), ["smallkhoj.chat.v1"])
+  assert.equal(protocols[1].startsWith("smallkhoj.public-key."), true)
+  assert.equal(protocols[1].includes(key), false)
 })
 
 test("resolvePublicApiBase uses browser origin for deployed same-origin pages", () => {

@@ -2,13 +2,16 @@
 
 import asyncio
 import contextlib
+import logging
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import ActivityLog, Channel, EventRecord, Message, Reminder, async_session
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -36,11 +39,6 @@ def _reminder_message_content(reminder: Reminder) -> str:
     if reminder.description:
         return f"Reminder: {reminder.title}\n\n{reminder.description}"
     return f"Reminder: {reminder.title}"
-
-
-async def _next_message_seq(db: AsyncSession) -> int:
-    result = await db.execute(select(func.coalesce(func.max(Message.seq), 0)))
-    return int(result.scalar() or 0) + 1
 
 
 async def fire_due_reminders(db: AsyncSession, limit: int = 50) -> int:
@@ -84,7 +82,6 @@ async def fire_due_reminders(db: AsyncSession, limit: int = 50) -> int:
                     parent_id=reminder.message_id,
                     content=_reminder_message_content(reminder),
                     channel_type="thread" if reminder.message_id else channel.kind,
-                    seq=await _next_message_seq(db),
                 )
                 db.add(message)
                 await db.flush()
@@ -168,16 +165,18 @@ async def fire_due_reminders(db: AsyncSession, limit: int = 50) -> int:
 
 
 async def reminder_scheduler_loop(interval_seconds: float = 1.0):
+    backoff_seconds = interval_seconds
     while True:
         try:
             async with async_session() as db:
                 await fire_due_reminders(db)
+            backoff_seconds = interval_seconds
         except asyncio.CancelledError:
             raise
         except Exception:
-            # Keep the lightweight local scheduler alive; detailed DB errors surface in app logs.
-            pass
-        await asyncio.sleep(interval_seconds)
+            logger.exception("reminder scheduler iteration failed")
+            backoff_seconds = min(backoff_seconds * 2, 60.0)
+        await asyncio.sleep(backoff_seconds)
 
 
 def start_reminder_scheduler(interval_seconds: float = 1.0) -> asyncio.Task:

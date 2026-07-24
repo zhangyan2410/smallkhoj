@@ -25,9 +25,23 @@ SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:latest
 POSTGRES_USER=smallkhoj
 POSTGRES_DB=smallkhoj
 POSTGRES_PASSWORD=<set-outside-repo>
+DATABASE_POOL_SIZE=5
+DATABASE_MAX_OVERFLOW=10
+BETTER_AUTH_DATABASE_POOL_SIZE=10
+BACKEND_WORKERS=1
+POSTGRES_MAX_CONNECTIONS=100
+POSTGRES_CONNECTION_HEADROOM=5
+NOTIFY_PUBLISHER_POOL_SIZE=2
+NOTIFY_CONNECT_TIMEOUT_SECONDS=3
+NOTIFY_OPERATION_TIMEOUT_SECONDS=3
+NOTIFY_RECONNECT_INITIAL_SECONDS=0.25
+NOTIFY_RECONNECT_MAX_SECONDS=5
+NOTIFY_SHUTDOWN_TIMEOUT_SECONDS=5
+NOTIFY_PUBLISH_ATTEMPTS=2
 BACKEND_CORS_ORIGINS=<public-origin>
 
 # Required browser auth values. BETTER_AUTH_URL should match the public frontend origin.
+PUBLIC_API_KEY=<set-outside-repo>
 BETTER_AUTH_SECRET=<set-outside-repo>
 BETTER_AUTH_URL=<public-origin>
 AUTH_BRIDGE_SECRET=<set-outside-repo>
@@ -35,7 +49,6 @@ AUTH_BRIDGE_SECRET=<set-outside-repo>
 # Same-origin frontend defaults. Leave empty unless the browser must call another public host.
 NEXT_PUBLIC_API_BASE_URL=
 NEXT_PUBLIC_WS_BASE_URL=
-NEXT_PUBLIC_API_KEY=sk_public_local
 
 # Optional LLM/runtime values.
 LLM_API_KEY=<optional-set-outside-repo>

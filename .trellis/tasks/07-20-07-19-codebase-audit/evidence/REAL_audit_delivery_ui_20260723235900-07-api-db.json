@@ -1,0 +1,29 @@
+{
+  "runMarker": "REAL_audit_delivery_ui_20260723235900",
+  "taskDelete": {
+    "uiMarkerRemoved": true,
+    "dialogClosed": true,
+    "remainingRows": 0,
+    "eventType": "task.deleted",
+    "eventTaskForeignKeyIsNull": true,
+    "tombstoneTitle": "REAL_audit_delivery_ui_20260723235900-DELETE-TASK"
+  },
+  "fileDelete": {
+    "remainingRows": 0,
+    "events": [
+      "REAL_audit_delivery_ui_20260723235900-normal.txt",
+      "REAL_audit_delivery_ui_20260723235900-quarantine.txt"
+    ],
+    "quarantineFaultInjection": {
+      "kind": "replace-uploaded-blob-with-empty-directory-before-delete",
+      "expectedResponse": "storageCleanup=quarantined",
+      "quarantinedDirectoryCountBeforeCleanup": 1
+    },
+    "warning": {
+      "visible": true,
+      "role": "alert",
+      "fileRowStillPresent": false,
+      "text": "存储清理尚未完成；文件记录已删除且文件已无法访问，隔离区可能需要管理员处理。"
+    }
+  }
+}

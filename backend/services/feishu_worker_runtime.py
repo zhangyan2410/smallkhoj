@@ -1,8 +1,9 @@
 """Runtime boundary for the deployable Feishu long-connection worker."""
 
 import uuid
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Iterable
+from typing import Any
 
 from sqlalchemy import select
 
@@ -13,7 +14,6 @@ from services.integration_runtime import (
     build_feishu_reply_dependencies,
     build_task_run_writeback_dependencies,
 )
-
 
 FEISHU_WORKER_CONFIG_MISSING_CONNECTOR_ID = "FEISHU_WORKER_CONFIG_MISSING_CONNECTOR_ID"
 FEISHU_WORKER_CONFIG_MISSING_JIRA_CONNECTOR_ID = "FEISHU_WORKER_CONFIG_MISSING_JIRA_CONNECTOR_ID"

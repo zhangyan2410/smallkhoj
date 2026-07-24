@@ -7,11 +7,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from models import Account, Channel, ChannelMember, Computer, Member, Server, ServerMembership
 
 ADMIN_ROLES = {"owner", "admin"}
+OWNER_ELECTION_LOCK_NAMESPACE = 0x534B484A
+OWNER_ELECTION_LOCK_SCOPE = 1
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,21 @@ class ActiveServerContext:
     server: Server
     member: Member
     membership: ServerMembership
+
+
+async def acquire_owner_election_lock(db: Any) -> None:
+    """Serialize every global owner-election path for the transaction lifetime."""
+
+    await db.execute(
+        text(
+            "SELECT pg_advisory_xact_lock("
+            ":owner_election_namespace, :owner_election_scope)"
+        ),
+        {
+            "owner_election_namespace": OWNER_ELECTION_LOCK_NAMESPACE,
+            "owner_election_scope": OWNER_ELECTION_LOCK_SCOPE,
+        },
+    )
 
 
 async def ensure_account_membership(

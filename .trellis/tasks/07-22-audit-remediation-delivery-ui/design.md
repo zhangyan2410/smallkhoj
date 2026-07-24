@@ -62,6 +62,29 @@ explicitly supported test-only bootstrap route unavailable in production. It ass
 the rendered account/server marker before exercising management pages. Every API
 helper sends the required account/server context and canonical headers.
 
+Auth-tenancy handoff contract (2026-07-23):
+
+- generate one non-default ephemeral `PUBLIC_API_KEY` per isolated run; give the
+  backend that value directly and build the frontend with
+  `--secret id=public_api_key,env=PUBLIC_API_KEY` under
+  `NEXT_PUBLIC_DEPLOYMENT_ENV=production`;
+- never write the value into test source, a build arg, command-plan JSON, or a URL;
+- public HTTP/SSE helpers send `X-Public-Key`; authenticated control-plane helpers
+  additionally send the supported session token/cookie and `X-Server-Id` for the
+  selected membership;
+- chat WebSocket URL is only `/api/chat/ws`; requested protocols are
+  `smallkhoj.chat.v1` and `smallkhoj.public-key.<base64url(value)>`, and the server
+  must select only `smallkhoj.chat.v1`;
+- login/setup must assert account identity and active Server before management
+  actions. A public key alone is never accepted as human identity or tenant context;
+- explicit empty agent permissions mean deny-all. Only missing/JSON-null legacy
+  permission data receives compatibility backfill.
+
+The local-prod auth child gate already proved Caddy preserves the chat subprotocol:
+missing/wrong keys returned 403, the correct key negotiated
+`smallkhoj.chat.v1`, and backend logs did not echo the credential. Delivery/UI still
+owns browser-visible `./twd` evidence for the integrated runtime.
+
 ## UI state machines
 
 Deletion:

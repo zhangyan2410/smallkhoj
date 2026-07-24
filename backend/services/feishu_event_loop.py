@@ -13,7 +13,6 @@ from services.feishu_reply_orchestration import send_feishu_accepted_reply
 from services.integration_gateway import mark_external_event_failed
 from services.release_loop import ReleaseLoopError, start_feishu_jira_analysis
 
-
 FEISHU_EVENT_LOOP_ACCEPTED = "FEISHU_EVENT_LOOP_ACCEPTED"
 FEISHU_EVENT_LOOP_ACCEPTED_REPLY_FAILED = "FEISHU_EVENT_LOOP_ACCEPTED_REPLY_FAILED"
 FEISHU_EVENT_LOOP_DISPATCH_PASSTHROUGH = "FEISHU_EVENT_LOOP_DISPATCH_PASSTHROUGH"

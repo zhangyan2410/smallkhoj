@@ -1,5 +1,18 @@
 # Plan 007 (Direction): Integrate `session-observer/` into the main app shell
 
+## Current remediation disposition (2026-07-24)
+
+- **Disposition**: `DEFER_LINKED`
+- **Release scope**: `RELEASE_EXCLUDED`
+- **Decision**: the standalone observer and its existing task/WIP own this
+  direction. Main-app integration is deferred to that work rather than being
+  pulled into the important-bug audit release.
+- **Safety boundary**: no `session-observer/` WIP is modified, moved, staged,
+  or used as completion evidence by this disposition.
+
+The plan below is retained as historical advisory context. It remains an
+unimplemented product direction, not an audit release blocker.
+
 > **Executor instructions**: This is a **design/spike plan**, not a
 > build-everything task. The goal is to define the integration boundary
 > between the standalone `session-observer/` product and the authenticated
