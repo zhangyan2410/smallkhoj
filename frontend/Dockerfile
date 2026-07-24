@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1.7
 FROM oven/bun:1.3.14 AS builder
 WORKDIR /app
+# Use China npm mirror by default; overridable via build-arg / env for other regions.
+# Fixes SSL MITM failures behind corporate VPNs and speeds up domestic builds.
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ENV BUN_CONFIG_REGISTRY=${NPM_REGISTRY} \
+    npm_config_registry=${NPM_REGISTRY}
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
