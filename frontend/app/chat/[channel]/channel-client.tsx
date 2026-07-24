@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react"
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type RefObject } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import {
@@ -117,21 +117,76 @@ type ChannelMessage = {
 
 const CHAT_SCROLL_TICK_COUNT = 12
 
-function ChatScrollRail({ progress, visible }: { progress: number; visible: boolean }) {
-  const activeIndex = Math.round(Math.max(0, Math.min(1, progress)) * (CHAT_SCROLL_TICK_COUNT - 1))
+/**
+ * 自包含的滚动进度导航条：自己挂 ONE 条 rAF 合并的 scroll + ResizeObserver
+ * 监听，把进度直接写进 DOM（data-visible / 每个 tick 的 data-active / data-near），
+ * 全程不进 React state —— 因此滚动时不会触发 ChannelClient 重渲、不会重渲消息列表。
+ *
+ * 进度协议与 globals.css 的 .sk-chat-scroll-rail[data-visible] /
+ * .sk-chat-scroll-rail-tick[data-active|data-near] 完全对齐，CSS 无需改动。
+ */
+function ChatScrollRail({ scrollContainerRef }: { scrollContainerRef: RefObject<HTMLDivElement | null> }) {
+  const railRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const scroller = scrollContainerRef.current
+    const rail = railRef.current
+    if (!scroller || !rail) return
+
+    const ticks = Array.from(rail.querySelectorAll<HTMLSpanElement>("[data-slot='chat-scroll-rail-tick']"))
+    let frame = 0
+
+    const update = () => {
+      const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+      const progress = maxScroll > 0 ? Math.max(0, Math.min(1, scroller.scrollTop / maxScroll)) : 0
+      const visible = maxScroll > 8
+      const activeIndex = Math.round(progress * (CHAT_SCROLL_TICK_COUNT - 1))
+
+      rail.dataset.visible = visible ? "true" : "false"
+      for (let index = 0; index < ticks.length; index += 1) {
+        const tick = ticks[index]
+        if (!tick) continue
+        tick.dataset.active = index === activeIndex ? "true" : "false"
+        tick.dataset.near = Math.abs(index - activeIndex) === 1 ? "true" : "false"
+      }
+    }
+
+    const onScrollOrResize = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(update)
+    }
+
+    update()
+    scroller.addEventListener("scroll", onScrollOrResize, { passive: true })
+    window.addEventListener("resize", onScrollOrResize)
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(onScrollOrResize)
+    resizeObserver?.observe(scroller)
+    if (scroller.firstElementChild) resizeObserver?.observe(scroller.firstElementChild)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      scroller.removeEventListener("scroll", onScrollOrResize)
+      window.removeEventListener("resize", onScrollOrResize)
+      resizeObserver?.disconnect()
+    }
+  }, [scrollContainerRef])
 
   return (
     <div
+      ref={railRef}
       aria-hidden="true"
       data-slot="chat-scroll-rail"
-      data-visible={visible ? "true" : "false"}
+      data-visible="false"
       className="sk-chat-scroll-rail"
     >
       {Array.from({ length: CHAT_SCROLL_TICK_COUNT }, (_, index) => (
         <span
           key={index}
-          data-active={index === activeIndex ? "true" : "false"}
-          data-near={Math.abs(index - activeIndex) === 1 ? "true" : "false"}
+          data-slot="chat-scroll-rail-tick"
+          data-active="false"
+          data-near="false"
           className="sk-chat-scroll-rail-tick"
         />
       ))}
@@ -319,7 +374,6 @@ export function ChannelClient({
   const chatDeskPointerForwardingRef = useRef(false)
   const messageEndRef = useRef<HTMLDivElement>(null)
   const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
-  const [messageScrollState, setMessageScrollState] = useState({ progress: 0, visible: false })
 
   const storedThreadWidth = useSyncExternalStore(
     subscribePanelWidthStore,
@@ -342,67 +396,10 @@ export function ChannelClient({
   const currentIsDm = Boolean(currentDm)
   const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
   const allKnownMembers = [...members, ...allMembers]
-  const updateMessageScrollRail = useCallback(() => {
-    const element = messageScrollRef.current
-    if (!element) {
-      setMessageScrollState({ progress: 0, visible: false })
-      return
-    }
-
-    const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight)
-    const nextState = {
-      progress: maxScroll > 0 ? element.scrollTop / maxScroll : 0,
-      visible: maxScroll > 8,
-    }
-    setMessageScrollState((current) => {
-      if (
-        current.visible === nextState.visible &&
-        Math.abs(current.progress - nextState.progress) < 0.005
-      ) {
-        return current
-      }
-      return nextState
-    })
-  }, [])
-
   const didReact = (message: ChannelMessage, emoji: string) =>
     Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
   const memberKindLabel = (kind: string) => kind === "agent" ? tChat("agentKind") : kind === "human" ? tChat("humanKind") : kind
   const messageRoleLabels = { assistant: tChat("agentKind"), member: tChat("members") }
-
-  useEffect(() => {
-    updateMessageScrollRail()
-    const element = messageScrollRef.current
-    if (!element) return
-
-    let frame = 0
-    const delayedFrame = requestAnimationFrame(updateMessageScrollRail)
-    const delayedTimer = window.setTimeout(updateMessageScrollRail, 180)
-    const resizeObserver = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(() => {
-          cancelAnimationFrame(frame)
-          frame = requestAnimationFrame(updateMessageScrollRail)
-        })
-    const onScrollOrResize = () => {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(updateMessageScrollRail)
-    }
-
-    element.addEventListener("scroll", onScrollOrResize, { passive: true })
-    window.addEventListener("resize", onScrollOrResize)
-    resizeObserver?.observe(element)
-    if (element.firstElementChild) resizeObserver?.observe(element.firstElementChild)
-
-    return () => {
-      cancelAnimationFrame(frame)
-      cancelAnimationFrame(delayedFrame)
-      window.clearTimeout(delayedTimer)
-      resizeObserver?.disconnect()
-      element.removeEventListener("scroll", onScrollOrResize)
-      window.removeEventListener("resize", onScrollOrResize)
-    }
-  }, [activeTab, messages.length, updateMessageScrollRail])
 
   const markVisibleThreadRead = useCallback(async (threadId: string, data: ThreadData) => {
     const replies = data.replies ?? (data.messages || []).filter((msg) => msg.parentId)
@@ -1568,7 +1565,7 @@ export function ChannelClient({
             ) : (
               <>
                 <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" data-inkframe-mobile-role="chat-message-list" className="sk-chat-message-list relative isolate min-h-0 min-w-0 flex-1 overflow-hidden">
-                <ChatScrollRail progress={messageScrollState.progress} visible={messageScrollState.visible} />
+                <ChatScrollRail scrollContainerRef={messageScrollRef} />
                 <div
                   ref={chatDeskMaterialLayerRef}
                   data-slot="chat-desk-material-layer"
@@ -1603,7 +1600,6 @@ export function ChannelClient({
                   onPointerMoveCapture={handleChatDeskPointerMoveCapture}
                   onPointerUpCapture={handleChatDeskPointerUpCapture}
                   onPointerCancelCapture={handleChatDeskPointerUpCapture}
-                  onScroll={updateMessageScrollRail}
                   className={`sk-chat-message-scroll pointer-events-auto relative z-10 h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-4`}
                 >
                 <div className="sk-chat-message-stack pointer-events-none relative mr-auto w-full max-w-[1248px] min-w-0 space-y-3">
