@@ -1,9 +1,9 @@
 # Quality Gate Report: Runtime Querying and Resource Contracts
 
-Checked: 2026-07-23  
-Worktree: `/Users/code/project/smallkhoj-audit-remediation`  
-Branch: `feat/2026-07-audit-remediation`  
-Base: `main`  
+Checked: 2026-07-23
+Worktree: `/Users/code/project/smallkhoj-audit-remediation`
+Branch: `feat/2026-07-audit-remediation`
+Base: `main`
 Task: `.trellis/tasks/07-22-audit-remediation-runtime-querying`
 
 ## Scope verdict
@@ -230,9 +230,9 @@ Trellis task.py validate                    -> implement.jsonl/check.jsonl valid
 
 ## Gate result
 
-Child implementation gate: **pass**.  
-Spec gate: **pass**.  
+Child implementation gate: **pass**.
+Spec gate: **pass**.
 Real PostgreSQL/runtime/browser gate: **pass within the explicitly documented
-child boundary**.  
-Implementation commit gate: **pass — `fa1f785` created after operator approval**.  
+child boundary**.
+Implementation commit gate: **pass — `fa1f785` created after operator approval**.
 Parent audit-remediation program: **still open**.

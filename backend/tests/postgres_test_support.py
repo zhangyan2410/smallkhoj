@@ -154,4 +154,3 @@ def run_alembic(database_url: str, *arguments: str, timeout_seconds: int = 60) -
             f"stdout:\n{completed.stdout}\n"
             f"stderr:\n{completed.stderr}"
         )
-
