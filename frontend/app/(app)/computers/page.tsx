@@ -710,10 +710,8 @@ export default async function ComputersPage({
 
   return (
     <ProductShell
-      active="computers"
       title={copy.title}
       description={copy.description}
-      session={session}
       listTitle="Computers"
       list={
         <nav className="flex h-full min-h-0 flex-col">

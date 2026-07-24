@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Bot } from "lucide-react"
 
-import { ProviderSelect } from "@/app/members/provider-select"
+import { ProviderSelect } from "@/components/provider-select"
 import { InkframeObjectSurface } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/form"

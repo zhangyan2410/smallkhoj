@@ -255,10 +255,8 @@ export default async function Home({
 
   return (
     <ProductShell
-      active="search"
       title={t("brand")}
       description={t("recentMessagesDesc")}
-      session={session}
       sidebarTitle={t("quickStart")}
       sidebarDescription={t("quickStartDesc")}
       sidebar={

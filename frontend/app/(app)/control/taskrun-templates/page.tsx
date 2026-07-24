@@ -295,10 +295,8 @@ export default async function TaskRunTemplatesPage() {
 
   return (
     <ProductShell
-      active="control"
       title="TaskRun 模板"
       description="管理自动启动 TaskRun 时使用的结构化角色、工具、memory 和输出策略。"
-      session={session}
       actions={
         <div className="flex gap-2">
           <Link href="/tasks">

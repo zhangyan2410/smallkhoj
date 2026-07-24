@@ -635,10 +635,8 @@ export default async function IntegrationControlPage() {
 
   return (
     <ProductShell
-      active="control"
       title="集成门禁"
       description="门禁视图：只把能判断流程真实性的信息放在第一屏，原始标识默认隐藏。"
-      session={session}
       actions={
         <>
           <RealtimeRefresh eventTypes={["task.created", "task.updated", "workspace.updated", "workspace.registered", "member.updated"]} />

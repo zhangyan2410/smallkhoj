@@ -703,10 +703,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   return (
     <TaskMaterialStateProvider>
     <ProductShell
-      active="tasks"
       title={copy.title}
       description={copy.description}
-      session={session}
       listTitle={copy.boardListSurface}
       listConfig={{ storageKey: "smallkhoj.tasks.listWidth", defaultWidth: 300, min: 240, max: 440 }}
       list={

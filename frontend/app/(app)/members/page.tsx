@@ -712,10 +712,8 @@ export default async function MembersPage({
 
   return (
     <ProductShell
-      active="members"
       title={t("title")}
       description={t("description")}
-      session={session}
       list={<MembersList members={members} computers={computers} selectedMemberId={selectedMemberId} />}
       listTitle="Members"
       listConfig={MEMBERS_LIST_WIDTH}

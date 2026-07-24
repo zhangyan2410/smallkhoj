@@ -28,10 +28,8 @@ export default async function SettingsPage() {
 
   return (
     <ProductShell
-      active="settings"
       title={t("title")}
       description={t("description")}
-      session={session}
       sidebarTitle={t("sidebarTitle")}
       sidebarDescription={t("sidebarDescription")}
       sidebar={
