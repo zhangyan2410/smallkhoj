@@ -6,16 +6,10 @@ import { redirect } from "next/navigation"
 import { AvatarObject, ChannelDivider } from "@/components/inkframe-object-ui"
 import { EmptyState } from "@/components/product-ui"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { API_BASE, type Member } from "@/lib/control-plane"
-import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import type { Member } from "@/lib/control-plane"
+import { requireCurrentAccount } from "@/lib/server-auth"
 import { DmStarter } from "./dm-starter"
-
-type Channel = {
-  id: string
-  name: string
-  type: string
-  description?: string | null
-}
+import { fetchChatChannels, fetchChatDms, fetchChatMembers } from "./chat-server-fetches"
 
 type DmInfo = {
   id: string
@@ -42,24 +36,15 @@ function dmAvatarMember(dm: DmInfo): Member {
 export default async function ChatPage() {
   await requireCurrentAccount()
   const t = await getTranslations("chat")
-  // 注意：这是服务端组件，必须用 serverApiHeaders() 从 cookie 读 session token。
-  // 不能用 apiGet() 不带 token 的形式——那会落到 browserSessionToken()，
-  // 在服务端拿不到浏览器 localStorage 的 token，导致请求被当作匿名，返回空列表。
-  const headers = await serverApiHeaders()
-  const [channelsRes, dmsRes, membersRes] = await Promise.all([
-    fetch(`${API_BASE}/api/v1/channels`, { headers, cache: "no-store" }),
-    fetch(`${API_BASE}/api/v1/dms`, { headers, cache: "no-store" }),
-    fetch(`${API_BASE}/api/v1/members`, { headers, cache: "no-store" }),
+  // 注意：这是服务端组件，fetch helpers 内部用 cache() 包装的 currentAccount/getSessionToken
+  // 从 cookie 读 session token（per-request 单例），因此这里不再单独 serverApiHeaders()。
+  // redirect 决定只需要 channels + dms。members 只有落到空状态分支（既无频道也无 DM）
+  // 时才被 <DmStarter> 需要，因此延迟到 redirect 未触发时才取，避免无谓请求。
+  // helpers 自带 session（内部 cache），无需传 headers。
+  const [channels, dms] = await Promise.all([
+    fetchChatChannels(),
+    fetchChatDms(),
   ])
-  const channelsData = channelsRes.ok ? await channelsRes.json() as { channels?: Channel[] } : {}
-  const dmsData = dmsRes.ok ? await dmsRes.json() as { dms?: DmInfo[] } : {}
-  const membersData = membersRes.ok ? await membersRes.json() as { members?: Member[] } : {}
-  const channels = channelsData.channels || []
-  const dms = dmsData.dms || []
-  const allMembers = membersData.members || []
-  const agents = (allMembers || []).filter((m: Member) => m.kind === "agent").sort(
-    (a: Member, b: Member) => (a.displayName || a.name).localeCompare(b.displayName || b.name)
-  )
 
   // 落地页已被移除：直接进入第一个频道，回退到第一个 DM，
   // 都没有时才展示一个最小空状态，引导用户创建会话。
@@ -71,6 +56,13 @@ export default async function ChatPage() {
   if (firstDm) {
     redirect(`/chat/${channelPathSegment(firstDm.name)}`)
   }
+
+  // 只有走到这里（既无频道也无 DM）才需要 members 来填 <DmStarter> 的 agent 列表。
+  // 同一 pass 内 layout 也会取 members，cache() 命中、不再多发一次请求。
+  const allMembers = await fetchChatMembers()
+  const agents = (allMembers || []).filter((m: Member) => m.kind === "agent").sort(
+    (a: Member, b: Member) => (a.displayName || a.name).localeCompare(b.displayName || b.name)
+  )
 
   return (
     <div className="grid gap-4 p-4 sm:p-6 xl:grid-cols-2">

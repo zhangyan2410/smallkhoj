@@ -2,11 +2,11 @@ import type { Metadata } from "next"
 import type { ReactNode } from "react"
 
 import { ProductShell } from "@/components/product-shell"
-import { ChatDataProvider, type ChannelInfo, type DmInfo } from "@/app/chat/chat-data-context"
+import { ChatDataProvider } from "@/app/chat/chat-data-context"
 import { ChatSidebar } from "@/app/chat/[channel]/chat-sidebar"
-import { API_BASE, type Member } from "@/lib/control-plane"
 import { mergeChatReadCursorsIntoEntities, type ChatReadCursor } from "@/lib/chat-unread-state"
-import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { requireCurrentAccount } from "@/lib/server-auth"
+import { fetchChatChannels, fetchChatDms, fetchChatMembers, fetchChatReadCursors } from "./chat-server-fetches"
 
 export const metadata: Metadata = {
   title: "Chat - SmallKhoj",
@@ -21,21 +21,17 @@ const CHAT_LIST_WIDTH = {
 
 export default async function ChatLayout({ children }: { children: ReactNode }) {
   const session = await requireCurrentAccount()
-  const headers = await serverApiHeaders()
-  const [channelsRes, dmsRes, membersRes, cursorsRes] = await Promise.all([
-    fetch(`${API_BASE}/api/v1/channels`, { headers, cache: "no-store" }),
-    fetch(`${API_BASE}/api/v1/dms`, { headers, cache: "no-store" }),
-    fetch(`${API_BASE}/api/v1/members`, { headers, cache: "no-store" }),
-    fetch(`${API_BASE}/api/v1/chat/read-cursors`, { headers, cache: "no-store" }),
+  // 4 个取数走 cache()-wrapped helpers（自带 session、无参）：
+  // 同 pass 内若 [channel]/page 也调用 fetchChatMembers/fetchChatDms，会命中 cache、不再多发请求。
+  const [channelsRaw, dmsRaw, allMembers, cursorsRaw] = await Promise.all([
+    fetchChatChannels(),
+    fetchChatDms(),
+    fetchChatMembers(),
+    fetchChatReadCursors(),
   ])
-  const channelsData = channelsRes.ok ? await channelsRes.json() as { channels?: ChannelInfo[] } : {}
-  const dmsData = dmsRes.ok ? await dmsRes.json() as { dms?: DmInfo[] } : {}
-  const membersData = membersRes.ok ? await membersRes.json() as { members?: Member[] } : {}
-  const cursorsData = cursorsRes.ok ? await cursorsRes.json() as { cursors?: ChatReadCursor[] } : {}
-  const cursors = cursorsData.cursors || []
-  const channels = mergeChatReadCursorsIntoEntities(channelsData.channels || [], cursors)
-  const dms = mergeChatReadCursorsIntoEntities(dmsData.dms || [], cursors)
-  const allMembers = membersData.members || []
+  const cursors = (cursorsRaw ?? []) as ChatReadCursor[]
+  const channels = mergeChatReadCursorsIntoEntities(channelsRaw, cursors)
+  const dms = mergeChatReadCursorsIntoEntities(dmsRaw, cursors)
 
   return (
     <ChatDataProvider channels={channels} dms={dms} allMembers={allMembers}>
