@@ -15,6 +15,7 @@ class CreateProdEnvTemplateTests(unittest.TestCase):
         self.assertIn("POSTGRES_PASSWORD=<set-outside-repo>", content)
         self.assertIn("PUBLIC_API_KEY=<set-outside-repo>", content)
         self.assertNotIn("NEXT_PUBLIC_API_KEY=", content)
+        self.assertIn("BETTER_AUTH_DATABASE_POOL_SIZE=10", content)
         self.assertIn("BACKEND_CORS_ORIGINS=<public-origin>", content)
         self.assertIn("FEISHU_WORKER_APP_SECRET=<optional-set-outside-repo>", content)
         self.assertNotIn("sk_live", content)

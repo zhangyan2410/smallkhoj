@@ -246,6 +246,46 @@ export type TaskRunTemplate = {
   updatedAt?: string | null
 }
 
+export type TaskDeleteResult = {
+  deleted: true
+  taskId: string
+  taskNumber: number
+}
+
+export type FileDeleteResult = {
+  deleted: true
+  fileId: string
+  storageCleanup: "deleted" | "quarantined"
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+export function isTaskDeleteResult(
+  value: unknown,
+  expectedTaskId: string,
+): value is TaskDeleteResult {
+  return expectedTaskId.length > 0
+    && isRecord(value)
+    && value.deleted === true
+    && value.taskId === expectedTaskId
+    && typeof value.taskNumber === "number"
+    && Number.isInteger(value.taskNumber)
+    && value.taskNumber > 0
+}
+
+export function isFileDeleteResult(
+  value: unknown,
+  expectedFileId: string,
+): value is FileDeleteResult {
+  return expectedFileId.length > 0
+    && isRecord(value)
+    && value.deleted === true
+    && value.fileId === expectedFileId
+    && (value.storageCleanup === "deleted" || value.storageCleanup === "quarantined")
+}
+
 function apiErrorMessage(error: unknown, fallback: string) {
   if (!error || typeof error !== "object") return fallback
   const detail = (error as { detail?: unknown }).detail
@@ -256,6 +296,82 @@ function apiErrorMessage(error: unknown, fallback: string) {
     if (typeof record.code === "string") return record.code
   }
   return fallback
+}
+
+export type ApiRequestOptions = {
+  timeoutMs?: number
+  signal?: AbortSignal
+}
+
+type JsonRequestOptions = ApiRequestOptions & {
+  method: "GET" | "DELETE"
+  sessionToken?: string | null
+  activeServerId?: string | null
+  cache?: RequestCache
+  timeoutLabel: string
+}
+
+async function apiRequestJson<T>(path: string, options: JsonRequestOptions): Promise<T> {
+  const timeoutMs = options.timeoutMs ?? 15_000
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`${options.timeoutLabel} timeout must be a positive finite number`)
+  }
+
+  const controller = new AbortController()
+  let abortSource: "caller" | "timeout" | null = null
+  const abortFromCaller = () => {
+    if (abortSource) return
+    abortSource = "caller"
+    controller.abort(options.signal?.reason ?? new DOMException("Request aborted", "AbortError"))
+  }
+
+  if (options.signal?.aborted) {
+    abortFromCaller()
+  } else {
+    options.signal?.addEventListener("abort", abortFromCaller, { once: true })
+  }
+
+  const timeout = setTimeout(() => {
+    if (abortSource) return
+    abortSource = "timeout"
+    controller.abort(new DOMException("Request timed out", "TimeoutError"))
+  }, timeoutMs)
+
+  const abortPromise = new Promise<never>((_resolve, reject) => {
+    const rejectForAbort = () => {
+      reject(controller.signal.reason ?? new DOMException("Request aborted", "AbortError"))
+    }
+    if (controller.signal.aborted) rejectForAbort()
+    else controller.signal.addEventListener("abort", rejectForAbort, { once: true })
+  })
+
+  try {
+    const response = await Promise.race([
+      fetch(`${API_BASE}${path}`, {
+        method: options.method,
+        cache: options.cache,
+        headers: apiHeaders(options.sessionToken, false, options.activeServerId),
+        signal: controller.signal,
+      }),
+      abortPromise,
+    ])
+    if (!response.ok) {
+      const error = await Promise.race([
+        response.json().catch(() => ({})),
+        abortPromise,
+      ])
+      throw new Error(apiErrorMessage(error, `HTTP ${response.status}`))
+    }
+    return await Promise.race([response.json(), abortPromise])
+  } catch (error) {
+    if (abortSource === "timeout") {
+      throw new Error(`Request timed out after ${timeoutMs}ms`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+    options.signal?.removeEventListener("abort", abortFromCaller)
+  }
 }
 
 export async function apiGet<T>(path: string, fallback: T, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {
@@ -275,53 +391,16 @@ export async function apiGetCritical<T>(
   path: string,
   sessionToken?: string | null,
   activeServerId?: string | null,
-  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  options: ApiRequestOptions = {},
 ): Promise<T> {
-  const timeoutMs = options.timeoutMs ?? 15_000
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    throw new Error("Critical GET timeout must be a positive finite number")
-  }
-
-  const controller = new AbortController()
-  let abortSource: "caller" | "timeout" | null = null
-  const abortFromCaller = () => {
-    if (abortSource) return
-    abortSource = "caller"
-    controller.abort(options.signal?.reason)
-  }
-
-  if (options.signal?.aborted) {
-    abortFromCaller()
-  } else {
-    options.signal?.addEventListener("abort", abortFromCaller, { once: true })
-  }
-
-  const timeout = setTimeout(() => {
-    if (abortSource) return
-    abortSource = "timeout"
-    controller.abort(new DOMException("Request timed out", "TimeoutError"))
-  }, timeoutMs)
-
-  try {
-    const response = await fetch(`${API_BASE}${path}`, {
-      cache: "no-store",
-      headers: apiHeaders(sessionToken, false, activeServerId),
-      signal: controller.signal,
-    })
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(apiErrorMessage(error, `HTTP ${response.status}`))
-    }
-    return response.json()
-  } catch (error) {
-    if (abortSource === "timeout") {
-      throw new Error(`Request timed out after ${timeoutMs}ms`)
-    }
-    throw error
-  } finally {
-    clearTimeout(timeout)
-    options.signal?.removeEventListener("abort", abortFromCaller)
-  }
+  return apiRequestJson<T>(path, {
+    method: "GET",
+    cache: "no-store",
+    sessionToken,
+    activeServerId,
+    timeoutLabel: "Critical GET",
+    ...options,
+  })
 }
 
 export async function apiPost<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {
@@ -350,16 +429,19 @@ export async function apiPut<T>(path: string, body: Record<string, unknown>, ses
   return response.json()
 }
 
-export async function apiDelete<T>(path: string, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+export async function apiDelete<T>(
+  path: string,
+  sessionToken?: string | null,
+  activeServerId?: string | null,
+  options: ApiRequestOptions = {},
+): Promise<T> {
+  return apiRequestJson<T>(path, {
     method: "DELETE",
-    headers: apiHeaders(sessionToken, false, activeServerId),
+    sessionToken,
+    activeServerId,
+    timeoutLabel: "DELETE",
+    ...options,
   })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    throw new Error(apiErrorMessage(error, `HTTP ${response.status}`))
-  }
-  return response.json()
 }
 
 export async function apiPatch<T>(path: string, body: Record<string, unknown>, sessionToken?: string | null, activeServerId?: string | null): Promise<T> {

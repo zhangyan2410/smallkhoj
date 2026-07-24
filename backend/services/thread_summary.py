@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -22,6 +23,8 @@ from models import (
     async_session,
 )
 from services.daemon_control import push_latest_events_for_server
+
+logger = logging.getLogger(__name__)
 
 SUMMARY_MAX_CHARS = 300
 SUMMARY_REQUEST_INTERVAL_SECONDS = 600
@@ -323,15 +326,18 @@ async def request_due_thread_summaries(db: AsyncSession, limit: int = SUMMARY_RE
 
 
 async def thread_summary_scheduler_loop(interval_seconds: float = SUMMARY_SCHEDULER_INTERVAL_SECONDS):
+    backoff_seconds = interval_seconds
     while True:
         try:
             async with async_session() as db:
                 await request_due_thread_summaries(db)
+            backoff_seconds = interval_seconds
         except asyncio.CancelledError:
             raise
         except Exception:
-            pass
-        await asyncio.sleep(interval_seconds)
+            logger.exception("thread summary scheduler iteration failed")
+            backoff_seconds = min(backoff_seconds * 2, 60.0)
+        await asyncio.sleep(backoff_seconds)
 
 
 def start_thread_summary_scheduler(interval_seconds: float = SUMMARY_SCHEDULER_INTERVAL_SECONDS) -> asyncio.Task:

@@ -179,6 +179,11 @@ If any answer is unclear, do not deliver the event to runtime yet.
 - Subscriber queues must be cleaned up on disconnect.
 - Redis must not be introduced for this stream unless a later production-readiness spec explicitly changes the fanout decision.
 - Postgres fanout must validate NOTIFY channel identifiers and keep payloads under the Postgres NOTIFY payload limit.
+- Compacted and minimal Postgres NOTIFY envelopes must preserve the selected Server
+  identity both as top-level `serverId` and `payload.serverId`. Cross-process SSE
+  authorization uses that identity; dropping it makes every other backend worker
+  discard an otherwise valid event. If even the minimal identity-bearing envelope
+  cannot fit the payload limit, fail before calling `pg_notify`.
 
 ### 4. Validation & Error Matrix
 
@@ -191,6 +196,7 @@ If any answer is unclear, do not deliver the event to runtime yet.
 | Scope filter does not match | Event is not yielded to that subscriber. |
 | Postgres NOTIFY channel contains unsafe characters | Adapter construction fails with `ValueError`. |
 | Event payload exceeds NOTIFY payload budget | Adapter publish fails before sending oversized payload. |
+| Large Server-scoped event is compacted | `serverId` remains available at the top level and in `payload`; same-Server subscribers can receive it and foreign-Server subscribers reject it. |
 
 ### 5. Good/Base/Bad Cases
 
@@ -208,6 +214,8 @@ If any answer is unclear, do not deliver the event to runtime yet.
 - Unit: heartbeat/comment and SSE frame formatting.
 - Unit: in-process hub scope filtering and subscriber cleanup.
 - Unit: Postgres NOTIFY seam validates channel names and builds `pg_notify`.
+- Unit: compact and minimal NOTIFY envelopes retain Server identity, and an identity
+  too large for the minimal envelope is rejected.
 - API: `/api/v1/events/stream` returns `text/event-stream` and a ready frame with public auth.
 - Integration/real test: an agent-created chat message appears in an already-open browser without manual refresh.
 
@@ -246,7 +254,7 @@ The browser stream remains product-safe and independent from runtime prompt deli
 - Public stream: `GET /api/v1/events/stream`.
 - Agent stream: `GET /internal/agent-api/events/stream`.
 - Frozen agent claim: `AgentEventStreamClaims(member_id, server_id)`.
-- Connection budget: `(DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW + NOTIFY_PUBLISHER_POOL_SIZE + 1 listener) * BACKEND_WORKERS + POSTGRES_CONNECTION_HEADROOM <= POSTGRES_MAX_CONNECTIONS`.
+- Connection budget: `(DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW + NOTIFY_PUBLISHER_POOL_SIZE + 1 listener) * BACKEND_WORKERS + BETTER_AUTH_DATABASE_POOL_SIZE + (DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW) Feishu-worker reserve + POSTGRES_CONNECTION_HEADROOM <= POSTGRES_MAX_CONNECTIONS`.
 
 ### 3. Contracts
 
@@ -257,6 +265,10 @@ The browser stream remains product-safe and independent from runtime prompt deli
 - A request-scoped `AsyncSession` and live ORM entity must not escape into `StreamingResponse`. Setup/auth freezes primitive identifiers under a function-scoped dependency; agent polling opens a short session per poll and serializes frames before closing it.
 - Public browser streaming is queue-based after setup and captures only the selected Server id, scope filter, request cancellation state, and queue.
 - Queue capacity is bounded. Queue overflow may be best-effort/drop with observable logging; it must not grow without limit.
+- The budget is deployment-wide, not backend-only. Better Auth owns one process-global
+  `pg.Pool` with an explicit validated maximum. The optional Feishu worker is an
+  independent SQLAlchemy process and is reserved even while its Compose profile is
+  disabled. Operational headroom is not a substitute for either service pool.
 
 ### 4. Validation & Error Matrix
 
@@ -284,7 +296,9 @@ The browser stream remains product-safe and independent from runtime prompt deli
 - Real PostgreSQL: terminate named publisher/listener connections, observe replacement/delivery exactly once, and assert zero owner connections after stop.
 - Controlled ASGI/HTTP: observe `get_db` finalization after the ready frame while the stream remains open, then disconnect and assert subscription/task cleanup.
 - Tiny real pool: independent query succeeds while public and agent streams remain open.
-- Configuration: worker-multiplied connection budget accepts the documented default and rejects `required > capacity`.
+- Configuration: the complete backend + Better Auth + Feishu worker + headroom budget
+  accepts the documented default, calculates three backend workers as 84 connections,
+  and rejects capacity 83.
 
 ### 7. Wrong vs Correct
 

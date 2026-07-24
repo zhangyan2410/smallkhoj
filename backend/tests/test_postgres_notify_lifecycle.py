@@ -340,20 +340,32 @@ async def test_notify_runtime_recovers_real_publisher_and_listener_connections(m
             await observer.close()
 
 
-def test_connection_budget_multiplies_all_process_owned_connections_by_workers():
+def test_connection_budget_covers_every_deployment_process_pool():
     configured = Settings(
         _env_file=None,
         database_pool_size=5,
         database_max_overflow=10,
         notify_publisher_pool_size=2,
         backend_workers=3,
-        postgres_max_connections=60,
+        better_auth_database_pool_size=10,
+        postgres_max_connections=84,
         postgres_connection_headroom=5,
     )
 
     assert configured.backend_connections_per_process == 18
     assert configured.backend_deployment_connections == 54
-    assert configured.required_postgres_connections == 59
+    assert configured.frontend_deployment_connections == 10
+    assert configured.feishu_worker_deployment_connections == 15
+    assert configured.required_postgres_connections == 84
+
+
+def test_connection_budget_default_reserves_frontend_and_optional_worker():
+    configured = Settings(_env_file=None)
+
+    assert configured.backend_deployment_connections == 18
+    assert configured.frontend_deployment_connections == 10
+    assert configured.feishu_worker_deployment_connections == 15
+    assert configured.required_postgres_connections == 48
 
 
 def test_connection_budget_rejects_worker_count_that_exceeds_postgres_capacity():
@@ -364,7 +376,8 @@ def test_connection_budget_rejects_worker_count_that_exceeds_postgres_capacity()
             database_max_overflow=10,
             notify_publisher_pool_size=2,
             backend_workers=3,
-            postgres_max_connections=58,
+            better_auth_database_pool_size=10,
+            postgres_max_connections=83,
             postgres_connection_headroom=5,
         )
 
@@ -379,6 +392,7 @@ def test_production_runtime_wires_notify_and_worker_connection_budget():
     for name in (
         "DATABASE_POOL_SIZE",
         "DATABASE_MAX_OVERFLOW",
+        "BETTER_AUTH_DATABASE_POOL_SIZE",
         "BACKEND_WORKERS",
         "POSTGRES_MAX_CONNECTIONS",
         "POSTGRES_CONNECTION_HEADROOM",
@@ -392,3 +406,10 @@ def test_production_runtime_wires_notify_and_worker_connection_budget():
     ):
         assert f"{name}:" in compose
         assert f"{name}=" in env_example
+
+    assert (
+        "BETTER_AUTH_DATABASE_POOL_SIZE: ${BETTER_AUTH_DATABASE_POOL_SIZE:-10}"
+        in compose
+    )
+    assert compose.count("DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}") == 2
+    assert compose.count("DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}") == 2

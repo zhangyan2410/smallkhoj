@@ -81,10 +81,6 @@ def build_steps(
             ],
         ),
         DrillStep(
-            "drop-restore-db-before",
-            [*prefix, "exec", "-T", service, "dropdb", "-U", user, "--if-exists", restore_database],
-        ),
-        DrillStep(
             "create-restore-db",
             [*prefix, "exec", "-T", service, "createdb", "-U", user, restore_database],
         ),

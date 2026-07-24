@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://smallkhoj:smallkhoj@localhost:5432/smallkhoj"
     database_pool_size: int = Field(default=5, ge=1)
     database_max_overflow: int = Field(default=10, ge=0)
+    better_auth_database_pool_size: int = Field(default=10, ge=1)
     backend_workers: int = Field(default=1, ge=1)
     postgres_max_connections: int = Field(default=100, ge=1)
     postgres_connection_headroom: int = Field(default=5, ge=1)
@@ -52,8 +53,23 @@ class Settings(BaseSettings):
         return self.backend_connections_per_process * self.backend_workers
 
     @property
+    def frontend_deployment_connections(self) -> int:
+        return self.better_auth_database_pool_size
+
+    @property
+    def feishu_worker_deployment_connections(self) -> int:
+        # The production worker is an independent process using the same
+        # explicitly wired SQLAlchemy pool limits as each backend process.
+        return self.database_pool_size + self.database_max_overflow
+
+    @property
     def required_postgres_connections(self) -> int:
-        return self.backend_deployment_connections + self.postgres_connection_headroom
+        return (
+            self.backend_deployment_connections
+            + self.frontend_deployment_connections
+            + self.feishu_worker_deployment_connections
+            + self.postgres_connection_headroom
+        )
 
     llm_api_key: str = ""
     llm_api_base: str = "https://api.openai.com/v1"
@@ -107,6 +123,9 @@ class Settings(BaseSettings):
                 f"capacity={self.postgres_max_connections} "
                 f"per_process={self.backend_connections_per_process} "
                 f"workers={self.backend_workers} "
+                f"backend={self.backend_deployment_connections} "
+                f"frontend={self.frontend_deployment_connections} "
+                f"feishu_worker={self.feishu_worker_deployment_connections} "
                 f"headroom={self.postgres_connection_headroom}"
             )
         return self

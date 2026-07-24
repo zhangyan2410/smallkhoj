@@ -256,7 +256,7 @@ async def test_public_file_rejects_over_limit_without_unbounded_read_or_residue(
     upload = TrackingUpload(b"123456789")
     server = _server()
     member = _member(permission="fileWrite")
-    channel = SimpleNamespace(id=uuid.uuid4(), server_id=server.id)
+    channel = SimpleNamespace(id=uuid.uuid4(), server_id=server.id, kind="public")
     db = TrackingSession(execute_values=[channel])
 
     async def resolve_context(_db, _request):
@@ -349,7 +349,7 @@ async def test_public_commit_failure_rolls_back_closes_and_unlinks(monkeypatch, 
     upload = TrackingUpload(b"valid public file")
     server = _server()
     member = _member(permission="fileWrite")
-    channel = SimpleNamespace(id=uuid.uuid4(), server_id=server.id)
+    channel = SimpleNamespace(id=uuid.uuid4(), server_id=server.id, kind="public")
     db = TrackingSession(
         execute_values=[channel],
         commit_error=RuntimeError("forced public commit failure"),

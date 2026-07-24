@@ -71,11 +71,12 @@ test("every task-list consumer uses the shared all-pages contract", () => {
     "app/daemon/page.tsx",
     "app/control/integration/page.tsx",
     "components/task-board.tsx",
+    "components/task-projection-provider.tsx",
   ]
 
   for (const consumer of consumers) {
     const source = readFileSync(path.join(process.cwd(), consumer), "utf8")
-    assert.match(source, /fetchAllTaskPages<Task>/, consumer)
+    assert.match(source, /fetchAllTaskPages<(?:Task|TaskProjectionTask)>/, consumer)
     assert.doesNotMatch(
       source,
       /apiGet<\{ tasks: Task\[\] \}>\("\/api\/v1\/tasks"/,

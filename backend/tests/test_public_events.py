@@ -297,11 +297,13 @@ def test_postgres_notify_fanout_compacts_large_payloads():
     event = {
         "id": "evt-large",
         "type": "message.created",
+        "serverId": "server-1",
         "scope": {"kind": "channel", "id": "channel-1", "name": "general"},
         "seq": 27,
         "epoch": "epoch",
         "createdAt": "2026-06-21T01:02:03+00:00",
         "payload": {
+            "serverId": "server-1",
             "eventId": "evt-large",
             "eventSeq": 27,
             "messageId": "message-1",
@@ -318,10 +320,55 @@ def test_postgres_notify_fanout_compacts_large_payloads():
     assert len(payload.encode("utf-8")) <= 7800
     assert parsed["id"] == "evt-large"
     assert parsed["type"] == "message.created"
+    assert parsed["serverId"] == "server-1"
     assert parsed["scope"] == {"kind": "channel", "id": "channel-1", "name": "general"}
     assert parsed["payload"]["compacted"] is True
+    assert parsed["payload"]["serverId"] == "server-1"
     assert parsed["payload"]["messageId"] == "message-1"
     assert "content" not in parsed["payload"]
+
+
+def test_postgres_notify_minimal_payload_preserves_server_identity():
+    fanout = PostgresNotifyPublicEventFanout(channel="smallkhoj_public_events")
+    event = {
+        "id": "evt-minimal",
+        "type": "message.created",
+        "serverId": "server-1",
+        "scope": {"kind": "channel", "id": "x" * 9_000},
+        "seq": 28,
+        "epoch": "epoch",
+        "createdAt": "2026-06-21T01:02:03+00:00",
+        "payload": {
+            "serverId": "server-1",
+            "eventId": "evt-minimal",
+            "content": "x" * 9_000,
+        },
+    }
+
+    _statement, params = fanout.notify_statement(event)
+    parsed = json.loads(params["payload"])
+
+    assert len(params["payload"].encode("utf-8")) <= 7_800
+    assert parsed["serverId"] == "server-1"
+    assert parsed["payload"] == {"compacted": True, "serverId": "server-1"}
+
+
+def test_postgres_notify_rejects_identity_that_cannot_fit_minimal_payload():
+    fanout = PostgresNotifyPublicEventFanout(channel="smallkhoj_public_events")
+    oversized_identity = "server-" + ("x" * 9_000)
+    event = {
+        "id": "evt-oversized-identity",
+        "type": "message.created",
+        "serverId": oversized_identity,
+        "scope": {"kind": "server", "id": oversized_identity},
+        "seq": 29,
+        "epoch": "epoch",
+        "createdAt": "2026-06-21T01:02:03+00:00",
+        "payload": {"serverId": oversized_identity},
+    }
+
+    with pytest.raises(ValueError, match="minimal Postgres NOTIFY payload"):
+        fanout.notify_statement(event)
 
 
 def test_postgres_notify_fanout_rejects_unsafe_channel_names():

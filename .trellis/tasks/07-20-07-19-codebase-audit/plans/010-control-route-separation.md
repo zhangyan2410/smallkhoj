@@ -1,5 +1,18 @@
 # Plan 010 (Direction): Enforce `/control/*` vs product surface separation
 
+## Current remediation disposition (2026-07-24)
+
+- **Disposition**: `DEFER_LINKED`
+- **Release scope**: `RELEASE_EXCLUDED`
+- **Decision**: keep `/daemon` unchanged for this release. Route separation and
+  navigation redesign remain a linked product/architecture decision for a later
+  task.
+- **Current truth**: the current audit candidate does not move the route, add a
+  redirect, or claim the `/control/*` restructuring is complete.
+
+The plan below is retained as historical advisory context and must not be
+executed as part of the important-bug audit scope.
+
 > **Executor instructions**: This is a **route restructure plan** with a
 > product-policy decision at its core. Read fully, confirm the operator's
 > chosen direction in Step 1 BEFORE any code changes, then implement.

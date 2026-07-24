@@ -95,3 +95,17 @@ docker compose -f docker-compose.prod.yml config --no-interpolate --quiet: passe
 
 These results use the dedicated disposable PostgreSQL instance; no fake session
 or `Base.metadata.create_all` path is counted as lifecycle evidence.
+
+## Superseded deployment-budget correction (2026-07-23)
+
+The `23` / `59` figures above are retained only as historical RED→GREEN evidence
+for backend-owned NOTIFY resources. They are not the current deployment-wide
+capacity contract because that calculation omitted the frontend Better Auth pool
+and the independent Feishu worker SQLAlchemy pool.
+
+The corrected default requirement is `48`; three backend workers require `84`,
+and capacity `83` is rejected. Better Auth now has one process-global pool with
+explicit maximum `10`, while the optional worker reserve is retained even when
+its Compose profile is disabled. The current diagnosis and acceptance evidence
+live in
+[`postgres-deployment-connection-budget`](../postgres-deployment-connection-budget/bug-report.md).

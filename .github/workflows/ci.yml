@@ -1,0 +1,294 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  source-hygiene:
+    name: Source and delivery contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Patch whitespace for pull request range
+        if: github.event_name == 'pull_request'
+        run: git diff --check "origin/${{ github.base_ref }}...HEAD"
+      - name: Patch whitespace for pushed commits
+        if: github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            git diff --check "${BEFORE_SHA}..${GITHUB_SHA}"
+          else
+            git show --check --format= --no-renames "${GITHUB_SHA}"
+          fi
+      - name: Deployment and CI contract tests
+        run: make scripts-test
+      - name: Production compose schema
+        run: make compose-check
+
+  backend:
+    name: Backend, migrations, PostgreSQL and Ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smallkhoj_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d smallkhoj_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/smallkhoj_ci
+      PUBLIC_API_KEY: sk_ci_${{ github.run_id }}_${{ github.run_attempt }}_public
+      AUTH_BRIDGE_SECRET: ci-auth-bridge-${{ github.run_id }}-${{ github.run_attempt }}
+      DEBUG: "false"
+      E2E_DATABASE_SCOPE: disposable
+      SMALLKHOJ_MIGRATION_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      SMALLKHOJ_MIGRATION_TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/smallkhoj_audit_ci
+      SMALLKHOJ_TEST_ADMIN_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      SMALLKHOJ_TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/smallkhoj_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Canonical backend gate
+        run: make backend-ci
+
+  frontend:
+    name: Frontend locked install, tests, lint, types and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smallkhoj_frontend_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d smallkhoj_frontend_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: production
+      NEXT_PUBLIC_DEPLOYMENT_ENV: production
+      NEXT_PUBLIC_API_KEY: sk_ci_${{ github.run_id }}_${{ github.run_attempt }}_public
+      NEXT_PUBLIC_API_BASE_URL: ""
+      NEXT_PUBLIC_WS_BASE_URL: ""
+      INTERNAL_API_BASE_URL: http://127.0.0.1:8000
+      BETTER_AUTH_SECRET: ci-better-auth-secret-${{ github.run_id }}-${{ github.run_attempt }}-long-enough
+      BETTER_AUTH_URL: http://127.0.0.1:3000
+      BETTER_AUTH_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/smallkhoj_frontend_ci
+      BETTER_AUTH_DATABASE_POOL_SIZE: "10"
+      AUTH_BRIDGE_SECRET: ci-auth-bridge-${{ github.run_id }}-${{ github.run_attempt }}
+      E2E_DATABASE_SCOPE: disposable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Canonical frontend gate
+        run: make frontend-ci
+
+  authenticated-e2e:
+    name: Authenticated disposable management integration
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smallkhoj_e2e_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d smallkhoj_e2e_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CI: "true"
+      NODE_ENV: production
+      DEBUG: "false"
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/smallkhoj_e2e_ci
+      PUBLIC_API_KEY: sk_ci_${{ github.run_id }}_${{ github.run_attempt }}_public
+      AUTH_BRIDGE_SECRET: ci-auth-bridge-${{ github.run_id }}-${{ github.run_attempt }}
+      NEXT_PUBLIC_DEPLOYMENT_ENV: production
+      NEXT_PUBLIC_API_KEY: sk_ci_${{ github.run_id }}_${{ github.run_attempt }}_public
+      NEXT_PUBLIC_API_BASE_URL: ""
+      NEXT_PUBLIC_WS_BASE_URL: ""
+      INTERNAL_API_BASE_URL: http://127.0.0.1:8000
+      BETTER_AUTH_SECRET: ci-better-auth-secret-${{ github.run_id }}-${{ github.run_attempt }}-long-enough
+      BETTER_AUTH_URL: http://127.0.0.1:3000
+      BETTER_AUTH_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/smallkhoj_e2e_ci
+      BETTER_AUTH_DATABASE_POOL_SIZE: "10"
+      API_BASE: http://127.0.0.1:8000
+      FRONTEND_BASE: http://127.0.0.1:3000
+      E2E_PUBLIC_API_KEY: sk_ci_${{ github.run_id }}_${{ github.run_attempt }}_public
+      E2E_RUN_NAMESPACE: gha-${{ github.run_id }}-${{ github.run_attempt }}
+      E2E_DATABASE_SCOPE: disposable
+      MINIMUM_DAEMON_VERSION: "0.2.0"
+      DAEMON_RELEASE_VERSION: "0.2.1"
+      E2E_DAEMON_VERSION: "0.2.1"
+      FRONTEND_IMAGE_TAG: smallkhoj-frontend:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Install locked candidates
+        run: make install
+      - name: Install isolated browser runtime
+        working-directory: frontend
+        run: bunx playwright install --with-deps chromium
+      - name: Upgrade disposable database through Alembic
+        env:
+          SMALLKHOJ_MIGRATION_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          SMALLKHOJ_MIGRATION_TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/smallkhoj_e2e_migration_ci
+          SMALLKHOJ_TEST_ADMIN_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          SMALLKHOJ_TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/smallkhoj_e2e_ci
+        run: make migration-check
+      - name: Build final production frontend image
+        run: make frontend-image-build
+      - name: Start backend candidate
+        working-directory: backend
+        run: |
+          uv run uvicorn main:app --host 0.0.0.0 --port 8000 >"${RUNNER_TEMP}/smallkhoj-backend.log" 2>&1 &
+          echo $! >"${RUNNER_TEMP}/smallkhoj-backend.pid"
+      - name: Wait for backend readiness
+        run: |
+          for _ in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not become ready"
+          exit 1
+      - name: Start frontend candidate
+        run: |
+          docker run --detach \
+            --name smallkhoj-frontend-candidate \
+            --network host \
+            --env NODE_ENV=production \
+            --env PORT=3000 \
+            --env HOSTNAME=0.0.0.0 \
+            --env NEXT_PUBLIC_DEPLOYMENT_ENV \
+            --env NEXT_PUBLIC_API_KEY \
+            --env INTERNAL_API_BASE_URL \
+            --env BETTER_AUTH_SECRET \
+            --env BETTER_AUTH_URL \
+            --env BETTER_AUTH_DATABASE_URL \
+            --env BETTER_AUTH_DATABASE_POOL_SIZE \
+            --env AUTH_BRIDGE_SECRET \
+            "$FRONTEND_IMAGE_TAG"
+      - name: Wait for frontend readiness
+        run: |
+          for _ in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:3000/login >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Frontend did not become ready"
+          exit 1
+      - name: Run authenticated management integration
+        run: make e2e-authenticated
+      - name: Capture final frontend image logs
+        if: always()
+        run: docker logs smallkhoj-frontend-candidate >"${RUNNER_TEMP}/smallkhoj-frontend.log" 2>&1
+      - name: Reject credential leakage in service logs
+        if: always()
+        run: |
+          test -r "${RUNNER_TEMP}/smallkhoj-backend.log"
+          test -r "${RUNNER_TEMP}/smallkhoj-frontend.log"
+          logs=("${RUNNER_TEMP}/smallkhoj-backend.log" "${RUNNER_TEMP}/smallkhoj-frontend.log")
+
+          handle_scan_status() {
+            local label="$1"
+            local scan_status="$2"
+            if [ "$scan_status" -eq 0 ]; then
+              echo "A service log contained $label"
+              exit 1
+            fi
+            if [ "$scan_status" -ne 1 ]; then
+              echo "Credential log scan for $label failed with status $scan_status"
+              exit "$scan_status"
+            fi
+          }
+
+          scan_exact() {
+            local label="$1"
+            local value="$2"
+            local scan_status
+            test -n "$value"
+            set +e
+            rg --quiet --fixed-strings -- "$value" "${logs[@]}"
+            scan_status=$?
+            set -e
+            handle_scan_status "$label" "$scan_status"
+          }
+
+          scan_pattern() {
+            local label="$1"
+            local pattern="$2"
+            local scan_status
+            set +e
+            rg --quiet --regexp "$pattern" "${logs[@]}"
+            scan_status=$?
+            set -e
+            handle_scan_status "$label" "$scan_status"
+          }
+
+          scan_exact "ephemeral public key" "$E2E_PUBLIC_API_KEY"
+          scan_exact "auth bridge secret" "$AUTH_BRIDGE_SECRET"
+          scan_exact "Better Auth secret" "$BETTER_AUTH_SECRET"
+          scan_pattern "minted session/connect/machine token" 'sk_(session|connect|machine)_[A-Za-z0-9_-]+'
+      - name: Stop local candidates
+        if: always()
+        run: |
+          docker rm --force smallkhoj-frontend-candidate 2>/dev/null || true
+          if test -f "${RUNNER_TEMP}/smallkhoj-backend.pid"; then
+            kill "$(<"${RUNNER_TEMP}/smallkhoj-backend.pid")" 2>/dev/null || true
+          fi

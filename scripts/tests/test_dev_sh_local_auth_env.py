@@ -29,6 +29,7 @@ class DevScriptLocalAuthEnvTest(unittest.TestCase):
         self.assertIn("BETTER_AUTH_SECRET=", frontend_start)
         self.assertIn("BETTER_AUTH_URL=", frontend_start)
         self.assertIn("BETTER_AUTH_DATABASE_URL=", frontend_start)
+        self.assertIn("BETTER_AUTH_DATABASE_POOL_SIZE=", frontend_start)
         self.assertIn("INTERNAL_API_BASE_URL=", frontend_start)
 
     def test_start_derives_backend_and_frontend_public_key_from_one_source(self):

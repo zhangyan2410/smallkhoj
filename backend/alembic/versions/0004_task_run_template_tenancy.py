@@ -111,6 +111,28 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # The pre-0004 schema can represent only one row per slug globally.  New
+    # tenant-scoped duplicates are valid, so refuse before changing any DDL and
+    # require an operator to make the data representable without guessing which
+    # tenant should lose or rename a template.
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM task_run_templates
+                GROUP BY slug
+                HAVING COUNT(*) > 1
+            ) THEN
+                RAISE EXCEPTION
+                    'TEMPLATE_TENANCY_DOWNGRADE_SLUG_COLLISION: '
+                    'duplicate template slugs must be explicitly renamed or merged '
+                    'before downgrading to 0003';
+            END IF;
+        END
+        $$;
+    """)
+
     op.drop_index(
         "uq_task_run_templates_server_slug",
         table_name="task_run_templates",

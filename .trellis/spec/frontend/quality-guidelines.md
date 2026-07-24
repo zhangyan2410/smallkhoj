@@ -181,6 +181,28 @@ export function CreateThingForm() {
 - Browser smoke tests for mutation forms must assert a real `POST` happened, not only that the page changed.
 - If a credential or token is returned, assert it is not leaked through the URL.
 
+### Convention: Bounded Requests Include Response Body Consumption
+
+**What**: A request timeout or caller `AbortSignal` must remain active until the
+complete response body has been consumed, not only until `fetch()` returns headers.
+
+**Why**: `return response.json()` from inside a `try/finally` runs `finally` before the
+body promise settles. Clearing the timer there leaves a successful response with a
+stalled/truncated body unbounded and can strand destructive UI in a submitting state.
+
+**Correct shape**:
+
+```ts
+const response = await Promise.race([fetch(url, init), abortPromise])
+return await Promise.race([response.json(), abortPromise])
+```
+
+**Tests Required**:
+- A successful response that sends headers and then stalls its JSON body times out.
+- A caller abort after headers but before the body completes propagates the caller
+  reason.
+- Non-success error-body parsing is covered by the same bound.
+
 ### Convention: Daemon Onboarding Shows One Copyable Command
 
 **What**: Computers onboarding and reconnect surfaces must show exactly one
@@ -268,7 +290,7 @@ Use `http://localhost:3000` for local browser e2e, or configure `allowedDevOrigi
 #### 3. Contracts
 - `bun run build` must create `.next/standalone/server.js` before the Docker runner stage copies build artifacts.
 - Same-origin `/api` rewrites and next-intl plugin wrapping must remain active when standalone output is enabled.
-- The 2 vCPU / 2 GB release host should pull a prebuilt frontend image; it should not be the default place where Next.js dependencies and production build run.
+- The nominal 4 vCPU / 4 GB release host (3.32 GiB guest-visible RAM) must pull a prebuilt frontend image; it is not a supported place to install Next.js dependencies or run the production build.
 
 #### 4. Validation & Error Matrix
 - `.next/standalone/server.js` missing after build -> `next.config.mjs` lost `output: "standalone"` or Next build config changed.
@@ -319,6 +341,109 @@ Required evidence:
 - `smallkhoj-trace` cross-check when daemon/runtime delivery is part of the workflow.
 
 If the real browser behavior disagrees with automated tests, treat the task as failing and keep fixing.
+
+#### Scenario: Exact-Tab Authenticated WebDriver Guard
+
+##### 1. Scope / Trigger
+
+- Trigger: a browser acceptance flow already owns an operator-approved tab ID,
+  or enumerating unrelated tabs could expose URL/title metadata outside the
+  task's local target.
+
+##### 2. Signatures
+
+- Exact authenticated navigation:
+  `./tools/twd-guard/twd-open --tab <exact-tab-id> <path-or-url>`
+- Subsequent raw assertions/actions:
+  `./twd --compact <command> --tab <exact-tab-id> ...`
+
+##### 3. Contracts
+
+- The exact path validates a non-empty tab ID before starting the WebDriver
+  bridge.
+- Cookie injection, navigation, a login-redirect retry and the final page probe
+  all pass the same `--tab <exact-tab-id>` pair.
+- The exact path never calls tab discovery, `selectLocalTab()`, or
+  `--url-match`; it does not fall back to those mechanisms after a failure.
+- Every WebDriver payload must return the requested `tabId`. A missing or
+  different ID fails before the result is accepted.
+- The cookie-injection eval script contains the reusable session token. Any
+  command failure at that boundary must be replaced with a fixed safe error;
+  the original argv, output, payload and error must not be interpolated or
+  retained as an exception `cause`.
+- Legacy discovery remains available only when the caller deliberately omits
+  `--tab`; it is not a substitute when the task boundary forbids reading other
+  tabs.
+
+##### 4. Validation & Error Matrix
+
+- Empty/missing `--tab` value -> reject before bridge startup.
+- Duplicate `--tab` options -> reject CLI input.
+- Cookie/goto/probe payload returns another tab ID -> fail closed with expected
+  and actual IDs; do not retry through discovery.
+- Cookie-injection eval exits nonzero or returns `ok=false` -> fail with a
+  fixed cookie-injection command error that contains no session token or raw
+  WebDriver diagnostic.
+- Exact target redirects to `/login` -> re-authenticate and navigate the same
+  exact tab once; never enumerate tabs.
+- Final pathname/search differs from the requested target -> reject browser
+  evidence.
+
+##### 5. Good/Base/Bad Cases
+
+- Good: create one approved loopback tab, record its ID, use exact guarded
+  authentication, then use exact raw `./twd --tab` commands for the scenario.
+- Base: use discovery helpers only when reading connected-tab metadata is
+  explicitly inside the task boundary and no approved ID is available.
+- Bad: call discovery first and compare the returned tab ID afterward; the
+  unrelated metadata read has already happened.
+
+##### 6. Tests Required
+
+- Mock-runner unit test covers successful exact navigation and a `/login`
+  retry, asserting every command contains the requested `--tab` pair.
+- The same test rejects any `tabs` command or `--url-match` argument.
+- Unit tests cover empty/duplicate CLI options and a mismatched returned tab ID.
+- A mock runner must echo the sensitive eval argv in its thrown error and prove
+  the guard replaces it without retaining the session token in `message` or
+  `cause`.
+- `make scripts-test` must execute the exact-tab guard suite so local `make ci`
+  and the source-contract CI job both protect the boundary.
+
+##### 7. Wrong vs Correct
+
+###### Wrong
+
+```bash
+./tools/twd-guard/twd-open /tasks
+# Comparing its returned ID later does not undo discovery of every tab.
+```
+
+###### Correct
+
+```bash
+./tools/twd-guard/twd-open --tab "$APPROVED_LOCAL_TAB_ID" /tasks
+./twd --compact eval --tab "$APPROVED_LOCAL_TAB_ID" \
+  'return { origin: location.origin, path: location.pathname }'
+```
+
+###### Wrong
+
+```js
+// The eval argv contains sessionToken; propagating this error leaks it.
+return runTwd(["--compact", "eval", "--tab", tabId, sensitiveScript])
+```
+
+###### Correct
+
+```js
+try {
+  return runTwd(["--compact", "eval", "--tab", tabId, sensitiveScript])
+} catch {
+  // Do not retain the original error as cause.
+  throw new Error("Session cookie injection command failed")
+}
+```
 
 #### Scenario: `./twd` No-Tab Gate Classification
 

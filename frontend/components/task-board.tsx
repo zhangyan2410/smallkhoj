@@ -40,10 +40,13 @@ import { EvidenceSurface, InkframeObjectSurface, ObjectToggleField, ReviewStamp,
 import { TaskRecoveryCockpit } from "@/components/memory-entry-surface"
 import { Textarea } from "@/components/ui/form"
 import { Button } from "@/components/ui/button"
-import { apiGet, apiPatch, apiPost, formatTime, statusLabel, type Member, type MemoryEntry } from "@/lib/control-plane"
+import { apiGet, apiPatch, apiPost, formatTime, statusLabel, type MemoryEntry } from "@/lib/control-plane"
 import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { AGENT_DRAG_MIME, parseAgentDragPayload, type AgentDragPayload } from "@/lib/drag-data"
 import { TASK_DATA_INVALIDATED_EVENT } from "@/lib/realtime-owner"
+import type { TaskProjectionTask as Task } from "@/lib/task-projection"
+
+export type { TaskProjectionTask as Task } from "@/lib/task-projection"
 
 const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"]
 const TASK_BOARD_DND_CONTEXT_ID = "smallkhoj-task-board"
@@ -58,42 +61,6 @@ type EvidenceEntry = {
   reviewer?: string
   decision?: string
   timestamp?: string
-}
-
-type TaskEvidence = {
-  notes?: string[]
-  links?: Array<{ label?: string; href?: string }>
-  entries?: EvidenceEntry[]
-}
-
-type TaskSource = {
-  type?: string
-  messageId?: string
-  messageShortId?: string
-  threadId?: string
-  channel?: string
-}
-
-export type Task = {
-  id: string
-  number: number
-  taskNumber?: number
-  channel?: string | null
-  channelId?: string | null
-  messageId?: string | null
-  title: string
-  description?: string | null
-  status: string
-  creator?: string | null
-  assignee?: string | null
-  assigneeMember?: Member | null
-  assigneeName?: string | null
-  data?: {
-    source?: TaskSource
-    evidence?: TaskEvidence
-  } | null
-  createdAt?: string | null
-  updatedAt?: string | null
 }
 
 type ActivityItem = {
@@ -657,10 +624,12 @@ export type TaskBoardProps = {
   initialSelectedTaskId?: string | null
   /** Callback when a task is moved (for optimistic updates in parent) */
   onTaskMoved?: (taskId: string, newStatus: string) => void
+  /** Controlled owners receive each optimistic/confirmed replacement. */
+  onTaskUpdated?: (task: Task) => void
   /** Optional override: clicking a card navigates (e.g. to ?task=) instead of
       toggling local selection. When provided, handleSelect calls this. */
   onSelectTask?: (task: Task) => void
-  /** Filters to reapply when realtime task invalidation refetches preloaded data. */
+  /** Filters for the uncontrolled embedded fetch mode. */
   taskFilters?: {
     channel?: string
     creator?: string
@@ -680,48 +649,59 @@ export function TaskBoard({
   sessionToken,
   initialSelectedTaskId,
   onTaskMoved,
+  onTaskUpdated,
   onSelectTask,
   taskFilters,
 }: TaskBoardProps) {
-  const [view, setView] = useState<"board" | "list">(initialView)
-  const [tasks, setTasks] = useState<Task[]>(preloadedTasks ?? [])
-  const [loading, setLoading] = useState(!preloadedTasks)
-  const [selectedTask, setSelectedTask] = useState<Task | null>(
-    initialSelectedTaskId ? (preloadedTasks ?? []).find((task) => task.id === initialSelectedTaskId) ?? null : null,
-  )
+  const controlled = preloadedTasks !== undefined
+  const [localView, setLocalView] = useState<"board" | "list">(initialView)
+  const [localTasks, setLocalTasks] = useState<Task[]>(preloadedTasks ?? [])
+  const [localLoading, setLocalLoading] = useState(!controlled)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialSelectedTaskId ?? null)
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [dragError, setDragError] = useState<string | null>(null)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [overStatus, setOverStatus] = useState<string | null>(null)
   const [recentlyUpdatedTaskId, setRecentlyUpdatedTaskId] = useState<string | null>(null)
   const taskRefreshTimerRef = useRef<number | null>(null)
+  const tasks = controlled ? preloadedTasks : localTasks
+  const loading = controlled ? false : localLoading
+  const view = showViewToggle ? localView : initialView
+  const selectedTask = selectedTaskId
+    ? tasks.find((task) => task.id === selectedTaskId) ?? null
+    : null
 
   const refreshTasks = useCallback(async () => {
-    setLoading(true)
-    const fetchedTasks = await fetchAllTaskPages<Task>((path) => (
-      apiGet<TaskCursorPage<Task>>(path, { tasks: [], nextCursor: null })
-    ))
-    const filtered = fetchedTasks.filter((task) => {
-      if (channelName && task.channel !== channelName) return false
-      if (taskFilters?.channel && task.channel !== taskFilters.channel) return false
-      if (taskFilters?.creator && task.creator !== taskFilters.creator) return false
-      if (taskFilters?.assignee && task.assignee !== taskFilters.assignee) return false
-      if (taskFilters?.status && task.status !== taskFilters.status) return false
-      return true
-    })
-    setTasks(filtered)
-    setLoading(false)
-  }, [channelName, taskFilters])
+    if (controlled) return
+    setLocalLoading(true)
+    try {
+      const fetchedTasks = await fetchAllTaskPages<Task>((path) => (
+        apiGet<TaskCursorPage<Task>>(path, { tasks: [], nextCursor: null })
+      ))
+      const filtered = fetchedTasks.filter((task) => {
+        if (channelName && task.channel !== channelName) return false
+        if (taskFilters?.channel && task.channel !== taskFilters.channel) return false
+        if (taskFilters?.creator && task.creator !== taskFilters.creator) return false
+        if (taskFilters?.assignee && task.assignee !== taskFilters.assignee) return false
+        if (taskFilters?.status && task.status !== taskFilters.status) return false
+        return true
+      })
+      setLocalTasks(filtered)
+    } finally {
+      setLocalLoading(false)
+    }
+  }, [channelName, controlled, taskFilters])
 
   useEffect(() => {
-    if (preloadedTasks) return
+    if (controlled) return
     const timer = window.setTimeout(() => {
       void refreshTasks()
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [preloadedTasks, refreshTasks])
+  }, [controlled, refreshTasks])
 
   useEffect(() => {
+    if (controlled) return
     const scheduleRefresh = () => {
       if (taskRefreshTimerRef.current) window.clearTimeout(taskRefreshTimerRef.current)
       taskRefreshTimerRef.current = window.setTimeout(() => {
@@ -734,7 +714,7 @@ export function TaskBoard({
       window.removeEventListener(TASK_DATA_INVALIDATED_EVENT, scheduleRefresh)
       if (taskRefreshTimerRef.current) window.clearTimeout(taskRefreshTimerRef.current)
     }
-  }, [refreshTasks])
+  }, [controlled, refreshTasks])
 
   // Load activity when task selected
   useEffect(() => {
@@ -754,13 +734,19 @@ export function TaskBoard({
       onSelectTask(task)
       return
     }
-    setSelectedTask((prev) => (prev?.id === task.id ? null : task))
+    setSelectedTaskId((current) => (current === task.id ? null : task.id))
   }, [onSelectTask])
 
   const updateLocalTask = useCallback((taskId: string, updater: (task: Task) => Task) => {
-    setTasks((prev) => prev.map((task) => (task.id === taskId ? updater(task) : task)))
-    setSelectedTask((prev) => (prev?.id === taskId ? updater(prev) : prev))
-  }, [])
+    if (controlled) {
+      const current = tasks.find((task) => task.id === taskId)
+      if (current) onTaskUpdated?.(updater(current))
+      return
+    }
+    setLocalTasks((currentTasks) => currentTasks.map((task) => (
+      task.id === taskId ? updater(task) : task
+    )))
+  }, [controlled, onTaskUpdated, tasks])
 
   const flashTask = useCallback((taskId: string) => {
     setRecentlyUpdatedTaskId(taskId)
@@ -836,8 +822,9 @@ export function TaskBoard({
 
     try {
       const result = await apiPatch<{ task?: Task }>(`/api/v1/tasks/${task.id}`, { assignee }, sessionToken)
-      if (result.task) {
-        updateLocalTask(task.id, () => result.task as Task)
+      const updatedTask = result.task
+      if (updatedTask) {
+        updateLocalTask(task.id, () => updatedTask)
       }
       flashTask(task.id)
     } catch (error) {
@@ -907,11 +894,11 @@ export function TaskBoard({
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">{tasks.length} task{tasks.length === 1 ? "" : "s"}</span>
           <div className="flex gap-1">
-            <Button variant={view === "board" ? "default" : "outline"} size="sm" onClick={() => setView("board")}>
+            <Button variant={view === "board" ? "default" : "outline"} size="sm" onClick={() => setLocalView("board")}>
               <Columns3 className="size-3.5" />
               Board
             </Button>
-            <Button variant={view === "list" ? "default" : "outline"} size="sm" onClick={() => setView("list")}>
+            <Button variant={view === "list" ? "default" : "outline"} size="sm" onClick={() => setLocalView("list")}>
               <ListChecks className="size-3.5" />
               List
             </Button>
@@ -987,7 +974,7 @@ export function TaskBoard({
             <h3 className="text-sm font-semibold">任务详情</h3>
             <button
               type="button"
-              onClick={() => setSelectedTask(null)}
+              onClick={() => setSelectedTaskId(null)}
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               关闭

@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import logging
 import uuid
 from datetime import datetime, timedelta
 
@@ -9,6 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import ActivityLog, Channel, EventRecord, Message, Reminder, async_session
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -162,16 +165,18 @@ async def fire_due_reminders(db: AsyncSession, limit: int = 50) -> int:
 
 
 async def reminder_scheduler_loop(interval_seconds: float = 1.0):
+    backoff_seconds = interval_seconds
     while True:
         try:
             async with async_session() as db:
                 await fire_due_reminders(db)
+            backoff_seconds = interval_seconds
         except asyncio.CancelledError:
             raise
         except Exception:
-            # Keep the lightweight local scheduler alive; detailed DB errors surface in app logs.
-            pass
-        await asyncio.sleep(interval_seconds)
+            logger.exception("reminder scheduler iteration failed")
+            backoff_seconds = min(backoff_seconds * 2, 60.0)
+        await asyncio.sleep(backoff_seconds)
 
 
 def start_reminder_scheduler(interval_seconds: float = 1.0) -> asyncio.Task:

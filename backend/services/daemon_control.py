@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -13,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import AgentWorkspace, Channel, ChannelMember, Computer, EventRecord, Member, Message, Task
 from services.public_events import publish_latest_public_events
+
+logger = logging.getLogger(__name__)
 
 PENDING_RUNTIME_START_STATUS = "pending_start"
 RUNTIME_CONFIGURATION_FAILED_STATUS = "failed"
@@ -284,6 +287,10 @@ class DaemonControlHub:
                 await websocket.send_json(event)
                 delivered += 1
             except Exception:
+                logger.exception(
+                    "daemon control push failed for computer_id=%s",
+                    computer_id,
+                )
                 self.remove(computer_id, websocket)
         return delivered
 
@@ -322,6 +329,10 @@ class DaemonControlHub:
                     cursor = scanned_cursor
                     self._event_cursors[websocket] = cursor
                 except Exception:
+                    logger.exception(
+                        "daemon control event push failed for computer_id=%s",
+                        computer_id,
+                    )
                     self.remove(computer_id, websocket)
                     break
                 break

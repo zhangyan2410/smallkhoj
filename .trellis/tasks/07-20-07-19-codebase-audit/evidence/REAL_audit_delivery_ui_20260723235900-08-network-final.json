@@ -1,0 +1,14 @@
+{
+  "runMarker": "REAL_audit_delivery_ui_20260723235900",
+  "finalPath": "/chat/all",
+  "sseStarts": 2,
+  "sseAborts": 1,
+  "sseActive": 1,
+  "sseResponses": 2,
+  "sseStatuses": [200, 200],
+  "sseErrors": 0,
+  "sseStartsMinusAborts": 1,
+  "fileGetsSinceFileDeleteReset": 0,
+  "rscGetsSinceFileDeleteReset": 0,
+  "observerNote": "The second SSE start and first abort are the expected ProductShell owner handoff during the client-side /tasks to /chat/all navigation; stable active transport count remains one."
+}

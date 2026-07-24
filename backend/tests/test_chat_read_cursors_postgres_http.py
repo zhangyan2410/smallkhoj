@@ -26,16 +26,17 @@ TEST_DATABASE_URL = os.environ.get(
     "SMALLKHOJ_TEST_DATABASE_URL",
     "postgresql+asyncpg://smallkhoj:smallkhoj@localhost:5432/smallkhoj",
 )
-TEST_ADMIN_DATABASE_URL = os.environ.get(
-    "SMALLKHOJ_TEST_ADMIN_DATABASE_URL",
-    "postgresql://smallkhoj:smallkhoj@localhost:5432/smallkhoj",
+TEST_SCHEMA_DATABASE_URL = TEST_DATABASE_URL.replace(
+    "postgresql+asyncpg://",
+    "postgresql://",
+    1,
 )
 
 
 async def _create_temp_schema() -> str:
     schema_name = f"smallkhoj_test_{uuid.uuid4().hex[:12]}"
     try:
-        conn = await asyncpg.connect(TEST_ADMIN_DATABASE_URL)
+        conn = await asyncpg.connect(TEST_SCHEMA_DATABASE_URL)
     except Exception as exc:
         pytest.skip(f"Postgres test database is unavailable: {exc}")
     try:
@@ -46,7 +47,7 @@ async def _create_temp_schema() -> str:
 
 
 async def _drop_temp_schema(schema_name: str) -> None:
-    conn = await asyncpg.connect(TEST_ADMIN_DATABASE_URL)
+    conn = await asyncpg.connect(TEST_SCHEMA_DATABASE_URL)
     try:
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
     finally:

@@ -5,6 +5,10 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
 
+type DialogOpenChangeEventDetails = Parameters<
+  NonNullable<React.ComponentProps<typeof DialogPrimitive.Root>["onOpenChange"]>
+>[1]
+
 // Base UI 以命名空间形式导出（Dialog.Root / .Popup / .Backdrop / ...），
 // 这里按项目 ui 组件规范薄封装一层，方便像 shadcn 那样使用。
 //
@@ -20,6 +24,12 @@ function DialogTrigger({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+}
+
+function DialogClose({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Close>) {
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
 function DialogBackdrop({
@@ -41,8 +51,13 @@ function DialogBackdrop({
 function DialogContent({
   className,
   children,
+  closeLabel = "Close",
+  closeDisabled = false,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Popup>) {
+}: React.ComponentProps<typeof DialogPrimitive.Popup> & {
+  closeLabel?: string
+  closeDisabled?: boolean
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogBackdrop />
@@ -56,13 +71,13 @@ function DialogContent({
       >
         {children}
         {/* 触屏读屏器需要提供显式关闭按钮 */}
-        <DialogPrimitive.Close
-          data-slot="dialog-close"
-          aria-label="Close"
-          className="absolute top-4 right-4 inline-flex size-7 items-center justify-center rounded-none text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+        <DialogClose
+          aria-label={closeLabel}
+          disabled={closeDisabled}
+          className="absolute top-4 right-4 inline-flex size-7 items-center justify-center rounded-none text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
         >
           ✕
-        </DialogPrimitive.Close>
+        </DialogClose>
       </DialogPrimitive.Popup>
     </DialogPrimitive.Portal>
   )
@@ -117,6 +132,7 @@ function DialogDescription({
 export {
   Dialog,
   DialogTrigger,
+  DialogClose,
   DialogBackdrop,
   DialogContent,
   DialogHeader,
@@ -124,3 +140,5 @@ export {
   DialogTitle,
   DialogDescription,
 }
+
+export type { DialogOpenChangeEventDetails }

@@ -194,6 +194,8 @@ class PostgresNotifyPublicEventFanout:
             payload = json.dumps(_compact_notify_event(event), ensure_ascii=False, separators=(",", ":"))
         if len(payload.encode("utf-8")) > POSTGRES_NOTIFY_PAYLOAD_LIMIT:
             payload = json.dumps(_minimal_notify_event(event), ensure_ascii=False, separators=(",", ":"))
+        if len(payload.encode("utf-8")) > POSTGRES_NOTIFY_PAYLOAD_LIMIT:
+            raise ValueError("minimal Postgres NOTIFY payload exceeds the payload limit")
         return text("SELECT pg_notify(:channel, :payload)"), {
             "channel": self.channel,
             "payload": payload,
@@ -213,6 +215,9 @@ def _compact_notify_event(event: dict[str, Any]) -> dict[str, Any]:
     raw_payload = event.get("payload")
     payload = raw_payload if isinstance(raw_payload, dict) else {}
     compact_payload: dict[str, Any] = {"compacted": True}
+    server_id = event.get("serverId") or payload.get("serverId")
+    if server_id is not None:
+        compact_payload["serverId"] = server_id
     for key in (
         "eventId",
         "eventSeq",
@@ -232,6 +237,7 @@ def _compact_notify_event(event: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": event.get("id"),
         "type": event.get("type"),
+        "serverId": server_id,
         "scope": event.get("scope") or {},
         "seq": event.get("seq"),
         "epoch": event.get("epoch"),
@@ -241,13 +247,17 @@ def _compact_notify_event(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _minimal_notify_event(event: dict[str, Any]) -> dict[str, Any]:
+    raw_payload = event.get("payload")
+    payload = raw_payload if isinstance(raw_payload, dict) else {}
+    server_id = event.get("serverId") or payload.get("serverId")
     return {
         "id": event.get("id"),
         "type": event.get("type"),
+        "serverId": server_id,
         "seq": event.get("seq"),
         "epoch": event.get("epoch"),
         "createdAt": event.get("createdAt"),
-        "payload": {"compacted": True},
+        "payload": {"compacted": True, "serverId": server_id},
     }
 
 

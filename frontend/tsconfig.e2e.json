@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "incremental": false,
+    "plugins": [],
+    "types": ["node"],
+    "paths": {
+      "@playwright/test": ["node_modules/@playwright/test"],
+      "ws": ["node_modules/@types/ws"]
+    }
+  },
+  "include": ["../e2e/**/*.ts"],
+  "exclude": []
+}

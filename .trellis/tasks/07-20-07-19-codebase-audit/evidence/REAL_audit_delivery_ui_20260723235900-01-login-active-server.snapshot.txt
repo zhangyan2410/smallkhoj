@@ -1,0 +1,82 @@
+
+
+
+R
+
+
+R
+
+REAL_audit_delivery_ui_20260723235900
+账号
+
+
+当前 Server · 拥有者
+REAL_audit_delivery_ui_20260723235900的服务器创建 Server
+
+[INPUT #create-server-name name=name type=text "新 Server 名称"]
+退出登录
+
+
+
+
+
+
+SmallKhoj
+任务
+创建、分配、扫描和推进工作，保留可见状态、来源链接和评审证据。
+
+创建任务更新任务控制面
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+看板/列表界面
+
+
+
+
+未选择任务
+
+
+
+看板/列表界面0 / 0 可见
+看板列表
+
+
+
+总数
+0
+
+
+开放
+0
+
+
+智能体
+0
+
+筛选
+频道
+[SELECT #filter-channel name=channel]
+
+创建者
+[SELECT #filter-creator name=creator]
+
+负责人
+[SELECT #filter-assignee name=assignee]
+
+状态
+[SELECT #filter-status name=status]
+
+应用清除
+
+
+暂无任务
+没有找到任务。
+
+
+任务详情
+所选工作项的来源和证据。
+
+未选择任务
+从看板或列表打开一个任务，查看来源和证据。

@@ -69,6 +69,10 @@ Questions to answer:
 - `--strict-warnings` additionally makes non-P0 warnings produce a warning exit code.
 - `--partial` is only for developing checks and must not be used as release-candidate evidence.
 - Scripts must not print secret values. Env paths, key names, and `<set>`/`<empty>` summaries are allowed.
+- A backup/restore drill must fail closed on a restore-database name collision. Its
+  executable step order is `backup -> create -> restore -> verify -> drop-after`;
+  it must never issue a pre-create `dropdb`. A failed `createdb` ends the drill, and
+  cleanup is permitted only after this invocation's `createdb` succeeded.
 - Risk-register existence is tracking evidence only. It must not be used as the passing gate for a product P0 risk such as account/server/channel isolation.
 - Gates that consume Trellis task evidence must search both the active task path and archived task paths under `.trellis/tasks/archive/<year-month>/`. Completed evidence must not become invisible after `task.py archive`.
 
@@ -93,6 +97,9 @@ Questions to answer:
 ### 6. Tests Required
 - Unit test that P0 warnings increment `p0Warnings`, make `ready=false`, and return exit code `2`.
 - Unit test that JSON output omits secret values.
+- Regression tests must reject every pre-create `dropdb`, require the five-step
+  backup/create/restore/verify/drop-after plan, and prove a `createdb` collision fails
+  without cleanup.
 - Unit test for each new gate mapping to the intended `riskId` and priority.
 - Unit test that tracking/meta checks do not accidentally satisfy product P0 coverage.
 - Regression test that archived task evidence is found after the active task directory is moved to `.trellis/tasks/archive/<year-month>/`.

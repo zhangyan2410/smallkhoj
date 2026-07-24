@@ -9,6 +9,7 @@ import re
 import secrets
 import shlex
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import cast
@@ -16,7 +17,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import and_, delete, func, or_, select, text, update
+from sqlalchemy import and_, delete, exists, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
@@ -112,6 +113,7 @@ from services.server_invites import (
     inspect_server_invite,
 )
 from services.server_membership import (
+    acquire_owner_election_lock,
     create_server_for_account,
     ensure_account_membership,
     ensure_channel_access,
@@ -175,8 +177,6 @@ DANGEROUS_MIME_TYPES = {
 ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 AUTH_BRIDGE_SECRET_HEADER = "X-Auth-Bridge-Secret"
 TASK_NUMBER_RETRY_LIMIT = 5
-BOOTSTRAP_OWNER_LOCK_NAMESPACE = 0x534B484A
-BOOTSTRAP_OWNER_LOCK_SCOPE = 1
 DELETE_BLOCKING_WORKSPACE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"busy", "starting", "restarting"}
 STALE_STARTING_WORKSPACE_GRACE = timedelta(minutes=5)
 
@@ -514,16 +514,7 @@ async def _bootstrap_account(
     display_name: str | None = None,
 ) -> tuple[Account, Server, Member, str]:
     account_name = _normalize_account_name(name)
-    await db.execute(
-        text(
-            "SELECT pg_advisory_xact_lock("
-            ":bootstrap_owner_namespace, :bootstrap_owner_scope)"
-        ),
-        {
-            "bootstrap_owner_namespace": BOOTSTRAP_OWNER_LOCK_NAMESPACE,
-            "bootstrap_owner_scope": BOOTSTRAP_OWNER_LOCK_SCOPE,
-        },
-    )
+    await acquire_owner_election_lock(db)
     server = await _ensure_server(db)
     result = await db.execute(select(Account).where(Account.name == account_name))
     account = result.scalar_one_or_none()
@@ -816,6 +807,121 @@ async def _resolve_channel(db: AsyncSession, server: Server, channel_name: str) 
     return channel
 
 
+async def _ensure_member_channel_access(
+    db: AsyncSession,
+    channel: Channel,
+    member_id: uuid.UUID,
+) -> None:
+    if channel.kind not in {"private", "dm"}:
+        ensure_channel_access(channel, member_id, is_channel_member=False)
+        return
+    member_in_channel = await is_channel_member(
+        db,
+        channel_id=channel.id,
+        member_id=member_id,
+    )
+    ensure_channel_access(
+        channel,
+        member_id,
+        is_channel_member=member_in_channel,
+    )
+
+
+def _channel_visibility_clause(member_id: uuid.UUID):
+    return or_(
+        Channel.kind.notin_(("private", "dm")),
+        exists().where(
+            ChannelMember.channel_id == Channel.id,
+            ChannelMember.member_id == member_id,
+        ),
+    )
+
+
+async def _ensure_channel_id_access(
+    db: AsyncSession,
+    server: Server,
+    channel_id: uuid.UUID,
+    member_id: uuid.UUID,
+    *,
+    not_found_detail: str,
+) -> Channel:
+    channel_result = await db.execute(
+        select(Channel).where(
+            Channel.id == channel_id,
+            Channel.server_id == server.id,
+        )
+    )
+    channel = channel_result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(404, not_found_detail)
+    await _ensure_member_channel_access(db, channel, member_id)
+    return channel
+
+
+async def _ensure_task_channel_access(
+    db: AsyncSession,
+    server: Server,
+    task: Task,
+    member_id: uuid.UUID,
+) -> Channel:
+    return await _ensure_channel_id_access(
+        db,
+        server,
+        task.channel_id,
+        member_id,
+        not_found_detail="Task not found",
+    )
+
+
+async def _accessible_channel_ids(
+    db: AsyncSession,
+    server: Server,
+    member_id: uuid.UUID,
+) -> set[uuid.UUID]:
+    result = await db.execute(
+        select(Channel, ChannelMember.member_id)
+        .outerjoin(
+            ChannelMember,
+            and_(
+                ChannelMember.channel_id == Channel.id,
+                ChannelMember.member_id == member_id,
+            ),
+        )
+        .where(Channel.server_id == server.id)
+    )
+    accessible: set[uuid.UUID] = set()
+    for channel, channel_member_id in result.all():
+        try:
+            ensure_channel_access(
+                channel,
+                member_id,
+                is_channel_member=channel_member_id is not None,
+            )
+        except HTTPException as exc:
+            if exc.status_code != 403:
+                raise
+            continue
+        accessible.add(channel.id)
+    return accessible
+
+
+async def _ensure_file_entry_channel_access(
+    db: AsyncSession,
+    server: Server,
+    entry: FileEntry,
+    member_id: uuid.UUID,
+) -> None:
+    if entry.channel_id is None:
+        return
+    await _ensure_channel_id_access(
+        db,
+        server,
+        entry.channel_id,
+        member_id,
+        not_found_detail="Attachment not found",
+    )
+
+
 async def _resolve_message_ref(db: AsyncSession, server: Server, message_ref: str) -> Message:
     try:
         parsed_id = uuid.UUID(message_ref)
@@ -848,30 +954,12 @@ async def _resolve_message_ref(db: AsyncSession, server: Server, message_ref: st
 
 @router.post("/auth/register")
 async def register_account(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    body = await request.json()
-    account, server, member, token = await _bootstrap_account(
-        db,
-        name=body.get("name"),
-        display_name=body.get("displayName"),
-    )
-    await db.commit()
-    payload = await _serialize_account(db, account, server, member)
-    payload["sessionToken"] = token
-    return payload
+    raise HTTPException(410, "Legacy passwordless authentication is disabled")
 
 
 @router.post("/auth/login")
 async def login_account(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    body = await request.json()
-    account, server, member, token = await _bootstrap_account(
-        db,
-        name=body.get("name"),
-        display_name=body.get("displayName"),
-    )
-    await db.commit()
-    payload = await _serialize_account(db, account, server, member)
-    payload["sessionToken"] = token
-    return payload
+    raise HTTPException(410, "Legacy passwordless authentication is disabled")
 
 
 @router.get("/auth/me")
@@ -1170,11 +1258,14 @@ async def _delete_channels_by_id(db: AsyncSession, channel_ids: list[uuid.UUID])
     if not channel_ids:
         return {"channels": 0, "messages": 0, "tasks": 0}
     related = await _channel_related_ids(db, channel_ids)
+    file_result = await db.execute(select(FileEntry.id).where(FileEntry.channel_id.in_(channel_ids)))
+    file_ids = list(file_result.scalars().all())
     await _delete_saved_item_references(
         db,
         channel_ids=channel_ids,
         message_ids=related["message_ids"],
         task_ids=related["task_ids"],
+        file_ids=file_ids,
     )
     await db.execute(delete(FileEntry).where(FileEntry.channel_id.in_(channel_ids)))
     await db.execute(delete(Channel).where(Channel.id.in_(channel_ids)))
@@ -1185,15 +1276,31 @@ async def _delete_channels_by_id(db: AsyncSession, channel_ids: list[uuid.UUID])
     }
 
 
+async def _message_ids_for_deletion(
+    db: AsyncSession,
+    message_ids: list[uuid.UUID],
+) -> list[uuid.UUID]:
+    if not message_ids:
+        return []
+    reply_result = await db.execute(select(Message.id).where(Message.parent_id.in_(message_ids)))
+    return list(dict.fromkeys([*message_ids, *reply_result.scalars().all()]))
+
+
 async def _delete_messages_by_id(db: AsyncSession, message_ids: list[uuid.UUID]) -> dict[str, int]:
     if not message_ids:
         return {"messages": 0, "tasks": 0}
-    reply_result = await db.execute(select(Message.id).where(Message.parent_id.in_(message_ids)))
-    all_message_ids = list(dict.fromkeys([*message_ids, *reply_result.scalars().all()]))
+    all_message_ids = await _message_ids_for_deletion(db, message_ids)
     task_result = await db.execute(select(Task.id).where(Task.message_id.in_(all_message_ids)))
     task_ids = list(task_result.scalars().all())
+    file_result = await db.execute(select(FileEntry.id).where(FileEntry.message_id.in_(all_message_ids)))
+    file_ids = list(file_result.scalars().all())
 
-    await _delete_saved_item_references(db, message_ids=all_message_ids, task_ids=task_ids)
+    await _delete_saved_item_references(
+        db,
+        message_ids=all_message_ids,
+        task_ids=task_ids,
+        file_ids=file_ids,
+    )
     await db.execute(delete(FileEntry).where(FileEntry.message_id.in_(all_message_ids)))
     await db.execute(delete(Task).where(Task.id.in_(task_ids)))
     await db.execute(delete(ThreadSummary).where(ThreadSummary.root_message_id.in_(all_message_ids)))
@@ -1201,6 +1308,32 @@ async def _delete_messages_by_id(db: AsyncSession, message_ids: list[uuid.UUID])
     await db.execute(delete(Message).where(Message.parent_id.in_(all_message_ids)))
     await db.execute(delete(Message).where(Message.id.in_(all_message_ids)))
     return {"messages": len(all_message_ids), "tasks": len(task_ids)}
+
+
+async def _file_entries_for_parent_deletion(
+    db: AsyncSession,
+    *,
+    server_id: uuid.UUID,
+    channel_ids: list[uuid.UUID] | None = None,
+    message_ids: list[uuid.UUID] | None = None,
+    uploaded_by: uuid.UUID | None = None,
+) -> list[FileEntry]:
+    conditions = []
+    if channel_ids:
+        conditions.append(FileEntry.channel_id.in_(channel_ids))
+    if message_ids:
+        conditions.append(FileEntry.message_id.in_(message_ids))
+    if uploaded_by is not None:
+        conditions.append(FileEntry.uploaded_by == uploaded_by)
+    if not conditions:
+        return []
+
+    result = await db.execute(
+        select(FileEntry)
+        .where(FileEntry.server_id == server_id, or_(*conditions))
+        .order_by(FileEntry.id)
+    )
+    return list(result.scalars().all())
 
 
 async def _member_dm_channel_ids(db: AsyncSession, server: Server, member_id: uuid.UUID) -> list[uuid.UUID]:
@@ -2258,6 +2391,13 @@ async def add_public_message_reaction(
 
     actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="message reaction actor")
     message = await _resolve_message_ref(db, server, message_ref)
+    await _ensure_channel_id_access(
+        db,
+        server,
+        message.channel_id,
+        context.member.id,
+        not_found_detail=f"Message {message_ref} not found",
+    )
     existing_result = await db.execute(
         select(MessageReaction).where(
             MessageReaction.message_id == message.id,
@@ -2312,6 +2452,13 @@ async def remove_public_message_reaction(
 
     actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="message reaction actor")
     message = await _resolve_message_ref(db, server, message_ref)
+    await _ensure_channel_id_access(
+        db,
+        server,
+        message.channel_id,
+        context.member.id,
+        not_found_detail=f"Message {message_ref} not found",
+    )
     result = await db.execute(
         select(MessageReaction).where(
             MessageReaction.message_id == message.id,
@@ -2344,7 +2491,31 @@ async def remove_public_message_reaction(
     }
 
 
-async def _saved_message_context(db: AsyncSession, server: Server, item_id: uuid.UUID) -> dict:
+async def _ensure_loaded_channel_access(
+    db: AsyncSession,
+    channel: Channel,
+    member_id: uuid.UUID,
+    *,
+    accessible_channel_ids: set[uuid.UUID] | None = None,
+) -> None:
+    if accessible_channel_ids is None:
+        await _ensure_member_channel_access(db, channel, member_id)
+        return
+    ensure_channel_access(
+        channel,
+        member_id,
+        is_channel_member=channel.id in accessible_channel_ids,
+    )
+
+
+async def _saved_message_context(
+    db: AsyncSession,
+    server: Server,
+    item_id: uuid.UUID,
+    *,
+    member_id: uuid.UUID,
+    accessible_channel_ids: set[uuid.UUID] | None = None,
+) -> dict:
     result = await db.execute(
         select(Message, Channel)
         .join(Channel, Message.channel_id == Channel.id)
@@ -2354,6 +2525,12 @@ async def _saved_message_context(db: AsyncSession, server: Server, item_id: uuid
     if not row:
         raise HTTPException(404, "Message not found")
     message, channel = row
+    await _ensure_loaded_channel_access(
+        db,
+        channel,
+        member_id,
+        accessible_channel_ids=accessible_channel_ids,
+    )
     sender_result = await db.execute(select(Member).where(Member.id == message.sender_id))
     sender = sender_result.scalar_one_or_none()
     channel_segment = quote(channel.name, safe="")
@@ -2371,15 +2548,29 @@ async def _saved_message_context(db: AsyncSession, server: Server, item_id: uuid
     }
 
 
-async def _saved_task_context(db: AsyncSession, server: Server, item_id: uuid.UUID) -> dict:
+async def _saved_task_context(
+    db: AsyncSession,
+    server: Server,
+    item_id: uuid.UUID,
+    *,
+    member_id: uuid.UUID,
+    accessible_channel_ids: set[uuid.UUID] | None = None,
+) -> dict:
     result = await db.execute(
-        select(Task)
+        select(Task, Channel)
         .join(Channel, Task.channel_id == Channel.id)
         .where(Channel.server_id == server.id, Task.id == item_id)
     )
-    task = result.scalar_one_or_none()
-    if not task:
+    row = result.one_or_none()
+    if not row:
         raise HTTPException(404, "Task not found")
+    task, channel = row
+    await _ensure_loaded_channel_access(
+        db,
+        channel,
+        member_id,
+        accessible_channel_ids=accessible_channel_ids,
+    )
     serialized = await _serialize_task(db, task)
     return {
         "type": "task",
@@ -2394,16 +2585,38 @@ async def _saved_task_context(db: AsyncSession, server: Server, item_id: uuid.UU
     }
 
 
-async def _saved_file_context(db: AsyncSession, server: Server, item_id: uuid.UUID) -> dict:
+async def _saved_file_context(
+    db: AsyncSession,
+    server: Server,
+    item_id: uuid.UUID,
+    *,
+    member_id: uuid.UUID,
+    accessible_channel_ids: set[uuid.UUID] | None = None,
+) -> dict:
     result = await db.execute(
         select(FileEntry, Channel)
-        .outerjoin(Channel, FileEntry.channel_id == Channel.id)
+        .outerjoin(
+            Channel,
+            and_(
+                FileEntry.channel_id == Channel.id,
+                Channel.server_id == server.id,
+            ),
+        )
         .where(FileEntry.server_id == server.id, FileEntry.id == item_id)
     )
     row = result.one_or_none()
     if not row:
         raise HTTPException(404, "File not found")
     file_entry, channel = row
+    if file_entry.channel_id is not None and channel is None:
+        raise HTTPException(404, "File not found")
+    if channel is not None:
+        await _ensure_loaded_channel_access(
+            db,
+            channel,
+            member_id,
+            accessible_channel_ids=accessible_channel_ids,
+        )
     serialized = _serialize_file(file_entry)
     return {
         "type": "file",
@@ -2420,18 +2633,58 @@ async def _saved_file_context(db: AsyncSession, server: Server, item_id: uuid.UU
     }
 
 
-async def _saved_item_context(db: AsyncSession, server: Server, item_type: str, item_id: uuid.UUID) -> dict:
+async def _saved_item_context(
+    db: AsyncSession,
+    server: Server,
+    item_type: str,
+    item_id: uuid.UUID,
+    *,
+    member_id: uuid.UUID,
+    accessible_channel_ids: set[uuid.UUID] | None = None,
+) -> dict:
     if item_type == "message":
-        return await _saved_message_context(db, server, item_id)
+        return await _saved_message_context(
+            db,
+            server,
+            item_id,
+            member_id=member_id,
+            accessible_channel_ids=accessible_channel_ids,
+        )
     if item_type == "task":
-        return await _saved_task_context(db, server, item_id)
+        return await _saved_task_context(
+            db,
+            server,
+            item_id,
+            member_id=member_id,
+            accessible_channel_ids=accessible_channel_ids,
+        )
     if item_type == "file":
-        return await _saved_file_context(db, server, item_id)
+        return await _saved_file_context(
+            db,
+            server,
+            item_id,
+            member_id=member_id,
+            accessible_channel_ids=accessible_channel_ids,
+        )
     raise HTTPException(400, "Unsupported saved item type")
 
 
-async def _serialize_saved_item(db: AsyncSession, server: Server, item: SavedItem) -> dict:
-    context = await _saved_item_context(db, server, item.item_type, item.item_id)
+async def _serialize_saved_item(
+    db: AsyncSession,
+    server: Server,
+    item: SavedItem,
+    *,
+    member_id: uuid.UUID,
+    accessible_channel_ids: set[uuid.UUID] | None = None,
+) -> dict:
+    context = await _saved_item_context(
+        db,
+        server,
+        item.item_type,
+        item.item_id,
+        member_id=member_id,
+        accessible_channel_ids=accessible_channel_ids,
+    )
     return {
         **context,
         "id": str(item.id),
@@ -2455,15 +2708,59 @@ async def list_saved_items(
     server = context.server
     account = context.account
     requested_limit = max(1, min(limit, 50))
+    accessible_channel_ids = await _accessible_channel_ids(
+        db,
+        server,
+        context.member.id,
+    )
+    visible_message_ids = select(Message.id).where(
+        Message.channel_id.in_(accessible_channel_ids)
+    )
+    visible_task_ids = select(Task.id).where(
+        Task.channel_id.in_(accessible_channel_ids)
+    )
+    visible_file_ids = select(FileEntry.id).where(
+        FileEntry.server_id == server.id,
+        or_(
+            FileEntry.channel_id.is_(None),
+            FileEntry.channel_id.in_(accessible_channel_ids),
+        ),
+    )
     result = await db.execute(
         select(SavedItem)
-        .where(SavedItem.server_id == server.id, SavedItem.account_id == account.id)
+        .where(
+            SavedItem.server_id == server.id,
+            SavedItem.account_id == account.id,
+            or_(
+                and_(
+                    SavedItem.item_type == "message",
+                    SavedItem.item_id.in_(visible_message_ids),
+                ),
+                and_(
+                    SavedItem.item_type == "task",
+                    SavedItem.item_id.in_(visible_task_ids),
+                ),
+                and_(
+                    SavedItem.item_type == "file",
+                    SavedItem.item_id.in_(visible_file_ids),
+                ),
+            ),
+        )
         .order_by(SavedItem.created_at.desc())
         .limit(requested_limit)
     )
     items = result.scalars().all()
     return {
-        "saved": [await _serialize_saved_item(db, server, item) for item in items],
+        "saved": [
+            await _serialize_saved_item(
+                db,
+                server,
+                item,
+                member_id=context.member.id,
+                accessible_channel_ids=accessible_channel_ids,
+            )
+            for item in items
+        ],
         "count": len(items),
     }
 
@@ -2486,7 +2783,13 @@ async def create_saved_item(
     except ValueError:
         raise HTTPException(400, "Invalid itemId")
 
-    await _saved_item_context(db, server, item_type, item_id)
+    await _saved_item_context(
+        db,
+        server,
+        item_type,
+        item_id,
+        member_id=context.member.id,
+    )
     existing_result = await db.execute(
         select(SavedItem).where(
             SavedItem.server_id == server.id,
@@ -2497,7 +2800,15 @@ async def create_saved_item(
     )
     existing = existing_result.scalar_one_or_none()
     if existing:
-        return {"created": False, "saved": await _serialize_saved_item(db, server, existing)}
+        return {
+            "created": False,
+            "saved": await _serialize_saved_item(
+                db,
+                server,
+                existing,
+                member_id=context.member.id,
+            ),
+        }
 
     item = SavedItem(
         server_id=server.id,
@@ -2510,7 +2821,15 @@ async def create_saved_item(
     await db.flush()
     await db.commit()
     await db.refresh(item)
-    return {"created": True, "saved": await _serialize_saved_item(db, server, item)}
+    return {
+        "created": True,
+        "saved": await _serialize_saved_item(
+            db,
+            server,
+            item,
+            member_id=context.member.id,
+        ),
+    }
 
 
 @router.delete("/saved/{saved_id}")
@@ -2589,7 +2908,10 @@ async def list_tasks(
         select(Task)
         .options(noload("*"))
         .join(Channel, Channel.id == Task.channel_id)
-        .where(Channel.server_id == context.server.id)
+        .where(
+            Channel.server_id == context.server.id,
+            _channel_visibility_clause(context.member.id),
+        )
     )
     if cursor:
         try:
@@ -2811,6 +3133,7 @@ async def create_task_assignment(
     if execution_strategy != "parallel":
         raise HTTPException(400, "Only parallel TaskRun assignment is implemented")
     task = await _resolve_task_by_id_or_number(db, server, task_id)
+    await _ensure_task_channel_access(db, server, task, context.member.id)
     assignee = await _resolve_member(db, server, body.get("assignee"))
     if assignee is None:
         raise HTTPException(400, "Missing assignee")
@@ -2877,25 +3200,8 @@ async def create_task_assignment(
 async def get_task(task_id: str, request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     context = await _resolve_active_server_context(db, request)
     server = context.server
-    try:
-        parsed_task_id = uuid.UUID(task_id)
-    except ValueError:
-        parsed_task_id = None
-
-    q = select(Task).join(Channel).where(Channel.server_id == server.id)
-    if parsed_task_id:
-        q = q.where(Task.id == parsed_task_id)
-    else:
-        try:
-            q = q.where(Task.task_number == int(task_id))
-        except ValueError:
-            raise HTTPException(400, "Invalid task id")
-
-    result = await db.execute(q)
-    task = result.scalar_one_or_none()
-    if not task:
-        raise HTTPException(404, "Task not found")
-
+    task = await _resolve_task_by_id_or_number(db, server, task_id)
+    await _ensure_task_channel_access(db, server, task, context.member.id)
     return await _serialize_task(db, task)
 
 
@@ -3148,6 +3454,7 @@ async def request_task_memory_result(
     server = context.server
     body = await request.json()
     task = await _resolve_task_by_id_or_number(db, server, task_id)
+    await _ensure_task_channel_access(db, server, task, context.member.id)
     actor = await _resolve_human_actor(db, server, request, body.get("actor"), role="task memory requester")
     event = await add_task_memory_request_event(
         db,
@@ -3179,6 +3486,7 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
     if not title:
         raise HTTPException(400, "Missing title")
     channel = await _resolve_channel(db, server, body.get("channel") or "#all")
+    await _ensure_member_channel_access(db, channel, context.member.id)
     creator = await _resolve_human_actor(db, server, request, body.get("creator"), role="task creator") if body.get("creator") else context.member
     assignee = await _resolve_member(db, server, body.get("assignee"))
     channel_id = channel.id
@@ -3315,6 +3623,7 @@ async def update_task(task_id: str, request: Request, _auth: None = Depends(veri
     server = context.server
     body = await request.json()
     task = await _resolve_task_by_id_or_number(db, server, task_id)
+    await _ensure_task_channel_access(db, server, task, context.member.id)
     previous_status = task.status
 
     if "title" in body:
@@ -3563,7 +3872,11 @@ async def global_search(
     msg_stmt = (
         select(Message, Channel)
         .join(Channel, Message.channel_id == Channel.id)
-        .where(Channel.server_id == server.id, Message.content.ilike(pattern, escape="\\"))
+        .where(
+            Channel.server_id == server.id,
+            _channel_visibility_clause(context.member.id),
+            Message.content.ilike(pattern, escape="\\"),
+        )
         .order_by(Message.created_at.desc())
         .limit(requested_limit)
     )
@@ -3597,6 +3910,7 @@ async def global_search(
         .join(Channel, Task.channel_id == Channel.id)
         .where(
             Channel.server_id == server.id,
+            _channel_visibility_clause(context.member.id),
             or_(
                 Task.title.ilike(pattern, escape="\\"),
                 Task.description.ilike(pattern, escape="\\"),
@@ -3637,6 +3951,7 @@ async def global_search(
 
     channel_stmt = select(Channel).where(
         Channel.server_id == server.id,
+        _channel_visibility_clause(context.member.id),
         or_(
             Channel.name.ilike(pattern, escape="\\"),
             Channel.description.ilike(pattern, escape="\\"),
@@ -3655,9 +3970,19 @@ async def global_search(
 
     file_stmt = (
         select(FileEntry, Channel)
-        .outerjoin(Channel, FileEntry.channel_id == Channel.id)
+        .outerjoin(
+            Channel,
+            and_(
+                FileEntry.channel_id == Channel.id,
+                Channel.server_id == server.id,
+            ),
+        )
         .where(
             FileEntry.server_id == server.id,
+            or_(
+                FileEntry.channel_id.is_(None),
+                _channel_visibility_clause(context.member.id),
+            ),
             or_(
                 FileEntry.original_name.ilike(pattern, escape="\\"),
                 FileEntry.file_name.ilike(pattern, escape="\\"),
@@ -3696,8 +4021,19 @@ async def list_files(
 ):
     context = await _resolve_active_server_context(db, request)
     server = context.server
+    accessible_channel_ids = await _accessible_channel_ids(
+        db,
+        server,
+        context.member.id,
+    )
 
-    q = select(FileEntry).where(FileEntry.server_id == server.id)
+    q = select(FileEntry).where(
+        FileEntry.server_id == server.id,
+        or_(
+            FileEntry.channel_id.is_(None),
+            FileEntry.channel_id.in_(accessible_channel_ids),
+        ),
+    )
     if channel_id:
         try:
             parsed_channel_id = uuid.UUID(channel_id)
@@ -3735,6 +4071,7 @@ async def upload_file(
         channel = channel_result.scalar_one_or_none()
         if not channel:
             raise HTTPException(404, "Channel not found")
+        await _ensure_member_channel_access(db, channel, context.member.id)
 
         parsed_message_id = None
         if message_id:
@@ -3831,6 +4168,80 @@ def _purge_quarantined_file(quarantine_path: Path) -> bool:
         return False
 
 
+@dataclass(frozen=True)
+class _QuarantinedFileBlob:
+    file_id: uuid.UUID
+    original_path: Path
+    quarantine_path: Path
+
+
+def _restore_quarantined_file_blobs(
+    quarantined: list[_QuarantinedFileBlob],
+    *,
+    operation: str,
+) -> None:
+    for blob in reversed(quarantined):
+        try:
+            _restore_quarantined_file(blob.quarantine_path, blob.original_path)
+        except OSError:
+            logger.critical(
+                "%s rolled back but blob restore failed quarantine=%s original=%s",
+                operation,
+                blob.quarantine_path,
+                blob.original_path,
+                exc_info=True,
+            )
+
+
+def _quarantine_file_entries_for_deletion(
+    file_entries: list[FileEntry],
+) -> list[_QuarantinedFileBlob]:
+    quarantined: list[_QuarantinedFileBlob] = []
+    try:
+        for entry in file_entries:
+            original_path = _safe_attachment_path(entry)
+            quarantine_path = _quarantine_file_for_deletion(original_path, entry.id)
+            quarantined.append(
+                _QuarantinedFileBlob(
+                    file_id=entry.id,
+                    original_path=original_path,
+                    quarantine_path=quarantine_path,
+                )
+            )
+    except BaseException:
+        _restore_quarantined_file_blobs(
+            quarantined,
+            operation="File deletion quarantine setup",
+        )
+        raise
+    return quarantined
+
+
+async def _rollback_and_restore_quarantined_file_blobs(
+    db: AsyncSession,
+    quarantined: list[_QuarantinedFileBlob],
+    *,
+    operation: str,
+) -> None:
+    try:
+        await asyncio.wait_for(
+            db.rollback(),
+            timeout=settings.upload_cleanup_timeout_seconds,
+        )
+    except BaseException:
+        logger.exception("%s transaction rollback failed", operation)
+    finally:
+        _restore_quarantined_file_blobs(quarantined, operation=operation)
+
+
+def _purge_quarantined_file_blobs(quarantined: list[_QuarantinedFileBlob]) -> str:
+    purged = True
+    for blob in quarantined:
+        if not _purge_quarantined_file(blob.quarantine_path):
+            purged = False
+    return "deleted" if purged else "quarantined"
+
+
 @router.delete("/files/{file_id}")
 async def delete_file(
     file_id: str,
@@ -3878,17 +4289,24 @@ async def delete_file(
             channel_id=deleted_channel_id,
         )
         await db.commit()
-    except Exception:
-        await db.rollback()
+    except BaseException:
         try:
-            _restore_quarantined_file(quarantine_path, original_path)
-        except OSError:
-            logger.critical(
-                "DB file deletion rolled back but blob restore failed quarantine=%s original=%s",
-                quarantine_path,
-                original_path,
-                exc_info=True,
+            await asyncio.wait_for(
+                db.rollback(),
+                timeout=settings.upload_cleanup_timeout_seconds,
             )
+        except BaseException:
+            logger.exception("File deletion transaction rollback failed")
+        finally:
+            try:
+                _restore_quarantined_file(quarantine_path, original_path)
+            except OSError:
+                logger.critical(
+                    "DB file deletion rolled back but blob restore failed quarantine=%s original=%s",
+                    quarantine_path,
+                    original_path,
+                    exc_info=True,
+                )
         raise
 
     storage_cleanup = "deleted" if _purge_quarantined_file(quarantine_path) else "quarantined"
@@ -3925,6 +4343,7 @@ async def preview_attachment(
     server = context.server
     await _resolve_human_actor(db, server, request, None, role="attachment viewer")
     entry = await _get_public_attachment(db, server, attachment_id)
+    await _ensure_file_entry_channel_access(db, server, entry, context.member.id)
     path = _safe_attachment_path(entry)
     return FileResponse(path, media_type=entry.mime_type)
 
@@ -3940,6 +4359,7 @@ async def download_public_attachment(
     server = context.server
     await _resolve_human_actor(db, server, request, None, role="attachment viewer")
     entry = await _get_public_attachment(db, server, attachment_id)
+    await _ensure_file_entry_channel_access(db, server, entry, context.member.id)
     path = _safe_attachment_path(entry)
     return FileResponse(path, media_type=entry.mime_type, filename=entry.original_name)
 
@@ -4098,59 +4518,101 @@ async def delete_member(
     if blocking_statuses:
         raise HTTPException(409, f"Stop runtime before deleting agent; blocking statuses: {', '.join(blocking_statuses)}")
 
+    deleted_member_id = member.id
+    deleted_member_name = member.display_name
     dm_channel_ids = await _member_dm_channel_ids(db, server, member.id)
-    deleted_channels = await _delete_channels_by_id(db, dm_channel_ids)
-
     authored_messages_result = await db.execute(
         select(Message.id)
         .join(Channel, Channel.id == Message.channel_id)
         .where(Channel.server_id == server.id, Message.sender_id == member.id)
     )
-    deleted_messages = await _delete_messages_by_id(db, list(authored_messages_result.scalars().all()))
-
+    authored_message_ids = list(authored_messages_result.scalars().all())
+    expanded_message_ids = await _message_ids_for_deletion(db, authored_message_ids)
     task_ids_result = await db.execute(select(Task.id).where(Task.creator_id == member.id))
     created_task_ids = list(task_ids_result.scalars().all())
-    await _delete_saved_item_references(db, task_ids=created_task_ids)
-    await db.execute(delete(Task).where(Task.creator_id == member.id))
-    await db.execute(update(Task).where(Task.assignee_id == member.id).values(assignee_id=None))
-    await db.execute(update(Channel).where(Channel.creator_id == member.id).values(creator_id=None))
-    await db.execute(update(ThreadSummary).where(ThreadSummary.requested_agent_id == member.id).values(requested_agent_id=None))
-    await db.execute(update(ThreadSummary).where(ThreadSummary.updated_by == member.id).values(updated_by=None))
-    await db.execute(delete(ApiKey).where(
-        ApiKey.server_id == server.id,
-        ApiKey.resource_type == "agent",
-        ApiKey.resource_id == member.id,
-    ))
-    for workspace in workspaces:
-        await db.delete(workspace)
-    await db.delete(member)
-    await _record_activity(
+    file_entries = await _file_entries_for_parent_deletion(
         db,
-        server,
-        actor,
-        "supervisor_member_updated",
-        f"@{actor.display_name} deleted agent @{member.display_name}",
-        {
-            "memberId": str(member.id),
-            "memberName": member.display_name,
-            "action": "delete",
-            "deletedWorkspaces": len(workspaces),
-            "deletedDmChannels": deleted_channels["channels"],
-            "deletedMessages": deleted_channels["messages"] + deleted_messages["messages"],
-            "deletedTasks": deleted_channels["tasks"] + deleted_messages["tasks"] + len(created_task_ids),
-        },
+        server_id=server.id,
+        channel_ids=dm_channel_ids,
+        message_ids=expanded_message_ids,
+        uploaded_by=member.id,
     )
-    await db.commit()
+    quarantined_files = _quarantine_file_entries_for_deletion(file_entries)
+
+    try:
+        deleted_channels = await _delete_channels_by_id(db, dm_channel_ids)
+        deleted_messages = await _delete_messages_by_id(db, authored_message_ids)
+        await _delete_saved_item_references(
+            db,
+            task_ids=created_task_ids,
+            file_ids=[entry.id for entry in file_entries],
+        )
+        await db.execute(delete(Task).where(Task.creator_id == member.id))
+        await db.execute(update(Task).where(Task.assignee_id == member.id).values(assignee_id=None))
+        await db.execute(update(Channel).where(Channel.creator_id == member.id).values(creator_id=None))
+        await db.execute(
+            update(ThreadSummary)
+            .where(ThreadSummary.requested_agent_id == member.id)
+            .values(requested_agent_id=None)
+        )
+        await db.execute(
+            update(ThreadSummary)
+            .where(ThreadSummary.updated_by == member.id)
+            .values(updated_by=None)
+        )
+        await db.execute(
+            delete(ApiKey).where(
+                ApiKey.server_id == server.id,
+                ApiKey.resource_type == "agent",
+                ApiKey.resource_id == member.id,
+            )
+        )
+        for workspace in workspaces:
+            await db.delete(workspace)
+        await db.delete(member)
+        await _record_activity(
+            db,
+            server,
+            actor,
+            "supervisor_member_updated",
+            f"@{actor.display_name} deleted agent @{deleted_member_name}",
+            {
+                "memberId": str(deleted_member_id),
+                "memberName": deleted_member_name,
+                "action": "delete",
+                "deletedWorkspaces": len(workspaces),
+                "deletedDmChannels": deleted_channels["channels"],
+                "deletedMessages": deleted_channels["messages"]
+                + deleted_messages["messages"],
+                "deletedTasks": deleted_channels["tasks"]
+                + deleted_messages["tasks"]
+                + len(created_task_ids),
+                "deletedFiles": len(file_entries),
+                "storagePolicy": "quarantine-then-delete",
+            },
+        )
+        await db.commit()
+    except BaseException:
+        await _rollback_and_restore_quarantined_file_blobs(
+            db,
+            quarantined_files,
+            operation="Agent deletion",
+        )
+        raise
+
+    storage_cleanup = _purge_quarantined_file_blobs(quarantined_files)
     await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
         "deleted": True,
-        "memberId": str(member.id),
-        "memberName": member.display_name,
+        "memberId": str(deleted_member_id),
+        "memberName": deleted_member_name,
         "workspaces": len(workspaces),
         "dmChannels": deleted_channels["channels"],
         "messages": deleted_channels["messages"] + deleted_messages["messages"],
         "tasks": deleted_channels["tasks"] + deleted_messages["tasks"] + len(created_task_ids),
+        "files": len(file_entries),
+        "storageCleanup": storage_cleanup,
     }
 
 
@@ -4801,6 +5263,7 @@ async def delete_channel(
     db: AsyncSession = Depends(get_db),
 ):
     context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
     server = context.server
     try:
         parsed_channel_id = uuid.UUID(channel_id)
@@ -4817,30 +5280,52 @@ async def delete_channel(
         raise HTTPException(400, "Delete the agent/member to remove its DM channel")
 
     actor = await _resolve_human_actor(db, server, request, None, role="channel deletion actor")
-    deleted = await _delete_channels_by_id(db, [channel.id])
-    await _record_activity(
+    deleted_channel_id = channel.id
+    deleted_channel_name = channel.name
+    file_entries = await _file_entries_for_parent_deletion(
         db,
-        server,
-        actor,
-        "supervisor_member_updated",
-        f"@{actor.display_name} deleted channel #{channel.name}",
-        {
-            "channelId": str(channel.id),
-            "channelName": channel.name,
-            "action": "delete_channel",
-            "deletedMessages": deleted["messages"],
-            "deletedTasks": deleted["tasks"],
-        },
+        server_id=server.id,
+        channel_ids=[deleted_channel_id],
     )
-    await db.commit()
+    quarantined_files = _quarantine_file_entries_for_deletion(file_entries)
+    try:
+        deleted = await _delete_channels_by_id(db, [deleted_channel_id])
+        await _record_activity(
+            db,
+            server,
+            actor,
+            "supervisor_member_updated",
+            f"@{actor.display_name} deleted channel #{deleted_channel_name}",
+            {
+                "channelId": str(deleted_channel_id),
+                "channelName": deleted_channel_name,
+                "action": "delete_channel",
+                "deletedMessages": deleted["messages"],
+                "deletedTasks": deleted["tasks"],
+                "deletedFiles": len(file_entries),
+                "storagePolicy": "quarantine-then-delete",
+            },
+        )
+        await db.commit()
+    except BaseException:
+        await _rollback_and_restore_quarantined_file_blobs(
+            db,
+            quarantined_files,
+            operation="Channel deletion",
+        )
+        raise
+
+    storage_cleanup = _purge_quarantined_file_blobs(quarantined_files)
     await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
         "deleted": True,
-        "channelId": str(channel.id),
-        "channelName": channel.name,
+        "channelId": str(deleted_channel_id),
+        "channelName": deleted_channel_name,
         "messages": deleted["messages"],
         "tasks": deleted["tasks"],
+        "files": len(file_entries),
+        "storageCleanup": storage_cleanup,
     }
 
 
@@ -4855,6 +5340,7 @@ async def add_channel_member(
     db: AsyncSession = Depends(get_db),
 ):
     context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
     server = context.server
     try:
         parsed_channel_id = uuid.UUID(channel_id)
@@ -4867,6 +5353,8 @@ async def add_channel_member(
     ch = channel.scalar_one_or_none()
     if not ch:
         raise HTTPException(404, "Channel not found")
+    if ch.kind == "dm":
+        raise HTTPException(403, "DM membership is managed by the DM lifecycle")
 
     body = await request.json()
     parsed_member_ids = _channel_member_ids_from_body(body)
@@ -4921,6 +5409,7 @@ async def remove_channel_member(
     db: AsyncSession = Depends(get_db),
 ):
     context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
     server = context.server
     try:
         parsed_channel_id = uuid.UUID(channel_id)
@@ -4928,11 +5417,14 @@ async def remove_channel_member(
     except ValueError:
         raise HTTPException(400, "Invalid id format")
 
-    channel = await db.execute(
+    channel_result = await db.execute(
         select(Channel).where(Channel.id == parsed_channel_id, Channel.server_id == server.id)
     )
-    if not channel.scalar_one_or_none():
+    channel = channel_result.scalar_one_or_none()
+    if not channel:
         raise HTTPException(404, "Channel not found")
+    if channel.kind == "dm":
+        raise HTTPException(403, "DM membership is managed by the DM lifecycle")
 
     existing = await db.execute(
         select(ChannelMember).where(
@@ -4966,11 +5458,13 @@ async def list_channel_members(
     except ValueError:
         raise HTTPException(400, "Invalid channel id")
 
-    channel = await db.execute(
+    channel_result = await db.execute(
         select(Channel).where(Channel.id == parsed_channel_id, Channel.server_id == server.id)
     )
-    if not channel.scalar_one_or_none():
+    channel = channel_result.scalar_one_or_none()
+    if not channel:
         raise HTTPException(404, "Channel not found")
+    await _ensure_member_channel_access(db, channel, context.member.id)
 
     result = await db.execute(
         select(ChannelMember).where(ChannelMember.channel_id == parsed_channel_id)

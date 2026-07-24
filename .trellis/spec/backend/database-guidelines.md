@@ -84,37 +84,76 @@ LIMIT 5;
 ### 3. Contracts
 - Docker/local-prod runs `alembic upgrade head` before uvicorn. Direct uvicorn performs a read-only exact-head check and refuses missing/behind/unknown revisions.
 - FastAPI lifespan and runtime seed code must not call `Base.metadata.create_all` or execute schema DDL.
-- Legacy fingerprint reads required tables, columns, indexes, constraints, version state and the historical `messages.seq` non-identity state. It never stamps automatically.
+- Legacy fingerprint reads required tables, version state and the complete structural
+  definitions needed to identify historical 0001: column type/nullability/default /
+  identity; index table/key order/uniqueness/access method/predicate; primary, unique,
+  check and foreign-key columns/targets/delete actions. Matching object names alone is
+  never compatibility evidence. It never stamps automatically and rejects
+  post-baseline objects already present in an otherwise unversioned database.
+- SQL definition normalization may remove harmless casing, quoting, qualification,
+  whitespace, parentheses and text-cast noise only outside quoted semantic tokens.
+  String literal contents and case-sensitive quoted identifiers remain byte-for-byte
+  significant; for example, `'open'` and `'OPEN'` are different defaults.
+- A baseline membership check is compatible only when the complete top-level predicate
+  is the expected single-column `IN (...)` or PostgreSQL `= ANY (ARRAY[...])` form.
+  Boolean inversion or wrapping such as `(role IN (...)) = FALSE` is incompatible even
+  when the column and literal set otherwise match.
 - Legacy fingerprint compares with historical `0001`, not terminal `Base.metadata`. Each later revision must register its added columns/indexes/constraints in the preflight post-baseline exclusion sets, while baseline-only objects such as `uq_task_run_templates_slug` remain required before stamping.
 - The only valid legacy stamp target is baseline `77b8b147f689`; `stamp head` is forbidden.
 - `messages.seq` transitions through `0002_messages_seq` (`BY DEFAULT` plus atomic historical high-water alignment) and `0003_messages_seq_auto` (final alignment plus `ALWAYS`). Production writers omit `seq`.
 - `0004_template_tenancy` classifies repository-known builtins as `server_id NULL`, backfills `server/user` rows from a valid creator Member, replaces global slug uniqueness with builtin and `(server_id, slug)` partial unique indexes, and enforces `ck_task_run_templates_tenant_scope`.
+- Downgrading `0004` to `0003` first checks for duplicate slugs across tenants. Such
+  rows are legal at `0004` but cannot be represented by `0003`'s global unique
+  constraint, so the migration raises
+  `TEMPLATE_TENANCY_DOWNGRADE_SLUG_COLLISION` before any DDL. It never deletes,
+  merges, or silently renames templates.
 
 ### 4. Validation & Error Matrix
 - Missing `alembic_version` at app startup -> refuse startup and name the migration/preflight command.
 - Current revision differs from the checkout's unique head -> refuse startup; do not create missing objects.
-- Legacy fingerprint missing a required object or already containing identity/version state -> incompatible; make zero writes.
+- Legacy fingerprint missing a required object, containing a same-name definition
+  mismatch, already containing post-baseline/identity/version state, or using an
+  unsupported check shape -> incompatible; make zero writes.
+- A quoted default or index-predicate literal differs only by case/content ->
+  definition mismatch; a membership check has any outer boolean operator -> check
+  mismatch. Neither case may create or stamp `alembic_version`.
 - Migration lock/DDL/constraint failure -> deployment stops before uvicorn.
 - Ambiguous legacy template (unknown builtin or non-builtin without a valid creator Member) -> transactional `0004` failure; revision remains `0003`, `server_id` and partial indexes remain absent, and an operator must explicitly classify the row before retry.
+- Cross-Server duplicate template slug during `0004 -> 0003` -> fail before DDL;
+  revision remains `0004`, `server_id` and tenant indexes remain present. After an
+  operator explicitly renames or merges the collision, retrying the downgrade may
+  restore the global `uq_task_run_templates_slug` constraint.
 - Migration test URLs absent -> local optional suite may skip; the required release command supplies explicit isolated URLs and permits no skip.
 
 ### 5. Good/Base/Bad Cases
 - Good: empty disposable PostgreSQL -> actual revisions -> head -> application starts.
 - Good: compatible unversioned legacy schema -> read-only preflight -> operator-reviewed baseline stamp -> upgrade head.
 - Good: two Server-owned human templates use the same slug; a duplicate inside one Server fails.
+- Good: an operator resolves cross-Server duplicate slugs explicitly, then downgrade
+  restores the `0003` global slug constraint without losing a template.
 - Base: already-versioned database runs ordinary upgrade and exact-head readiness.
 - Bad: `Base.metadata.create_all` as startup fallback or migration proof.
 - Bad: `alembic stamp head`, automatic stamp on fingerprint failure, or destructive tests against a shared database.
 - Bad: silently hide, delete, or guess the Server for an ambiguous legacy template so migration can continue.
+- Bad: let downgrade discover duplicate slugs only after dropping tenant indexes, or
+  choose an arbitrary tenant row to keep.
 
 ### 6. Tests Required
 - Execute actual revisions for empty-to-head, baseline-to-head and legacy-preflight/baseline-stamp/head paths.
-- Assert drifted legacy schema is rejected and `alembic_version` remains absent.
+- Assert missing-object and same-name definition drift are rejected and
+  `alembic_version` remains absent. Definition drift coverage includes columns,
+  indexes, primary/unique/check constraints and foreign keys.
+- Assert harmless PostgreSQL formatting of compatible definitions is accepted while
+  case-changed quoted literals and boolean-inverted/wrapped `IN`/`= ANY` checks are
+  rejected read-only.
 - Seed historical message seq 1/2/3, then assert first implicit value is greater than 3.
 - Seed an explicit transition value 100, apply final reconcile and assert the next implicit value is greater than 100.
 - Commit concurrent implicit inserts and assert uniqueness; test all production writers omit `seq`.
 - Assert startup seed source has no `create_all` or schema DDL.
 - Execute `0003 -> 0004` with defensible builtins/human rows, then assert classification, partial indexes, tenant checks and scoped uniqueness. Execute an ambiguous case and assert full DDL/revision rollback.
+- Execute `0004 -> 0003` with legal cross-Server duplicate slugs and assert the stable
+  failure code, unchanged revision/column/index state, then explicitly resolve the
+  duplicate and assert successful downgrade plus restored global uniqueness.
 
 ### 7. Wrong vs Correct
 #### Wrong
@@ -136,11 +175,16 @@ correct: ambiguous template -> transactional STOP -> operator classification -> 
 ## Scenario: Destructive Writes with Tombstone Audit and Local Blob Compensation
 
 ### 1. Scope / Trigger
-- Trigger: deleting an entity referenced by ActivityLog/EventRecord or deleting a database row that owns a local filesystem blob.
+- Trigger: deleting an entity referenced by ActivityLog/EventRecord, deleting a
+  database row that owns a local filesystem blob, or deleting a parent such as an
+  Agent/Member/Channel whose cascade or helper removes `FileEntry` rows.
 
 ### 2. Signatures
 - Task API: `DELETE /api/v1/tasks/{task_id}` -> `{deleted, taskId, taskNumber}`.
 - File API: `DELETE /api/v1/files/{file_id}` -> `{deleted, fileId, storageCleanup: "deleted" | "quarantined"}`.
+- Parent APIs: `DELETE /api/v1/members/{agent_id}` and
+  `DELETE /api/v1/channels/{channel_id}` report deleted file count plus
+  `storageCleanup: "deleted" | "quarantined"`.
 - Durable UI events: `task.deleted`, `file.deleted`; runtime delivery classification is false.
 
 ### 3. Contracts
@@ -149,6 +193,12 @@ correct: ambiguous template -> transactional STOP -> operator classification -> 
 - Preserve the old ID only in `details.tombstone` / `payload.tombstone` and top-level JSON routing fields such as `payload.taskId`.
 - Commit before browser publication. Rollback leaves entity, dependencies and audit mutually consistent.
 - Local file deletion uses quarantine-then-delete: atomically move the blob under `UPLOAD_ROOT/.deleted`, commit DB deletion, then purge. DB failure restores the original path; purge failure returns `storageCleanup="quarantined"` and never claims filesystem atomicity.
+- Parent deletion enumerates the complete `FileEntry` set before DML, including
+  member-upload cascades, deleted Channel/DM files, and deleted-message attachments.
+  It quarantines the batch before DB deletion, restores every already-moved blob if
+  quarantine setup or commit fails, and purges every quarantine entry after commit.
+  SavedItem references for those files are deleted explicitly; they must not become
+  untyped orphans merely because `SavedItem.item_id` has no file foreign key.
 
 ### 4. Validation & Error Matrix
 - Non-admin deletion -> `403`, no entity/audit/storage mutation.
@@ -156,13 +206,21 @@ correct: ambiguous template -> transactional STOP -> operator classification -> 
 - Unsafe/missing file path -> fail before DB mutation.
 - DB commit failure after quarantine -> rollback and restore original blob; no success response.
 - Post-commit quarantine purge failure -> DB remains deleted and response says `quarantined`.
+- A later file in a parent-delete batch cannot be quarantined -> restore earlier files
+  and make no database mutation.
+- Parent-delete commit failure -> rollback all rows/audit and restore every original
+  blob path.
 
 ### 5. Good/Base/Bad Cases
 - Good: Task dependencies cascade, old nullable references become NULL, new tombstone event has `task_id=NULL`, then committed event publishes.
 - Good: File blob is quarantined before metadata deletion and disappears after successful purge.
+- Good: deleting an Agent or Channel removes every affected FileEntry/SavedItem and
+  blob using the same compensation boundary as explicit file deletion.
 - Base: purge fails after commit; the blob remains only in non-served quarantine and the response reports it.
 - Bad: delete Task then insert ActivityLog/EventRecord with `task_id=<deleted UUID>`.
 - Bad: unlink blob after commit and always return success without reporting cleanup failure.
+- Bad: rely on `files.uploaded_by ON DELETE CASCADE` or helper-level `DELETE FROM
+  files` while leaving `storage_path` on disk.
 
 ### 6. Tests Required
 - Real PostgreSQL authenticated route tests for owner/admin success, member denial, missing/foreign scope and forced commit rollback.
@@ -170,6 +228,9 @@ correct: ambiguous template -> transactional STOP -> operator classification -> 
 - Assert File saved-item removal, memory `file_id SET NULL`, blob purge, quarantine fallback and DB-failure restoration.
 - Assert event publication observes committed state from an independent connection.
 - Assert daemon runtime allowlist rejects dotted and legacy deletion event names.
+- Real PostgreSQL parent-delete tests cover Agent cascade, Channel helper deletion,
+  commit rollback/restore, partial batch-quarantine compensation, SavedItem cleanup,
+  and truthful post-commit quarantine reporting.
 
 ### 7. Wrong vs Correct
 #### Wrong
@@ -201,7 +262,10 @@ await publish_committed_events()
 - Active Server resolver: `resolve_active_server_context(db, account, requested_server_id=None)`.
 - Public API wrapper: `routers.public_api._resolve_active_server_context(db, request)`.
 - Actor resolver: `routers.public_api._resolve_human_actor(...) -> Member`.
-- Bootstrap owner serialization: PostgreSQL `pg_advisory_xact_lock(BOOTSTRAP_OWNER_LOCK_NAMESPACE, BOOTSTRAP_OWNER_LOCK_SCOPE)` held through commit/rollback.
+- Bootstrap owner serialization: every default-Server owner-election entrypoint calls
+  `services.server_membership.acquire_owner_election_lock(db)`, which acquires the
+  same PostgreSQL transaction-scoped advisory lock and holds it through commit or
+  rollback.
 
 ### 3. Contracts
 - `Server` is the product-level team/workspace boundary. Do not introduce another workspace abstraction for the same scope.
@@ -1314,7 +1378,7 @@ POSTGRES_PASSWORD=<set-outside-repo>
 - Good: images were already built locally, so the operator runs with `--skip-build` to avoid rebuilding and only transfers the current archive.
 - Good: local archive is written to `/Volumes/ORICO/...` with `--output-archive`, while SSH upload still targets `/opt/smallkhoj` with `--remote-dir`.
 - Base: a registry is already ready; skip this CLI and use registry image tags plus the normal pull/build startup path.
-- Bad: building Next.js on the 2 vCPU / 2 GB Lighthouse host.
+- Bad: building Next.js on the nominal 4 vCPU / 4 GB Lighthouse host (3.32 GiB guest-visible RAM) instead of transferring a prebuilt `linux/amd64` image.
 - Bad: reusing Apple Silicon `linux/arm64` local-smoke images on an `amd64` Lighthouse host.
 - Bad: setting `--remote-dir /Volumes/ORICO/...`; that path is local-only and normally does not exist on the server.
 - Bad: running `docker compose pull backend frontend` against `smallkhoj-*:local-release` tags after loading them locally.

@@ -238,3 +238,110 @@ async def test_template_tenancy_migration_refuses_ambiguous_legacy_null_row():
             ) == 0
         finally:
             await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_template_tenancy_downgrade_fails_closed_on_cross_server_slug_collision():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", "head")
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            server_a, server_b = uuid.uuid4(), uuid.uuid4()
+            member_a, member_b = uuid.uuid4(), uuid.uuid4()
+            await _insert_server(connection, server_id=server_a, member_id=member_a, name="down-a")
+            await _insert_server(connection, server_id=server_b, member_id=member_b, name="down-b")
+            await _insert_template(
+                connection,
+                template_id=uuid.uuid4(),
+                slug="cross-server-downgrade-collision",
+                visibility="user",
+                created_by=member_a,
+                server_id_marker=True,
+                server_id=server_a,
+            )
+            second_template_id = uuid.uuid4()
+            await _insert_template(
+                connection,
+                template_id=second_template_id,
+                slug="cross-server-downgrade-collision",
+                visibility="user",
+                created_by=member_b,
+                server_id_marker=True,
+                server_id=server_b,
+            )
+        finally:
+            await connection.close()
+
+        env = {**os.environ, "DATABASE_URL": postgres.database_url}
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "alembic",
+                "-c",
+                "alembic.ini",
+                "downgrade",
+                PRE_TEMPLATE_TENANCY_REVISION,
+            ],
+            cwd=BACKEND_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert result.returncode != 0
+        assert "TEMPLATE_TENANCY_DOWNGRADE_SLUG_COLLISION" in (
+            result.stdout + result.stderr
+        )
+
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
+                "0004_template_tenancy"
+            )
+            assert await connection.fetchval(
+                """
+                SELECT count(*)
+                FROM information_schema.columns
+                WHERE table_name = 'task_run_templates' AND column_name = 'server_id'
+                """
+            ) == 1
+            assert await connection.fetchval(
+                "SELECT to_regclass('uq_task_run_templates_server_slug') IS NOT NULL"
+            ) is True
+            await connection.execute(
+                "UPDATE task_run_templates SET slug = $1 WHERE id = $2",
+                "cross-server-downgrade-resolved",
+                second_template_id,
+            )
+        finally:
+            await connection.close()
+
+        run_alembic(
+            postgres.database_url,
+            "downgrade",
+            PRE_TEMPLATE_TENANCY_REVISION,
+        )
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
+                PRE_TEMPLATE_TENANCY_REVISION
+            )
+            assert await connection.fetchval(
+                """
+                SELECT count(*)
+                FROM information_schema.columns
+                WHERE table_name = 'task_run_templates' AND column_name = 'server_id'
+                """
+            ) == 0
+            assert await connection.fetchval(
+                """
+                SELECT count(*)
+                FROM pg_constraint
+                WHERE conname = 'uq_task_run_templates_slug'
+                  AND contype = 'u'
+                """
+            ) == 1
+        finally:
+            await connection.close()

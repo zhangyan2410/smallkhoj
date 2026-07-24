@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -140,7 +141,7 @@ async def test_compatible_legacy_database_preflights_then_stamps_baseline_only()
             await connection.close()
 
         report = await inspect_legacy_schema(postgres.database_url)
-        assert report.compatible, report.issues
+        assert report.compatible, "\n".join(report.issues)
         assert report.issues == ()
 
         run_alembic(postgres.database_url, "stamp", BASELINE_REVISION)
@@ -149,6 +150,67 @@ async def test_compatible_legacy_database_preflights_then_stamps_baseline_only()
         try:
             revision = await connection.fetchval("SELECT version_num FROM alembic_version")
             assert revision == "0004_template_tenancy"
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_preflight_rejects_case_changed_quoted_default_literal():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            await connection.execute("DROP TABLE alembic_version")
+            await connection.execute(
+                "ALTER TABLE memory_proposals ALTER COLUMN status SET DEFAULT 'OPEN'"
+            )
+        finally:
+            await connection.close()
+
+        report = await inspect_legacy_schema(postgres.database_url)
+        assert not report.compatible
+        assert any(
+            "column definition mismatch: memory_proposals.status" in issue
+            for issue in report.issues
+        )
+
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            assert await connection.fetchval("SELECT to_regclass('public.alembic_version')") is None
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_preflight_rejects_boolean_inversion_around_check():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            await connection.execute("DROP TABLE alembic_version")
+            await connection.execute(
+                """
+                ALTER TABLE server_memberships
+                DROP CONSTRAINT ck_server_memberships_role
+                """
+            )
+            await connection.execute(
+                """
+                ALTER TABLE server_memberships
+                ADD CONSTRAINT ck_server_memberships_role
+                CHECK ((role IN ('owner', 'admin', 'member')) = FALSE)
+                """
+            )
+        finally:
+            await connection.close()
+
+        report = await inspect_legacy_schema(postgres.database_url)
+        assert not report.compatible
+        assert "check constraint definition mismatch: ck_server_memberships_role" in report.issues
+
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            assert await connection.fetchval("SELECT to_regclass('public.alembic_version')") is None
         finally:
             await connection.close()
 
@@ -167,6 +229,102 @@ async def test_legacy_preflight_rejects_schema_drift_without_writing_revision_st
         report = await inspect_legacy_schema(postgres.database_url)
         assert not report.compatible
         assert any("saved_items" in issue for issue in report.issues)
+
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            assert await connection.fetchval("SELECT to_regclass('public.alembic_version')") is None
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_preflight_rejects_same_name_definition_drift():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            await connection.execute("DROP TABLE alembic_version")
+            await connection.execute(
+                "ALTER TABLE saved_items ALTER COLUMN item_type DROP NOT NULL"
+            )
+            await connection.execute(
+                "ALTER TABLE saved_items ALTER COLUMN item_type TYPE varchar(40)"
+            )
+            await connection.execute(
+                "ALTER TABLE channel_members ALTER COLUMN last_read_seq SET DEFAULT 7"
+            )
+            await connection.execute(
+                "ALTER TABLE task_run_templates ADD COLUMN server_id uuid"
+            )
+            await connection.execute("DROP INDEX idx_saved_items_item")
+            await connection.execute(
+                "CREATE INDEX idx_saved_items_item ON saved_items (item_id, item_type)"
+            )
+            await connection.execute(
+                "ALTER TABLE saved_items DROP CONSTRAINT uq_saved_items_account_item"
+            )
+            await connection.execute(
+                """
+                ALTER TABLE saved_items
+                ADD CONSTRAINT uq_saved_items_account_item
+                UNIQUE (server_id, item_type, item_id)
+                """
+            )
+            account_fk_name = await connection.fetchval(
+                """
+                SELECT constraint_name
+                FROM information_schema.key_column_usage
+                WHERE table_schema = current_schema()
+                  AND table_name = 'saved_items'
+                  AND column_name = 'account_id'
+                  AND position_in_unique_constraint IS NOT NULL
+                """
+            )
+            assert account_fk_name and re.fullmatch(r"[a-z0-9_]+", account_fk_name)
+            await connection.execute(
+                f'ALTER TABLE saved_items DROP CONSTRAINT "{account_fk_name}"'
+            )
+            await connection.execute(
+                f"""
+                ALTER TABLE saved_items
+                ADD CONSTRAINT "{account_fk_name}"
+                FOREIGN KEY (account_id) REFERENCES servers(id) ON DELETE CASCADE
+                """
+            )
+            await connection.execute(
+                "ALTER TABLE saved_items DROP CONSTRAINT saved_items_pkey"
+            )
+            await connection.execute(
+                """
+                ALTER TABLE saved_items
+                ADD CONSTRAINT saved_items_pkey PRIMARY KEY (id, server_id)
+                """
+            )
+            await connection.execute(
+                """
+                ALTER TABLE server_memberships
+                DROP CONSTRAINT ck_server_memberships_role
+                """
+            )
+            await connection.execute(
+                """
+                ALTER TABLE server_memberships
+                ADD CONSTRAINT ck_server_memberships_role
+                CHECK (role IN ('admin', 'member'))
+                """
+            )
+        finally:
+            await connection.close()
+
+        report = await inspect_legacy_schema(postgres.database_url)
+        assert not report.compatible
+        assert any("column definition mismatch" in issue for issue in report.issues)
+        assert any("unexpected non-baseline columns" in issue for issue in report.issues)
+        assert any("index definition mismatch" in issue for issue in report.issues)
+        assert any("primary key definition mismatch" in issue for issue in report.issues)
+        assert any("unique constraint definition mismatch" in issue for issue in report.issues)
+        assert any("check constraint definition mismatch" in issue for issue in report.issues)
+        assert any("foreign key definition mismatch" in issue for issue in report.issues)
 
         connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
         try:

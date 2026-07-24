@@ -15,6 +15,9 @@
 .slock-runtimes
 .trellis/workspace
 .vscode
+**/.env
+**/.env.*
+!**/.env.example
 **/__pycache__
 **/.pytest_cache
 **/.mypy_cache
@@ -24,6 +27,7 @@
 **/.next
 **/.turbo
 **/coverage
+backend/.data
 graphify-out
 mvp-prototype
 zy-think

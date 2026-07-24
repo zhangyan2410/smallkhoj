@@ -70,9 +70,9 @@ Frontend:
 
 ```bash
 cd frontend
-npm install
-npm run lint
-npm run build
+bun install --frozen-lockfile
+bun run lint
+bun run build
 ```
 
 Daemon:

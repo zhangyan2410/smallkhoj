@@ -29,6 +29,7 @@ bun install --frozen-lockfile
 bun run test
 bun run lint
 bun run typecheck
+bun run typecheck:e2e
 bun run build
 test -f .next/standalone/server.js
 ```
@@ -40,8 +41,19 @@ bridge and public-client environment values. CI supplies ephemeral values only.
 ## Automated flow versus UI acceptance
 
 `bun run e2e` runs the committed Playwright integration flow from `../e2e/`.
-That suite verifies a deterministic authenticated cross-layer flow and is a CI
-gate; it is not UI acceptance.
+It intentionally has no localhost, credential, daemon-version or database-scope
+fallback. Start isolated candidates, provide the explicit `API_BASE`,
+`FRONTEND_BASE`, `E2E_PUBLIC_API_KEY`, `E2E_RUN_NAMESPACE`,
+`E2E_DATABASE_SCOPE=disposable`, `DATABASE_URL`, `BETTER_AUTH_DATABASE_URL`,
+`INTERNAL_API_BASE_URL`, `BETTER_AUTH_URL`, and reviewed daemon-version
+environment, then run `make e2e-authenticated` from the repository root. Both
+database URLs must identify the same loopback database and its name must contain
+an explicit disposable marker; the frontend's internal API and Better Auth URLs
+must identify the same loopback candidates as `API_BASE` and `FRONTEND_BASE`.
+The scope label alone is not safety evidence. The package-level `bun run e2e`
+entrypoint invokes the same fail-closed validator before Playwright, so it cannot
+be used to bypass these checks. CI owns this setup in the normal gate. The suite
+verifies a deterministic authenticated cross-layer flow; it is not UI acceptance.
 
 Repository browser-visible acceptance, interactive investigation, DOM markers
 and screenshots use the project wrapper from the repository root:

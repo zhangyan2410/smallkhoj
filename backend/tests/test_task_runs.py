@@ -582,8 +582,23 @@ async def test_public_task_assignment_endpoint_auto_starts_with_template_snapsho
     async def fake_serialize_task(_db, task_arg):
         return {"id": str(task_arg.id), "assigneeId": str(task_arg.assignee_id)}
 
-    _patch_active_server_context(monkeypatch, server)
+    async def fake_ensure_task_channel_access(
+        _db,
+        server_arg,
+        task_arg,
+        member_id,
+    ):
+        assert server_arg is server
+        assert task_arg is task
+        assert member_id == actor.id
+
+    _patch_active_server_context(monkeypatch, server, member=actor)
     monkeypatch.setattr(public_api, "_resolve_task_by_id_or_number", fake_resolve_task)
+    monkeypatch.setattr(
+        public_api,
+        "_ensure_task_channel_access",
+        fake_ensure_task_channel_access,
+    )
     monkeypatch.setattr(public_api, "_resolve_member", fake_resolve_member)
     monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
     monkeypatch.setattr(public_api, "get_template_by_ref", fake_get_template_by_ref)
@@ -1418,7 +1433,7 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
     monkeypatch.setattr(public_api, "create_task_assignment_and_run", fake_create_task_assignment_and_run)
     monkeypatch.setattr(public_api, "_push_committed_events", fake_push)
     monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
-    _patch_active_server_context(monkeypatch, server)
+    _patch_active_server_context(monkeypatch, server, member=creator)
 
     response = await public_api.create_task(
         _JsonRequest({"channel": "#work", "creator": "@zy-ean", "assignee": "@minimax", "title": "Run it"}),
