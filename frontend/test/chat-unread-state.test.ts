@@ -209,8 +209,8 @@ test("thread cursor request ignores missing sequence rows and returns null for u
 })
 
 test("chat route code writes backend read cursors instead of only clearing local decoration", () => {
-  const sidebarSource = readFileSync(new URL("../app/chat/[channel]/chat-sidebar.tsx", import.meta.url), "utf8")
-  const channelSource = readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const sidebarSource = readFileSync(new URL("../app/(app)/chat/[channel]/chat-sidebar.tsx", import.meta.url), "utf8")
+  const channelSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
 
   assert.match(sidebarSource, /apiPost\(["']\/api\/v1\/chat\/read-cursors/)
   assert.match(sidebarSource, /chatReadCursorRequestForEntity/)

@@ -176,7 +176,7 @@ test("MaterialSurface renders an active canvas only in active material modes", (
 test("desk material surfaces use clean product paper without vignette or idle darkening", () => {
   const materialSource = readFileSync(new URL("../components/inkframe/material-surface.tsx", import.meta.url), "utf8")
   const appDeskSource = readFileSync(new URL("../components/inkframe/app-desk-background.tsx", import.meta.url), "utf8")
-  const chatSource = readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const chatSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
   const engineSource = readFileSync(new URL("../public/inkframe/ink-material-engine.js", import.meta.url), "utf8")
   const globalCss = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
   const appDeskMaterialBlock = globalCss.match(/\.sk-app-desk-material \{[\s\S]*?\n  \}/)?.[0] ?? ""
@@ -398,7 +398,7 @@ test("message annotation material is explicitly washable without making all surf
 })
 
 test("chat message material actions expose pen water keep and discard controls", () => {
-  const source = readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const source = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
 
   assert.match(source, /message-material-pen/)
   assert.match(source, /message-material-water/)
@@ -411,7 +411,7 @@ test("chat message material actions expose pen water keep and discard controls",
 })
 
 test("chat route exposes a separate desk material layer for blank chat workspace areas", () => {
-  const source = readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const source = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
 
   assert.match(source, /data-slot="chat-desk-material-layer"/)
   assert.match(source, /data-inkframe-purpose="chat-desk-canvas"/)
@@ -424,7 +424,7 @@ test("chat route exposes a separate desk material layer for blank chat workspace
 })
 
 test("chat desk drawing owns the message list pointer layer while active", () => {
-  const source = readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const source = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
   const messageFrameSource = readFileSync(new URL("../components/message-frame.tsx", import.meta.url), "utf8")
 
   assert.match(source, /chatDeskPointerForwardingRef/)
@@ -443,10 +443,11 @@ test("chat desk drawing owns the message list pointer layer while active", () =>
 })
 
 test("ProductShell icon rail remains fixed and does not push chat or tasks down", () => {
-  const shellSource = readFileSync(new URL("../components/product-shell.tsx", import.meta.url), "utf8")
+  // P2: the rail moved from product-shell.tsx to components/app-rail.tsx
+  const railSource = readFileSync(new URL("../components/app-rail.tsx", import.meta.url), "utf8")
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
 
-  const railClass = shellSource.match(/data-slot="tool-spine"[\s\S]*?className="([^"]*)"/)?.[1] ?? ""
+  const railClass = railSource.match(/data-slot="tool-spine"[\s\S]*?className="([^"]*)"/)?.[1] ?? ""
 
   assert.match(railClass, /(?:^|\s)sk-rail(?:\s|$)/)
   assert.match(railClass, /(?:^|\s)z-20(?:\s|$)/)
@@ -522,7 +523,7 @@ test("MessageFrame active material layer creates exactly one message canvas", ()
 })
 
 test("Chat route defaults messages to static material surfaces but exposes one active foreground surface", () => {
-  const source = readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const source = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
 
   assert.match(source, /activeMaterialMessageId/)
   assert.match(source, /setActiveMaterialMessageId/)
@@ -571,8 +572,8 @@ test("Task surfaces stay static material objects and do not expose drawing contr
 })
 
 test("chat and task routes expose mobile proof roles for later twd checks", () => {
-  const chatSource = readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
-  const taskPageSource = readFileSync(new URL("../app/tasks/page.tsx", import.meta.url), "utf8")
+  const chatSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const taskPageSource = readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8")
   const taskBoardSource = readFileSync(new URL("../components/task-dnd-board.tsx", import.meta.url), "utf8")
   const shellBodySource = readFileSync(new URL("../components/product-shell-body.tsx", import.meta.url), "utf8")
   const taskMaterialStateSource = readFileSync(new URL("../components/task-material-state.tsx", import.meta.url), "utf8")
@@ -600,7 +601,7 @@ test("chat and task routes expose mobile proof roles for later twd checks", () =
 })
 
 test("chat mobile tab strip is horizontally contained instead of widening the header", () => {
-  const chatSource = readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const chatSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
   const tabStripMatch = chatSource.match(
     /<div[\s\S]*?data-inkframe-mobile-role="chat-tab-strip"[\s\S]*?className="([^"]*)"[\s\S]*?>/,
   )
@@ -612,7 +613,7 @@ test("chat mobile tab strip is horizontally contained instead of widening the he
 })
 
 test("chat mobile message and composer surfaces are contained flex regions", () => {
-  const chatSource = readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const chatSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
   const messageFrameSource = readFileSync(new URL("../components/message-frame.tsx", import.meta.url), "utf8")
 
   const messageListMatch = chatSource.match(
@@ -746,7 +747,7 @@ test("ProductShell mobile list drawer has a reachable toggle and coupled open st
 })
 
 test("task board mobile filters, board, cards, list, and overlay are contained", () => {
-  const taskPageSource = readFileSync(new URL("../app/tasks/page.tsx", import.meta.url), "utf8")
+  const taskPageSource = readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8")
   const taskDndBoardSource = readFileSync(new URL("../components/task-dnd-board.tsx", import.meta.url), "utf8")
   const taskBoardSource = readFileSync(new URL("../components/task-board.tsx", import.meta.url), "utf8")
 
@@ -844,8 +845,8 @@ test("task board mobile filters, board, cards, list, and overlay are contained",
 })
 
 test("members and computers sidebar entity lists share contained prefab rows", () => {
-  const membersListSource = readFileSync(new URL("../app/members/members-list.tsx", import.meta.url), "utf8")
-  const computersPageSource = readFileSync(new URL("../app/computers/page.tsx", import.meta.url), "utf8")
+  const membersListSource = readFileSync(new URL("../app/(app)/members/members-list.tsx", import.meta.url), "utf8")
+  const computersPageSource = readFileSync(new URL("../app/(app)/computers/page.tsx", import.meta.url), "utf8")
   const globalCss = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
 
   const membersListMatch = membersListSource.match(
@@ -890,8 +891,8 @@ test("members and computers sidebar entity lists share contained prefab rows", (
 })
 
 test("member and computer detail surfaces expose contained mobile owners", () => {
-  const membersPageSource = readFileSync(new URL("../app/members/page.tsx", import.meta.url), "utf8")
-  const computersPageSource = readFileSync(new URL("../app/computers/page.tsx", import.meta.url), "utf8")
+  const membersPageSource = readFileSync(new URL("../app/(app)/members/page.tsx", import.meta.url), "utf8")
+  const computersPageSource = readFileSync(new URL("../app/(app)/computers/page.tsx", import.meta.url), "utf8")
 
   const memberDetailMatch = membersPageSource.match(
     /function MemberDetail[\s\S]*?<Card[\s\S]*?data-inkframe-mobile-role="member-detail"[\s\S]*?className="([^"]*)"/,
@@ -985,7 +986,7 @@ test("member and computer detail surfaces expose contained mobile owners", () =>
 test("task mobile detail dialog contains material detail, evidence, and review surfaces", () => {
   const taskDialogSource = readFileSync(new URL("../components/task-detail-dialog.tsx", import.meta.url), "utf8")
   const taskMaterialStateSource = readFileSync(new URL("../components/task-material-state.tsx", import.meta.url), "utf8")
-  const taskPageSource = readFileSync(new URL("../app/tasks/page.tsx", import.meta.url), "utf8")
+  const taskPageSource = readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8")
 
   const dialogContentMatch = taskDialogSource.match(
     /<DialogContent[\s\S]*?data-inkframe-mobile-role="task-detail-dialog"[\s\S]*?className="([^"]*)"[\s\S]*?>/,

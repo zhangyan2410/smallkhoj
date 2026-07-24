@@ -4,7 +4,7 @@ import test from "node:test"
 import { NextIntlClientProvider } from "next-intl"
 import { renderToStaticMarkup } from "react-dom/server"
 
-import { ChannelClient } from "../app/chat/[channel]/channel-client"
+import { ChannelClient } from "../app/(app)/chat/[channel]/channel-client"
 import zhMessages from "../messages/zh-CN.json"
 
 type ChannelClientProps = Parameters<typeof ChannelClient>[0]

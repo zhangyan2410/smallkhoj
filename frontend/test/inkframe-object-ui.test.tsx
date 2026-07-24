@@ -232,8 +232,8 @@ test("User-facing product surfaces avoid route-local legacy color blocks", () =>
 })
 
 test("Internal control pages are excluded from the object-desk product surface pass", () => {
-  const daemonSource = readFileSync(new URL("../app/daemon/page.tsx", import.meta.url), "utf8")
-  const controlSources = sourceFilesUnder(join(frontendRoot, "app", "control"))
+  const daemonSource = readFileSync(new URL("../app/(app)/daemon/page.tsx", import.meta.url), "utf8")
+  const controlSources = sourceFilesUnder(join(frontendRoot, "app", "(app)", "control"))
     .map((path) => readFileSync(path, "utf8"))
     .join("\n")
   const objectPrimitiveImports = /@\/components\/inkframe-object-ui|ComputerInkstone|TaskMaterialSurface|MessagePaper|EvidenceSurface/
@@ -261,12 +261,16 @@ test("Login and join entry surfaces keep the dry-paper object language", () => {
 
 test("Inkframe background contract has one shell owner", () => {
   const globalCss = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
-  const shellSource = readFileSync(new URL("../components/product-shell.tsx", import.meta.url), "utf8")
+  // P2: shell chrome (rail + background + engine) moved from product-shell.tsx
+  // into the shared app/(app)/layout.tsx so it mounts once across navigations.
+  const shellSource = readFileSync(new URL("../app/(app)/layout.tsx", import.meta.url), "utf8")
+  const bodySource = readFileSync(new URL("../components/product-shell.tsx", import.meta.url), "utf8")
   const backgroundSource = readFileSync(new URL("../components/inkframe/app-desk-background.tsx", import.meta.url), "utf8")
 
   assert.match(globalCss, /--desk-paper-bg:/)
   assert.match(globalCss, /--sheet-paper-bg:/)
   assert.equal(globalCss.match(/\.sk-paper-field\s*\{/g)?.length ?? 0, 1)
+  // background + engine now live in the (app) shell layout (single mount)
   assert.match(shellSource, /AppDeskBackground/)
   assert.equal(countMatches(shellSource, /<AppDeskBackground\b/g), 1)
   assert.match(shellSource, /data-inkframe-background-owner="product-shell"/)
@@ -275,6 +279,9 @@ test("Inkframe background contract has one shell owner", () => {
   assert.equal(countMatches(shellSource, /<InkMaterialRuntimeScript\b/g), 1)
   assert.match(shellSource, /sm:ml-14/)
   assert.doesNotMatch(shellSource, /className="relative z-10 ml-14/)
+  // the slimmed ProductShell is body-only now: it must NOT mount the background/engine
+  assert.doesNotMatch(bodySource, /AppDeskBackground/, "product-shell.tsx must not mount AppDeskBackground after the P2 lift")
+  assert.doesNotMatch(bodySource, /InkMaterialRuntimeScript/, "product-shell.tsx must not mount InkMaterialRuntimeScript after the P2 lift")
   assert.match(backgroundSource, /data-inkframe-background-owner="product-shell"/)
   assert.match(backgroundSource, /data-inkframe-background-scope="global-desk"/)
   assert.match(backgroundSource, /data-inkframe-resource-owner-kind=\{resource\?\.ownerKind \?\? "app-background"\}/)
@@ -304,13 +311,13 @@ test("Inkframe background contract has one shell owner", () => {
 
 test("User-facing product routes share the ProductShell desk owner without page-local app backgrounds", () => {
   const routeContracts = [
-    { route: "/", page: "../app/page.tsx", shellOwner: "../app/page.tsx" },
-    { route: "/chat", page: "../app/chat/page.tsx", shellOwner: "../app/chat/layout.tsx" },
-    { route: "/chat/[channel]", page: "../app/chat/[channel]/page.tsx", shellOwner: "../app/chat/layout.tsx" },
-    { route: "/tasks", page: "../app/tasks/page.tsx", shellOwner: "../app/tasks/page.tsx" },
-    { route: "/members", page: "../app/members/page.tsx", shellOwner: "../app/members/page.tsx" },
-    { route: "/computers", page: "../app/computers/page.tsx", shellOwner: "../app/computers/page.tsx" },
-    { route: "/settings", page: "../app/settings/page.tsx", shellOwner: "../app/settings/page.tsx" },
+    { route: "/", page: "../app/(app)/page.tsx", shellOwner: "../app/(app)/page.tsx" },
+    { route: "/chat", page: "../app/(app)/chat/page.tsx", shellOwner: "../app/(app)/chat/layout.tsx" },
+    { route: "/chat/[channel]", page: "../app/(app)/chat/[channel]/page.tsx", shellOwner: "../app/(app)/chat/layout.tsx" },
+    { route: "/tasks", page: "../app/(app)/tasks/page.tsx", shellOwner: "../app/(app)/tasks/page.tsx" },
+    { route: "/members", page: "../app/(app)/members/page.tsx", shellOwner: "../app/(app)/members/page.tsx" },
+    { route: "/computers", page: "../app/(app)/computers/page.tsx", shellOwner: "../app/(app)/computers/page.tsx" },
+    { route: "/settings", page: "../app/(app)/settings/page.tsx", shellOwner: "../app/(app)/settings/page.tsx" },
     { route: "/login", page: "../app/login/page.tsx", entrySurface: true },
     { route: "/join/[token]", page: "../app/join/[token]/page.tsx", entrySurface: true },
   ] as const
@@ -327,6 +334,8 @@ test("User-facing product routes share the ProductShell desk owner without page-
   ] as const
   const coveredSources = Array.from(new Set([
     "../components/product-shell.tsx",
+    // P2: the shell chrome now lives in the shared (app) layout
+    "../app/(app)/layout.tsx",
     ...routeContracts.flatMap((contract) => [contract.page, "shellOwner" in contract ? contract.shellOwner : contract.page]),
   ]))
   const productSources = coveredSources
@@ -526,26 +535,26 @@ test("Main page object taxonomy documents and preserves aligned object classes",
     "utf8"
   )
   const chatSources = [
-    readFileSync(new URL("../app/chat/page.tsx", import.meta.url), "utf8"),
-    readFileSync(new URL("../app/chat/[channel]/chat-sidebar.tsx", import.meta.url), "utf8"),
-    readFileSync(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/chat-sidebar.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/message-frame.tsx", import.meta.url), "utf8"),
   ].join("\n")
   const taskSources = [
-    readFileSync(new URL("../app/tasks/page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/task-board.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/task-list-panel.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/task-dnd-board.tsx", import.meta.url), "utf8"),
   ].join("\n")
   const memberSources = [
-    readFileSync(new URL("../app/members/page.tsx", import.meta.url), "utf8"),
-    readFileSync(new URL("../app/members/members-list.tsx", import.meta.url), "utf8"),
-    readFileSync(new URL("../app/members/activity-tab.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/members/page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/members/members-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/members/activity-tab.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/agent-activity-list.tsx", import.meta.url), "utf8"),
   ].join("\n")
   const computerSources = [
-    readFileSync(new URL("../app/computers/page.tsx", import.meta.url), "utf8"),
-    readFileSync(new URL("../app/computers/connect-computer-form.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/computers/page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/computers/connect-computer-form.tsx", import.meta.url), "utf8"),
   ].join("\n")
 
   assert.match(design, /## Main Page Object Taxonomy and Alignment/)

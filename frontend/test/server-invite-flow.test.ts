@@ -15,7 +15,7 @@ test("acceptServerInviteAction activates the Server returned by invite acceptanc
 })
 
 test("invite member dialog is link-first and does not claim email delivery", () => {
-  const source = readFileSync(new URL("../app/members/invite-member-dialog.tsx", import.meta.url), "utf8")
+  const source = readFileSync(new URL("../app/(app)/members/invite-member-dialog.tsx", import.meta.url), "utf8")
 
   assert.match(source, /manualCopyHint/)
   assert.match(source, /generateInviteLink/)
