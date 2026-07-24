@@ -30,6 +30,20 @@ Server-fetched data must be refreshed by `revalidatePath()` after server actions
 or by the existing realtime refresh path when runtime events arrive. Do not copy
 server data into local component state just to filter, sort, or render it.
 
+> **`router.refresh()` vs. the shell chrome:** `router.refresh()` re-fetches the
+> current route's server components but does **not** rebuild layouts higher in the
+> tree. Because the workbench chrome (rail + background) lives in `app/(app)/layout.tsx`,
+> a `router.refresh()` (used by `RealtimeRefresh`, the composer after send, the
+> computer-connect poller) refreshes route data without tearing down the shell — so
+> realtime-driven refreshes no longer cause a visible "workbench reload." Do not move
+> chrome back into a per-page component, or `router.refresh()` will start rebuilding it.
+>
+> **`cache()` keying (server dedupe):** React's `cache(fn)` dedupes by **argument
+> reference identity**, not deep equality. Helpers that take an object built fresh
+> per caller (e.g. `serverApiHeaders()`) will NOT dedupe across layout↔page. Make
+> data-fetch helpers argument-less and resolve auth inside them via `cache()`-wrapped
+> `currentAccount()`/`getSessionToken()`. See `app/chat/chat-server-fetches.ts`.
+
 ### URL state is the source of truth for shareable selection
 
 If a user can bookmark or refresh a view and should keep the same selection, use

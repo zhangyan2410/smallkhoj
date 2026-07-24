@@ -14,18 +14,23 @@ and what it may style.**
 ```
 frontend/
 ├── app/                          # Layer 3 — Pages & routes (App Router)
-│   ├── layout.tsx                #   root layout (html/body/intl/theme)
-│   ├── page.tsx                  #   Home / search dashboard
-│   ├── tasks/                    #   Tasks route (three-column)
-│   ├── members/                  #   Members route
-│   ├── computers/                #   Computers route
-│   ├── chat/                     #   Chat route (channel-client + sidebar)
-│   ├── control/                  #   Control plane / observability
-│   ├── settings/, daemon/, login/, dm/
+│   ├── layout.tsx                #   root layout (html/body/intl/theme) — public, no auth
+│   ├── (app)/                    #   route group (URL-less) — authenticated app shell
+│   │   ├── layout.tsx            #     mounts chrome ONCE: rail + AppDeskBackground +
+│   │   │                          #     InkMaterialRuntimeScript + requireCurrentAccount()
+│   │   ├── page.tsx              #   Home / search dashboard
+│   │   ├── tasks/                #   Tasks route (three-column)
+│   │   ├── members/              #   Members route
+│   │   ├── computers/            #   Computers route
+│   │   ├── chat/                 #   Chat route (channel-client + sidebar)
+│   │   ├── control/              #   Control plane / observability
+│   │   ├── settings/, daemon/, dm/
+│   ├── login/, join/[token]/     #   public routes — OUTSIDE (app), no shell, no auth gate
 │   └── globals.css               #   Layer 0 — tokens & utilities (THE source of truth)
 │
 ├── components/                   # Layer 2 — Product primitives (compose atoms + product semantics)
-│   ├── product-shell.tsx         #   app shell: icon rail + three-column body
+│   ├── app-rail.tsx              #   icon rail (client): active from usePathname(), ServerSwitcher
+│   ├── product-shell.tsx         #   body-only shell: header + three-column body (P2 slimmed)
 │   ├── product-shell-body.tsx    #   client body: resizable list column + main + sidebar
 │   ├── product-ui.tsx            #   StatusPill, RuntimeChip, Toolbar, EmptyState, ProductRow
 │   ├── task-board.tsx            #   task board/list (composes Card, StatusPill)
@@ -88,6 +93,18 @@ semantics down. Promote the concept or pass the resolved class as a prop.
 | A reusable client behavior (resize, debounce, fetch) | `hooks/` |
 | A pure helper / type / API mapping | `lib/` |
 | Something used by exactly one route | inline in that route's page, OR `components/<feature>/` if it grows |
+| A new authenticated route (requires login) | under `app/(app)/` so it inherits the shared shell + auth gate |
+| A new public route (no login, e.g. landing/invite) | directly under `app/` (NOT in `(app)/`) |
+
+### The `(app)` route group
+
+`app/(app)/layout.tsx` is the **authenticated app shell**. Next route groups are
+URL-less, so moving a route into `(app)/` does not change its URL — it only makes
+it inherit this layout, which mounts the workbench chrome (icon rail +
+`AppDeskBackground` + `InkMaterialRuntimeScript`) **once for the whole session** and
+calls `requireCurrentAccount()`. This is why switching pages no longer rebuilds the
+shell. Public surfaces (`/login`, `/join/[token]`) must stay outside `(app)/` or
+they would suddenly require auth and gain a rail they should not have.
 
 ---
 

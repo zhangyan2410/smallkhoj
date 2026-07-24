@@ -181,8 +181,23 @@ relying on brittle class-name matches.
 3. **Hardcoded emerald/amber/sky/rose for status** → bypassed theme. Fixed: status
    tokens. Any new status UI must use `badgeClass()`/`dotClass()`/`StatusPill`.
 4. **Two copies of the icon rail** (ProductShell + channel-client) → diverged styling.
-   Rule: one rail, in ProductShell. Chat must compose it, not rebuild it.
+   Rule: **one rail, in `app/(app)/layout.tsx`** (the `AppRail` component). Chat must
+   compose it, not rebuild it. (Historically the rail lived inside `ProductShell`, but
+   P2 of `07-24-chat-transition-fast-path` lifted it into the shared `(app)` layout so
+   the shell chrome persists across route changes instead of being rebuilt per page.
+   `ProductShell` is now body-only — header + three-column body — and does NOT mount
+   the rail, `AppDeskBackground`, or `InkMaterialRuntimeScript`.)
 5. **No `data-region` on layout panels** → a screenshot or "the box left of the
    input" couldn't be mapped back to source; the agent pointed at the wrong
    element repeatedly. Fixed: chat regions now carry `data-region`. Don't add a
    multi-panel page without tagging its regions (see Layout Region Hooks above).
+6. **Blaming the WebGL ink background for transition jank without measuring**
+   (task `07-24-chat-transition-fast-path`) → an initial diagnosis claimed
+   "WebGL re-init on every route change is the main cost." This was **wrong**: both
+   `AppDeskBackground` and the chat desk `MaterialSurface` default to `mode="static"`,
+   in which mode no `<canvas>` is mounted and the surface effect early-returns before
+   any GL call; the activation event `APP_DESK_MATERIAL_EVENT` has **zero dispatchers**
+   in the frontend, and the chat desk activates only via explicit button clicks.
+   **WebGL cost on the route-transition path is exactly zero.** Before naming a
+   renderer/init as a perf root cause, prove it with a profile or a render-count probe —
+   do not infer it from "there's a canvas component in the tree."
