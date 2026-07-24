@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality Check section + forbidden patterns + browser-evidence gate (./twd) — the check pass validates lint/typecheck/test and visible UI evidence."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify P0 ChatScrollRail and P2 slimmed ProductShell follow layering + single-source rules; confirm the 'one rail' rule is honored in its new location."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify scroll progress is no longer in React state (P0), chat fetches use cache() dedupe without copying server data into local state (P1), and chrome persists across router.refresh (P2)."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Boundary typing for the new cache()-wrapped chat fetch helpers and ChatScrollRail props; P2 route-group move must not introduce type drift."}

@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend guideline index; entry point to the layer/import rules and style tokens referenced across P0/P1/P2."}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Three-layer model + import rules; P2 moves routes into app/(app)/ and adds app-rail.tsx, must respect layer placement. Also the spec to update in Phase 3.3."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component layering + the 'one rail, in ProductShell' rule that P2 changes; also the spec to update in Phase 3.3. P0 ChatScrollRail isolation must follow the single-source/layer rules."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State categories (server/URL/local/durable/route-local); P0 moves scroll progress out of React state into ref/DOM, P1 uses React cache() for server dedupe, P2 makes chrome persist across router.refresh(). Also the spec to update in Phase 3.3."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Code standards, forbidden patterns, and the browser-evidence gate (./twd) required for P0/P1/P2 verification."}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "SSR-safe hooks and reusable client behavior; P0 ChatScrollRail effect (rAF + ResizeObserver + passive scroll) and P2 AppRail usePathname must be SSR-safe."}
