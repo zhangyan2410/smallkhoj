@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
-- **Last Active**: 2026-07-10
+- **Total Sessions**: 11
+- **Last Active**: 2026-07-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~352 | Active |
+| `journal-1.md` | ~391 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-07-29 | Chat transition fast path: scroll rail + fetch dedupe + shell persistence | `5687844`, `b528edf`, `3b486db`, `09b5cb6`, `3a21c32`, `ba644e4`, `c0a037b` | `main` |
 | 10 | 2026-07-10 | Release frontend and compatible daemon package | `35325e9`, `a0da9db`, `1db6868`, `dc1e64f` | `main` |
 | 9 | 2026-06-30 | Server invite join and onboarding hardening | `7c2d2cb` | `main` |
 | 8 | 2026-06-26 | Optimize Trellis workflow | `4759afb`, `98e55b3` | `main` |

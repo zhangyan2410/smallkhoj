@@ -350,3 +350,42 @@ Ignored local Remotion and browser-test artifacts, committed frontend and Trelli
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Chat transition fast path: scroll rail + fetch dedupe + shell persistence
+
+**Date**: 2026-07-29
+**Task**: Chat transition fast path: scroll rail + fetch dedupe + shell persistence
+**Branch**: `main`
+
+### Summary
+
+Fixed the 'loading workbench' flash on page switches. Corrected an initial misdiagnosis (WebGL was wrongly blamed — it defaults to static, zero GL cost on transitions). Real root causes, fixed in three measured layers: P0 — ChatScrollRail rebuilt as self-contained client component so scroll progress no longer enters ChannelClient root state (verified: 25/25 message rows not re-rendered during scroll). P1 — chat fetches deduped via React cache() argument-less helpers (cache() keys on argument reference identity, so passing fresh header objects defeated dedupe; fixed) + redirect fetches only channels+dms (members/dms single-pass 2→1, full redirect 4→2 each; chat-entry requests 14→~8). P2 — workbench chrome (rail + AppDeskBackground + InkMaterialRuntimeScript) lifted into app/(app)/layout.tsx route group so it mounts once per session; ProductShell slimmed to body-only; rail active derived from usePathname (verified: client-side nav / → /tasks → /chat preserved rail+background DOM stamp). Updated 6 test contracts and 3 frontend specs; recorded the WebGL misdiagnosis lesson in component-guidelines.md. All gates green: typecheck 0 errors, lint clean, 148/148 tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5687844` | (see git log) |
+| `b528edf` | (see git log) |
+| `3b486db` | (see git log) |
+| `09b5cb6` | (see git log) |
+| `3a21c32` | (see git log) |
+| `ba644e4` | (see git log) |
+| `c0a037b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
