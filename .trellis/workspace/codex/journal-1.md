@@ -38,3 +38,36 @@ Restored seven gate modes, current Server/auth contracts, allowlisted daemon run
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: Isolate Integration Gate fixture reports
+
+**Date**: 2026-07-29
+**Task**: Isolate Integration Gate fixture reports
+**Branch**: `feat/integration-gate-restoration`
+
+### Summary
+
+Prevented CLI mock tests from publishing fixture latest reports into the operator store, reran the 39-test suite, regenerated real-only TWD evidence, and confirmed one Foundation failure plus six honest not-run states.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6c5183c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
