@@ -10,7 +10,7 @@
 ## Browser Evidence
 
 - Project WebDriver only: repository `./twd`; Playwright was not used.
-- Authenticated tab id: `1617512813`.
+- Final authenticated tab id: `1617512815`.
 - Final tab URL: `http://127.0.0.1:3000/control/gates`.
 - Screenshot: `REAL_integration_gate_restoration_20260729183621-desktop.png`.
 - Text snapshot: `REAL_integration_gate_restoration_20260729183621.snapshot.txt`.
@@ -19,6 +19,8 @@
   - `data-region="integration-gate-summary"` is present;
   - `data-region="integration-gate-modes"` contains exactly seven `.sk-product-row` rows;
   - the real Foundation failure shows `DAEMON_NOT_CONNECTED · daemon-connect`;
+  - exactly one row is failed and the other six modes are explicitly `尚未运行`;
+  - the summary is `0 / 7` passed, so deterministic fixtures cannot masquerade as live passes;
   - duration text is present after the CLI timestamp fix;
   - the safe credential-free CLI example is visible;
   - `/control/integration` navigation is present;
@@ -40,6 +42,7 @@ The connected TWD bridge acknowledged CDP viewport override commands but did not
 - Result: honest failure, `FAIL foundation-only 3/12`.
 - Primary failure: the selected Server tenant did not expose a connected daemon/runtime workspace (`DAEMON_NOT_CONNECTED`); downstream runtime/context/session checks consequently failed.
 - This is preserved in `.runtime/integration-gate/latest/foundation-only.json` and rendered by the UI. The runtime store is intentionally gitignored.
+- The CLI test harness always injects its own temporary `--result-dir` and removes it after the suite. A regression verification proved the 39-test suite leaves the default runtime store absent, preventing mock Chat/DM/Collaboration reports from polluting the operator UI.
 
 ## Automated Quality Evidence
 

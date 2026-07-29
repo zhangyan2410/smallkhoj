@@ -41,6 +41,7 @@ Failures retain category/code/step from the scenario model through persisted JSO
 - New report store has atomic-write and redaction regression tests.
 - New reader has valid/missing/malformed/oversized/stale/running/traversal/redaction tests.
 - New route has source composition, stable-region, legacy-control preservation, and bilingual copy tests.
+- CLI mock tests use a suite-owned temporary result root and clean it afterward; they cannot publish fixture passes into the default operator result store.
 - Runtime-control parsing, exact provider mapping, arbitrary-command rejection, bounded result wait, workspace scope, and Codex wrapper separation are tested.
 - The persistent `(app)` route merge left obsolete local realtime/scroll state declarations; those were removed, and route-path contract tests were updated to the current `(app)` locations.
 
@@ -51,3 +52,5 @@ No `.trellis/spec/` source was changed. The feature-specific executable contract
 ## Known External Limitation
 
 The real smoke selected the authenticated account's explicit Server, while the currently running daemon belonged to a different Server context. The gate therefore returned `FAIL foundation-only 3/12` with `DAEMON_NOT_CONNECTED` and downstream readiness failures. This is an environment/tenant alignment limitation, not an in-repo test failure; the required behavior is to preserve and visualize it honestly.
+
+The final browser evidence consequently shows one real failed Foundation row and six honest `Not run` rows, rather than mock-suite passes.

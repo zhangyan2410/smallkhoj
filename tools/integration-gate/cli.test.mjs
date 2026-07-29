@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
+const isolatedResultRoot = mkdtempSync(join(tmpdir(), 'smallkhoj-gate-cli-suite-'));
+test.after(() => rmSync(isolatedResultRoot, { recursive: true, force: true }));
+
 function startServer(handler) {
   const requests = [];
   const server = http.createServer((req, res) => {
@@ -26,9 +29,12 @@ function startServer(handler) {
 
 function runCli(args, { serverId = 'server-1' } = {}) {
   return new Promise((resolve) => {
-    const scopedArgs = serverId && !args.includes('--server-id')
+    let scopedArgs = serverId && !args.includes('--server-id')
       ? [...args, '--server-id', serverId]
       : args;
+    if (!scopedArgs.includes('--result-dir')) {
+      scopedArgs = [...scopedArgs, '--result-dir', isolatedResultRoot];
+    }
     const child = spawn(process.execPath, ['tools/integration-gate/run.mjs', ...scopedArgs], {
       cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],

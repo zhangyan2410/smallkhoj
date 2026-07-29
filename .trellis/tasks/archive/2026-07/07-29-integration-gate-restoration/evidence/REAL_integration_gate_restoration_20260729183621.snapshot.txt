@@ -35,7 +35,7 @@ TaskRun 控制面
 
 
 已通过
-6 / 7
+0 / 7
 只计算未过期的通过结果
 
 
@@ -95,218 +95,68 @@ daemon · DAEMON_NOT_CONNECTED · daemon-connect
 
 失败Control plane sync{"computers":0}
 
-07/29 18:48:45
-耗时 0sfoundation-only-ms5yp4hf
+07/29 19:22:17
+耗时 0sfoundation-only-ms5zw90d
 
 
-频道单 Agent 回复通过chat-reply-channel-base
+频道单 Agent 回复尚未运行chat-reply-channel-base
 
-11/11 步通过Server · server-1
 
-查看步骤证据
+还没有此模式的运行结果
+运行对应 CLI 后，最近结果会自动出现在这里。
 
+无时间记录
+耗时未形成
 
-通过Foundation preflight{"source":"foundation-preflight"}
 
-通过Chat target ready{"source":"chat-target-ready"}
+频道多 Agent 回复尚未运行chat-reply-channel-group
 
-通过User message sent{"source":"user-message-sent"}
 
-通过User message persisted{"source":"user-message-persisted"}
+还没有此模式的运行结果
+运行对应 CLI 后，最近结果会自动出现在这里。
 
-通过Runtime delivered{"source":"runtime-delivered"}
+无时间记录
+耗时未形成
 
-通过Provider thinking{"source":"provider-thinking"}
 
-通过Tool output{"source":"tool-output"}
+私信回复尚未运行chat-reply-dm
 
-通过Slock send observed{"source":"slock-send-observed"}
 
-通过Runtime idle{"source":"runtime-idle"}
+还没有此模式的运行结果
+运行对应 CLI 后，最近结果会自动出现在这里。
 
-通过Reply persisted{"source":"reply-persisted"}
+无时间记录
+耗时未形成
 
-通过Reply visible{"source":"reply-visible"}
 
-07/29 18:27:52
-耗时 0schat-gate-ms5xy9ld
+协作 V1 · 委派交付尚未运行collab-channel-v1
 
 
-频道多 Agent 回复通过chat-reply-channel-group
+还没有此模式的运行结果
+运行对应 CLI 后，最近结果会自动出现在这里。
 
-11/11 步通过Server · server-1
+无时间记录
+耗时未形成
 
-查看步骤证据
 
+协作 V2 · Reviewer尚未运行collab-channel-v2
 
-通过Foundation preflight{"source":"foundation-preflight"}
 
-通过Chat target ready{"source":"chat-target-ready"}
+还没有此模式的运行结果
+运行对应 CLI 后，最近结果会自动出现在这里。
 
-通过User message sent{"source":"user-message-sent"}
+无时间记录
+耗时未形成
 
-通过User message persisted{"source":"user-message-persisted"}
 
-通过Runtime delivered{"source":"runtime-delivered"}
+协作 V3 · Task 工作流尚未运行collab-channel-v3
 
-通过Provider thinking{"source":"provider-thinking"}
 
-通过Tool output{"source":"tool-output"}
+还没有此模式的运行结果
+运行对应 CLI 后，最近结果会自动出现在这里。
 
-通过Slock send observed{"source":"slock-send-observed"}
-
-通过Runtime idle{"source":"runtime-idle"}
-
-通过Reply persisted{"source":"reply-persisted"}
-
-通过Reply visible{"source":"reply-visible"}
-
-07/29 18:27:52
-耗时 0schat-gate-ms5xy9nt
-
-
-私信回复通过chat-reply-dm
-
-11/11 步通过Server · server-1
-
-查看步骤证据
-
-
-通过Foundation preflight{"source":"foundation-preflight"}
-
-通过Chat target ready{"source":"chat-target-ready"}
-
-通过User message sent{"source":"user-message-sent"}
-
-通过User message persisted{"source":"user-message-persisted"}
-
-通过Runtime delivered{"source":"runtime-delivered"}
-
-通过Provider thinking{"source":"provider-thinking"}
-
-通过Tool output{"source":"tool-output"}
-
-通过Slock send observed{"source":"slock-send-observed"}
-
-通过Runtime idle{"source":"runtime-idle"}
-
-通过Reply persisted{"source":"reply-persisted"}
-
-通过Reply visible{"source":"reply-visible"}
-
-07/29 18:27:52
-耗时 0schat-gate-ms5xy9qa
-
-
-协作 V1 · 委派交付通过collab-channel-v1
-
-11/11 步通过Server · server-1
-
-查看步骤证据
-
-
-通过Foundation preflight{"source":"foundation-preflight"}
-
-通过Collaboration target ready{"source":"collab-target-ready"}
-
-通过Human request sent{"source":"human-request-sent"}
-
-通过Human request persisted{"source":"human-request-persisted"}
-
-通过Architect delivered{"source":"architect-delivered"}
-
-通过Architect delegated{"source":"architect-delegated"}
-
-通过Worker delivered{"source":"worker-delivered"}
-
-通过Worker tool evidence{"source":"worker-tool-evidence"}
-
-通过Worker artifact verified{"source":"worker-artifact-verified"}
-
-通过Worker result visible{"source":"worker-result-visible"}
-
-通过Architect final visible{"source":"architect-final-visible"}
-
-07/29 18:27:52
-耗时 0scollab-gate-ms5xy9sn
-
-
-协作 V2 · Reviewer通过collab-channel-v2
-
-13/13 步通过Server · server-1
-
-查看步骤证据
-
-
-通过Foundation preflight{"source":"foundation-preflight"}
-
-通过Collaboration target ready{"source":"collab-target-ready"}
-
-通过Human request sent{"source":"human-request-sent"}
-
-通过Human request persisted{"source":"human-request-persisted"}
-
-通过Architect delivered{"source":"architect-delivered"}
-
-通过Architect delegated{"source":"architect-delegated"}
-
-通过Worker delivered{"source":"worker-delivered"}
-
-通过Worker tool evidence{"source":"worker-tool-evidence"}
-
-通过Worker artifact verified{"source":"worker-artifact-verified"}
-
-通过Worker result visible{"source":"worker-result-visible"}
-
-通过Architect final visible{"source":"architect-final-visible"}
-
-通过Reviewer delivered{"source":"reviewer-delivered"}
-
-通过Reviewer validation visible{"source":"reviewer-validation-visible"}
-
-07/29 18:27:52
-耗时 0scollab-gate-ms5xy9us
-
-
-协作 V3 · Task 工作流通过collab-channel-v3
-
-15/15 步通过Server · server-1
-
-查看步骤证据
-
-
-通过Foundation preflight{"source":"foundation-preflight"}
-
-通过Collaboration target ready{"source":"collab-target-ready"}
-
-通过Human request sent{"source":"human-request-sent"}
-
-通过Human request persisted{"source":"human-request-persisted"}
-
-通过Architect delivered{"source":"architect-delivered"}
-
-通过Architect delegated{"source":"architect-delegated"}
-
-通过Worker delivered{"source":"worker-delivered"}
-
-通过Worker tool evidence{"source":"worker-tool-evidence"}
-
-通过Worker artifact verified{"source":"worker-artifact-verified"}
-
-通过Worker result visible{"source":"worker-result-visible"}
-
-通过Architect final visible{"source":"architect-final-visible"}
-
-通过Task created{"source":"task-created"}
-
-通过Task claimed or started{"source":"task-claimed-or-started"}
-
-通过Task review visible{"source":"task-review-visible"}
-
-通过Task source linked{"source":"task-source-linked"}
-
-07/29 18:27:52
-耗时 0scollab-gate-ms5xy9wx
+无时间记录
+耗时未形成
 
 
 如何运行
