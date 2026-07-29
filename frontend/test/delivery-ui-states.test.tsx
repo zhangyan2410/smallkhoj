@@ -85,9 +85,9 @@ test("route loading and error states expose live semantics and a working retry",
 test("critical routes and heavy boards use strict loading/error and lazy boundaries", async () => {
   const loadingSource = await readFile(new URL("../app/loading.tsx", import.meta.url), "utf8")
   const errorSource = await readFile(new URL("../app/error.tsx", import.meta.url), "utf8")
-  const tasksSource = await readFile(new URL("../app/tasks/page.tsx", import.meta.url), "utf8")
+  const tasksSource = await readFile(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8")
   const taskRouteSource = await readFile(new URL("../components/task-route-projection.tsx", import.meta.url), "utf8")
-  const channelSource = await readFile(new URL("../app/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const channelSource = await readFile(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
   const lazyBoardSource = await readFile(new URL("../components/task-dnd-board-lazy.tsx", import.meta.url), "utf8")
   const taskSurfaceSource = `${tasksSource}\n${taskRouteSource}`
 

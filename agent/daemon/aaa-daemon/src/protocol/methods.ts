@@ -39,6 +39,9 @@ export const DaemonMethods = {
   /** Retrieve daemon log buffer */
   Logs: 'daemon/logs',
 
+  /** Execute an allowlisted provider context/usage control action */
+  RuntimeControl: 'daemon/runtime_control',
+
   // ── Message operations (Slock-specific) ────────────────
 
   /** Send a message to a channel/DM */

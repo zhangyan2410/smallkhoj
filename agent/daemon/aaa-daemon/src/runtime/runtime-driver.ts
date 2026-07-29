@@ -24,6 +24,8 @@ export interface RuntimeSendOptions {
    */
   sessionId?: string | null;
   sessionScopeKey?: string;
+  /** Bypass the normal Slock prompt wrapper for daemon-owned allowlisted commands. */
+  control?: boolean;
 }
 
 export interface ManagedRuntimeDriver {
@@ -42,4 +44,5 @@ export interface ManagedRuntimeDriver {
   on(event: 'exit', listener: (event: RuntimeExitEvent) => void): this;
   on(event: 'error', listener: (err: Error) => void): this;
   on(event: string, listener: (...args: any[]) => void): this;
+  off(event: string, listener: (...args: any[]) => void): this;
 }

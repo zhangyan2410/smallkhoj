@@ -246,11 +246,14 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
       const activeSessionId = await this.ensureSession(options);
       const bridge = this.bridge;
       if (!bridge) throw new Error('Codex ACP bridge is not started');
-      const prompt = buildCodexPrompt(this.systemPrompt || buildCodexAcpSlockPrompt(this.options), text);
+      const prompt = options?.control
+        ? text
+        : buildCodexPrompt(this.systemPrompt || buildCodexAcpSlockPrompt(this.options), text);
       this.emit('message_sent', {
         type: 'codex_acp_prompt',
         session_id: activeSessionId,
         sessionScopeKey: options?.sessionScopeKey,
+        control: options?.control === true,
         promptBytes: Buffer.byteLength(prompt, 'utf-8'),
       });
       const result = await bridge.prompt(activeSessionId, prompt);

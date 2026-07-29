@@ -440,7 +440,9 @@ export function ChannelClient({
   const chatDeskPointerForwardingRef = useRef(false)
   const messageEndRef = useRef<HTMLDivElement>(null)
   const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
-
+  const realtimeCatchUpTimerRef = useRef<number | null>(null)
+  const fileRequestGenerationRef = useRef(0)
+  const fileRequestAbortRef = useRef<AbortController | null>(null)
   const storedThreadWidth = useSyncExternalStore(
     subscribePanelWidthStore,
     () => readStoredPanelWidth(THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_DEFAULT_WIDTH, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),

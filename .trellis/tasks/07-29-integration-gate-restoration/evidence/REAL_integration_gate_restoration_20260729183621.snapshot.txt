@@ -1,0 +1,321 @@
+
+
+
+Z
+
+
+Z
+
+zy-ean
+账号
+
+
+当前 Server · 拥有者
+zy-ean的服务器创建 Server
+
+[INPUT #create-server-name name=name type=text "新 Server 名称"]
+退出登录
+
+
+
+
+
+
+SmallKhoj
+可重复集成门禁
+不用改前后端代码即可运行的真实链路测试；这里汇总七种模式最近一次的安全持久化结果。
+TaskRun 控制面
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+
+
+
+
+
+已通过
+6 / 7
+只计算未过期的通过结果
+
+
+
+失败
+1
+优先查看失败分类与步骤
+
+
+
+需要关注
+1
+失败、损坏或过期结果
+
+
+
+结果存储
+主机本地
+默认 .runtime/integration-gate
+
+
+七项可重复集成门禁
+每项展示最近一次持久化结果；页面只读，不会触发测试，也不会读取任意文件路径。
+
+
+
+基础运行环境失败foundation-only
+
+3/12 步通过Server · fbd1b4b1-8c0a-4fd5-aed8-407363be0c10
+
+daemon · DAEMON_NOT_CONNECTED · daemon-connect
+
+查看步骤证据
+
+
+通过Login/session ready{"authenticated":true}
+
+通过Frontend ready{"frontendOnline":true}
+
+通过Backend ready{"backendOnline":true}
+
+失败Daemon connected{"onlineComputers":0,"computers":0}
+
+失败MiniMax Claude Code runtime available{"minimaxRuntimeComputers":0}
+
+失败Runtime reuse candidate found{"candidates":0}
+
+失败Limit preflight{"message":"RUNTIME_LIMIT"}
+
+失败Context preflight{"source":"missing runtime_control.inspect_context evidence"}
+
+失败Compact if needed{"thresholdPercent":50,"contextPercent":"","source":""}
+
+失败Runtime warmup ready{"runningCandidates":0,"runtimeHealth":{"source":"daemon.logs","entries":2000}}
+
+失败Session/resume ready{"sessionCandidates":0}
+
+失败Control plane sync{"computers":0}
+
+07/29 18:48:45
+耗时 0sfoundation-only-ms5yp4hf
+
+
+频道单 Agent 回复通过chat-reply-channel-base
+
+11/11 步通过Server · server-1
+
+查看步骤证据
+
+
+通过Foundation preflight{"source":"foundation-preflight"}
+
+通过Chat target ready{"source":"chat-target-ready"}
+
+通过User message sent{"source":"user-message-sent"}
+
+通过User message persisted{"source":"user-message-persisted"}
+
+通过Runtime delivered{"source":"runtime-delivered"}
+
+通过Provider thinking{"source":"provider-thinking"}
+
+通过Tool output{"source":"tool-output"}
+
+通过Slock send observed{"source":"slock-send-observed"}
+
+通过Runtime idle{"source":"runtime-idle"}
+
+通过Reply persisted{"source":"reply-persisted"}
+
+通过Reply visible{"source":"reply-visible"}
+
+07/29 18:27:52
+耗时 0schat-gate-ms5xy9ld
+
+
+频道多 Agent 回复通过chat-reply-channel-group
+
+11/11 步通过Server · server-1
+
+查看步骤证据
+
+
+通过Foundation preflight{"source":"foundation-preflight"}
+
+通过Chat target ready{"source":"chat-target-ready"}
+
+通过User message sent{"source":"user-message-sent"}
+
+通过User message persisted{"source":"user-message-persisted"}
+
+通过Runtime delivered{"source":"runtime-delivered"}
+
+通过Provider thinking{"source":"provider-thinking"}
+
+通过Tool output{"source":"tool-output"}
+
+通过Slock send observed{"source":"slock-send-observed"}
+
+通过Runtime idle{"source":"runtime-idle"}
+
+通过Reply persisted{"source":"reply-persisted"}
+
+通过Reply visible{"source":"reply-visible"}
+
+07/29 18:27:52
+耗时 0schat-gate-ms5xy9nt
+
+
+私信回复通过chat-reply-dm
+
+11/11 步通过Server · server-1
+
+查看步骤证据
+
+
+通过Foundation preflight{"source":"foundation-preflight"}
+
+通过Chat target ready{"source":"chat-target-ready"}
+
+通过User message sent{"source":"user-message-sent"}
+
+通过User message persisted{"source":"user-message-persisted"}
+
+通过Runtime delivered{"source":"runtime-delivered"}
+
+通过Provider thinking{"source":"provider-thinking"}
+
+通过Tool output{"source":"tool-output"}
+
+通过Slock send observed{"source":"slock-send-observed"}
+
+通过Runtime idle{"source":"runtime-idle"}
+
+通过Reply persisted{"source":"reply-persisted"}
+
+通过Reply visible{"source":"reply-visible"}
+
+07/29 18:27:52
+耗时 0schat-gate-ms5xy9qa
+
+
+协作 V1 · 委派交付通过collab-channel-v1
+
+11/11 步通过Server · server-1
+
+查看步骤证据
+
+
+通过Foundation preflight{"source":"foundation-preflight"}
+
+通过Collaboration target ready{"source":"collab-target-ready"}
+
+通过Human request sent{"source":"human-request-sent"}
+
+通过Human request persisted{"source":"human-request-persisted"}
+
+通过Architect delivered{"source":"architect-delivered"}
+
+通过Architect delegated{"source":"architect-delegated"}
+
+通过Worker delivered{"source":"worker-delivered"}
+
+通过Worker tool evidence{"source":"worker-tool-evidence"}
+
+通过Worker artifact verified{"source":"worker-artifact-verified"}
+
+通过Worker result visible{"source":"worker-result-visible"}
+
+通过Architect final visible{"source":"architect-final-visible"}
+
+07/29 18:27:52
+耗时 0scollab-gate-ms5xy9sn
+
+
+协作 V2 · Reviewer通过collab-channel-v2
+
+13/13 步通过Server · server-1
+
+查看步骤证据
+
+
+通过Foundation preflight{"source":"foundation-preflight"}
+
+通过Collaboration target ready{"source":"collab-target-ready"}
+
+通过Human request sent{"source":"human-request-sent"}
+
+通过Human request persisted{"source":"human-request-persisted"}
+
+通过Architect delivered{"source":"architect-delivered"}
+
+通过Architect delegated{"source":"architect-delegated"}
+
+通过Worker delivered{"source":"worker-delivered"}
+
+通过Worker tool evidence{"source":"worker-tool-evidence"}
+
+通过Worker artifact verified{"source":"worker-artifact-verified"}
+
+通过Worker result visible{"source":"worker-result-visible"}
+
+通过Architect final visible{"source":"architect-final-visible"}
+
+通过Reviewer delivered{"source":"reviewer-delivered"}
+
+通过Reviewer validation visible{"source":"reviewer-validation-visible"}
+
+07/29 18:27:52
+耗时 0scollab-gate-ms5xy9us
+
+
+协作 V3 · Task 工作流通过collab-channel-v3
+
+15/15 步通过Server · server-1
+
+查看步骤证据
+
+
+通过Foundation preflight{"source":"foundation-preflight"}
+
+通过Collaboration target ready{"source":"collab-target-ready"}
+
+通过Human request sent{"source":"human-request-sent"}
+
+通过Human request persisted{"source":"human-request-persisted"}
+
+通过Architect delivered{"source":"architect-delivered"}
+
+通过Architect delegated{"source":"architect-delegated"}
+
+通过Worker delivered{"source":"worker-delivered"}
+
+通过Worker tool evidence{"source":"worker-tool-evidence"}
+
+通过Worker artifact verified{"source":"worker-artifact-verified"}
+
+通过Worker result visible{"source":"worker-result-visible"}
+
+通过Architect final visible{"source":"architect-final-visible"}
+
+通过Task created{"source":"task-created"}
+
+通过Task claimed or started{"source":"task-claimed-or-started"}
+
+通过Task review visible{"source":"task-review-visible"}
+
+通过Task source linked{"source":"task-source-linked"}
+
+07/29 18:27:52
+耗时 0scollab-gate-ms5xy9wx
+
+
+如何运行
+页面只读。命令在项目根目录执行，凭据通过环境配置提供。
+
+
+安全示例node tools/integration-gate/run.mjs --mode foundation-only --server-id <server-id>
+
+结果目录/Users/code/project/smallkhoj-integration-gate-restoration/.runtime/integration-gate
+
+时效约定
+超过 24 小时的完成结果会标记为过期。独立容器若未挂载同一结果目录，会诚实显示“尚未运行”。

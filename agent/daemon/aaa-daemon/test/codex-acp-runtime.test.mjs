@@ -199,6 +199,29 @@ test('codex acp runtime resolves npx.cmd on Windows PATH', () => {
   }
 });
 
+test('codex acp runtime sends allowlisted control slash prompts without Slock wrapper', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-codex-acp-control-'));
+  const marker = join(root, 'marker.json');
+  const { driver } = makeDriver(root, marker);
+  const events = [];
+  driver.on('stream_event', event => events.push(event));
+
+  try {
+    driver.start();
+    driver.sendUserMessage('/compact', { control: true });
+
+    await waitFor(() => events.some(event => event.type === 'result'));
+    const record = JSON.parse(readFileSync(marker, 'utf-8'));
+    assert.equal(record.prompts[0].text, '/compact');
+    assert.equal(record.prompts[0].text.startsWith('/'), true);
+    assert.equal(record.prompts[0].text.includes('Current Slock Event'), false);
+  } finally {
+    driver.stop();
+    await waitFor(() => !driver.pid).catch(() => {});
+    if (existsSync(root)) rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('codex acp runtime queues one prompt while another is in flight', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-codex-acp-queue-'));
   const marker = join(root, 'marker.json');

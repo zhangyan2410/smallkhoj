@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -25,6 +26,7 @@ import {
   isRuntimeActionableEventType,
   normalizeRuntimeIncomingMessage,
   parseDaemonControlCommand,
+  parseDaemonRuntimeControlCommand,
   sanitizeRuntimeCommandPreview,
   selectRuntimeSessionScope,
 } from '../dist/daemon/daemon.js';
@@ -1033,6 +1035,111 @@ test('websocket helpers classify daemon control commands', () => {
       workspaceId: 'workspace-rpc',
     },
   });
+});
+
+test('daemon runtime control commands are allowlisted and map to exact provider slash commands', async () => {
+  assert.deepEqual(parseDaemonRuntimeControlCommand({
+    type: 'runtime_control',
+    action: 'inspect_context',
+    agentId: 'agent-123',
+    wait_for_result: true,
+    timeout_ms: '2500',
+  }), {
+    action: 'inspect_context',
+    agentId: 'agent-123',
+    waitForResult: true,
+    timeoutMs: 2500,
+  });
+  assert.equal(parseDaemonRuntimeControlCommand({
+    type: 'runtime_control',
+    action: '/clear',
+    agentId: 'agent-123',
+  }), null);
+
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'http://127.0.0.1:9',
+    proxyPort: 0,
+  });
+  const sent = [];
+  daemon.runtimes.set('agent-123', {
+    agentId: 'agent-123',
+    runtime: 'claude_code',
+    driver: {
+      sendUserMessage(text, options) {
+        sent.push({ text, options });
+        return true;
+      },
+      get busy() { return false; },
+      get queuedMessageCount() { return 0; },
+      get pid() { return 123; },
+      get sessionId() { return 'session-123'; },
+    },
+  });
+
+  const result = await daemon.executeRuntimeControlCommand({
+    action: 'inspect_context',
+    agentId: 'agent-123',
+  });
+
+  assert.deepEqual(sent, [{ text: '/context', options: { control: true } }]);
+  assert.equal(result.accepted, true);
+  assert.equal(result.slashCommand, '/context');
+});
+
+test('daemon JSON-RPC waits for allowlisted runtime control result text', async () => {
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'http://127.0.0.1:9',
+    proxyPort: 0,
+  });
+
+  class FakeRuntimeDriver extends EventEmitter {
+    get busy() { return false; }
+    get queuedMessageCount() { return 0; }
+    get pid() { return 123; }
+    get sessionId() { return 'session-123'; }
+    start() {}
+    stop() {}
+    killUnresponsive() {}
+    sendUserMessage(text, options) {
+      assert.equal(text, '/context');
+      assert.deepEqual(options, { control: true });
+      setImmediate(() => {
+        this.emit('stream_event', {
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'Context window: 41% used\n' }] },
+        });
+        this.emit('stream_event', { type: 'result', subtype: 'success' });
+      });
+      return true;
+    }
+  }
+
+  daemon.runtimes.set('agent-123', {
+    agentId: 'agent-123',
+    runtime: 'claude_code',
+    driver: new FakeRuntimeDriver(),
+  });
+
+  const response = await daemon.clientHandler.handleMessage({
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'daemon/runtime_control',
+    params: {
+      action: 'inspect_context',
+      agentId: 'agent-123',
+      waitForResult: true,
+      timeoutMs: 1_000,
+    },
+  });
+
+  assert.equal(response.id, 7);
+  assert.equal(response.error, undefined);
+  assert.equal(response.result.accepted, true);
+  assert.equal(response.result.delivered, true);
+  assert.equal(response.result.slashCommand, '/context');
+  assert.equal(response.result.output, 'Context window: 41% used');
 });
 
 test('claude runtime sends stream-json user messages with captured session id', () => {

@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "Verify allowlisted daemon control, provider-specific direct commands, bounded waits, and no raw slash passthrough."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify fail-closed Server configuration and actionable structured failures."}
+{"file": ".trellis/spec/backend/event-delivery-contracts.md", "reason": "Verify marker isolation and Chat/DM/Collaboration evidence relationships."}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Verify /control/gates stays in the persistent authenticated route group."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify ProductShell and shared product primitives own the UI vocabulary."}
+{"file": ".trellis/spec/frontend/product-ui-style.md", "reason": "Verify the page uses existing water/sand/ink tokens and accessible state labels."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify lint, typecheck, test, build, real ./twd DOM assertions, and screenshot evidence."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify hostile report JSON is size/schema/path bounded and projected to typed display data."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify report store → bounded reader → server-rendered UI flow and honest failure propagation."}

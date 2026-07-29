@@ -130,6 +130,26 @@ export interface DaemonControlCommand {
   };
 }
 
+export interface DaemonRuntimeControlCommand {
+  action: 'inspect_context' | 'compact' | 'usage_status';
+  agentId: string;
+  workspaceId?: string;
+  waitForResult?: boolean;
+  timeoutMs?: number;
+}
+
+export interface DaemonRuntimeControlResult {
+  accepted: boolean;
+  delivered: boolean;
+  action: DaemonRuntimeControlCommand['action'];
+  agentId: string;
+  runtime?: string;
+  slashCommand?: string;
+  reason?: string;
+  output?: string;
+  error?: string;
+}
+
 interface RuntimeRecord {
   agentId: string;
   workspaceId?: string;
@@ -285,6 +305,12 @@ export class DaemonCore extends EventEmitter {
   getLogBuffer(): LogEntry[] { return [...this.logBuffer]; }
 
   deliverRuntimeMessage(input: unknown, source = 'daemon'): boolean {
+    const runtimeControlCommand = parseDaemonRuntimeControlCommand(input);
+    if (runtimeControlCommand) {
+      void this.executeRuntimeControlCommand(runtimeControlCommand);
+      return true;
+    }
+
     const controlCommand = parseDaemonControlCommand(input);
     if (controlCommand) {
       void this.handleControlCommand(controlCommand);
@@ -1443,6 +1469,69 @@ export class DaemonCore extends EventEmitter {
     }
   }
 
+  async executeRuntimeControlCommand(command: DaemonRuntimeControlCommand): Promise<DaemonRuntimeControlResult> {
+    const runtime = this.runtimes.get(command.agentId);
+    if (!runtime || (command.workspaceId && command.workspaceId !== runtime.workspaceId)) {
+      const result: DaemonRuntimeControlResult = {
+        accepted: false,
+        delivered: false,
+        action: command.action,
+        agentId: command.agentId,
+        reason: runtime ? 'runtime_workspace_mismatch' : 'runtime_not_running',
+      };
+      this.emit('runtime_control', result);
+      return result;
+    }
+
+    const slashCommand = runtimeControlSlashCommand(runtime.runtime, command.action);
+    if (!slashCommand) {
+      const result: DaemonRuntimeControlResult = {
+        accepted: false,
+        delivered: false,
+        action: command.action,
+        agentId: command.agentId,
+        runtime: runtime.runtime,
+        reason: 'runtime_control_unsupported',
+      };
+      this.emit('runtime_control', result);
+      return result;
+    }
+
+    const baseResult: DaemonRuntimeControlResult = {
+      accepted: true,
+      delivered: false,
+      action: command.action,
+      agentId: command.agentId,
+      runtime: runtime.runtime,
+      slashCommand,
+    };
+    const resultPromise = command.waitForResult
+      ? collectRuntimeControlResult(runtime.driver, baseResult, command.timeoutMs)
+      : null;
+    let delivered = false;
+    try {
+      delivered = runtime.driver.sendUserMessage(slashCommand, { control: true });
+    } catch (error) {
+      const result = {
+        ...baseResult,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      this.emit('runtime_control', result);
+      return result;
+    }
+    const result: DaemonRuntimeControlResult = { ...baseResult, delivered };
+    this.emit('runtime_control', result);
+    this.emitRuntimeTrace({
+      type: 'runtime_control',
+      agentId: command.agentId,
+      action: command.action,
+      runtime: runtime.runtime,
+      delivered,
+      sessionId: runtime.driver.sessionId,
+    });
+    return resultPromise ? resultPromise.then((settled) => ({ ...settled, delivered })) : result;
+  }
+
   private startRuntimeStallWatchdog(runtime: RuntimeRecord): void {
     this.stopRuntimeStallWatchdog(runtime);
     const timeoutMs = this.config.runtimeStallTimeoutMs;
@@ -2256,6 +2345,93 @@ export function parseDaemonControlCommand(input: unknown): DaemonControlCommand 
     command.config = runtimeConfig;
   }
   return command;
+}
+
+export function parseDaemonRuntimeControlCommand(input: unknown): DaemonRuntimeControlCommand | null {
+  const value = unwrapRuntimeControlPayload(input);
+  if (!isRecord(value)) return null;
+
+  const action = firstString(value.action, value.command, value.commandType);
+  if (action !== 'inspect_context' && action !== 'compact' && action !== 'usage_status') return null;
+  const agentId = firstString(value.agentId, value.agent_id, value.memberId, value.member_id);
+  if (!agentId) return null;
+
+  const command: DaemonRuntimeControlCommand = { action, agentId };
+  assignDefined(command, 'workspaceId', firstString(value.workspaceId, value.workspace_id));
+  if (value.waitForResult === true || value.wait_for_result === true) command.waitForResult = true;
+  const timeoutMs = Number(value.timeoutMs ?? value.timeout_ms);
+  if (Number.isFinite(timeoutMs) && timeoutMs >= 100 && timeoutMs <= 120_000) command.timeoutMs = timeoutMs;
+  return command;
+}
+
+function unwrapRuntimeControlPayload(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  const type = firstString(input.type, input.eventType);
+  if ((type === 'runtime_control' || type === 'daemon.runtime_control') && isRecord(input.command)) {
+    return unwrapRuntimeControlPayload(input.command);
+  }
+  if (type === 'runtime_control' || type === 'daemon.runtime_control') return input;
+  const method = firstString(input.method);
+  if (method === 'daemon.runtime_control' || method === 'daemon/runtime_control' || method === 'runtime_control') {
+    return unwrapRuntimeControlPayload(input.params);
+  }
+  if (isRecord(input.params)) return unwrapRuntimeControlPayload(input.params);
+  if (isRecord(input.event)) return unwrapRuntimeControlPayload(input.event);
+  return input;
+}
+
+function runtimeControlSlashCommand(runtime: string, action: DaemonRuntimeControlCommand['action']): string | null {
+  if (runtime === 'claude_code') {
+    if (action === 'inspect_context') return '/context';
+    if (action === 'compact') return '/compact';
+    if (action === 'usage_status') return '/usage';
+  }
+  if (runtime === 'codex' || runtime === 'codex_acp') {
+    if (action === 'compact') return '/compact';
+    if (action === 'inspect_context' || action === 'usage_status') return '/status';
+  }
+  return null;
+}
+
+function collectRuntimeControlResult(
+  driver: ManagedRuntimeDriver,
+  baseResult: DaemonRuntimeControlResult,
+  timeoutMs = 30_000,
+): Promise<DaemonRuntimeControlResult> {
+  const chunks: string[] = [];
+  return new Promise((resolveResult) => {
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      driver.off('stream_event', onStreamEvent);
+    };
+    const settle = (patch: Partial<DaemonRuntimeControlResult> = {}) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolveResult({
+        ...baseResult,
+        output: chunks.join('').trim() || undefined,
+        ...patch,
+      });
+    };
+    const boundedTimeout = Math.min(120_000, Math.max(100, timeoutMs));
+    const timer = setTimeout(() => settle({ reason: 'runtime_control_timeout' }), boundedTimeout);
+    timer.unref?.();
+    const onStreamEvent = (event: unknown) => {
+      if (!isRecord(event)) return;
+      if (event.type === 'assistant') {
+        for (const block of getContentBlocks(event)) {
+          if (block.type === 'text' && typeof block.text === 'string') chunks.push(block.text);
+        }
+      }
+      if (event.type === 'result') {
+        const isError = event.is_error === true || event.subtype === 'error';
+        settle(isError ? { error: firstString(event.error, event.message) ?? 'runtime_control_failed' } : {});
+      }
+    };
+    driver.on('stream_event', onStreamEvent);
+  });
 }
 
 function unwrapControlPayload(input: unknown): unknown {

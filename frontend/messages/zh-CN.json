@@ -457,6 +457,72 @@
     "featureFlagsPlanned": "功能开关待规划",
     "destructiveActionsRequireConfirm": "破坏性操作需要确认"
   },
+  "integrationGate": {
+    "title": "可重复集成门禁",
+    "description": "不用改前后端代码即可运行的真实链路测试；这里汇总七种模式最近一次的安全持久化结果。",
+    "taskRunControl": "TaskRun 控制面",
+    "listTitle": "七项可重复集成门禁",
+    "listDescription": "每项展示最近一次持久化结果；页面只读，不会触发测试，也不会读取任意文件路径。",
+    "stepsPassed": "{passed}/{total} 步通过",
+    "warningCount": "{count} 个警告",
+    "serverTarget": "Server · {serverId}",
+    "viewEvidence": "查看步骤证据",
+    "startedAt": "开始于 {time}",
+    "noTimestamp": "无时间记录",
+    "duration": "耗时 {duration}",
+    "durationMissing": "耗时未形成",
+    "modes": {
+      "foundation": "基础运行环境",
+      "channelBase": "频道单 Agent 回复",
+      "channelGroup": "频道多 Agent 回复",
+      "dm": "私信回复",
+      "collabV1": "协作 V1 · 委派交付",
+      "collabV2": "协作 V2 · Reviewer",
+      "collabV3": "协作 V3 · Task 工作流"
+    },
+    "states": {
+      "missing": "尚未运行",
+      "invalid": "结果不可用",
+      "stale": "结果已过期",
+      "running": "运行中",
+      "passed": "通过",
+      "failed": "失败"
+    },
+    "stepStates": {
+      "passed": "通过",
+      "failed": "失败",
+      "warning": "警告",
+      "running": "运行中",
+      "unknown": "未知"
+    },
+    "summary": {
+      "passed": "已通过",
+      "passedDetail": "只计算未过期的通过结果",
+      "failed": "失败",
+      "failedDetail": "优先查看失败分类与步骤",
+      "attention": "需要关注",
+      "attentionDetail": "失败、损坏或过期结果",
+      "store": "结果存储",
+      "hostLocal": "主机本地",
+      "storeDetail": "默认 .runtime/integration-gate"
+    },
+    "empty": {
+      "missingTitle": "还没有此模式的运行结果",
+      "invalidTitle": "无法安全读取此结果",
+      "tooLarge": "报告超过安全读取上限，请检查生成过程。",
+      "malformed": "JSON 或最小报告结构无效。",
+      "unreadable": "当前前端进程无法读取结果存储。",
+      "notRun": "运行对应 CLI 后，最近结果会自动出现在这里。"
+    },
+    "sidebar": {
+      "title": "如何运行",
+      "description": "页面只读。命令在项目根目录执行，凭据通过环境配置提供。",
+      "safeExample": "安全示例",
+      "resultDirectory": "结果目录",
+      "freshness": "时效约定",
+      "freshnessDescription": "超过 24 小时的完成结果会标记为过期。独立容器若未挂载同一结果目录，会诚实显示“尚未运行”。"
+    }
+  },
   "language": {
     "label": "语言",
     "zhCN": "中文",

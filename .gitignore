@@ -96,3 +96,4 @@ BACKLOG.md
 .claude/skills/tdd
 .claude/skills/worktree
 .claude/skills/writing-plans
+.runtime/integration-gate/

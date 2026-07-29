@@ -643,6 +643,12 @@ export default async function IntegrationControlPage() {
       actions={
         <>
           <RealtimeRefresh eventTypes={["task.created", "task.updated", "workspace.updated", "workspace.registered", "member.updated"]} />
+          <Link href="/control/gates">
+            <Button variant="outline" size="sm">
+              <CheckCircle2 className="size-4" />
+              可重复门禁
+            </Button>
+          </Link>
           <Link href="/daemon">
             <Button variant="outline" size="sm">
               <Activity className="size-4" />
