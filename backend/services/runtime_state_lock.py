@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from contextlib import nullcontext
 import hashlib
 import uuid
+from contextlib import nullcontext
 
 from sqlalchemy import text
-
 
 _RUNTIME_STATE_LOCK_NAMESPACE = b"smallkhoj:server-runtime-state:v1:"
 

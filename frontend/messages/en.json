@@ -457,6 +457,72 @@
     "featureFlagsPlanned": "Feature flags planned",
     "destructiveActionsRequireConfirm": "Destructive actions require confirm"
   },
+  "integrationGate": {
+    "title": "Repeatable Integration Gates",
+    "description": "Run real end-to-end checks without changing frontend or backend code, and inspect the latest safely persisted result for all seven modes.",
+    "taskRunControl": "TaskRun Control",
+    "listTitle": "Seven Repeatable Integration Gates",
+    "listDescription": "Each row shows the latest persisted result. This page is read-only: it neither starts tests nor accepts arbitrary file paths.",
+    "stepsPassed": "{passed}/{total} steps passed",
+    "warningCount": "{count} warnings",
+    "serverTarget": "Server · {serverId}",
+    "viewEvidence": "View step evidence",
+    "startedAt": "Started {time}",
+    "noTimestamp": "No timestamp",
+    "duration": "Duration {duration}",
+    "durationMissing": "Duration unavailable",
+    "modes": {
+      "foundation": "Foundation Runtime",
+      "channelBase": "Single-Agent Channel Reply",
+      "channelGroup": "Multi-Agent Channel Reply",
+      "dm": "Direct Message Reply",
+      "collabV1": "Collaboration V1 · Delegation",
+      "collabV2": "Collaboration V2 · Reviewer",
+      "collabV3": "Collaboration V3 · Task Workflow"
+    },
+    "states": {
+      "missing": "Not run",
+      "invalid": "Result unavailable",
+      "stale": "Result stale",
+      "running": "Running",
+      "passed": "Passed",
+      "failed": "Failed"
+    },
+    "stepStates": {
+      "passed": "Passed",
+      "failed": "Failed",
+      "warning": "Warning",
+      "running": "Running",
+      "unknown": "Unknown"
+    },
+    "summary": {
+      "passed": "Passed",
+      "passedDetail": "Counts only current, non-stale passes",
+      "failed": "Failed",
+      "failedDetail": "Inspect the failure category and step first",
+      "attention": "Needs attention",
+      "attentionDetail": "Failed, malformed, or stale results",
+      "store": "Result store",
+      "hostLocal": "Host local",
+      "storeDetail": "Default: .runtime/integration-gate"
+    },
+    "empty": {
+      "missingTitle": "This mode has not produced a result yet",
+      "invalidTitle": "This result cannot be read safely",
+      "tooLarge": "The report exceeds the safe read limit. Inspect the producing run.",
+      "malformed": "The JSON or minimum report schema is invalid.",
+      "unreadable": "The current frontend process cannot read the result store.",
+      "notRun": "Run the matching CLI mode and its latest result will appear here."
+    },
+    "sidebar": {
+      "title": "How to run",
+      "description": "This page is read-only. Run commands from the repository root and provide credentials through the environment.",
+      "safeExample": "Safe example",
+      "resultDirectory": "Result directory",
+      "freshness": "Freshness policy",
+      "freshnessDescription": "Completed results older than 24 hours are marked stale. A standalone container without the shared result mount honestly displays “Not run.”"
+    }
+  },
   "language": {
     "label": "Language",
     "zhCN": "中文",

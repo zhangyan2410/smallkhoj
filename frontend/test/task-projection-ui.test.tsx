@@ -6,8 +6,8 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), "utf8")
 
 test("task routes and dashboard consume the shared task projection", async () => {
   const [taskPage, homePage, routeProjection, dashboardProjection, provider] = await Promise.all([
-    read("../app/tasks/page.tsx"),
-    read("../app/page.tsx"),
+    read("../app/(app)/tasks/page.tsx"),
+    read("../app/(app)/page.tsx"),
     read("../components/task-route-projection.tsx"),
     read("../components/task-dashboard-projection.tsx"),
     read("../components/task-projection-provider.tsx"),
@@ -42,7 +42,7 @@ test("task routes and dashboard consume the shared task projection", async () =>
 
 test("selected task deletion is exact, authorized server-side, and clears the URL without refresh", async () => {
   const [taskPage, routeProjection] = await Promise.all([
-    read("../app/tasks/page.tsx"),
+    read("../app/(app)/tasks/page.tsx"),
     read("../components/task-route-projection.tsx"),
   ])
 

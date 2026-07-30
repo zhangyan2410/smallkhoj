@@ -1,0 +1,16 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend/daemon guideline index for the restored runtime-control and CLI boundary."}
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "Daemon runtime, Slock wrapper, provider control, and evidence contracts."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Fail-closed CLI configuration and structured runtime-control errors."}
+{"file": ".trellis/spec/backend/event-delivery-contracts.md", "reason": "Chat, DM, collaboration, daemon delivery, and marker-causality contracts."}
+{"file": ".trellis/spec/backend/deployment-environment-contracts.md", "reason": "Runtime result path and environment override behavior."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend guideline index for the authenticated control route."}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Places the new route under app/(app) and shared logic under lib/components."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Requires ProductShell and existing product primitives for control UI composition."}
+{"file": ".trellis/spec/frontend/product-ui-style.md", "reason": "Defines the operational water/sand/ink product visual language."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Requires lint/type/test/build and ./twd browser evidence."}
+{"file": ".trellis/spec/frontend/auth-onboarding-contracts.md", "reason": "Authenticated persistent shell and account boundary for /control/gates."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Untrusted JSON projection and boundary typing requirements."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Keeps mutable report state server-side and outside client-local state."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuses ProductShell, Card, Panel, StatusPill, and token-backed styles."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Traces CLI report persistence through the bounded reader into the UI."}
+{"file": ".trellis/spec/guides/runtime-debugging-sop.md", "reason": "Guides real runtime smoke and honest failure evidence."}

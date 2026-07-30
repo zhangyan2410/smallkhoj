@@ -230,6 +230,14 @@ export class ClientHandler extends EventEmitter {
           entries: this.daemon.getLogBuffer(),
         });
 
+      case DaemonMethods.RuntimeControl: {
+        const command = parseRuntimeControlParams(params);
+        if (!command) {
+          return buildError(id, ErrorCode.InvalidParams, 'Invalid or unsupported runtime control params');
+        }
+        return buildResponse(id, await this.daemon.executeRuntimeControlCommand(command));
+      }
+
       case DaemonMethods.ConversationCreate:
         return this.handleConversationCreate(id, params);
 
@@ -660,6 +668,38 @@ export class ClientHandler extends EventEmitter {
       body,
     });
   }
+}
+
+function parseRuntimeControlParams(params: unknown) {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return null;
+  const value = params as Record<string, unknown>;
+  const action = value.action;
+  if (action !== 'inspect_context' && action !== 'compact' && action !== 'usage_status') return null;
+  const agentId = typeof value.agentId === 'string'
+    ? value.agentId
+    : typeof value.agent_id === 'string'
+      ? value.agent_id
+      : '';
+  if (!agentId.trim()) return null;
+  const command: {
+    action: 'inspect_context' | 'compact' | 'usage_status';
+    agentId: string;
+    workspaceId?: string;
+    waitForResult?: boolean;
+    timeoutMs?: number;
+  } = { action, agentId };
+  const workspaceId = typeof value.workspaceId === 'string'
+    ? value.workspaceId
+    : typeof value.workspace_id === 'string'
+      ? value.workspace_id
+      : '';
+  if (workspaceId.trim()) command.workspaceId = workspaceId;
+  if (value.waitForResult === true || value.wait_for_result === true) command.waitForResult = true;
+  const timeoutValue = Number(value.timeoutMs ?? value.timeout_ms);
+  if (Number.isFinite(timeoutValue) && timeoutValue >= 100 && timeoutValue <= 120_000) {
+    command.timeoutMs = timeoutValue;
+  }
+  return command;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

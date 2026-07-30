@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type RefObject } from "react"
+import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type RefObject } from "react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import {
@@ -439,8 +440,9 @@ export function ChannelClient({
   const chatDeskMaterialLayerRef = useRef<HTMLDivElement>(null)
   const chatDeskPointerForwardingRef = useRef(false)
   const messageEndRef = useRef<HTMLDivElement>(null)
-  const realtimeHighWaterRef = useRef(new Map<string, HighWater>())
-
+  const realtimeCatchUpTimerRef = useRef<number | null>(null)
+  const fileRequestGenerationRef = useRef(0)
+  const fileRequestAbortRef = useRef<AbortController | null>(null)
   const storedThreadWidth = useSyncExternalStore(
     subscribePanelWidthStore,
     () => readStoredPanelWidth(THREAD_PANEL_WIDTH_KEY, THREAD_PANEL_DEFAULT_WIDTH, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH),

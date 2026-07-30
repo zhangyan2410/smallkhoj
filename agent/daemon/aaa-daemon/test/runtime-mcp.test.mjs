@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -25,6 +26,7 @@ import {
   isRuntimeActionableEventType,
   normalizeRuntimeIncomingMessage,
   parseDaemonControlCommand,
+  parseDaemonRuntimeControlCommand,
   sanitizeRuntimeCommandPreview,
   selectRuntimeSessionScope,
 } from '../dist/daemon/daemon.js';
@@ -1035,6 +1037,293 @@ test('websocket helpers classify daemon control commands', () => {
   });
 });
 
+test('daemon runtime control commands are allowlisted and map to exact provider slash commands', async () => {
+  assert.deepEqual(parseDaemonRuntimeControlCommand({
+    type: 'runtime_control',
+    action: 'inspect_context',
+    agentId: 'agent-123',
+    wait_for_result: true,
+    timeout_ms: '2500',
+  }), {
+    action: 'inspect_context',
+    agentId: 'agent-123',
+    waitForResult: true,
+    timeoutMs: 2500,
+  });
+  assert.equal(parseDaemonRuntimeControlCommand({
+    type: 'runtime_control',
+    action: '/clear',
+    agentId: 'agent-123',
+  }), null);
+
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'http://127.0.0.1:9',
+    proxyPort: 0,
+  });
+  const sent = [];
+  daemon.runtimes.set('agent-123', {
+    agentId: 'agent-123',
+    runtime: 'claude_code',
+    driver: {
+      sendUserMessage(text, options) {
+        sent.push({ text, options });
+        return true;
+      },
+      get busy() { return false; },
+      get queuedMessageCount() { return 0; },
+      get pid() { return 123; },
+      get sessionId() { return 'session-123'; },
+    },
+  });
+
+  const result = await daemon.executeRuntimeControlCommand({
+    action: 'inspect_context',
+    agentId: 'agent-123',
+  });
+
+  assert.deepEqual(sent, [{ text: '/context', options: { control: true } }]);
+  assert.equal(result.accepted, true);
+  assert.equal(result.slashCommand, '/context');
+});
+
+test('daemon JSON-RPC waits for allowlisted runtime control result text', async () => {
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'http://127.0.0.1:9',
+    proxyPort: 0,
+  });
+
+  class FakeRuntimeDriver extends EventEmitter {
+    get busy() { return false; }
+    get queuedMessageCount() { return 0; }
+    get pid() { return 123; }
+    get sessionId() { return 'session-123'; }
+    start() {}
+    stop() {}
+    killUnresponsive() {}
+    sendUserMessage(text, options) {
+      assert.equal(text, '/context');
+      assert.deepEqual(options, { control: true });
+      setImmediate(() => {
+        this.emit('stream_event', {
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'Context window: 41% used\n' }] },
+        });
+        this.emit('stream_event', { type: 'result', subtype: 'success' });
+      });
+      return true;
+    }
+  }
+
+  daemon.runtimes.set('agent-123', {
+    agentId: 'agent-123',
+    runtime: 'claude_code',
+    driver: new FakeRuntimeDriver(),
+  });
+
+  const response = await daemon.clientHandler.handleMessage({
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'daemon/runtime_control',
+    params: {
+      action: 'inspect_context',
+      agentId: 'agent-123',
+      waitForResult: true,
+      timeoutMs: 1_000,
+    },
+  });
+
+  assert.equal(response.id, 7);
+  assert.equal(response.error, undefined);
+  assert.equal(response.result.accepted, true);
+  assert.equal(response.result.delivered, true);
+  assert.equal(response.result.slashCommand, '/context');
+  assert.equal(response.result.output, 'Context window: 41% used');
+});
+
+test('daemon runtime control fails closed while busy without consuming unrelated stream output', async () => {
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'http://127.0.0.1:9',
+    proxyPort: 0,
+  });
+
+  class BusyRuntimeDriver extends EventEmitter {
+    sendCalls = 0;
+    get busy() { return true; }
+    get queuedMessageCount() { return 1; }
+    get pid() { return 123; }
+    get sessionId() { return 'session-123'; }
+    start() {}
+    stop() {}
+    killUnresponsive() {}
+    sendUserMessage() {
+      this.sendCalls += 1;
+      setImmediate(() => {
+        this.emit('stream_event', {
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'unrelated turn' }] },
+        });
+        this.emit('stream_event', { type: 'result', subtype: 'success' });
+      });
+      return false;
+    }
+  }
+
+  const driver = new BusyRuntimeDriver();
+  daemon.runtimes.set('agent-123', {
+    agentId: 'agent-123',
+    runtime: 'claude_code',
+    driver,
+  });
+
+  const result = await daemon.executeRuntimeControlCommand({
+    action: 'inspect_context',
+    agentId: 'agent-123',
+    waitForResult: true,
+    timeoutMs: 1_000,
+  });
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.delivered, false);
+  assert.equal(result.reason, 'runtime_control_busy');
+  assert.equal(result.output, undefined);
+  assert.equal(driver.sendCalls, 0);
+  assert.equal(driver.listenerCount('stream_event'), 0);
+});
+
+test('daemon runtime control cleans up result collection when immediate delivery is rejected', async () => {
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'http://127.0.0.1:9',
+    proxyPort: 0,
+  });
+
+  class RejectingRuntimeDriver extends EventEmitter {
+    get busy() { return false; }
+    get queuedMessageCount() { return 0; }
+    get pid() { return 123; }
+    get sessionId() { return 'session-123'; }
+    start() {}
+    stop() {}
+    killUnresponsive() {}
+    sendUserMessage() { return false; }
+  }
+
+  const driver = new RejectingRuntimeDriver();
+  daemon.runtimes.set('agent-123', {
+    agentId: 'agent-123',
+    runtime: 'claude_code',
+    driver,
+  });
+
+  const result = await daemon.executeRuntimeControlCommand({
+    action: 'inspect_context',
+    agentId: 'agent-123',
+    waitForResult: true,
+    timeoutMs: 1_000,
+  });
+
+  driver.emit('stream_event', {
+    type: 'assistant',
+    message: { role: 'assistant', content: [{ type: 'text', text: 'unrelated later output' }] },
+  });
+  driver.emit('stream_event', { type: 'result', subtype: 'success' });
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.delivered, false);
+  assert.equal(result.reason, 'runtime_control_not_delivered');
+  assert.equal(result.output, undefined);
+  assert.equal(driver.listenerCount('stream_event'), 0);
+});
+
+test('daemon runtime control cleans up result collection when send throws', async () => {
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'http://127.0.0.1:9',
+    proxyPort: 0,
+  });
+
+  class ThrowingRuntimeDriver extends EventEmitter {
+    get busy() { return false; }
+    get queuedMessageCount() { return 0; }
+    get pid() { return 123; }
+    get sessionId() { return 'session-123'; }
+    start() {}
+    stop() {}
+    killUnresponsive() {}
+    sendUserMessage() {
+      throw new Error('stdin closed');
+    }
+  }
+
+  const driver = new ThrowingRuntimeDriver();
+  daemon.runtimes.set('agent-123', {
+    agentId: 'agent-123',
+    runtime: 'claude_code',
+    driver,
+  });
+
+  const result = await daemon.executeRuntimeControlCommand({
+    action: 'inspect_context',
+    agentId: 'agent-123',
+    waitForResult: true,
+    timeoutMs: 1_000,
+  });
+
+  assert.equal(result.delivered, false);
+  assert.equal(result.error, 'stdin closed');
+  assert.equal(driver.listenerCount('stream_event'), 0);
+});
+
+test('daemon runtime control bounds captured assistant output', async () => {
+  const daemon = new DaemonCore({
+    agentId: 'agent-123',
+    serverUrl: 'http://127.0.0.1:9',
+    proxyPort: 0,
+  });
+
+  class VerboseRuntimeDriver extends EventEmitter {
+    get busy() { return false; }
+    get queuedMessageCount() { return 0; }
+    get pid() { return 123; }
+    get sessionId() { return 'session-123'; }
+    start() {}
+    stop() {}
+    killUnresponsive() {}
+    sendUserMessage() {
+      setImmediate(() => {
+        this.emit('stream_event', {
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'x'.repeat(70_000) }] },
+        });
+        this.emit('stream_event', { type: 'result', subtype: 'success' });
+      });
+      return true;
+    }
+  }
+
+  const driver = new VerboseRuntimeDriver();
+  daemon.runtimes.set('agent-123', {
+    agentId: 'agent-123',
+    runtime: 'claude_code',
+    driver,
+  });
+
+  const result = await daemon.executeRuntimeControlCommand({
+    action: 'inspect_context',
+    agentId: 'agent-123',
+    waitForResult: true,
+    timeoutMs: 1_000,
+  });
+
+  assert.equal(result.delivered, true);
+  assert.equal(result.output?.length, 65_536);
+  assert.equal(result.outputTruncated, true);
+  assert.equal(driver.listenerCount('stream_event'), 0);
+});
+
 test('claude runtime sends stream-json user messages with captured session id', () => {
   const driver = new ClaudeRuntimeDriver({
     credential,
@@ -1187,6 +1476,31 @@ test('claude runtime queues messages while busy and flushes at result boundary',
   assert.equal(driver.queuedMessageCount, 0);
   assert.equal(writes.length, 1);
   assert.equal(JSON.parse(writes[0]).message.content[0].text, 'queued hello');
+});
+
+test('claude runtime rejects busy control messages instead of queueing them', () => {
+  const driver = new ClaudeRuntimeDriver({
+    credential,
+    workspacePath: 'D:/workspace',
+    wrapperDir: 'D:/workspace/.slock',
+  });
+  driver.child = {
+    stdin: {
+      writable: true,
+      write() { return true; },
+    },
+  };
+  driver.emitLines('stdout', `${JSON.stringify({
+    type: 'assistant',
+    message: {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 'tool-control', name: 'Bash', input: {} }],
+    },
+  })}\n`);
+
+  assert.equal(driver.busy, true);
+  assert.equal(driver.sendUserMessage('/context', { control: true }), false);
+  assert.equal(driver.queuedMessageCount, 0);
 });
 
 test('claude runtime stop terminates wrapper child process group', async (t) => {

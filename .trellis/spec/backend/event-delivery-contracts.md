@@ -145,6 +145,106 @@ If any answer is unclear, do not deliver the event to runtime yet.
 
 ---
 
+## Scenario: Runtime Control Results Must Belong To The Delivered Control Turn
+
+### 1. Scope / Trigger
+
+- Trigger: changing `daemon/runtime_control`, provider slash-command mapping,
+  `ManagedRuntimeDriver.sendUserMessage(..., { control: true })`, or collection
+  of provider `stream_event` output for context/usage/compact observations.
+
+### 2. Signatures
+
+- Request: `DaemonRuntimeControlCommand { action, agentId, workspaceId?, waitForResult?, timeoutMs? }`.
+- Delivery: `ManagedRuntimeDriver.sendUserMessage(slashCommand, { control: true }): boolean`.
+- Result: `DaemonRuntimeControlResult { accepted, delivered, action, agentId, runtime?, slashCommand?, reason?, output?, outputTruncated?, error? }`.
+- Output budget: at most 65,536 captured characters per control result.
+
+### 3. Contracts
+
+- A runtime control command is immediate-only. A busy or not-yet-writable
+  driver returns `false` and must not enqueue `{ control: true }` input for a
+  later turn.
+- `accepted=true` means the daemon recognizes and supports the requested
+  action; `delivered=true` separately proves the provider runtime accepted the
+  slash command immediately.
+- The daemon may arm a result collector before sending so it cannot miss fast
+  asynchronous output, but the collector remains valid only if
+  `sendUserMessage` returns `true`.
+- Busy state returns `delivered=false, reason=runtime_control_busy` without
+  calling `sendUserMessage` or subscribing to the shared stream.
+- A false send returns
+  `delivered=false, reason=runtime_control_not_delivered`; a thrown send
+  returns its sanitized error. Both paths detach the collector immediately.
+- Assistant text is captured only until the control output budget. Extra text
+  is discarded and `outputTruncated=true` is returned. Timeout, result, send
+  failure, and rejected delivery all detach the listener exactly once.
+- Provider stream events do not currently carry a cross-runtime control-turn
+  identifier. Therefore queued delivery must fail closed; temporal proximity
+  to the first later `assistant` or `result` event is not correlation proof.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected result |
+| --- | --- |
+| Runtime or workspace missing | `accepted=false`, `delivered=false`, explicit runtime/workspace reason. |
+| Runtime is busy | `accepted=true`, `delivered=false`, `reason=runtime_control_busy`, no queued control input. |
+| Driver returns `false` despite a pre-send idle check | `accepted=true`, `delivered=false`, `reason=runtime_control_not_delivered`, collector detached. |
+| Driver throws while sending | `delivered=false`, error returned, collector detached immediately. |
+| Assistant output exceeds 65,536 characters | Output is capped at 65,536 characters and `outputTruncated=true`. |
+| Matching immediate control turn emits `result` | Collector returns bounded output and detaches. |
+| No result before bounded timeout | `reason=runtime_control_timeout`; partial bounded output may be returned and listener detaches. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: an idle Claude runtime accepts `/context`, emits assistant text and a
+  result, and the daemon returns that bounded text with `delivered=true`.
+- Base: a busy runtime returns `runtime_control_busy`; the caller can retry
+  after observing idle.
+- Bad: enqueue `/status` behind an existing user turn and treat that turn's
+  first later `result` event as the status response.
+- Bad: leave a collector attached until timeout after stdin send throws.
+- Bad: append provider text without a control-plane size budget.
+
+### 6. Tests Required
+
+- Daemon boundary tests must assert busy controls do not invoke send, consume
+  unrelated output, or retain a `stream_event` listener.
+- Send-throw and false-send tests must assert immediate listener cleanup and
+  explicit delivery/error state.
+- Output-budget tests must emit more than 65,536 characters and assert the
+  exact cap plus `outputTruncated=true`.
+- Claude and Codex ACP driver tests must assert ordinary user messages still
+  queue while busy but control messages do not.
+- The successful JSON-RPC control-result test must continue to prove that an
+  immediately delivered command captures its actual provider output.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+const result = collectFirstGlobalResult(driver);
+const delivered = driver.sendUserMessage('/status', { control: true });
+// delivered=false may mean queued; the next result can belong to older work.
+return result;
+```
+
+#### Correct
+
+```typescript
+if (driver.busy) return { accepted: true, delivered: false, reason: 'runtime_control_busy' };
+const collector = collectBoundedControlResult(driver);
+const delivered = driver.sendUserMessage('/status', { control: true });
+if (!delivered) {
+  collector.settle({ reason: 'runtime_control_not_delivered' });
+  return { accepted: true, delivered: false, reason: 'runtime_control_not_delivered' };
+}
+return collector.promise;
+```
+
+---
+
 ## Scenario: Browser Public Realtime SSE Events
 
 ### 1. Scope / Trigger

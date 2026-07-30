@@ -264,7 +264,7 @@ jobs:
             local scan_status
             test -n "$value"
             set +e
-            rg --quiet --fixed-strings -- "$value" "${logs[@]}"
+            grep -Fq -- "$value" "${logs[@]}"
             scan_status=$?
             set -e
             handle_scan_status "$label" "$scan_status"
@@ -275,7 +275,7 @@ jobs:
             local pattern="$2"
             local scan_status
             set +e
-            rg --quiet --regexp "$pattern" "${logs[@]}"
+            grep -Eq -- "$pattern" "${logs[@]}"
             scan_status=$?
             set -e
             handle_scan_status "$label" "$scan_status"

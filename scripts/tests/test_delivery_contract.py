@@ -82,7 +82,8 @@ class DeliveryContractTest(unittest.TestCase):
             "docker run",
             "playwright install --with-deps chromium",
             "make e2e-authenticated",
-            "rg --quiet --fixed-strings",
+            'grep -Fq -- "$value" "${logs[@]}"',
+            'grep -Eq -- "$pattern" "${logs[@]}"',
             'scan_exact "auth bridge secret" "$AUTH_BRIDGE_SECRET"',
             'scan_exact "Better Auth secret" "$BETTER_AUTH_SECRET"',
             "sk_(session|connect|machine)_[A-Za-z0-9_-]+",
@@ -92,6 +93,7 @@ class DeliveryContractTest(unittest.TestCase):
             self.assertIn(fragment, e2e_job)
 
         self.assertNotIn("continue-on-error: true", e2e_job)
+        self.assertNotIn("rg --quiet", e2e_job)
         self.assertNotIn("bun run start", e2e_job)
         self.assertNotIn("for attempt in", e2e_job)
         self.assertIn("--network host", e2e_job)

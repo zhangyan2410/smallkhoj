@@ -203,6 +203,80 @@ Show curl install, install command, and connect command together so advanced use
 Show one copyable onboarding command: npx -y --package <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz aura --server-url <public-base-url> --api-key <token> # <server-name>.
 ```
 
+## Scenario: Self-Contained CI Security Scans
+
+### 1. Scope / Trigger
+
+Use this contract when a GitHub Actions job scans build artifacts or service logs for
+credentials, tokens, or other release-blocking patterns.
+
+### 2. Signatures
+
+Baseline Ubuntu runner scan commands:
+
+```bash
+grep -Fq -- "$literal_value" "${files[@]}"
+grep -Eq -- "$extended_regex" "${files[@]}"
+```
+
+### 3. Contracts
+
+- Every executable used by a security scan must either be part of the job's declared
+  baseline shell environment or be explicitly provisioned in that job before use.
+- Literal credentials use fixed-string matching; token families use an explicitly
+  reviewed extended regular expression.
+- Scanner exit status is fail-closed: `0` means prohibited content matched, `1` means
+  no match, and every other status means the scan itself failed.
+- All input logs must be proven readable before scanning. A missing log is a gate
+  failure, not an empty-log success.
+- Workflow contract tests must reject unprovisioned scanner dependencies; they must
+  not merely assert the text of a command unavailable on the target runner.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| Literal or token pattern matches a service log | Fail the job and identify the credential class without printing its value. |
+| Scanner returns `1` for every required check | Pass the credential-log scan. |
+| Scanner executable is absent | Contract failure; provision it or use a baseline command before merging. |
+| Scanner returns a status greater than `1` | Fail the job with the label and status; do not treat it as no match. |
+| A required log is absent or unreadable | Fail before scanning. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: use stock GNU grep with `-Fq` for literal secrets and `-Eq` for the reviewed
+  token pattern while preserving all three exit-status classes.
+- Base: explicitly install and version-pin a non-baseline scanner in the same job,
+  then assert that provisioning in the workflow contract.
+- Bad: call a convenient local tool such as `rg` without installing it because a
+  developer machine happens to provide it.
+
+### 6. Tests Required
+
+- The delivery workflow contract asserts the exact fixed-string and ERE scan shapes.
+- The contract rejects the known unprovisioned `rg --quiet` form.
+- The authenticated disposable integration job runs the scan on GitHub's target
+  runner after both backend and frontend logs are captured.
+- A matched credential, no-match status, unreadable log, and scanner error must retain
+  their distinct fail/pass behavior.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```bash
+# The job never installs ripgrep.
+rg --quiet --fixed-strings -- "$AUTH_BRIDGE_SECRET" "$service_log"
+```
+
+#### Correct
+
+```bash
+grep -Fq -- "$AUTH_BRIDGE_SECRET" "$service_log"
+scan_status=$?
+# 0 = leak, 1 = clean, >1 = scanner failure
+```
+
 ## Scenario: Compatible Daemon Package Rollout
 
 ### 1. Scope / Trigger

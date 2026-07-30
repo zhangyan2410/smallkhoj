@@ -122,6 +122,6 @@ test("only the shell provider creates a physical realtime transport", () => {
   for (const sourceRoot of sourceRoots) scan(sourceRoot)
   assert.deepEqual(transportCallers, ["components/realtime-provider.tsx"])
 
-  const shellSource = readFileSync(path.join(frontendRoot, "components/product-shell.tsx"), "utf8")
+  const shellSource = readFileSync(path.join(frontendRoot, "app/(app)/layout.tsx"), "utf8")
   assert.match(shellSource, /<RealtimeProvider serverId=\{session\?\.server\.id\}>/)
 })
