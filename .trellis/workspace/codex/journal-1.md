@@ -71,3 +71,36 @@ Prevented CLI mock tests from publishing fixture latest reports into the operato
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: Repair Pi merge gate regressions
+
+**Date**: 2026-07-30
+**Task**: Repair Pi merge gate regressions
+**Branch**: `feat/integration-gate-restoration`
+
+### Summary
+
+Rebased Integration Gate restoration onto Pi-enabled main; repaired backend lint defects and frontend shell/provider merge regressions; verified canonical CI, daemon and Integration Gate suites, production build, and isolated real-browser routes.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `929ad3e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

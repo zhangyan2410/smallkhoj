@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
-- **Last Active**: 2026-07-29
+- **Total Sessions**: 8
+- **Last Active**: 2026-07-30
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~73 | Active |
+| `journal-1.md` | ~106 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-07-30 | Repair Pi merge gate regressions | `929ad3e` | `feat/integration-gate-restoration` |
 | 7 | 2026-07-29 | Isolate Integration Gate fixture reports | `6c5183c` | `feat/integration-gate-restoration` |
 | 6 | 2026-07-29 | Restore Integration Gate and visual control surface | `dbe6589` | `feat/integration-gate-restoration` |
 | 5 | 2026-06-29 | Worker rollout gate coverage | `93c268e` | `codex/initial-release-feishu-worker-runtime` |
