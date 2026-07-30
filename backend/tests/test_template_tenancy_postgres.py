@@ -298,7 +298,7 @@ async def test_template_tenancy_downgrade_fails_closed_on_cross_server_slug_coll
         connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "0004_template_tenancy"
+                "0005_llm_run_lease"
             )
             assert await connection.fetchval(
                 """

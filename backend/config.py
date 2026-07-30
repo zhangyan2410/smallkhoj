@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     llm_api_base: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
 
+    pi_llm_api_key: str = ""
+    pi_llm_api_base: str = ""
+    pi_llm_model: str = ""
+    pi_llm_max_active_runs: int = 1
+    pi_llm_lease_seconds: int = 120
+
     jira_email: str = ""
     jira_api_token: str = ""
 

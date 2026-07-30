@@ -217,6 +217,36 @@ class AgentWorkspace(Base):
     agent = relationship("Member", back_populates="workspaces")
 
 
+
+class LlmRunLease(Base):
+    __tablename__ = "llm_run_leases"
+    __table_args__ = (
+        Index("idx_llm_run_leases_status_expiry", "status", "expires_at"),
+        Index("idx_llm_run_leases_server_created", "server_id", "created_at"),
+        CheckConstraint(
+            "status IN ('waiting', 'active', 'released', 'expired', 'failed')",
+            name="ck_llm_run_leases_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    computer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("computers.id", ondelete="CASCADE"), nullable=False)
+    agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="waiting")
+    failure_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    acquired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    server = relationship("Server")
+    computer = relationship("Computer")
+    agent = relationship("Member")
+
+
 # ── Channels ─────────────────────────────────────────────────
 
 class Channel(Base):

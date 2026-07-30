@@ -51,6 +51,7 @@ export function rewriteAgentPath(pathname: string, search: string, agentId: stri
   if (suffix.startsWith('/attachments')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/knowledge')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/memory')) return `/internal/agent-api${suffix}${search}`;
+  if (suffix.startsWith('/llm/')) return `/internal/agent-api${suffix}${search}`;
   if (suffix.startsWith('/messages/') && suffix.endsWith('/reactions')) {
     return `/internal/agent-api${suffix}${search}`;
   }
@@ -231,9 +232,14 @@ export class AgentProxy extends EventEmitter {
       return;
     }
 
-    // Auth
+    // Auth: accept either Authorization: Bearer (OpenAI/Slock style) or
+    // x-api-key (Anthropic style, used by Pi's anthropic-messages provider).
     const auth = req.headers.authorization ?? '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    const bearerToken = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    const xApiKey = Array.isArray(req.headers['x-api-key'])
+      ? req.headers['x-api-key'][0] ?? ''
+      : req.headers['x-api-key'] ?? '';
+    const token = bearerToken || xApiKey;
 
     const reg = this.registrations.get(token);
     if (!reg) {

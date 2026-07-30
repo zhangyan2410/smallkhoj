@@ -5041,6 +5041,7 @@ def _normalize_runtime(value: str | None) -> str:
         "codex": "codex",
         "codex-acp": "codex",
         "codex_acp": "codex",
+        "pi": "pi",
     }
     raw = (str(value).strip().lower() if value else "") or "claude_code"
     normalized = aliases.get(raw)
@@ -5125,10 +5126,11 @@ async def create_agent(
         display_name=name,
         status=body.get("status", "offline"),
         computer_id=computer_id,
-        backend=body.get("backend"),
+        backend=body.get("backend") or runtime,
         config={
             "computerId": str(computer_id),
-            "backend": body.get("backend"),
+            "backend": body.get("backend") or runtime,
+            "runtime": runtime,
             "runtimeProvider": runtime_provider,
             "provider": provider_name,
             "runtimeDesiredStatus": desired_status,

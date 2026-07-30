@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import cast
 
+import httpx
 from fastapi import (
     APIRouter,
     Depends,
@@ -84,6 +85,14 @@ from services.integration_runtime import (
     close_task_run_writeback_dependencies,
 )
 from services.latency_trace import LatencyTrace, trace_id_from_request
+from services.llm_run_leases import (
+    acquire_run_lease,
+    get_owned_run_lease,
+    heartbeat_run_lease,
+    release_run_lease,
+    require_active_lease,
+    serialize_run_lease,
+)
 from services.memory_api import (
     create_memory_proposal,
     delete_memory_entry,
@@ -125,6 +134,11 @@ from services.upload_storage import (
     close_upload,
     rollback_and_cleanup_upload,
     stage_upload,
+)
+from services.pi_llm_relay import (
+    require_pi_runtime_member,
+    resolve_pi_llm_config,
+    validate_pi_relay_request,
 )
 
 router = APIRouter(prefix="/internal/agent-api", tags=["agent-api"])
@@ -260,12 +274,37 @@ class DaemonConnectRequest(BaseModel):
     detectedRuntimes: list | None = None
 
 
+class LlmRunAcquireRequest(BaseModel):
+    runId: str
+
+
+class LlmRunReleaseRequest(BaseModel):
+    runId: str
+    failed: bool = False
+    failureCode: str | None = None
+
+
 def _utcnow() -> datetime:
     return datetime.utcnow()
 
 
 def _utcnow_aware() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _pi_member_computer_id(member: Member) -> uuid.UUID:
+    raw = member.computer_id or (member.config or {}).get("computerId")
+    try:
+        return raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw))
+    except (TypeError, ValueError):
+        raise HTTPException(409, "Pi Agent is not bound to a Computer")
+
+
+def _validated_run_id(value: str) -> str:
+    run_id = (value or "").strip()
+    if not run_id or len(run_id) > 120 or not re.fullmatch(r"[A-Za-z0-9_.:-]+", run_id):
+        raise HTTPException(400, "Invalid LLM run id")
+    return run_id
 
 
 def _parse_version_tuple(value: str | None) -> tuple[int, ...] | None:
@@ -4391,3 +4430,162 @@ async def heartbeat(
 
     await db.commit()
     return {"ok": True, "status": status}
+
+
+@router.post("/llm/runs/acquire")
+async def acquire_builtin_llm_run(
+    body: LlmRunAcquireRequest,
+    agent_ctx: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent_ctx
+    require_pi_runtime_member(member)
+    run_id = _validated_run_id(body.runId)
+    lease, leases = await acquire_run_lease(
+        db,
+        run_id=run_id,
+        server_id=server.id,
+        computer_id=_pi_member_computer_id(member),
+        agent_id=member.id,
+        capacity=max(0, settings.pi_llm_max_active_runs),
+        lease_seconds=max(1, settings.pi_llm_lease_seconds),
+    )
+    await db.commit()
+    return serialize_run_lease(lease, leases=leases)
+
+
+@router.post("/llm/runs/heartbeat")
+async def heartbeat_builtin_llm_run(
+    body: LlmRunAcquireRequest,
+    agent_ctx: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent_ctx
+    require_pi_runtime_member(member)
+    lease = await get_owned_run_lease(
+        db,
+        run_id=_validated_run_id(body.runId),
+        server_id=server.id,
+        computer_id=_pi_member_computer_id(member),
+        agent_id=member.id,
+    )
+    await heartbeat_run_lease(db, lease=lease, lease_seconds=max(1, settings.pi_llm_lease_seconds))
+    await db.commit()
+    return serialize_run_lease(lease)
+
+
+@router.post("/llm/runs/release")
+async def release_builtin_llm_run(
+    body: LlmRunReleaseRequest,
+    agent_ctx: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    member, server = agent_ctx
+    require_pi_runtime_member(member)
+    lease = await get_owned_run_lease(
+        db,
+        run_id=_validated_run_id(body.runId),
+        server_id=server.id,
+        computer_id=_pi_member_computer_id(member),
+        agent_id=member.id,
+    )
+    await release_run_lease(
+        db,
+        lease=lease,
+        capacity=max(0, settings.pi_llm_max_active_runs),
+        lease_seconds=max(1, settings.pi_llm_lease_seconds),
+        failed=body.failed,
+        failure_code=(body.failureCode or "")[:80] or None,
+    )
+    await db.commit()
+    return serialize_run_lease(lease)
+
+
+@router.post("/llm/anthropic/{path:path}")
+async def relay_builtin_pi_llm(
+    path: str,
+    request: Request,
+    x_smallkhoj_llm_run_id: str = Header(..., alias="X-SmallKhoj-Llm-Run-Id"),
+    agent_ctx: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _relay_builtin_pi_llm_impl(path, request, x_smallkhoj_llm_run_id, agent_ctx, db)
+
+
+@router.post("/llm/openai/v1/{path:path}")
+async def relay_builtin_pi_llm(
+    path: str,
+    request: Request,
+    x_smallkhoj_llm_run_id: str = Header(..., alias="X-SmallKhoj-Llm-Run-Id"),
+    agent_ctx: tuple[Member, Server] = Depends(resolve_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _relay_builtin_pi_llm_impl(path, request, x_smallkhoj_llm_run_id, agent_ctx, db)
+
+
+async def _relay_builtin_pi_llm_impl(
+    path: str,
+    request: Request,
+    x_smallkhoj_llm_run_id: str,
+    agent_ctx: tuple[Member, Server],
+    db: AsyncSession,
+):
+    member, server = agent_ctx
+    require_pi_runtime_member(member)
+    lease = await get_owned_run_lease(
+        db,
+        run_id=_validated_run_id(x_smallkhoj_llm_run_id),
+        server_id=server.id,
+        computer_id=_pi_member_computer_id(member),
+        agent_id=member.id,
+    )
+    require_active_lease(lease)
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        raise HTTPException(400, "Invalid LLM request body")
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Invalid LLM request body")
+    config = resolve_pi_llm_config(settings)
+    upstream_url, payload = validate_pi_relay_request(path=path, body=body, config=config)
+    # Anthropic 用 x-api-key + anthropic-version，OpenAI 用 Authorization Bearer
+    is_anthropic = path.strip("/") in ("messages", "v1/messages")
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": request.headers.get("accept", "application/json"),
+    }
+    if is_anthropic:
+        headers["x-api-key"] = config.api_key
+        headers["anthropic-version"] = request.headers.get("anthropic-version", "2023-06-01")
+    else:
+        headers["Authorization"] = f"Bearer {config.api_key}"
+    client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0), trust_env=False)
+    upstream_request = client.build_request(
+        "POST",
+        upstream_url,
+        headers=headers,
+        json=payload,
+    )
+    try:
+        upstream = await client.send(upstream_request, stream=True)
+    except httpx.HTTPError:
+        await client.aclose()
+        raise HTTPException(502, "Built-in LLM provider is temporarily unavailable")
+
+    async def stream_upstream():
+        try:
+            async for chunk in upstream.aiter_raw():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    response_headers = {}
+    if cache_control := upstream.headers.get("cache-control"):
+        response_headers["cache-control"] = cache_control
+    return StreamingResponse(
+        stream_upstream(),
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type", "application/json"),
+        headers=response_headers,
+    )

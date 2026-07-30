@@ -25,6 +25,12 @@ BASELINE_REVISION = "77b8b147f689"
 POST_BASELINE_COLUMNS = {
     "task_run_templates": {"server_id"},
 }
+# Entire tables introduced after the 0001 baseline. A stamped legacy DB has
+# none of these; preflight must skip them so a legitimate legacy fingerprint
+# is not rejected merely because the model added a new table post-baseline.
+POST_BASELINE_TABLES = {
+    "llm_run_leases",
+}
 POST_BASELINE_INDEXES = {
     "idx_task_run_templates_server",
     "uq_task_run_templates_builtin_slug",
@@ -161,6 +167,8 @@ def _normalize_default(value: str | None) -> str | None:
 def _expected_column_definitions() -> dict[tuple[str, str], ColumnDefinition]:
     definitions: dict[tuple[str, str], ColumnDefinition] = {}
     for table in Base.metadata.sorted_tables:
+        if table.name in POST_BASELINE_TABLES:
+            continue
         excluded_columns = POST_BASELINE_COLUMNS.get(table.name, set())
         for column in table.columns:
             if column.name in excluded_columns:
@@ -202,6 +210,8 @@ def _index_expression(expression: object) -> str:
 def _expected_index_definitions() -> dict[str, IndexDefinition]:
     definitions: dict[str, IndexDefinition] = {}
     for table in Base.metadata.sorted_tables:
+        if table.name in POST_BASELINE_TABLES:
+            continue
         for index in table.indexes:
             if not index.name or index.name in POST_BASELINE_INDEXES:
                 continue
@@ -279,6 +289,8 @@ def _expected_constraint_definitions() -> tuple[
     foreign_keys: set[ForeignKeyDefinition] = set()
 
     for table in Base.metadata.sorted_tables:
+        if table.name in POST_BASELINE_TABLES:
+            continue
         primary_and_unique.append(
             (
                 "primary key",

@@ -61,6 +61,8 @@ export function publicRuntimeValue(runtime: RuntimeInfo | string | undefined): s
     case "codex_acp":
     case "codex-acp":
       return "codex"
+    case "pi":
+      return "pi"
     case "custom":
       return "custom"
     default:
@@ -76,7 +78,80 @@ function expectedProviderNamesForRuntime(runtime: string): string[] {
       return []
     case "claude_code":
       return []
+    case "pi":
+      return []
     default:
       return []
   }
+}
+
+/**
+ * Runtime 下拉选项类型。bundled = 随包自带(如 built-in Pi)，无需用户本机安装，
+ * 始终可选；available = 本机 daemon 实际检测到的；否则不可选(灰掉)。
+ */
+export type RuntimeOption = {
+  value: string
+  label: string
+  available: boolean
+  bundled?: boolean
+}
+
+/**
+ * 已知 runtime 的显示名。未检测到时用作灰掉的占位项。
+ * bundled Pi 不进这个表 —— 它恒在 detectedRuntimesForInventory 上报。
+ */
+const RUNTIME_LABELS: Record<string, string> = {
+  claude_code: "Claude Code",
+  codex: "Codex",
+  custom: "Custom",
+}
+
+/**
+ * 从 computers 的 detectedRuntimes 聚合成 Runtime 下拉选项。
+ * - detected 的 runtime -> 可选 (available: true)
+ * - bundled Pi (source==='bundled') -> 可选 + bundled 标识
+ * - 已知但未 detected 的 (claude_code/codex) -> 灰掉 (available: false)
+ * - custom 恒可选(不依赖检测)
+ *
+ * 和 Provider 下拉(detectedProviderOptions)用同一数据源 detectedRuntimes。
+ */
+export function runtimeOptionsFromDetected(
+  computers: Computer[],
+  filters: ProviderOptionFilters = {},
+): RuntimeOption[] {
+  const detected = new Set<string>()
+  for (const computer of computers) {
+    if (filters.computerId && computer.id !== filters.computerId) continue
+    for (const runtime of computer.detectedRuntimes) {
+      if (typeof runtime === "string") {
+        detected.add(publicRuntimeValue(runtime))
+        continue
+      }
+      const value = publicRuntimeValue(runtime)
+      if (!value) continue
+      detected.add(value)
+    }
+  }
+
+  const options: RuntimeOption[] = []
+  // 已知 runtime：检测到的可选，没检测到的灰掉
+  for (const [value, label] of Object.entries(RUNTIME_LABELS)) {
+    options.push({ value, label, available: detected.has(value) })
+  }
+  // custom 恒可选
+  options.push({ value: "custom", label: RUNTIME_LABELS.custom, available: true })
+  // bundled Pi：恒可选 + 标识
+  options.push({
+    value: "pi",
+    label: "Built-in Pi",
+    available: true,
+    bundled: true,
+  })
+  // 去重(防止 detected 里出现非标准值导致 pi 重复)
+  const seen = new Set<string>()
+  return options.filter((opt) => {
+    if (seen.has(opt.value)) return false
+    seen.add(opt.value)
+    return true
+  })
 }

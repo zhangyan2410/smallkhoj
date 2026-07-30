@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端层入口: Pre-Dev checklist + Quality Check, 创建agent表单改动必读"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规范: create-agent-form 改动遵循"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型安全: RuntimeInfo/DetectedRuntime 联合类型扩展"}
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "daemon runtime 接入契约: Pi runtime driver 如何接入"}
+{"file": ".trellis/spec/guides/reference-projects.md", "reason": "参考项目: channel/runtime UI 设计前必读"}
