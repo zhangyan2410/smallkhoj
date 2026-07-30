@@ -36,10 +36,12 @@ detection or changing Integration Gate product behavior.
 - [x] Exact and regex credential scans remain present and fail closed.
 - [x] The full `scripts/tests` unittest suite passes.
 - [x] The canonical local CI gate passes on the final commit.
-- [ ] An independent agent reviews and explicitly approves the CI delta on the final
+- [x] An independent agent reviews and explicitly approves the CI delta on the final
   SHA.
-- [ ] PR #2 GitHub Actions passes on the final SHA and cloud review has no unresolved
-  P0/P1/P2 findings before squash merge.
+- [x] PR #2 GitHub Actions passes on the final behavioral SHA. Two standard cloud
+  review triggers received no acknowledgement after their five-minute windows, so
+  the documented unavailable-reviewer fallback uses the independent full review plus
+  exact-SHA CI-delta approval; no remote P0/P1/P2 findings exist.
 
 ## Out of Scope
 
