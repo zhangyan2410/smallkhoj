@@ -3,6 +3,7 @@
     "save": "保存",
     "cancel": "取消",
     "delete": "删除",
+    "close": "关闭",
     "refresh": "刷新",
     "send": "发送",
     "start": "启动",
@@ -13,7 +14,12 @@
     "manageComputers": "管理电脑",
     "loading": "加载中…",
     "search": "搜索",
-    "searchPlaceholder": "搜索消息、文件、任务、成员…"
+    "searchPlaceholder": "搜索消息、文件、任务、成员…",
+    "routeLoading": "正在加载工作台…",
+    "taskBoardLoading": "正在加载任务板…",
+    "routeError": "无法加载此页面。",
+    "routeErrorDesc": "请检查网络连接后重试。",
+    "tryAgain": "重试"
   },
   "nav": {
     "chat": "聊天",
@@ -102,6 +108,15 @@
     "openMessage": "打开消息",
     "preview": "预览",
     "download": "下载",
+    "deleteFile": "删除文件",
+    "deleteFileConsequence": "此操作会永久删除文件记录并使文件无法访问；存储清理可能进入隔离区，需管理员后续处理。",
+    "deletingFile": "正在删除文件…",
+    "fileDeleteFailed": "无法删除文件",
+    "fileDeleteInvalidResponse": "服务器返回了无效的文件删除结果。",
+    "filesLoadFailed": "无法刷新文件列表",
+    "filesLoadFailedDesc": "仍保留上次成功加载的文件列表。请检查连接后重试。",
+    "fileQuarantineWarningTitle": "存储清理尚未完成",
+    "fileQuarantineWarningDesc": "{name} 的记录已删除，文件已无法访问。存储隔离区清理尚未完成，可能需要管理员处理。",
     "savedBadge": "已保存",
     "taskBadge": "任务",
     "replyInThread": "在线程中回复",
@@ -313,7 +328,13 @@
     "taskRecoveryOutput": "产出",
     "taskRecoveryNoMemory": "尚未写入服务端任务记忆。",
     "taskRecoveryBreakdown": "任务拆解",
-    "taskRecoveryOutputs": "产出和证据"
+    "taskRecoveryOutputs": "产出和证据",
+    "deleteTask": "删除任务",
+    "deleteTaskTitle": "删除此任务？",
+    "deleteTaskConsequence": "此操作会永久删除任务及其关联的分配和运行记录，仅保留审计身份信息。",
+    "deletingTask": "正在删除任务…",
+    "taskDeleteFailed": "无法删除任务",
+    "taskDeleteInvalidResponse": "服务器返回了无效的任务删除结果。"
   },
   "members": {
     "title": "成员",

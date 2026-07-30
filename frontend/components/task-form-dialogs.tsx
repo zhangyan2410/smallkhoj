@@ -9,7 +9,6 @@ import { FieldLabel, Select } from "@/components/ui/form"
 import {
   Dialog,
   DialogTrigger,
-  DialogBackdrop,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -76,7 +75,6 @@ export function TaskFormDialogs({
             </Button>
           }
         />
-        <DialogBackdrop />
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{copy.createTask}</DialogTitle>
@@ -137,7 +135,6 @@ export function TaskFormDialogs({
             </Button>
           }
         />
-        <DialogBackdrop />
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{copy.updateTask}</DialogTitle>

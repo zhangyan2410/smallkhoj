@@ -1,0 +1,804 @@
+
+
+
+R
+
+
+R
+
+REAL_audit_delivery_ui_20260723235900
+账号
+
+
+当前 Server · 拥有者
+REAL_audit_delivery_ui_20260723235900的服务器创建 Server
+
+[INPUT #create-server-name name=name type=text "新 Server 名称"]
+退出登录
+
+
+
+
+
+
+SmallKhoj
+任务
+创建、分配、扫描和推进工作，保留可见状态、来源链接和评审证据。
+
+创建任务更新任务控制面
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+看板/列表界面
+
+
+
+
+
+
+#138待办
+REAL_audit_delivery_ui_20260723235900-PAGE-138
+
+
+
+#139待办
+REAL_audit_delivery_ui_20260723235900-PAGE-139
+
+
+
+#140待办
+REAL_audit_delivery_ui_20260723235900-PAGE-140
+
+
+
+#141待办
+REAL_audit_delivery_ui_20260723235900-PAGE-141
+
+
+
+#142待办
+REAL_audit_delivery_ui_20260723235900-PAGE-142
+
+
+
+#143待办
+REAL_audit_delivery_ui_20260723235900-PAGE-143
+
+
+
+#144待办
+REAL_audit_delivery_ui_20260723235900-PAGE-144
+
+
+
+#145待办
+REAL_audit_delivery_ui_20260723235900-PAGE-145
+
+
+
+#146待办
+REAL_audit_delivery_ui_20260723235900-PAGE-146
+
+
+
+#147待办
+REAL_audit_delivery_ui_20260723235900-PAGE-147
+
+
+
+#148待办
+REAL_audit_delivery_ui_20260723235900-PAGE-148
+
+
+
+#149待办
+REAL_audit_delivery_ui_20260723235900-PAGE-149
+
+
+
+#150待办
+REAL_audit_delivery_ui_20260723235900-PAGE-150
+
+
+
+#151待办
+REAL_audit_delivery_ui_20260723235900-PAGE-151
+
+
+
+#152待办
+REAL_audit_delivery_ui_20260723235900-PAGE-152
+
+
+
+#153待办
+REAL_audit_delivery_ui_20260723235900-PAGE-153
+
+
+
+#154待办
+REAL_audit_delivery_ui_20260723235900-PAGE-154
+
+
+
+#155待办
+REAL_audit_delivery_ui_20260723235900-PAGE-155
+
+
+
+#156待办
+REAL_audit_delivery_ui_20260723235900-PAGE-156
+
+
+
+#157待办
+REAL_audit_delivery_ui_20260723235900-PAGE-157
+
+
+
+#158待办
+REAL_audit_delivery_ui_20260723235900-PAGE-158
+
+
+
+#159待办
+REAL_audit_delivery_ui_20260723235900-PAGE-159
+
+
+
+#160待办
+REAL_audit_delivery_ui_20260723235900-PAGE-160
+
+
+
+#161待办
+REAL_audit_delivery_ui_20260723235900-PAGE-161
+
+
+
+#162待办
+REAL_audit_delivery_ui_20260723235900-PAGE-162
+
+
+
+#163待办
+REAL_audit_delivery_ui_20260723235900-PAGE-163
+
+
+
+#164待办
+REAL_audit_delivery_ui_20260723235900-PAGE-164
+
+
+
+#165待办
+REAL_audit_delivery_ui_20260723235900-PAGE-165
+
+
+
+#166待办
+REAL_audit_delivery_ui_20260723235900-PAGE-166
+
+
+
+#167待办
+REAL_audit_delivery_ui_20260723235900-PAGE-167
+
+
+
+#168待办
+REAL_audit_delivery_ui_20260723235900-PAGE-168
+
+
+
+#169待办
+REAL_audit_delivery_ui_20260723235900-PAGE-169
+
+
+
+#170待办
+REAL_audit_delivery_ui_20260723235900-PAGE-170
+
+
+
+#171待办
+REAL_audit_delivery_ui_20260723235900-PAGE-171
+
+
+
+#172待办
+REAL_audit_delivery_ui_20260723235900-PAGE-172
+
+
+
+#173待办
+REAL_audit_delivery_ui_20260723235900-PAGE-173
+
+
+
+#174待办
+REAL_audit_delivery_ui_20260723235900-PAGE-174
+
+
+
+#175待办
+REAL_audit_delivery_ui_20260723235900-PAGE-175
+
+
+
+#176待办
+REAL_audit_delivery_ui_20260723235900-PAGE-176
+
+
+
+#177待办
+REAL_audit_delivery_ui_20260723235900-PAGE-177
+
+
+
+#178待办
+REAL_audit_delivery_ui_20260723235900-PAGE-178
+
+
+
+#179待办
+REAL_audit_delivery_ui_20260723235900-PAGE-179
+
+
+
+#180待办
+REAL_audit_delivery_ui_20260723235900-PAGE-180
+
+
+
+#181待办
+REAL_audit_delivery_ui_20260723235900-PAGE-181
+
+
+
+#182待办
+REAL_audit_delivery_ui_20260723235900-PAGE-182
+
+
+
+#183待办
+REAL_audit_delivery_ui_20260723235900-PAGE-183
+
+
+
+#184待办
+REAL_audit_delivery_ui_20260723235900-PAGE-184
+
+
+
+#185待办
+REAL_audit_delivery_ui_20260723235900-PAGE-185
+
+
+
+#186待办
+REAL_audit_delivery_ui_20260723235900-PAGE-186
+
+
+
+#187待办
+REAL_audit_delivery_ui_20260723235900-PAGE-187
+
+
+
+#188待办
+REAL_audit_delivery_ui_20260723235900-PAGE-188
+
+
+
+#189待办
+REAL_audit_delivery_ui_20260723235900-PAGE-189
+
+
+
+#190待办
+REAL_audit_delivery_ui_20260723235900-PAGE-190
+
+
+
+#191待办
+REAL_audit_delivery_ui_20260723235900-PAGE-191
+
+
+
+#192待办
+REAL_audit_delivery_ui_20260723235900-PAGE-192
+
+
+
+#193待办
+REAL_audit_delivery_ui_20260723235900-PAGE-193
+
+
+
+#194待办
+REAL_audit_delivery_ui_20260723235900-PAGE-194
+
+
+
+#195待办
+REAL_audit_delivery_ui_20260723235900-PAGE-195
+
+
+
+#196待办
+REAL_audit_delivery_ui_20260723235900-PAGE-196
+
+
+
+#197待办
+REAL_audit_delivery_ui_20260723235900-PAGE-197
+
+
+
+#198待办
+REAL_audit_delivery_ui_20260723235900-PAGE-198
+
+
+
+#199待办
+REAL_audit_delivery_ui_20260723235900-PAGE-199
+
+
+
+#200待办
+REAL_audit_delivery_ui_20260723235900-PAGE-200
+
+
+
+#201待办
+REAL_audit_delivery_ui_20260723235900-DELETE-TASK
+
+
+
+看板/列表界面201 / 201 可见
+看板列表
+
+
+
+总数
+201
+
+
+开放
+201
+
+
+智能体
+0
+
+筛选
+频道
+[SELECT #filter-channel name=channel]
+
+创建者
+[SELECT #filter-creator name=creator]
+
+负责人
+[SELECT #filter-assignee name=assignee]
+
+状态
+[SELECT #filter-status name=status]
+
+应用清除
+
+
+
+
+待办201
+
+
+
+
+
+
+
+
+#all #1
+REAL_audit_delivery_ui_20260723235900-PAGE-001
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #2
+REAL_audit_delivery_ui_20260723235900-PAGE-002
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #3
+REAL_audit_delivery_ui_20260723235900-PAGE-003
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #4
+REAL_audit_delivery_ui_20260723235900-PAGE-004
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #5
+REAL_audit_delivery_ui_20260723235900-PAGE-005
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #6
+REAL_audit_delivery_ui_20260723235900-PAGE-006
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #7
+REAL_audit_delivery_ui_20260723235900-PAGE-007
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #8
+REAL_audit_delivery_ui_20260723235900-PAGE-008
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #9
+REAL_audit_delivery_ui_20260723235900-PAGE-009
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #10
+REAL_audit_delivery_ui_20260723235900-PAGE-010
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #11
+REAL_audit_delivery_ui_20260723235900-PAGE-011
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #12
+REAL_audit_delivery_ui_20260723235900-PAGE-012
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #13
+REAL_audit_delivery_ui_20260723235900-PAGE-013
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #14
+REAL_audit_delivery_ui_20260723235900-PAGE-014
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #15
+REAL_audit_delivery_ui_20260723235900-PAGE-015
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #16
+REAL_audit_delivery_ui_20260723235900-PAGE-016
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #17
+REAL_audit_delivery_ui_20260723235900-PAGE-017
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #18
+REAL_audit_delivery_ui_20260723235900-PAGE-018
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #19
+REAL_audit_delivery_ui_20260723235900-PAGE-019
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #20
+REAL_audit_delivery_ui_20260723235900-PAGE-020
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #21
+REAL_audit_delivery_ui_20260723235900-PAGE-021
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #22
+REAL_audit_delivery_ui_20260723235900-PAGE-022
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #23
+REAL_audit_delivery_ui_20260723235900-PAGE-023
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #24
+REAL_audit_delivery_ui_20260723235900-PAGE-024
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #25
+REAL_audit_delivery_ui_20260723235900-PAGE-025
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #26
+REAL_audit_delivery_ui_20260723235900-PAGE-026
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #27
+REAL_audit_delivery_ui_20260723235900-PAGE-027
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #28
+REAL_audit_delivery_ui_20260723235900-PAGE-028
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #29
+REAL_audit_delivery_ui_20260723235900-PAGE-029
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #30
+REAL_audit_delivery_ui_20260723235900-PAGE-030
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+
+
+
+
+
+
+#all #31
+REAL_audit_delivery_ui_20260723235900-PAGE-031
+待办
+创建 @REAL_audit_delivery_ui_2026072323590007/24 00:08
+
+进行中0
+
+空
+
+审核中0
+
+空
+
+完成0
+
+空
+
+关闭0
+
+空
+
+
+任务详情
+所选工作项的来源和证据。
+
+
+
+#all #1
+REAL_audit_delivery_ui_20260723235900-PAGE-001
+
+状态待办
+负责人未分配
+创建者@REAL_audit_delivery_ui_20260723235900
+
+动态
+暂无动态记录。
+
+来源
+尚未关联来源消息。
+
+证据
+
+暂无证据条目。可在下方添加截图、trace、API 证明或备注。
+
+[SELECT #evidence-entry-type-dcaf5f0c-2e3a-4d39-a18c-fb59d211d43b name=entryType ="note"]
+
+[INPUT #base-ui-_R_4umn8lubtb_ name=entryPath type=text "路径或引用"]
+
+[INPUT #base-ui-_R_16mn8lubtb_ name=entryContent type=text "证据内容或说明"]
+添加证据
+
+
+
+任务恢复
+0/4 个恢复信号
+概要计划进度产出
+尚未写入服务端任务记忆。
+
+
+
+提醒产出记忆
+给已分配智能体发送一次性提醒，让它写入任务总结、证据或频道记忆提案。
+[TEXTAREA name=memoryInstruction "补充要求，例如：优先说明测试证据和剩余风险"]
+
+最终总结证据产物 / 截图后续步骤频道结论提案发送记忆提醒
+
+
+评审评审
+[SELECT #review-decision-dcaf5f0c-2e3a-4d39-a18c-fb59d211d43b name=reviewDecision ="approved"]
+
+[INPUT #base-ui-_R_152n8lubtb_ name=reviewNote type=text "评审或重开备注"]
+提交评审

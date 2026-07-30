@@ -1,5 +1,25 @@
 # Plan 009 (Direction): Add `DELETE` to Tasks and Files (CRUD-minus-one)
 
+## Current remediation disposition (2026-07-24)
+
+- **Disposition**: `SUPERSEDED_BY_SCHEMA_AND_DELIVERY`
+- **Release scope**: important-bug remediation, with final release closure still
+  pending.
+- **Backend status**: the current local candidate replaces the unsafe advisory
+  implementation with PostgreSQL-backed Task/File delete contracts, primitive
+  tombstones, post-commit event publication, and bounded storage cleanup.
+- **Visible integration status**: critical local `./twd` evidence passed under
+  marker `REAL_audit_delivery_ui_20260723235900`: Task UI confirmation and DB
+  tombstone, File SSE removal, and the quarantined-cleanup `role=alert` warning.
+- **Evidence index**:
+  [`REAL_audit_delivery_ui_20260723235900-notes.md`](../evidence/REAL_audit_delivery_ui_20260723235900-notes.md).
+- **Closure boundary**: this is local candidate evidence only. A clean candidate,
+  final full gate, precise commits, PR/squash merge, and post-merge deployment are
+  still required before calling the work released.
+
+The plan below is retained as the historical advisory proposal. Its route
+snippets are not the accepted implementation contract and must not be replayed.
+
 > **Executor instructions**: This is a small, well-scoped feature plan.
 > Read it fully, then implement. Honor the STOP conditions. Update the
 > status row in `plans/README.md` when done.

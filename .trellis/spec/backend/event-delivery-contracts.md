@@ -155,7 +155,7 @@ If any answer is unclear, do not deliver the event to runtime yet.
 ### 2. Signatures
 
 - Public stream: `GET /api/v1/events/stream?scopeKind=<kind>&scopeId=<id-or-name>`
-- Auth: existing public API auth through `X-Public-Key` or `api_key`.
+- Auth: public API auth through `X-Public-Key` only. Reusable credentials in query strings are rejected.
 - Response media type: `text/event-stream`.
 - Backend envelope:
   - `id: string`
@@ -179,6 +179,11 @@ If any answer is unclear, do not deliver the event to runtime yet.
 - Subscriber queues must be cleaned up on disconnect.
 - Redis must not be introduced for this stream unless a later production-readiness spec explicitly changes the fanout decision.
 - Postgres fanout must validate NOTIFY channel identifiers and keep payloads under the Postgres NOTIFY payload limit.
+- Compacted and minimal Postgres NOTIFY envelopes must preserve the selected Server
+  identity both as top-level `serverId` and `payload.serverId`. Cross-process SSE
+  authorization uses that identity; dropping it makes every other backend worker
+  discard an otherwise valid event. If even the minimal identity-bearing envelope
+  cannot fit the payload limit, fail before calling `pg_notify`.
 
 ### 4. Validation & Error Matrix
 
@@ -191,6 +196,7 @@ If any answer is unclear, do not deliver the event to runtime yet.
 | Scope filter does not match | Event is not yielded to that subscriber. |
 | Postgres NOTIFY channel contains unsafe characters | Adapter construction fails with `ValueError`. |
 | Event payload exceeds NOTIFY payload budget | Adapter publish fails before sending oversized payload. |
+| Large Server-scoped event is compacted | `serverId` remains available at the top level and in `payload`; same-Server subscribers can receive it and foreign-Server subscribers reject it. |
 
 ### 5. Good/Base/Bad Cases
 
@@ -208,6 +214,8 @@ If any answer is unclear, do not deliver the event to runtime yet.
 - Unit: heartbeat/comment and SSE frame formatting.
 - Unit: in-process hub scope filtering and subscriber cleanup.
 - Unit: Postgres NOTIFY seam validates channel names and builds `pg_notify`.
+- Unit: compact and minimal NOTIFY envelopes retain Server identity, and an identity
+  too large for the minimal envelope is rejected.
 - API: `/api/v1/events/stream` returns `text/event-stream` and a ready frame with public auth.
 - Integration/real test: an agent-created chat message appears in an already-open browser without manual refresh.
 
@@ -228,3 +236,82 @@ Committed EventRecord -> public event envelope -> /api/v1/events/stream -> front
 ```
 
 The browser stream remains product-safe and independent from runtime prompt delivery.
+
+---
+
+## Scenario: PostgreSQL Fanout and SSE Resource Ownership
+
+### 1. Scope / Trigger
+
+- Trigger: changing PostgreSQL `LISTEN/NOTIFY`, browser or agent SSE routes, database pool sizing, backend worker count, reconnect logic, or application lifespan startup/shutdown.
+
+### 2. Signatures
+
+- Process owner: `services.public_events.PostgresNotifyRuntime`.
+- Lifespan entrypoints: `start_postgres_public_event_listener()` and `stop_postgres_public_event_listener()`.
+- Publisher pool application name: `smallkhoj-notify-publisher`.
+- Listener application name: `smallkhoj-notify-listener`.
+- Public stream: `GET /api/v1/events/stream`.
+- Agent stream: `GET /internal/agent-api/events/stream`.
+- Frozen agent claim: `AgentEventStreamClaims(member_id, server_id)`.
+- Connection budget: `(DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW + NOTIFY_PUBLISHER_POOL_SIZE + 1 listener) * BACKEND_WORKERS + BETTER_AUTH_DATABASE_POOL_SIZE + (DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW) Feishu-worker reserve + POSTGRES_CONNECTION_HEADROOM <= POSTGRES_MAX_CONNECTIONS`.
+
+### 3. Contracts
+
+- One backend process owns at most one publisher pool and one listener generation. Repeated start/stop is idempotent.
+- Publisher acquire/execute failure closes the failed pool, creates one replacement under a recovery lock, and retries only within `NOTIFY_PUBLISH_ATTEMPTS` and operation timeouts. It must not open an unbudgeted raw connection per event.
+- Listener termination transitions to degraded/reconnecting, restores `LISTEN`, and rejects callbacks captured by an older generation.
+- Listener, callback tasks, publisher pool, and connection close are bounded by `NOTIFY_SHUTDOWN_TIMEOUT_SECONDS`; shutdown must not wait forever.
+- A request-scoped `AsyncSession` and live ORM entity must not escape into `StreamingResponse`. Setup/auth freezes primitive identifiers under a function-scoped dependency; agent polling opens a short session per poll and serializes frames before closing it.
+- Public browser streaming is queue-based after setup and captures only the selected Server id, scope filter, request cancellation state, and queue.
+- Queue capacity is bounded. Queue overflow may be best-effort/drop with observable logging; it must not grow without limit.
+- The budget is deployment-wide, not backend-only. Better Auth owns one process-global
+  `pg.Pool` with an explicit validated maximum. The optional Feishu worker is an
+  independent SQLAlchemy process and is reserved even while its Compose profile is
+  disabled. Operational headroom is not a substitute for either service pool.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| Publisher connection is terminated | Replace pool and retry within the configured attempt/timeout budget; return to healthy after success. |
+| Listener connection is terminated | Reconnect with capped backoff, restore `LISTEN`, and deliver the next event exactly once. |
+| Callback from a stopped generation fires | Ignore it; do not publish. |
+| Shutdown resource stalls | Log timeout, terminate where supported, and complete bounded shutdown. |
+| Required connection budget exceeds capacity | Settings validation fails before startup with required/capacity/worker details. |
+| SSE request remains open | Its setup dependency is already finalized; ordinary queries can acquire the pool. |
+| Stream identity disappears between agent polls | Reject/terminate the poll path without retaining stale ORM state. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: terminate the real listener and publisher PIDs in disposable PostgreSQL; new PIDs appear, two subsequent events each arrive once, and double stop leaves zero named owner connections.
+- Good: with SQLAlchemy `pool_size=1,max_overflow=0`, hold either stream open and execute `SELECT 1` from an independent session.
+- Base: a transient notification is dropped after the bounded retry budget while durable `EventRecord` remains the source of truth.
+- Bad: `asyncpg.connect()` for every committed event, an unlimited raw-connect fallback, or increasing the SQLAlchemy pool to hide a retained SSE session.
+- Bad: a stream closure captures `db`, `Member`, or `Server` from request setup.
+
+### 6. Tests Required
+
+- Unit state tests: idempotent lifecycle, publisher replacement, listener termination callback, stale generation rejection, reconnect cap, and bounded shutdown.
+- Real PostgreSQL: terminate named publisher/listener connections, observe replacement/delivery exactly once, and assert zero owner connections after stop.
+- Controlled ASGI/HTTP: observe `get_db` finalization after the ready frame while the stream remains open, then disconnect and assert subscription/task cleanup.
+- Tiny real pool: independent query succeeds while public and agent streams remain open.
+- Configuration: the complete backend + Better Auth + Feishu worker + headroom budget
+  accepts the documented default, calculates three backend workers as 84 connections,
+  and rejects capacity 83.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+request session -> StreamingResponse closure -> open for hours
+event commit -> new asyncpg TCP connection -> pg_notify -> close
+```
+
+#### Correct
+
+```text
+short setup session -> frozen claims -> dependency finalized -> bounded stream state
+lifespan owner -> publisher pool + generation-guarded listener -> bounded recovery/shutdown
+```

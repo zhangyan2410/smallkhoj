@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Channel, EventRecord, Member, Server, Task
-
 
 OUTPUT_DIRECTION_LABELS = {
     "final_summary": "final summary",

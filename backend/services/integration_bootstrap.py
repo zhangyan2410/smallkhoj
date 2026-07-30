@@ -8,7 +8,6 @@ from sqlalchemy import select
 
 from models import Channel, ChannelMember, ExternalConnector, ExternalRoute, Member, Server
 
-
 BOOTSTRAP_REFERENCE_NOT_FOUND = "BOOTSTRAP_REFERENCE_NOT_FOUND"
 BOOTSTRAP_REFERENCE_SCOPE_MISMATCH = "BOOTSTRAP_REFERENCE_SCOPE_MISMATCH"
 

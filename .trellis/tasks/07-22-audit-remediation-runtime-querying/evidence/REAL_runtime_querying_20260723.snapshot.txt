@@ -1,0 +1,848 @@
+
+
+
+A
+
+
+A
+
+audit-remediation
+账号
+
+
+当前 Server · 拥有者
+Slock Server创建 Server
+
+[INPUT #create-server-name name=name type=text "新 Server 名称"]
+退出登录
+
+
+
+
+
+
+SmallKhoj
+任务
+创建、分配、扫描和推进工作，保留可见状态、来源链接和评审证据。
+
+创建任务更新任务控制面
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+看板/列表界面
+
+
+
+
+
+
+#1待办
+REAL_PAGINATION_20260723_004
+
+
+
+#2待办
+REAL_PAGINATION_20260723_001
+
+
+
+#3待办
+REAL_PAGINATION_20260723_000
+
+
+
+#4待办
+REAL_PAGINATION_20260723_003
+
+
+
+#5待办
+REAL_PAGINATION_20260723_002
+
+
+
+#6待办
+REAL_PAGINATION_20260723_006
+
+
+
+#7待办
+REAL_PAGINATION_20260723_005
+
+
+
+#8待办
+REAL_PAGINATION_20260723_007
+
+
+
+#9待办
+REAL_PAGINATION_20260723_009
+
+
+
+#10待办
+REAL_PAGINATION_20260723_008
+
+
+
+#11待办
+REAL_PAGINATION_20260723_010
+
+
+
+#12待办
+REAL_PAGINATION_20260723_012
+
+
+
+#13待办
+REAL_PAGINATION_20260723_011
+
+
+
+#14待办
+REAL_PAGINATION_20260723_013
+
+
+
+#15待办
+REAL_PAGINATION_20260723_016
+
+
+
+#16待办
+REAL_PAGINATION_20260723_015
+
+
+
+#17待办
+REAL_PAGINATION_20260723_017
+
+
+
+#18待办
+REAL_PAGINATION_20260723_018
+
+
+
+#19待办
+REAL_PAGINATION_20260723_019
+
+
+
+#20待办
+REAL_PAGINATION_20260723_014
+
+
+
+#21待办
+REAL_PAGINATION_20260723_020
+
+
+
+#22待办
+REAL_PAGINATION_20260723_021
+
+
+
+#23待办
+REAL_PAGINATION_20260723_022
+
+
+
+#24待办
+REAL_PAGINATION_20260723_023
+
+
+
+#25待办
+REAL_PAGINATION_20260723_024
+
+
+
+#26待办
+REAL_PAGINATION_20260723_025
+
+
+
+#27待办
+REAL_PAGINATION_20260723_026
+
+
+
+#28待办
+REAL_PAGINATION_20260723_027
+
+
+
+#29待办
+REAL_PAGINATION_20260723_028
+
+
+
+#30待办
+REAL_PAGINATION_20260723_029
+
+
+
+#31待办
+REAL_PAGINATION_20260723_030
+
+
+
+#32待办
+REAL_PAGINATION_20260723_031
+
+
+
+#33待办
+REAL_PAGINATION_20260723_032
+
+
+
+#34待办
+REAL_PAGINATION_20260723_033
+
+
+
+#35待办
+REAL_PAGINATION_20260723_034
+
+
+
+#36待办
+REAL_PAGINATION_20260723_035
+
+
+
+#37待办
+REAL_PAGINATION_20260723_036
+
+
+
+#38待办
+REAL_PAGINATION_20260723_037
+
+
+
+#39待办
+REAL_PAGINATION_20260723_038
+
+
+
+#40待办
+REAL_PAGINATION_20260723_039
+
+
+
+#41待办
+REAL_PAGINATION_20260723_040
+
+
+
+#42待办
+REAL_PAGINATION_20260723_041
+
+
+
+#43待办
+REAL_PAGINATION_20260723_042
+
+
+
+#44待办
+REAL_PAGINATION_20260723_043
+
+
+
+#45待办
+REAL_PAGINATION_20260723_044
+
+
+
+#46待办
+REAL_PAGINATION_20260723_045
+
+
+
+#47待办
+REAL_PAGINATION_20260723_046
+
+
+
+#48待办
+REAL_PAGINATION_20260723_047
+
+
+
+#49待办
+REAL_PAGINATION_20260723_048
+
+
+
+#50待办
+REAL_PAGINATION_20260723_049
+
+
+
+#51待办
+REAL_PAGINATION_20260723_050
+
+
+
+#52待办
+REAL_PAGINATION_20260723_051
+
+
+
+#53待办
+REAL_PAGINATION_20260723_052
+
+
+
+#54待办
+REAL_PAGINATION_20260723_053
+
+
+
+#55待办
+REAL_PAGINATION_20260723_054
+
+
+
+#56待办
+REAL_PAGINATION_20260723_055
+
+
+
+#57待办
+REAL_PAGINATION_20260723_056
+
+
+
+#58待办
+REAL_PAGINATION_20260723_057
+
+
+
+#59待办
+REAL_PAGINATION_20260723_058
+
+
+
+#60待办
+REAL_PAGINATION_20260723_059
+
+
+
+#61待办
+REAL_PAGINATION_20260723_060
+
+
+
+#62待办
+REAL_PAGINATION_20260723_061
+
+
+
+#63待办
+REAL_PAGINATION_20260723_062
+
+
+
+#64待办
+REAL_PAGINATION_20260723_063
+
+
+
+#65待办
+REAL_PAGINATION_20260723_064
+
+
+
+#66待办
+REAL_PAGINATION_20260723_065
+
+
+
+#67待办
+REAL_PAGINATION_20260723_066
+
+
+
+#68待办
+REAL_PAGINATION_20260723_067
+
+
+
+#69待办
+REAL_PAGINATION_20260723_068
+
+
+
+#70待办
+
+
+
+看板/列表界面205 / 205 可见
+看板列表
+
+
+
+总数
+205
+
+
+开放
+205
+
+
+智能体
+0
+
+筛选
+频道
+[SELECT #filter-channel name=channel]
+
+创建者
+[SELECT #filter-creator name=creator]
+
+负责人
+[SELECT #filter-assignee name=assignee]
+
+状态
+[SELECT #filter-status name=status]
+
+应用清除
+
+
+
+
+待办206
+
+
+
+
+
+
+
+
+#all #1
+REAL_PAGINATION_20260723_004
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #2
+REAL_PAGINATION_20260723_001
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #3
+REAL_PAGINATION_20260723_000
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #4
+REAL_PAGINATION_20260723_003
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #5
+REAL_PAGINATION_20260723_002
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #6
+REAL_PAGINATION_20260723_006
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #7
+REAL_PAGINATION_20260723_005
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #8
+REAL_PAGINATION_20260723_007
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #9
+REAL_PAGINATION_20260723_009
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #10
+REAL_PAGINATION_20260723_008
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #11
+REAL_PAGINATION_20260723_010
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #12
+REAL_PAGINATION_20260723_012
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #13
+REAL_PAGINATION_20260723_011
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #14
+REAL_PAGINATION_20260723_013
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #15
+REAL_PAGINATION_20260723_016
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #16
+REAL_PAGINATION_20260723_015
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #17
+REAL_PAGINATION_20260723_017
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #18
+REAL_PAGINATION_20260723_018
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #19
+REAL_PAGINATION_20260723_019
+待办
+创建 @audit-remediation07/23 16:10
+
+
+
+
+
+
+
+#all #20
+REAL_PAGINATION_20260723_014
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #21
+REAL_PAGINATION_20260723_020
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #22
+REAL_PAGINATION_20260723_021
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #23
+REAL_PAGINATION_20260723_022
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #24
+REAL_PAGINATION_20260723_023
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #25
+REAL_PAGINATION_20260723_024
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #26
+REAL_PAGINATION_20260723_025
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #27
+REAL_PAGINATION_20260723_026
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #28
+REAL_PAGINATION_20260723_027
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #29
+REAL_PAGINATION_20260723_028
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #30
+REAL_PAGINATION_20260723_029
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #31
+REAL_PAGINATION_20260723_030
+待办
+创建 @audit-remediation07/23 16:11
+
+
+
+
+
+
+
+#all #32
+REAL_PAGINATION_20260723_031
+待办
+创建 @audit-remediation
+
+进行中0
+
+空
+
+审核中0
+
+空
+
+完成0
+
+空
+
+关闭0
+
+空
+
+
+任务详情
+所选工作项的来源和证据。
+
+
+
+#all #1
+REAL_PAGINATION_20260723_004
+
+状态待办
+负责人未分配
+创建者@audit-remediation
+
+动态
+
+
+
+supervisor_task_created@audit-remediation
+@audit-remediation created task #107/23 16:10
+
+来源
+尚未关联来源消息。
+
+证据
+
+暂无证据条目。可在下方添加截图、trace、API 证明或备注。
+
+[SELECT #evidence-entry-type-64b3a31f-26ec-40d3-a711-ca05c1693091 name=entryType ="note"]
+
+[INPUT #base-ui-_R_4umn95esnelb_ name=entryPath type=text "路径或引用"]
+
+[INPUT #base-ui-_R_16mn95esnelb_ name=entryContent type=text "证据内容或说明"]
+添加证据
+
+
+
+任务恢复
+0/4 个恢复信号
+概要计划进度产出
+尚未写入服务端任务记忆。
+
+
+
+提醒产出记忆
+给已分配智能体发送一次性提醒，让它写入任务总结、证据或频道记忆提案。
+[TEXTAREA name=memoryInstruction "补充要求，例如：优先说明测试证据和剩余风险"]
+
+最终总结证据产物 / 截图后续步骤频道结论提案发送记忆提醒
+
+
+评审评审
+[SELECT #review-decision-64b3a31f-26ec-40d3-a711-ca05c1693091 name=reviewDecision ="approved"]
+
+[INPUT #base-ui-_R_152n95esnelb_ name=reviewNote type=text "评审或重开备注"]
+提交评审

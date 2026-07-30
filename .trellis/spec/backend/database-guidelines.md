@@ -67,7 +67,186 @@ LIMIT 5;
 
 ## Migrations
 
-<!-- How to create and run migrations -->
+## Scenario: Alembic Schema Authority and Legacy Adoption
+
+### 1. Scope / Trigger
+- Trigger: any table/column/index/constraint/extension/identity change, application startup change, or adoption of a database created before Alembic.
+- Alembic revision files are the only deployed schema writers. ORM metadata maps the schema; `models/seed.py` performs data-only idempotent seeds/backfills.
+
+### 2. Signatures
+- Fresh/known database: `cd backend && uv run alembic upgrade head`.
+- Read-only legacy fingerprint: `DATABASE_URL=<explicit-url> uv run python -m scripts.legacy_schema_preflight`.
+- Compatible legacy adoption: `uv run alembic stamp 77b8b147f689` followed by `uv run alembic upgrade head`.
+- Current chain: `77b8b147f689 -> 0002_messages_seq -> 0003_messages_seq_auto -> 0004_template_tenancy`.
+- Runtime guard: `services.schema_readiness.assert_schema_at_head(db)`.
+- Isolated migration test env: `SMALLKHOJ_MIGRATION_TEST_ADMIN_URL` and `SMALLKHOJ_MIGRATION_TEST_DATABASE_URL`.
+
+### 3. Contracts
+- Docker/local-prod runs `alembic upgrade head` before uvicorn. Direct uvicorn performs a read-only exact-head check and refuses missing/behind/unknown revisions.
+- FastAPI lifespan and runtime seed code must not call `Base.metadata.create_all` or execute schema DDL.
+- Legacy fingerprint reads required tables, version state and the complete structural
+  definitions needed to identify historical 0001: column type/nullability/default /
+  identity; index table/key order/uniqueness/access method/predicate; primary, unique,
+  check and foreign-key columns/targets/delete actions. Matching object names alone is
+  never compatibility evidence. It never stamps automatically and rejects
+  post-baseline objects already present in an otherwise unversioned database.
+- SQL definition normalization may remove harmless casing, quoting, qualification,
+  whitespace, parentheses and text-cast noise only outside quoted semantic tokens.
+  String literal contents and case-sensitive quoted identifiers remain byte-for-byte
+  significant; for example, `'open'` and `'OPEN'` are different defaults.
+- A baseline membership check is compatible only when the complete top-level predicate
+  is the expected single-column `IN (...)` or PostgreSQL `= ANY (ARRAY[...])` form.
+  Boolean inversion or wrapping such as `(role IN (...)) = FALSE` is incompatible even
+  when the column and literal set otherwise match.
+- Legacy fingerprint compares with historical `0001`, not terminal `Base.metadata`. Each later revision must register its added columns/indexes/constraints in the preflight post-baseline exclusion sets, while baseline-only objects such as `uq_task_run_templates_slug` remain required before stamping.
+- The only valid legacy stamp target is baseline `77b8b147f689`; `stamp head` is forbidden.
+- `messages.seq` transitions through `0002_messages_seq` (`BY DEFAULT` plus atomic historical high-water alignment) and `0003_messages_seq_auto` (final alignment plus `ALWAYS`). Production writers omit `seq`.
+- `0004_template_tenancy` classifies repository-known builtins as `server_id NULL`, backfills `server/user` rows from a valid creator Member, replaces global slug uniqueness with builtin and `(server_id, slug)` partial unique indexes, and enforces `ck_task_run_templates_tenant_scope`.
+- Downgrading `0004` to `0003` first checks for duplicate slugs across tenants. Such
+  rows are legal at `0004` but cannot be represented by `0003`'s global unique
+  constraint, so the migration raises
+  `TEMPLATE_TENANCY_DOWNGRADE_SLUG_COLLISION` before any DDL. It never deletes,
+  merges, or silently renames templates.
+
+### 4. Validation & Error Matrix
+- Missing `alembic_version` at app startup -> refuse startup and name the migration/preflight command.
+- Current revision differs from the checkout's unique head -> refuse startup; do not create missing objects.
+- Legacy fingerprint missing a required object, containing a same-name definition
+  mismatch, already containing post-baseline/identity/version state, or using an
+  unsupported check shape -> incompatible; make zero writes.
+- A quoted default or index-predicate literal differs only by case/content ->
+  definition mismatch; a membership check has any outer boolean operator -> check
+  mismatch. Neither case may create or stamp `alembic_version`.
+- Migration lock/DDL/constraint failure -> deployment stops before uvicorn.
+- Ambiguous legacy template (unknown builtin or non-builtin without a valid creator Member) -> transactional `0004` failure; revision remains `0003`, `server_id` and partial indexes remain absent, and an operator must explicitly classify the row before retry.
+- Cross-Server duplicate template slug during `0004 -> 0003` -> fail before DDL;
+  revision remains `0004`, `server_id` and tenant indexes remain present. After an
+  operator explicitly renames or merges the collision, retrying the downgrade may
+  restore the global `uq_task_run_templates_slug` constraint.
+- Migration test URLs absent -> local optional suite may skip; the required release command supplies explicit isolated URLs and permits no skip.
+
+### 5. Good/Base/Bad Cases
+- Good: empty disposable PostgreSQL -> actual revisions -> head -> application starts.
+- Good: compatible unversioned legacy schema -> read-only preflight -> operator-reviewed baseline stamp -> upgrade head.
+- Good: two Server-owned human templates use the same slug; a duplicate inside one Server fails.
+- Good: an operator resolves cross-Server duplicate slugs explicitly, then downgrade
+  restores the `0003` global slug constraint without losing a template.
+- Base: already-versioned database runs ordinary upgrade and exact-head readiness.
+- Bad: `Base.metadata.create_all` as startup fallback or migration proof.
+- Bad: `alembic stamp head`, automatic stamp on fingerprint failure, or destructive tests against a shared database.
+- Bad: silently hide, delete, or guess the Server for an ambiguous legacy template so migration can continue.
+- Bad: let downgrade discover duplicate slugs only after dropping tenant indexes, or
+  choose an arbitrary tenant row to keep.
+
+### 6. Tests Required
+- Execute actual revisions for empty-to-head, baseline-to-head and legacy-preflight/baseline-stamp/head paths.
+- Assert missing-object and same-name definition drift are rejected and
+  `alembic_version` remains absent. Definition drift coverage includes columns,
+  indexes, primary/unique/check constraints and foreign keys.
+- Assert harmless PostgreSQL formatting of compatible definitions is accepted while
+  case-changed quoted literals and boolean-inverted/wrapped `IN`/`= ANY` checks are
+  rejected read-only.
+- Seed historical message seq 1/2/3, then assert first implicit value is greater than 3.
+- Seed an explicit transition value 100, apply final reconcile and assert the next implicit value is greater than 100.
+- Commit concurrent implicit inserts and assert uniqueness; test all production writers omit `seq`.
+- Assert startup seed source has no `create_all` or schema DDL.
+- Execute `0003 -> 0004` with defensible builtins/human rows, then assert classification, partial indexes, tenant checks and scoped uniqueness. Execute an ambiguous case and assert full DDL/revision rollback.
+- Execute `0004 -> 0003` with legal cross-Server duplicate slugs and assert the stable
+  failure code, unchanged revision/column/index state, then explicitly resolve the
+  duplicate and assert successful downgrade plus restored global uniqueness.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+uvicorn startup -> create_all/handwritten ALTER -> stamp head -> schema appears current
+```
+
+#### Correct
+```text
+deployment -> alembic upgrade head -> read-only exact-head guard -> data-only seed -> runtime
+legacy -> read-only fingerprint -> explicit baseline stamp -> upgrade head
+```
+
+```text
+wrong: ambiguous template -> stamp head / guess tenant
+correct: ambiguous template -> transactional STOP -> operator classification -> rerun 0004
+```
+
+## Scenario: Destructive Writes with Tombstone Audit and Local Blob Compensation
+
+### 1. Scope / Trigger
+- Trigger: deleting an entity referenced by ActivityLog/EventRecord, deleting a
+  database row that owns a local filesystem blob, or deleting a parent such as an
+  Agent/Member/Channel whose cascade or helper removes `FileEntry` rows.
+
+### 2. Signatures
+- Task API: `DELETE /api/v1/tasks/{task_id}` -> `{deleted, taskId, taskNumber}`.
+- File API: `DELETE /api/v1/files/{file_id}` -> `{deleted, fileId, storageCleanup: "deleted" | "quarantined"}`.
+- Parent APIs: `DELETE /api/v1/members/{agent_id}` and
+  `DELETE /api/v1/channels/{channel_id}` report deleted file count plus
+  `storageCleanup: "deleted" | "quarantined"`.
+- Durable UI events: `task.deleted`, `file.deleted`; runtime delivery classification is false.
+
+### 3. Contracts
+- Capture primitive UUID/number/name/channel fields before DELETE or rollback can expire ORM state.
+- Delete saved/dependent/entity rows first; write deletion ActivityLog/EventRecord with the deleted entity FK set to `NULL`.
+- Preserve the old ID only in `details.tombstone` / `payload.tombstone` and top-level JSON routing fields such as `payload.taskId`.
+- Commit before browser publication. Rollback leaves entity, dependencies and audit mutually consistent.
+- Local file deletion uses quarantine-then-delete: atomically move the blob under `UPLOAD_ROOT/.deleted`, commit DB deletion, then purge. DB failure restores the original path; purge failure returns `storageCleanup="quarantined"` and never claims filesystem atomicity.
+- Parent deletion enumerates the complete `FileEntry` set before DML, including
+  member-upload cascades, deleted Channel/DM files, and deleted-message attachments.
+  It quarantines the batch before DB deletion, restores every already-moved blob if
+  quarantine setup or commit fails, and purges every quarantine entry after commit.
+  SavedItem references for those files are deleted explicitly; they must not become
+  untyped orphans merely because `SavedItem.item_id` has no file foreign key.
+
+### 4. Validation & Error Matrix
+- Non-admin deletion -> `403`, no entity/audit/storage mutation.
+- Missing or foreign-server ID -> `404`, no existence disclosure.
+- Unsafe/missing file path -> fail before DB mutation.
+- DB commit failure after quarantine -> rollback and restore original blob; no success response.
+- Post-commit quarantine purge failure -> DB remains deleted and response says `quarantined`.
+- A later file in a parent-delete batch cannot be quarantined -> restore earlier files
+  and make no database mutation.
+- Parent-delete commit failure -> rollback all rows/audit and restore every original
+  blob path.
+
+### 5. Good/Base/Bad Cases
+- Good: Task dependencies cascade, old nullable references become NULL, new tombstone event has `task_id=NULL`, then committed event publishes.
+- Good: File blob is quarantined before metadata deletion and disappears after successful purge.
+- Good: deleting an Agent or Channel removes every affected FileEntry/SavedItem and
+  blob using the same compensation boundary as explicit file deletion.
+- Base: purge fails after commit; the blob remains only in non-served quarantine and the response reports it.
+- Bad: delete Task then insert ActivityLog/EventRecord with `task_id=<deleted UUID>`.
+- Bad: unlink blob after commit and always return success without reporting cleanup failure.
+- Bad: rely on `files.uploaded_by ON DELETE CASCADE` or helper-level `DELETE FROM
+  files` while leaving `storage_path` on disk.
+
+### 6. Tests Required
+- Real PostgreSQL authenticated route tests for owner/admin success, member denial, missing/foreign scope and forced commit rollback.
+- Assert Task, assignment/run and saved-item state; old FK `SET NULL`; new Activity/Event tombstone JSON with NULL FK.
+- Assert File saved-item removal, memory `file_id SET NULL`, blob purge, quarantine fallback and DB-failure restoration.
+- Assert event publication observes committed state from an independent connection.
+- Assert daemon runtime allowlist rejects dotted and legacy deletion event names.
+- Real PostgreSQL parent-delete tests cover Agent cascade, Channel helper deletion,
+  commit rollback/restore, partial batch-quarantine compensation, SavedItem cleanup,
+  and truthful post-commit quarantine reporting.
+
+### 7. Wrong vs Correct
+#### Wrong
+```python
+await db.execute(delete(Task).where(Task.id == task.id))
+await _record_activity(..., task_id=task.id)  # FK violation / rollback
+```
+
+#### Correct
+```python
+tombstone = {"taskId": str(task.id), "taskNumber": task.task_number, "title": task.title}
+await db.execute(delete(Task).where(Task.id == task.id))
+await _record_activity(..., details={"taskId": tombstone["taskId"], "tombstone": tombstone}, task_id=None)
+await db.commit()
+await publish_committed_events()
+```
 
 ## Scenario: Server Account Membership Foundation
 
@@ -82,17 +261,24 @@ LIMIT 5;
 - Service module: `services.server_membership`.
 - Active Server resolver: `resolve_active_server_context(db, account, requested_server_id=None)`.
 - Public API wrapper: `routers.public_api._resolve_active_server_context(db, request)`.
+- Actor resolver: `routers.public_api._resolve_human_actor(...) -> Member`.
+- Bootstrap owner serialization: every default-Server owner-election entrypoint calls
+  `services.server_membership.acquire_owner_election_lock(db)`, which acquires the
+  same PostgreSQL transaction-scoped advisory lock and holds it through commit or
+  rollback.
 
 ### 3. Contracts
 - `Server` is the product-level team/workspace boundary. Do not introduce another workspace abstraction for the same scope.
 - Existing `Account.server_id` and `Account.member_id` remain as compatibility mirrors; new authorization must use `server_memberships`.
 - Human public API routes must resolve the active Server from the current account membership, not `select(Server).limit(1)`.
+- Actor input is normalized once inside the active Server. Omission, exact display, `@display`, and viewer UUID resolve to the same canonical Member UUID; authorization compares UUIDs and actor lookup never creates a Member.
+- Installation bootstrap registration takes the transaction-scoped advisory lock before checking for an active owner. One concurrent winner becomes owner and later successful registrations become members. Explicit creation of a new Server remains a separate per-Server owner rule.
 - `X-Server-Id` may select an active Server only when the current account has an active membership for that Server.
 - Owner/admin role is required for initial Computer/Agent administration paths.
 - Computer identity is currently Server-scoped. Daemon connect resolves or creates `Computer` by `server_id + machine_id`; the same physical `machine_id` under two Servers produces two `computers` rows.
 - Do not treat `machine_id` as a global physical-device identifier unless a product/architecture change introduces a global machine identity and per-Server binding layer.
 - Private and DM channels require `channel_members` membership for read/write visibility.
-- Startup DDL must create membership/invite tables and backfill existing accounts from `accounts.server_id` / `accounts.member_id`.
+- Alembic revisions create membership/invite schema; the data-only runtime seed may idempotently backfill existing accounts from `accounts.server_id` / `accounts.member_id` after the revision guard passes.
 
 ### 4. Validation & Error Matrix
 - Account selects a Server without active membership -> `403`.
@@ -102,16 +288,22 @@ LIMIT 5;
 - Agent creation with a Computer from another Server -> `404`.
 - Same daemon `machine_id` connecting with tickets from two different Servers -> two Server-local `Computer` rows, not one global row.
 - Existing account without a membership after deployment migration -> startup backfill should create one.
+- Foreign actor alias/UUID -> `403`; ambiguous case-insensitive alias -> `400`; unknown/cross-Server reference -> non-disclosing `404`.
+- Concurrent first registrations -> both may succeed, but committed bootstrap scope contains exactly one owner. Rollback releases the lock and leaves no Account/Member/Membership orphan.
 
 ### 5. Good/Base/Bad Cases
 - Good: login creates or reuses an Account and ensures an active `server_memberships` row.
 - Good: channel message read/write resolves `context.server` and checks private channel membership before returning content.
 - Good: Agent creation verifies both owner/admin role and selected-Server Computer ownership.
 - Good: daemon connect reuses a Computer only inside the ConnectTicket's Server scope.
+- Good: every legal self alias resolves to the membership Member UUID before authorization.
+- Good: two independent first-signup transactions commit one owner and one member; rollback/retry can still produce the first owner.
 - Base: compatibility fields continue to point at the primary Server/member until the UI fully supports switching.
 - Bad: `server = await _get_server(db)` in an authenticated human route.
 - Bad: accepting `X-Server-Id` without checking `server_memberships`.
 - Bad: using `machine_id` alone to decide that a Computer belongs to the active Server.
+- Bad: authorize `actor`, `sender`, or `creator` by comparing raw text, or auto-create a Member from untrusted actor input.
+- Bad: choose owner with application `SELECT` then `INSERT` without a cross-process PostgreSQL serialization primitive.
 
 ### 6. Tests Required
 - Metadata test for `server_memberships` and `server_invites`.
@@ -120,6 +312,8 @@ LIMIT 5;
 - Private channel access rejects non-members.
 - Computer/Agent scoping rejects cross-Server Computer binding.
 - Static or route-level test proving migrated human routes call active Server resolution instead of `_get_server()`.
+- Actor matrix covers omitted/display/handle/UUID self forms, every foreign form, ambiguity, unknown input and cross-Server UUID without creation side effects.
+- Real PostgreSQL tests use independent transactions, repeat the bootstrap race, inspect committed roles, and cover rollback/retry/no-orphan state.
 
 ### 7. Wrong vs Correct
 #### Wrong
@@ -130,6 +324,11 @@ human route -> _get_server() -> first Server -> query channels/messages/computer
 #### Correct
 ```text
 human route -> current account token -> server_memberships -> active Server context -> scoped query
+```
+
+```text
+wrong: raw actor string / stale owner read -> authorize or insert
+correct: scoped canonical Member UUID / pg advisory xact lock -> authorize or assign role
 ```
 
 ## Scenario: External Integration Gateway Foundation
@@ -151,7 +350,7 @@ human route -> current account token -> server_memberships -> active Server cont
 - External adapters must not execute runtime/provider work directly. Runtime execution stays behind TaskRun and daemon/runtime services.
 - Deduplication is database-backed through `uq_external_events_connector_dedup` on `(connector_id, dedup_key)`.
 - External sessions are unique by `(connector_id, external_scope_type, external_scope_id)`.
-- Startup DDL in `backend/models/seed.py` must be updated in the same change as ORM declarations in `backend/models/slock.py`.
+- ORM declarations in `backend/models/slock.py` and an ordered Alembic revision must be updated in the same schema change; never add gateway DDL to `backend/models/seed.py`.
 - Connector secrets and credential-shaped payload keys must not leak through event `normalized` payloads or generic serializers.
 
 ### 4. Validation & Error Matrix
@@ -625,7 +824,7 @@ FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_
   - Jira connector: `(server_id, provider="jira", name)`.
 - Route upsert key: `(server_id, connector_id, name)`.
 - Feishu route selector: `{"chatId": ..., "chatType": ..., "command": "jira_analysis"}`.
-- TaskRun DB compatibility: `task_assignments.assignment_mode` must allow `external_feishu` in both `models/slock.py` and startup DDL in `models/seed.py`.
+- TaskRun DB compatibility: `task_assignments.assignment_mode` must allow `external_feishu` in both `models/slock.py` and the owning Alembic baseline/follow-up revision.
 
 ### 3. Contracts
 - Bootstrap requires existing `Server`, `Channel`, creator `Member`, and assignee `Member` rows. It must not silently create product identity records.
@@ -1151,7 +1350,6 @@ POSTGRES_PASSWORD=<set-outside-repo>
   - `--proxy-url <url>`
   - `--next-public-api-base-url <url>`
   - `--next-public-ws-base-url <url>`
-  - `--next-public-api-key <public-key>`
   - `--dry-run`
   - `--json`
 
@@ -1162,8 +1360,9 @@ POSTGRES_PASSWORD=<set-outside-repo>
 - The CLI must save all three app images into one Docker archive, upload the archive to the remote directory, and run `docker load -i <remote-archive>`.
 - `--output-archive` is a local path and may point to `/Volumes/ORICO/...`; `--remote-dir` is a server path and should remain a normal host directory such as `/opt/smallkhoj`.
 - `--use-vpn-proxy` must add Docker build args for `HTTP_PROXY`, `HTTPS_PROXY`, `http_proxy`, and `https_proxy`, using `http://host.docker.internal:7897` by default because the proxy is reached from inside build containers.
-- Frontend builds must pass `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_WS_BASE_URL`, and `NEXT_PUBLIC_API_KEY` as build args; same-origin release mode keeps the first two empty by default.
-- The CLI must not read, upload, or print `.env.prod` or credential-shaped environment values.
+- Frontend builds pass `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_WS_BASE_URL` as build args; same-origin release mode keeps both empty by default. Production public-key material is never a build arg.
+- The caller must export `PUBLIC_API_KEY` in the process environment. The CLI passes only `--secret id=public_api_key,env=PUBLIC_API_KEY`; its command plan and JSON never contain the value or a `NEXT_PUBLIC_API_KEY=...` assignment.
+- The CLI must not read, upload, or print `.env.prod` or credential-shaped environment values. Missing `PUBLIC_API_KEY` is allowed in `--dry-run` planning but the real frontend Docker build fails closed because the BuildKit secret is absent.
 - After using this CLI, `.env.prod` must point `SMALLKHOJ_BACKEND_IMAGE`, `SMALLKHOJ_FRONTEND_IMAGE`, and `SMALLKHOJ_CADDY_IMAGE` at the loaded tags, and compose startup must avoid pulling those local tags.
 
 ### 4. Validation & Error Matrix
@@ -1179,7 +1378,7 @@ POSTGRES_PASSWORD=<set-outside-repo>
 - Good: images were already built locally, so the operator runs with `--skip-build` to avoid rebuilding and only transfers the current archive.
 - Good: local archive is written to `/Volumes/ORICO/...` with `--output-archive`, while SSH upload still targets `/opt/smallkhoj` with `--remote-dir`.
 - Base: a registry is already ready; skip this CLI and use registry image tags plus the normal pull/build startup path.
-- Bad: building Next.js on the 2 vCPU / 2 GB Lighthouse host.
+- Bad: building Next.js on the nominal 4 vCPU / 4 GB Lighthouse host (3.32 GiB guest-visible RAM) instead of transferring a prebuilt `linux/amd64` image.
 - Bad: reusing Apple Silicon `linux/arm64` local-smoke images on an `amd64` Lighthouse host.
 - Bad: setting `--remote-dir /Volumes/ORICO/...`; that path is local-only and normally does not exist on the server.
 - Bad: running `docker compose pull backend frontend` against `smallkhoj-*:local-release` tags after loading them locally.
@@ -1713,6 +1912,136 @@ Allocate `task_number = await _next_task_number(...)`, flush once, and rely on t
 
 #### Correct
 Allocate optimistically, catch only the task-number unique constraint, rollback, reload or use cached primitive values, recompute, and retry with a small bounded limit.
+
+---
+
+## Scenario: Bounded Serialization and Stable Task/Thread Cursors
+
+### 1. Scope / Trigger
+- Trigger: changing list/search/history serializers, task/thread ordering, cursor fields, endpoint filters, or a frontend consumer that assumes a complete collection.
+
+### 2. Signatures
+- Prefetch sentinel: `routers.serialization_prefetch.UNSET`.
+- Page contexts: `MessageSerializationContext`, `TaskSerializationContext`, `MemberSerializationContext`.
+- Task order: `(task_number ASC, channel_id ASC, id ASC)`.
+- Thread order: `(created_at DESC, id DESC)` after SQL qualification that the root has replies.
+- Cursor codec: base64url JSON, `v=1`, bound to `endpoint`, `serverId`, normalized filters, and the complete position tuple.
+- Task limits: `limit` defaults to 50 and is constrained to `1..200`; responses add `nextCursor`.
+
+### 3. Contracts
+- List work may grow by page count, not returned row count. Relationship/workspace/reaction/reply-count/TaskRun data is loaded once per page and serializers project from immutable maps.
+- `UNSET` means no context was supplied. A supplied map miss or explicit `None` is authoritative and must not trigger fallback SQL.
+- Public and agent response keys/null/defaults remain unchanged except for the additive pagination envelope field.
+- SQL `ORDER BY`, cursor position fields, and seek predicates use the same tuple/directions. `id` is the final unique tie-breaker.
+- `task_number` is channel-scoped and must never be the only server-wide cursor field.
+- Thread roots are joined/qualified against replies before seek/order/limit; Python filtering after limit is forbidden.
+- Cursor endpoint, Server, filter, version, type, timezone, UUID, and length mismatches all return the same non-disclosing `400 {"detail":"Invalid pagination cursor"}`.
+- Seek cursors are row-position tokens: deleting the boundary row does not invalidate continuation. Inserts before the boundary do not flow into later pages.
+
+### 4. Validation & Error Matrix
+- Missing/invalid cursor JSON/base64/type/version -> `400 Invalid pagination cursor`.
+- Cursor from another endpoint or Server -> the same 400; disclose no foreign scope details.
+- Cursor reused with a different status/channel filter -> the same 400.
+- Task tie across channels -> order by channel UUID then task UUID; return each task once.
+- Equal thread timestamp -> order/seek by message UUID descending.
+- No eligible reply-bearing roots -> empty page with `nextCursor: null`.
+
+### 5. Good/Base/Bad Cases
+- Good: 50-row and 100-row request statement counts remain equal or under their named constant ceiling while canonical JSON snapshots match.
+- Good: delete the boundary task/thread between pages and traverse every remaining eligible row once.
+- Base: serializer is called outside a list with `_context=UNSET`; its documented single-row fallback may query relations.
+- Bad: using `None` for both “not prefetched” and “known missing,” or `limit * 3` followed by Python reply filtering.
+- Bad: cursor contains only `task_number` or `created_at`, or frontend stops after the first 50/200 rows.
+
+### 6. Tests Required
+- Real PostgreSQL/ASGI whole-request counters at representative 50/100 rows for public and agent messages/search/history/tasks/members.
+- Exact canonical snapshots for empty, missing relation, reactions, TaskRuns, and nested Member shapes.
+- A no-SQL session assertion for a supplied missing prefetch value.
+- PostgreSQL task/thread traversal with ties, deletion, insertion before boundary, full duplicate-free traversal, filter mismatch, version mismatch, foreign Server, and cross-channel cursor reuse.
+- Frontend tests must prove every required consumer follows `nextCursor` with repeated-cursor and page-bound guards.
+
+### 7. Wrong vs Correct
+#### Wrong
+```python
+for task in tasks:
+    await db.execute(select(Channel).where(Channel.id == task.channel_id))
+cursor = {"taskNumber": task.task_number}
+```
+
+#### Correct
+```python
+context = await load_task_serialization_context(db, tasks)
+items = [await serialize(db, task, _context=context) for task in tasks]
+cursor = encode_task_cursor(task_number=last.task_number,
+                            position_channel_id=last.channel_id,
+                            task_id=last.id, ...)
+```
+
+## Scenario: Upload Resource Envelope and Compensation
+
+### 1. Scope / Trigger
+- Trigger: public file, agent attachment, or avatar multipart ingestion; upload limits; Caddy body limits; local durable storage; or FileEntry transaction changes.
+
+### 2. Signatures
+- Entrypoints: `POST /api/v1/files`, `POST /internal/agent-api/upload`, `POST /internal/agent-api/profile/avatar`.
+- Shared service: `services.upload_storage.stage_upload`, `StagedUpload.promote/cleanup`, `rollback_and_cleanup_upload`, `close_upload`.
+- Env: `UPLOAD_MAX_BYTES`, `UPLOAD_READ_CHUNK_BYTES`, `UPLOAD_CLEANUP_TIMEOUT_SECONDS`, and Caddy `SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX`.
+- Default application cap/read chunk: 50 MiB / 64 KiB.
+
+### 3. Contracts
+- Caddy request-body rejection, Starlette multipart spooling, application reads/staging, and final durable storage are separate resource boundaries and must be reported separately.
+- Every route uses the same application cap unless a reviewed product-specific lower cap is explicit.
+- The application reads at most one configured chunk at a time into a same-directory hidden `.uploading` staging file. It does not accumulate the complete body in a byte array.
+- Exact-limit input is accepted; one byte over returns stable 413. Content-Length is not trusted as the sole guard.
+- The durable blob is exposed with atomic same-filesystem `os.replace` only after validation and database flush. Commit success is the only committed terminal state.
+- Read/write/fsync/flush/promote/commit failure and cancellation roll back within a bounded wait and remove staging/final residue. Every path closes the parser-owned `UploadFile`.
+- Do not claim that application chunking rejects network ingress before Starlette has parsed/spooled multipart data.
+
+### 4. Validation & Error Matrix
+- Empty public file/avatar/attachment -> stable 400 detail for that route; no row/blob.
+- Body exceeds application cap -> 413; close handle; no row/staging/final file.
+- Invalid channel/message/mime metadata -> 4xx before durable commit; upload handle still closes.
+- Interrupted read or cancellation -> re-raise the original exception after cleanup.
+- Local write/fsync/promote failure -> rollback/cleanup; no committed row.
+- Database flush/commit failure after promotion -> rollback and unlink promoted blob.
+- Caddy body cap exceeded -> proxy 413 before backend; distinguish this evidence from application 413.
+
+### 5. Good/Base/Bad Cases
+- Good: migrated PostgreSQL accepts one exact-limit multipart file and rejects the next, leaving one FileEntry, one durable blob, and zero `.uploading` files.
+- Good: forced commit failure for all three routes leaves zero rows and zero blobs.
+- Base: Starlette spools a large multipart part to temporary disk before route code applies the 50 MiB application cap; docs state both boundaries.
+- Bad: `content = await file.read()`, `chunks.append` plus `b''.join(chunks)`, or direct writes to the final served path.
+- Bad: commit a FileEntry then attempt best-effort storage without compensating missing/partial files.
+
+### 6. Tests Required
+- Each route: exact limit, one byte over, multi-chunk input, misleading/missing content length, empty input, invalid metadata, interrupted read, cancellation, write/fsync failure, DB flush/commit failure, and handle close.
+- Filesystem assertions: no hidden staging or promoted residue on every non-commit terminal path.
+- Real migrated PostgreSQL/ASGI success and 413 cases with row/blob counts.
+- Exact tracked Caddy image/config probe: below ingress cap reaches backend; above cap returns 413 at Caddy.
+
+### 7. Wrong vs Correct
+#### Wrong
+```python
+content = await upload.read()
+path.write_bytes(content)
+db.add(FileEntry(storage_path=str(path)))
+await db.commit()
+```
+
+#### Correct
+```python
+staged = await stage_upload(upload, final_path=path, max_bytes=limit, ...)
+try:
+    db.add(FileEntry(size=staged.size, storage_path=str(path), ...))
+    await db.flush()
+    staged.promote()
+    await db.commit()
+except BaseException:
+    await rollback_and_cleanup_upload(db, staged)
+    raise
+finally:
+    await close_upload(upload)
+```
 
 ---
 

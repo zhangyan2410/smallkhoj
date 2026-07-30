@@ -1,0 +1,26 @@
+{
+  "runMarker": "REAL_audit_delivery_ui_20260723235900",
+  "environment": "local-prod",
+  "baseUrl": "http://127.0.0.1:19081",
+  "composeProject": "smallkhoj-audit-capacity-final",
+  "branch": "feat/2026-07-audit-remediation",
+  "backendImageId": "sha256:79c09ec4e0790967852396fe764f1c419d565b991b583a08af87497d62d2d0eb",
+  "frontendImageId": "sha256:ecf49144944f16d387fac95c7532dee445177ba64daabf1b10a435e00fcceb0f",
+  "caddyImageId": "sha256:11cdfc8c2dcfe67e9563cc935aca5b39305613d61b918fdef881c4a4e75aa4f8",
+  "frontendRestartCount": 0,
+  "frontendOomKilled": false,
+  "postDeploySmoke": {
+    "ready": true,
+    "failures": 0,
+    "warnings": 0,
+    "checks": {
+      "frontend": 200,
+      "health": 200,
+      "docs": 200,
+      "openapiPathCount": 110,
+      "daemonPackage": 200,
+      "unauthenticatedDaemonWebSocket": 403
+    }
+  },
+  "scopeNote": "This proves the local Caddy production shape only. The cloud host still runs the older deployment and was not accessed by this run."
+}

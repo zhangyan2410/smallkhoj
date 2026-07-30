@@ -1,4 +1,12 @@
 node_modules
 .next
+.env*
+!.env.example
+.runtime
+test-results
+playwright-report
+coverage
+*.log
+*.pid
 .gitignore
 README.md

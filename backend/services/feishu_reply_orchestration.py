@@ -11,7 +11,6 @@ from services.feishu_adapter import FeishuDispatchOutcome
 from services.feishu_replies import FeishuReplyConfig, FeishuReplyError, send_feishu_text_reply
 from services.integration_gateway import list_external_mappings_for_local
 
-
 FEISHU_REPLY_SENT = "FEISHU_REPLY_SENT"
 FEISHU_REPLY_ALREADY_SENT = "FEISHU_REPLY_ALREADY_SENT"
 FEISHU_REPLY_NO_SOURCE_CONTEXT = "FEISHU_REPLY_NO_SOURCE_CONTEXT"

@@ -1,31 +1,42 @@
 import os
 import uuid
+from datetime import datetime, timezone
 
 import asyncpg
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from main import app
-from models import Account, Base, Channel, ChannelMember, ChatThreadReadCursor, Member, Message, Server, ServerMembership
+from models import (
+    Account,
+    Base,
+    Channel,
+    ChannelMember,
+    ChatThreadReadCursor,
+    Member,
+    Message,
+    Server,
+    ServerMembership,
+)
 from routers import public_api
-
 
 TEST_DATABASE_URL = os.environ.get(
     "SMALLKHOJ_TEST_DATABASE_URL",
     "postgresql+asyncpg://smallkhoj:smallkhoj@localhost:5432/smallkhoj",
 )
-TEST_ADMIN_DATABASE_URL = os.environ.get(
-    "SMALLKHOJ_TEST_ADMIN_DATABASE_URL",
-    "postgresql://smallkhoj:smallkhoj@localhost:5432/smallkhoj",
+TEST_SCHEMA_DATABASE_URL = TEST_DATABASE_URL.replace(
+    "postgresql+asyncpg://",
+    "postgresql://",
+    1,
 )
 
 
 async def _create_temp_schema() -> str:
     schema_name = f"smallkhoj_test_{uuid.uuid4().hex[:12]}"
     try:
-        conn = await asyncpg.connect(TEST_ADMIN_DATABASE_URL)
+        conn = await asyncpg.connect(TEST_SCHEMA_DATABASE_URL)
     except Exception as exc:
         pytest.skip(f"Postgres test database is unavailable: {exc}")
     try:
@@ -36,7 +47,7 @@ async def _create_temp_schema() -> str:
 
 
 async def _drop_temp_schema(schema_name: str) -> None:
-    conn = await asyncpg.connect(TEST_ADMIN_DATABASE_URL)
+    conn = await asyncpg.connect(TEST_SCHEMA_DATABASE_URL)
     try:
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
     finally:
@@ -49,6 +60,37 @@ def _auth_headers(*, server_id: uuid.UUID, token: str) -> dict[str, str]:
         "X-Account-Token": token,
         "X-Server-Id": str(server_id),
     }
+
+
+async def _insert_message_fixture_with_seq(db, message: Message) -> None:
+    """Insert a fixed cursor boundary into a GENERATED ALWAYS test table."""
+
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        text(
+            """
+            INSERT INTO messages (
+                id, short_id, channel_id, sender_id, parent_id, content,
+                channel_type, mentions, seq, created_at, updated_at
+            ) OVERRIDING SYSTEM VALUE VALUES (
+                :id, :short_id, :channel_id, :sender_id, :parent_id, :content,
+                :channel_type, '{}'::uuid[], :seq, :created_at, :updated_at
+            )
+            """
+        ),
+        {
+            "id": message.id,
+            "short_id": message.short_id,
+            "channel_id": message.channel_id,
+            "sender_id": message.sender_id,
+            "parent_id": message.parent_id,
+            "content": message.content,
+            "channel_type": message.channel_type,
+            "seq": message.seq,
+            "created_at": now,
+            "updated_at": now,
+        },
+    )
 
 
 @pytest.mark.asyncio
@@ -96,7 +138,9 @@ async def test_postgres_http_channel_cursor_persists_and_projects_unread_state()
         )
 
         async with session_factory() as db:
-            db.add_all([server, member, account, membership, channel, channel_member, message])
+            db.add_all([server, member, account, membership, channel, channel_member])
+            await db.flush()
+            await _insert_message_fixture_with_seq(db, message)
             await db.commit()
 
         async def override_db():
@@ -297,7 +341,10 @@ async def test_postgres_http_thread_cursor_persists_and_projects():
         )
 
         async with session_factory() as db:
-            db.add_all([server, member, account, membership, channel, channel_member, root_message, reply_message])
+            db.add_all([server, member, account, membership, channel, channel_member])
+            await db.flush()
+            await _insert_message_fixture_with_seq(db, root_message)
+            await _insert_message_fixture_with_seq(db, reply_message)
             await db.commit()
 
         async def override_db():
@@ -779,12 +826,13 @@ async def test_postgres_http_thread_cursor_write_is_monotonic_and_preserves_last
                     membership,
                     channel,
                     channel_member,
-                    root_message,
-                    older_reply,
-                    current_reply,
-                    thread_cursor,
                 ]
             )
+            await db.flush()
+            await _insert_message_fixture_with_seq(db, root_message)
+            await _insert_message_fixture_with_seq(db, older_reply)
+            await _insert_message_fixture_with_seq(db, current_reply)
+            db.add(thread_cursor)
             await db.commit()
 
         async def override_db():

@@ -7,17 +7,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from config import settings
-from routers import health, chat, agent_api, public_api, hello
-from models.seed import create_tables
 from models import async_session
+from models.seed import create_tables
+from routers import agent_api, chat, health, hello, public_api
+from services.cors_config import build_cors_origins
 from services.public_events import (
     initialize_public_event_cursors,
     start_postgres_public_event_listener,
     stop_postgres_public_event_listener,
 )
 from services.reminder_scheduler import start_reminder_scheduler, stop_reminder_scheduler
+from services.schema_readiness import assert_schema_at_head
 from services.thread_summary import start_thread_summary_scheduler, stop_thread_summary_scheduler
-from services.cors_config import build_cors_origins
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DAEMON_DOWNLOAD_DIR = PROJECT_ROOT / "release-artifacts" / "smallkhoj-daemon"
@@ -25,7 +26,9 @@ DAEMON_DOWNLOAD_DIR = PROJECT_ROOT / "release-artifacts" / "smallkhoj-daemon"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：创建或升级数据库表。"""
+    """应用生命周期：迁移完成后执行幂等数据种子并启动后台服务。"""
+    async with async_session() as db:
+        await assert_schema_at_head(db)
     await create_tables()
     async with async_session() as db:
         await initialize_public_event_cursors(db)

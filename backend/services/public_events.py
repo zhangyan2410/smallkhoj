@@ -8,13 +8,14 @@ SSE subscribers.
 from __future__ import annotations
 
 import asyncio
-from collections import OrderedDict
-from contextlib import asynccontextmanager
 import json
 import logging
 import re
 import uuid
-from typing import Any, AsyncIterator
+from collections import OrderedDict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,14 +104,12 @@ class PublicEventHub:
 
 
 public_event_hub = PublicEventHub()
-_listener_task: asyncio.Task | None = None
-_listener_stop: asyncio.Event | None = None
 
 
 class PublicEventSubscription:
     def __init__(
         self,
-        hub: "InMemoryPublicEventHub",
+        hub: InMemoryPublicEventHub,
         *,
         scope_kind: str | None,
         scope_id: str | None,
@@ -195,6 +194,8 @@ class PostgresNotifyPublicEventFanout:
             payload = json.dumps(_compact_notify_event(event), ensure_ascii=False, separators=(",", ":"))
         if len(payload.encode("utf-8")) > POSTGRES_NOTIFY_PAYLOAD_LIMIT:
             payload = json.dumps(_minimal_notify_event(event), ensure_ascii=False, separators=(",", ":"))
+        if len(payload.encode("utf-8")) > POSTGRES_NOTIFY_PAYLOAD_LIMIT:
+            raise ValueError("minimal Postgres NOTIFY payload exceeds the payload limit")
         return text("SELECT pg_notify(:channel, :payload)"), {
             "channel": self.channel,
             "payload": payload,
@@ -214,6 +215,9 @@ def _compact_notify_event(event: dict[str, Any]) -> dict[str, Any]:
     raw_payload = event.get("payload")
     payload = raw_payload if isinstance(raw_payload, dict) else {}
     compact_payload: dict[str, Any] = {"compacted": True}
+    server_id = event.get("serverId") or payload.get("serverId")
+    if server_id is not None:
+        compact_payload["serverId"] = server_id
     for key in (
         "eventId",
         "eventSeq",
@@ -233,6 +237,7 @@ def _compact_notify_event(event: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": event.get("id"),
         "type": event.get("type"),
+        "serverId": server_id,
         "scope": event.get("scope") or {},
         "seq": event.get("seq"),
         "epoch": event.get("epoch"),
@@ -242,13 +247,17 @@ def _compact_notify_event(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _minimal_notify_event(event: dict[str, Any]) -> dict[str, Any]:
+    raw_payload = event.get("payload")
+    payload = raw_payload if isinstance(raw_payload, dict) else {}
+    server_id = event.get("serverId") or payload.get("serverId")
     return {
         "id": event.get("id"),
         "type": event.get("type"),
+        "serverId": server_id,
         "seq": event.get("seq"),
         "epoch": event.get("epoch"),
         "createdAt": event.get("createdAt"),
-        "payload": {"compacted": True},
+        "payload": {"compacted": True, "serverId": server_id},
     }
 
 
@@ -274,7 +283,7 @@ def _event_scope(record: EventRecord) -> dict[str, Any]:
         elif isinstance(channel_name, str) and channel_name:
             scope["name"] = channel_name
         return scope
-    if event_type.startswith("message.") or event_type == "reaction.updated":
+    if event_type.startswith("message.") or event_type.startswith("file.") or event_type == "reaction.updated":
         scope: dict[str, Any] = {"kind": "channel"}
         channel_id = record.channel_id or payload.get("channelId")
         if channel_id:
@@ -394,80 +403,309 @@ async def _notify_postgres(db: AsyncSession, event: dict[str, Any]) -> None:
     del db
     if not settings.database_url.startswith("postgres"):
         return
-    fanout = PostgresNotifyPublicEventFanout()
-    _statement, params = fanout.notify_statement(event)
-    import asyncpg
-
-    conn = None
-    try:
-        conn = await asyncpg.connect(_asyncpg_dsn())
-        await conn.execute("SELECT pg_notify($1, $2)", params["channel"], params["payload"])
-    except Exception:
-        logger.exception("public event postgres notify failed")
-    finally:
-        if conn is not None:
-            try:
-                await conn.close()
-            except Exception:
-                logger.debug("public event postgres notify close failed", exc_info=True)
+    await _postgres_notify_runtime.publish(event)
 
 
 def _asyncpg_dsn() -> str:
     return settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
-async def start_postgres_public_event_listener() -> None:
-    global _listener_task, _listener_stop
-    if _listener_task or not settings.database_url.startswith("postgres"):
-        return
-    _listener_stop = asyncio.Event()
-    _listener_task = asyncio.create_task(_postgres_listener_loop(_listener_stop))
+class PostgresNotifyRuntime:
+    """One recoverable publisher/listener owner for a backend process."""
 
+    def __init__(self) -> None:
+        self.state = "stopped"
+        self.last_error: str | None = None
+        self.generation = 0
+        self._pool: Any | None = None
+        self._listener_task: asyncio.Task | None = None
+        self._stop_event: asyncio.Event | None = None
+        self._listener_connected = False
+        self._lifecycle_lock = asyncio.Lock()
+        self._publisher_recovery_lock = asyncio.Lock()
+        self._callback_tasks: set[asyncio.Task] = set()
 
-async def stop_postgres_public_event_listener() -> None:
-    global _listener_task, _listener_stop
-    if not _listener_task:
-        return
-    if _listener_stop:
-        _listener_stop.set()
-    _listener_task.cancel()
-    try:
-        await _listener_task
-    except asyncio.CancelledError:
-        pass
-    finally:
-        _listener_task = None
-        _listener_stop = None
+    async def start(self) -> None:
+        if not settings.database_url.startswith("postgres"):
+            return
+        async with self._lifecycle_lock:
+            if self.state != "stopped":
+                return
+            self.state = "starting"
+            self.last_error = None
+            self.generation += 1
+            generation = self.generation
+            self._stop_event = asyncio.Event()
+            self._listener_connected = False
+            try:
+                self._pool = await self._create_pool()
+            except Exception as exc:
+                self.state = "stopped"
+                self.last_error = str(exc)
+                self._stop_event = None
+                raise
+            self._listener_task = asyncio.create_task(
+                self._listener_loop(generation, self._stop_event),
+                name=f"postgres-public-events-listener-{generation}",
+            )
 
+    async def stop(self) -> None:
+        async with self._lifecycle_lock:
+            if self.state == "stopped":
+                return
+            self.state = "stopping"
+            self.generation += 1
+            stop_event = self._stop_event
+            listener_task = self._listener_task
+            pool = self._pool
+            callback_tasks = set(self._callback_tasks)
+            self._stop_event = None
+            self._listener_task = None
+            self._pool = None
+            self._listener_connected = False
+            if stop_event is not None:
+                stop_event.set()
+            if listener_task is not None:
+                listener_task.cancel()
+            for task in callback_tasks:
+                task.cancel()
 
-async def _postgres_listener_loop(stop_event: asyncio.Event) -> None:
-    import asyncpg
+        await self._wait_for_tasks(
+            {task for task in callback_tasks | ({listener_task} if listener_task else set()) if task},
+            label="listener/callback",
+        )
+        await self._close_resource(pool, label="publisher pool")
 
-    conn = None
-    while not stop_event.is_set():
+        async with self._lifecycle_lock:
+            self._callback_tasks.difference_update(callback_tasks)
+            self.state = "stopped"
+
+    async def publish(self, event: dict[str, Any]) -> bool:
+        if self._pool is None or self.state in {"stopped", "stopping"}:
+            logger.error(
+                "public event postgres publisher is not healthy state=%s generation=%s; notification dropped",
+                self.state,
+                self.generation,
+            )
+            return False
+
+        fanout = PostgresNotifyPublicEventFanout()
+        _statement, params = fanout.notify_statement(event)
+        attempts = settings.notify_publish_attempts
+        for attempt in range(attempts):
+            generation = self.generation
+            pool = self._pool
+            if pool is None:
+                return False
+            try:
+                async with pool.acquire(timeout=settings.notify_operation_timeout_seconds) as conn:
+                    await asyncio.wait_for(
+                        conn.execute(
+                            "SELECT pg_notify($1, $2)",
+                            params["channel"],
+                            params["payload"],
+                        ),
+                        timeout=settings.notify_operation_timeout_seconds,
+                    )
+                if self._listener_connected:
+                    self.state = "healthy"
+                    self.last_error = None
+                return True
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self.state = "degraded"
+                self.last_error = str(exc)
+                logger.warning(
+                    "public event postgres publisher failed attempt=%s/%s generation=%s: %s",
+                    attempt + 1,
+                    attempts,
+                    generation,
+                    exc,
+                )
+                if attempt + 1 >= attempts:
+                    return False
+                recovered = await self._recover_publisher_pool(generation, pool)
+                if not recovered:
+                    return False
+        return False
+
+    async def _create_pool(self) -> Any:
+        import asyncpg
+
+        return await asyncio.wait_for(
+            asyncpg.create_pool(
+                _asyncpg_dsn(),
+                min_size=1,
+                max_size=settings.notify_publisher_pool_size,
+                timeout=settings.notify_connect_timeout_seconds,
+                command_timeout=settings.notify_operation_timeout_seconds,
+                server_settings={"application_name": "smallkhoj-notify-publisher"},
+            ),
+            timeout=settings.notify_connect_timeout_seconds,
+        )
+
+    async def _recover_publisher_pool(self, generation: int, failed_pool: Any) -> bool:
+        async with self._publisher_recovery_lock:
+            if generation != self.generation or self.state in {"stopped", "stopping"}:
+                return False
+            if self._pool is not failed_pool:
+                return self._pool is not None
+            self._pool = None
+            await self._close_resource(failed_pool, label="invalid publisher pool")
+            try:
+                replacement = await self._create_pool()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self.state = "degraded"
+                self.last_error = str(exc)
+                logger.exception("public event postgres publisher recovery failed")
+                return False
+            if generation != self.generation or self.state in {"stopped", "stopping"}:
+                await self._close_resource(replacement, label="stale replacement publisher pool")
+                return False
+            self._pool = replacement
+            logger.info("public event postgres publisher recovered generation=%s", generation)
+            return True
+
+    async def _listener_loop(self, generation: int, stop_event: asyncio.Event) -> None:
+        import asyncpg
+
+        delay = settings.notify_reconnect_initial_seconds
+        while generation == self.generation and not stop_event.is_set():
+            conn = None
+            termination_event = asyncio.Event()
+            try:
+                conn = await asyncio.wait_for(
+                    asyncpg.connect(
+                        _asyncpg_dsn(),
+                        timeout=settings.notify_connect_timeout_seconds,
+                        command_timeout=settings.notify_operation_timeout_seconds,
+                        server_settings={"application_name": "smallkhoj-notify-listener"},
+                    ),
+                    timeout=settings.notify_connect_timeout_seconds,
+                )
+                loop = asyncio.get_running_loop()
+
+                def on_termination(_connection: Any) -> None:
+                    loop.call_soon_threadsafe(termination_event.set)
+
+                def on_notify(_connection: Any, _pid: int, _channel: str, payload: str) -> None:
+                    if generation != self.generation or stop_event.is_set():
+                        return
+                    task = loop.create_task(self._publish_payload(generation, payload))
+                    self._callback_tasks.add(task)
+                    task.add_done_callback(self._callback_tasks.discard)
+
+                conn.add_termination_listener(on_termination)
+                await conn.add_listener(PUBLIC_EVENT_NOTIFY_CHANNEL, on_notify)
+                self._listener_connected = True
+                self.state = "healthy"
+                self.last_error = None
+                delay = settings.notify_reconnect_initial_seconds
+                logger.info(
+                    "public event postgres listener healthy channel=%s generation=%s",
+                    PUBLIC_EVENT_NOTIFY_CHANNEL,
+                    generation,
+                )
+                await self._wait_for_listener_loss(conn, stop_event, termination_event)
+                if stop_event.is_set() or generation != self.generation:
+                    break
+                self.state = "reconnecting"
+                self._listener_connected = False
+                logger.warning("public event postgres listener connection lost; reconnecting")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                if stop_event.is_set() or generation != self.generation:
+                    break
+                self.state = "degraded"
+                self._listener_connected = False
+                self.last_error = str(exc)
+                logger.exception("public event postgres listener failed; retrying")
+            finally:
+                self._listener_connected = False
+                await self._close_resource(conn, label="listener connection")
+
+            if stop_event.is_set() or generation != self.generation:
+                break
+            await self._wait_for_stop(stop_event, delay)
+            delay = min(delay * 2, settings.notify_reconnect_max_seconds)
+
+    async def _publish_payload(self, generation: int, payload: str) -> None:
+        if generation != self.generation or self.state in {"stopped", "stopping"}:
+            return
+        await _publish_notify_payload(payload)
+
+    @staticmethod
+    async def _wait_for_listener_loss(
+        conn: Any,
+        stop_event: asyncio.Event,
+        termination_event: asyncio.Event,
+    ) -> None:
+        while not stop_event.is_set() and not termination_event.is_set():
+            if conn.is_closed():
+                return
+            try:
+                await asyncio.wait_for(termination_event.wait(), timeout=0.25)
+            except TimeoutError:
+                continue
+
+    @staticmethod
+    async def _wait_for_stop(stop_event: asyncio.Event, delay: float) -> None:
         try:
-            conn = await asyncpg.connect(_asyncpg_dsn())
-            loop = asyncio.get_running_loop()
+            await asyncio.wait_for(stop_event.wait(), timeout=delay)
+        except TimeoutError:
+            pass
 
-            def on_notify(_connection: Any, _pid: int, _channel: str, payload: str) -> None:
-                loop.create_task(_publish_notify_payload(payload))
+    async def _wait_for_tasks(self, tasks: set[asyncio.Task], *, label: str) -> None:
+        if not tasks:
+            return
+        done, pending = await asyncio.wait(tasks, timeout=settings.notify_shutdown_timeout_seconds)
+        for task in done:
+            if task.cancelled():
+                continue
+            try:
+                task.result()
+            except Exception:
+                logger.debug("public event postgres %s task failed during shutdown", label, exc_info=True)
+        if pending:
+            logger.error(
+                "public event postgres %s shutdown timed out pending=%s",
+                label,
+                len(pending),
+            )
 
-            await conn.add_listener(PUBLIC_EVENT_NOTIFY_CHANNEL, on_notify)
-            logger.info("public event postgres listener started channel=%s", PUBLIC_EVENT_NOTIFY_CHANNEL)
-            while not stop_event.is_set():
-                await asyncio.sleep(1)
+    @staticmethod
+    async def _close_resource(resource: Any | None, *, label: str) -> None:
+        if resource is None:
+            return
+        try:
+            await asyncio.wait_for(
+                resource.close(),
+                timeout=settings.notify_shutdown_timeout_seconds,
+            )
+        except TimeoutError:
+            logger.error("public event postgres %s close timed out", label)
+            terminate = getattr(resource, "terminate", None)
+            if terminate is not None:
+                terminate()
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("public event postgres listener failed; retrying")
-            await asyncio.sleep(2)
-        finally:
-            if conn is not None:
-                try:
-                    await conn.close()
-                except Exception:
-                    logger.debug("public event postgres listener close failed", exc_info=True)
-                conn = None
+            logger.debug("public event postgres %s close failed", label, exc_info=True)
+
+
+_postgres_notify_runtime = PostgresNotifyRuntime()
+
+
+async def start_postgres_public_event_listener() -> None:
+    await _postgres_notify_runtime.start()
+
+
+async def stop_postgres_public_event_listener() -> None:
+    await _postgres_notify_runtime.stop()
 
 
 async def _publish_notify_payload(payload: str) -> None:

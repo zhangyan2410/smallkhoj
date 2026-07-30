@@ -14,6 +14,7 @@ import type {
   RuntimeProviderInventory,
   RuntimeProviderLaunch,
 } from './providers/provider-types.js';
+import { resolveBundledPiLayout, type BundledPiLayout } from './pi-runtime.js';
 
 export type {
   LocalRuntimeProvider,
@@ -61,6 +62,7 @@ export function detectRuntimeProviders(env: NodeJS.ProcessEnv = process.env): Ru
 export function detectedRuntimesForInventory(
   config: DaemonConfig,
   inventory: RuntimeProviderInventory,
+  bundledPi: BundledPiLayout | undefined = resolveBundledPiLayout(),
 ): Array<DetectedRuntime & Record<string, unknown>> {
   const base: Array<DetectedRuntime & Record<string, unknown>> = [
     {
@@ -68,6 +70,15 @@ export function detectedRuntimesForInventory(
       status: 'available',
     },
   ];
+
+  if (bundledPi) {
+    base.push({
+      type: 'pi',
+      status: 'available',
+      source: 'bundled',
+      version: bundledPi.version,
+    });
+  }
 
   for (const provider of inventory.providers) {
     base.push({
@@ -154,7 +165,7 @@ export function resolveRuntimeProviderLaunch(
 }
 
 export function resolveDetectedRuntimeCommand(
-  runtime: 'claude_code' | 'codex' | 'opencode',
+  runtime: 'pi' | 'claude_code' | 'codex' | 'opencode',
   inventory: RuntimeProviderInventory,
 ): string | undefined {
   if (runtime === 'claude_code') return inventory.claudeCommand;

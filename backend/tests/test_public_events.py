@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
-from types import SimpleNamespace
+import asyncio
 import json
 import sys
 import uuid
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,6 +15,8 @@ from services.public_events import (
     public_event_envelope_from_record,
     sse_comment,
     sse_frame,
+    start_postgres_public_event_listener,
+    stop_postgres_public_event_listener,
 )
 
 
@@ -77,6 +80,45 @@ def test_task_event_scope_prefers_task_id_over_channel_id():
 
     assert event["scope"] == {"kind": "task", "id": str(task_id)}
     assert event["payload"]["channelId"] == str(channel_id)
+
+
+def test_deleted_task_uses_payload_tombstone_for_browser_scope_without_fk():
+    task_id = uuid.uuid4()
+    channel_id = uuid.uuid4()
+    record = _record(
+        event_type="task.deleted",
+        channel_id=channel_id,
+        task_id=None,
+        payload={
+            "taskId": str(task_id),
+            "tombstone": {"taskId": str(task_id), "taskNumber": 7},
+        },
+    )
+
+    event = public_event_envelope_from_record(record)
+
+    assert event["type"] == "task.deleted"
+    assert event["scope"] == {"kind": "task", "id": str(task_id)}
+    assert event["payload"]["tombstone"]["taskNumber"] == 7
+
+
+def test_deleted_file_remains_a_channel_scoped_browser_event():
+    file_id = uuid.uuid4()
+    channel_id = uuid.uuid4()
+    record = _record(
+        event_type="file.deleted",
+        channel_id=channel_id,
+        payload={"fileId": str(file_id), "channel": "#files"},
+    )
+
+    event = public_event_envelope_from_record(record)
+
+    assert event["type"] == "file.deleted"
+    assert event["scope"] == {
+        "kind": "channel",
+        "id": str(channel_id),
+        "name": "files",
+    }
 
 
 def test_channel_memory_event_uses_channel_scope():
@@ -255,11 +297,13 @@ def test_postgres_notify_fanout_compacts_large_payloads():
     event = {
         "id": "evt-large",
         "type": "message.created",
+        "serverId": "server-1",
         "scope": {"kind": "channel", "id": "channel-1", "name": "general"},
         "seq": 27,
         "epoch": "epoch",
         "createdAt": "2026-06-21T01:02:03+00:00",
         "payload": {
+            "serverId": "server-1",
             "eventId": "evt-large",
             "eventSeq": 27,
             "messageId": "message-1",
@@ -276,10 +320,55 @@ def test_postgres_notify_fanout_compacts_large_payloads():
     assert len(payload.encode("utf-8")) <= 7800
     assert parsed["id"] == "evt-large"
     assert parsed["type"] == "message.created"
+    assert parsed["serverId"] == "server-1"
     assert parsed["scope"] == {"kind": "channel", "id": "channel-1", "name": "general"}
     assert parsed["payload"]["compacted"] is True
+    assert parsed["payload"]["serverId"] == "server-1"
     assert parsed["payload"]["messageId"] == "message-1"
     assert "content" not in parsed["payload"]
+
+
+def test_postgres_notify_minimal_payload_preserves_server_identity():
+    fanout = PostgresNotifyPublicEventFanout(channel="smallkhoj_public_events")
+    event = {
+        "id": "evt-minimal",
+        "type": "message.created",
+        "serverId": "server-1",
+        "scope": {"kind": "channel", "id": "x" * 9_000},
+        "seq": 28,
+        "epoch": "epoch",
+        "createdAt": "2026-06-21T01:02:03+00:00",
+        "payload": {
+            "serverId": "server-1",
+            "eventId": "evt-minimal",
+            "content": "x" * 9_000,
+        },
+    }
+
+    _statement, params = fanout.notify_statement(event)
+    parsed = json.loads(params["payload"])
+
+    assert len(params["payload"].encode("utf-8")) <= 7_800
+    assert parsed["serverId"] == "server-1"
+    assert parsed["payload"] == {"compacted": True, "serverId": "server-1"}
+
+
+def test_postgres_notify_rejects_identity_that_cannot_fit_minimal_payload():
+    fanout = PostgresNotifyPublicEventFanout(channel="smallkhoj_public_events")
+    oversized_identity = "server-" + ("x" * 9_000)
+    event = {
+        "id": "evt-oversized-identity",
+        "type": "message.created",
+        "serverId": oversized_identity,
+        "scope": {"kind": "server", "id": oversized_identity},
+        "seq": 29,
+        "epoch": "epoch",
+        "createdAt": "2026-06-21T01:02:03+00:00",
+        "payload": {"serverId": oversized_identity},
+    }
+
+    with pytest.raises(ValueError, match="minimal Postgres NOTIFY payload"):
+        fanout.notify_statement(event)
 
 
 def test_postgres_notify_fanout_rejects_unsafe_channel_names():
@@ -302,34 +391,73 @@ async def test_postgres_notify_does_not_commit_or_rollback_caller_session(monkey
     class FakeConnection:
         def __init__(self):
             self.executed = []
-            self.closed = False
 
         async def execute(self, statement, *args):
             self.executed.append((statement, args))
 
+    connection = FakeConnection()
+
+    class FakeAcquire:
+        async def __aenter__(self):
+            return connection
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+    class FakePool:
+        def __init__(self):
+            self.closed = False
+
+        def acquire(self, **kwargs):
+            return FakeAcquire()
+
         async def close(self):
             self.closed = True
 
-    connection = FakeConnection()
+    pool = FakePool()
+
+    class FakeListenerConnection:
+        def __init__(self):
+            self.closed = False
+
+        async def add_listener(self, channel, callback):
+            return None
+
+        def add_termination_listener(self, callback):
+            return None
+
+        def is_closed(self):
+            return self.closed
+
+        async def close(self):
+            self.closed = True
 
     class FakeAsyncpg:
-        async def connect(self, dsn):
+        async def create_pool(self, dsn, **kwargs):
             assert dsn.startswith("postgresql://")
-            return connection
+            return pool
+
+        async def connect(self, dsn, **kwargs):
+            assert dsn.startswith("postgresql://")
+            return FakeListenerConnection()
 
     monkeypatch.setattr("services.public_events.settings.database_url", "postgresql+asyncpg://user:pass@localhost/db")
     monkeypatch.setitem(sys.modules, "asyncpg", FakeAsyncpg())
 
     db = FakeDb()
-    await _notify_postgres(db, {
-        "id": "evt-1",
-        "type": "message.created",
-        "scope": {"kind": "channel", "id": "channel-1"},
-        "seq": 1,
-        "epoch": "epoch",
-        "createdAt": "2026-06-21T01:02:03+00:00",
-        "payload": {},
-    })
+    try:
+        await start_postgres_public_event_listener()
+        await _notify_postgres(db, {
+            "id": "evt-1",
+            "type": "message.created",
+            "scope": {"kind": "channel", "id": "channel-1"},
+            "seq": 1,
+            "epoch": "epoch",
+            "createdAt": "2026-06-21T01:02:03+00:00",
+            "payload": {},
+        })
+    finally:
+        await stop_postgres_public_event_listener()
 
     assert db.commit_calls == 0
     assert db.rollback_calls == 0
@@ -338,7 +466,137 @@ async def test_postgres_notify_does_not_commit_or_rollback_caller_session(monkey
     assert statement == "SELECT pg_notify($1, $2)"
     assert args[0] == "smallkhoj_public_events"
     assert '"type":"message.created"' in args[1]
-    assert connection.closed is True
+    assert pool.closed is True
+
+
+@pytest.mark.asyncio
+async def test_postgres_notify_start_creates_one_process_owned_publisher_pool(monkeypatch):
+    class FakePool:
+        async def close(self):
+            return None
+
+    class FakeListenerConnection:
+        async def add_listener(self, channel, callback):
+            assert channel == "smallkhoj_public_events"
+            assert callable(callback)
+
+        async def close(self):
+            return None
+
+    class FakeAsyncpg:
+        def __init__(self):
+            self.create_pool_calls = 0
+            self.listener_connect_calls = 0
+
+        async def create_pool(self, dsn, **kwargs):
+            assert dsn.startswith("postgresql://")
+            self.create_pool_calls += 1
+            return FakePool()
+
+        async def connect(self, dsn, **kwargs):
+            assert dsn.startswith("postgresql://")
+            self.listener_connect_calls += 1
+            return FakeListenerConnection()
+
+    fake_asyncpg = FakeAsyncpg()
+    monkeypatch.setattr(
+        "services.public_events.settings.database_url",
+        "postgresql+asyncpg://user:pass@localhost/db",
+    )
+    monkeypatch.setitem(sys.modules, "asyncpg", fake_asyncpg)
+
+    try:
+        await start_postgres_public_event_listener()
+        await start_postgres_public_event_listener()
+        for _ in range(20):
+            if fake_asyncpg.listener_connect_calls == 1:
+                break
+            await asyncio.sleep(0.005)
+        assert fake_asyncpg.create_pool_calls == 1
+        assert fake_asyncpg.listener_connect_calls == 1
+    finally:
+        await stop_postgres_public_event_listener()
+        await stop_postgres_public_event_listener()
+
+
+@pytest.mark.asyncio
+async def test_postgres_notify_reuses_publisher_pool_without_per_event_connect(monkeypatch):
+    class FakePublisherConnection:
+        def __init__(self):
+            self.executed = []
+
+        async def execute(self, statement, *args):
+            self.executed.append((statement, args))
+
+    publisher_connection = FakePublisherConnection()
+
+    class FakeAcquire:
+        async def __aenter__(self):
+            return publisher_connection
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+    class FakePool:
+        def __init__(self):
+            self.closed = False
+
+        def acquire(self, **kwargs):
+            return FakeAcquire()
+
+        async def close(self):
+            self.closed = True
+
+    pool = FakePool()
+
+    class FakeListenerConnection:
+        async def add_listener(self, channel, callback):
+            return None
+
+        async def close(self):
+            return None
+
+    class FakeAsyncpg:
+        def __init__(self):
+            self.create_pool_calls = 0
+            self.connect_calls = 0
+
+        async def create_pool(self, dsn, **kwargs):
+            self.create_pool_calls += 1
+            return pool
+
+        async def connect(self, dsn, **kwargs):
+            self.connect_calls += 1
+            return FakeListenerConnection()
+
+    fake_asyncpg = FakeAsyncpg()
+    monkeypatch.setattr(
+        "services.public_events.settings.database_url",
+        "postgresql+asyncpg://user:pass@localhost/db",
+    )
+    monkeypatch.setitem(sys.modules, "asyncpg", fake_asyncpg)
+
+    try:
+        await start_postgres_public_event_listener()
+        await asyncio.sleep(0)
+        for event_id in ("evt-1", "evt-2"):
+            await _notify_postgres(object(), {
+                "id": event_id,
+                "type": "message.created",
+                "scope": {"kind": "channel", "id": "channel-1"},
+                "seq": 1,
+                "epoch": "epoch",
+                "createdAt": "2026-06-21T01:02:03+00:00",
+                "payload": {},
+            })
+
+        assert fake_asyncpg.create_pool_calls == 1
+        assert fake_asyncpg.connect_calls == 1
+        assert len(publisher_connection.executed) == 2
+    finally:
+        await stop_postgres_public_event_listener()
+
+    assert pool.closed is True
 
 
 @pytest.mark.asyncio

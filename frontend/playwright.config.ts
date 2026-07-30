@@ -1,5 +1,11 @@
 import { defineConfig, devices } from "@playwright/test"
 
+function requiredEnv(name: string) {
+  const value = process.env[name]?.trim()
+  if (!value) throw new Error(`${name} is required for the authenticated integration flow`)
+  return value
+}
+
 export default defineConfig({
   testDir: "../e2e",
   fullyParallel: false,
@@ -10,14 +16,14 @@ export default defineConfig({
     timeout: 15_000,
   },
   use: {
-    baseURL: process.env.FRONTEND_BASE ?? "http://localhost:3000",
+    baseURL: requiredEnv("FRONTEND_BASE"),
     trace: "on-first-retry",
   },
   reporter: "line",
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"], channel: "chrome" },
+      use: { ...devices["Desktop Chrome"] },
     },
   ],
 })

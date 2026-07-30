@@ -1,8 +1,8 @@
-from types import SimpleNamespace
 import uuid
+from types import SimpleNamespace
 
-from fastapi import HTTPException
 import pytest
+from fastapi import HTTPException
 
 import routers.agent_api as agent_api
 import services.memory_api as memory_api

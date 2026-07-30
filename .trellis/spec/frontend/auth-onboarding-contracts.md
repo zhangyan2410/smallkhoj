@@ -38,6 +38,7 @@ Current required production env:
 BETTER_AUTH_SECRET
 BETTER_AUTH_URL
 BETTER_AUTH_DATABASE_URL
+BETTER_AUTH_DATABASE_POOL_SIZE
 AUTH_BRIDGE_SECRET
 ```
 
@@ -105,7 +106,9 @@ emailAndPassword: {
 
 For auth env/deployment changes:
 
-- Frontend build with `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `BETTER_AUTH_DATABASE_URL`, and `AUTH_BRIDGE_SECRET`.
+- Frontend build with `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
+  `BETTER_AUTH_DATABASE_URL`, an explicit positive
+  `BETTER_AUTH_DATABASE_POOL_SIZE`, and `AUTH_BRIDGE_SECRET`.
 - Browser signup/login smoke on the target environment.
 - Confirm product copy matches the active policy: no verification copy unless email is actually sent.
 

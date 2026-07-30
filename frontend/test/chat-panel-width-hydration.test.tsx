@@ -26,6 +26,7 @@ function renderChannelClient(props: ChannelClientProps) {
 const baseProps = {
   initialChannel: "ccc",
   initialChannelId: "channel-1",
+  activeServerId: "server-1",
   initialChannels: [{ id: "channel-1", name: "#ccc", type: "public" as const }],
   initialMembers: [],
   initialAllMembers: [],

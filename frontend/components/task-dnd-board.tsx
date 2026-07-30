@@ -1,12 +1,13 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 
 import { TaskBoard, type Task } from "@/components/task-board"
+import { useTaskProjection } from "@/components/task-projection-provider"
+import { filterTaskProjection } from "@/lib/task-projection"
 
 export type TaskDndBoardProps = {
-  tasks: Task[]
   filters: Record<string, string>
   view: "board" | "list"
   sessionToken?: string | null
@@ -20,25 +21,13 @@ function taskHref(task: Task, filters: Record<string, string>) {
   return `/tasks?${params.toString()}`
 }
 
-export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoardProps) {
+export function TaskDndBoard({ filters, view, sessionToken }: TaskDndBoardProps) {
   const router = useRouter()
-  const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({})
-
-  const localTasks = useMemo(
-    () => tasks.map((task) => {
-      const status = statusOverrides[task.id]
-      return status ? { ...task, status } : task
-    }),
-    [tasks, statusOverrides],
+  const { tasks, replaceTask } = useTaskProjection()
+  const visibleTasks = useMemo(
+    () => filterTaskProjection(tasks, filters),
+    [filters, tasks],
   )
-  const boardKey = useMemo(
-    () => localTasks.map((task) => `${task.id}:${task.status}`).join("|"),
-    [localTasks],
-  )
-
-  const handleTaskMoved = useCallback((taskId: string, newStatus: string) => {
-    setStatusOverrides((prev) => ({ ...prev, [taskId]: newStatus }))
-  }, [])
 
   const filterRecord = useMemo(
     () => ({
@@ -59,14 +48,13 @@ export function TaskDndBoard({ tasks, filters, view, sessionToken }: TaskDndBoar
   return (
     <div data-inkframe-mobile-role="task-board" className="min-w-0 overflow-x-hidden">
       <TaskBoard
-        key={`${boardKey}:${view}`}
-        tasks={localTasks}
+        tasks={visibleTasks}
         initialView={view}
         showViewToggle={false}
         showDetail={false}
         dragDisabled={view !== "board"}
         sessionToken={sessionToken}
-        onTaskMoved={handleTaskMoved}
+        onTaskUpdated={replaceTask}
         onSelectTask={handleSelectTask}
       />
     </div>

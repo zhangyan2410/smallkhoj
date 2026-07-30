@@ -7,7 +7,11 @@ import { createServer } from "http"
 import { parse } from "url"
 import next from "next"
 import { WebSocketServer, WebSocket } from "ws"
-import { validateAuth } from "./lib/daemon-auth"
+import {
+  AGENT_WEBSOCKET_PROTOCOL,
+  parseWebSocketAuthProtocols,
+  validateAuth,
+} from "./lib/daemon-auth"
 import { store, ServerEvent } from "./lib/daemon-store"
 
 const dev = process.env.NODE_ENV !== "production"
@@ -61,7 +65,14 @@ app.prepare().then(() => {
   })
 
   // Attach WebSocket server to the same HTTP server
-  const wss = new WebSocketServer({ noServer: true })
+  const wss = new WebSocketServer({
+    noServer: true,
+    handleProtocols(protocols) {
+      return protocols.has(AGENT_WEBSOCKET_PROTOCOL)
+        ? AGENT_WEBSOCKET_PROTOCOL
+        : false
+    },
+  })
 
   function handleUpgrade(request: Parameters<typeof wss.handleUpgrade>[0], socket: Parameters<typeof wss.handleUpgrade>[1], head: Parameters<typeof wss.handleUpgrade>[2]) {
     const { pathname } = parse(request.url || "/", true)
@@ -75,10 +86,15 @@ app.prepare().then(() => {
   server.on("upgrade", handleUpgrade)
 
   wss.on("connection", (ws: WebSocket, req) => {
-    // Auth via query params
-    const parsedUrl = parse(req.url || "/", true)
-    const token = `Bearer ${parsedUrl.query.token || ""}`
-    const agentId = (parsedUrl.query.agentId as string) || ""
+    const protocolAuth = parseWebSocketAuthProtocols(req.headers["sec-websocket-protocol"])
+    const authorization = Array.isArray(req.headers.authorization)
+      ? req.headers.authorization[0]
+      : req.headers.authorization
+    const agentHeader = req.headers["x-agent-id"]
+    const agentId = (Array.isArray(agentHeader) ? agentHeader[0] : agentHeader)
+      || protocolAuth?.agentId
+      || ""
+    const token = authorization || protocolAuth?.authHeader || ""
 
     const auth = validateAuth(token, agentId)
     if (!auth.ok) {

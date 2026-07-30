@@ -16,7 +16,9 @@ import {
 import {
   detectedProviderOptions,
   unavailableProviderOptions,
+  runtimeOptionsFromDetected,
   type ProviderOption,
+  type RuntimeOption,
 } from "@/lib/runtime-options"
 
 type CreatedMember = Member
@@ -53,11 +55,19 @@ export function CreateAgentForm({
   const [error, setError] = useState<string | null>(null)
   const [computerId, setComputerId] = useState("")
   const [runtime, setRuntime] = useState("claude_code")
+  const runtimeOptions = computerId
+    ? runtimeOptionsFromDetected(computers, { computerId })
+    : runtimeOptionsFromDetected(computers)
+  // 默认选第一个可用的；若当前 runtime 不可选，回退到第一个可用项
+  const effectiveRuntime =
+    runtimeOptions.some((opt) => opt.value === runtime && opt.available)
+      ? runtime
+      : runtimeOptions.find((opt) => opt.available)?.value ?? "pi"
   const scopedProviderOptions = computerId
-    ? detectedProviderOptions(computers, { computerId, runtime })
+    ? detectedProviderOptions(computers, { computerId, runtime: effectiveRuntime })
     : providerOptions
   const scopedUnavailableProviders = computerId
-    ? unavailableProviderOptions(scopedProviderOptions, { runtime })
+    ? unavailableProviderOptions(scopedProviderOptions, { runtime: effectiveRuntime })
     : unavailableProviders
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -96,6 +106,11 @@ export function CreateAgentForm({
     }
   }
 
+  function runtimeOptionLabel(opt: RuntimeOption): string {
+    if (opt.bundled) return `${opt.label} (自带，无需配 key)`
+    return opt.available ? opt.label : `${opt.label} (本机未检测到)`
+  }
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {error && (
@@ -103,6 +118,9 @@ export function CreateAgentForm({
           {error}
         </InkframeObjectSurface>
       )}
+      <p className="text-xs text-muted-foreground">
+        以下是这台电脑能用的 runtime，选一个就能建 agent。本机没装别的也没关系，有自带的 Built-in Pi（无需配 key）。
+      </p>
       <div className="flex items-center gap-2 text-sm font-medium">
         <Bot className="size-4" />
         Create a new agent
@@ -136,10 +154,13 @@ export function CreateAgentForm({
           <Select
             id="agent-runtime"
             name="runtime"
-            value={runtime}
+            value={effectiveRuntime}
             onChange={(event) => setRuntime(event.target.value)}
-            items={["claude_code|Claude Code", "codex|Codex", "custom|Custom"]}
-            splitValue
+            items={runtimeOptions.map((opt) => ({
+              value: opt.value,
+              label: runtimeOptionLabel(opt),
+              disabled: !opt.available,
+            }))}
           />
         </div>
         <div className="flex flex-col gap-1.5">

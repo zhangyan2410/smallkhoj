@@ -44,6 +44,7 @@ export function config() {
     frontendBase: envValue("FRONTEND_BASE", "SMALLKHOJ_FRONTEND") ?? DEFAULT_FRONTEND_BASE,
     apiBase: envValue("API_BASE", "SMALLKHOJ_API", "NEXT_PUBLIC_API_BASE_URL") ?? DEFAULT_API_BASE,
     publicKey: envValue("PUBLIC_KEY", "NEXT_PUBLIC_API_KEY") ?? DEFAULT_PUBLIC_KEY,
+    authBridgeSecret: envValue("TWD_AUTH_BRIDGE_SECRET", "AUTH_BRIDGE_SECRET"),
     accountName: envValue("TWD_ACCOUNT", "SMALLKHOJ_TWD_ACCOUNT") ?? DEFAULT_ACCOUNT,
     twdWait: envValue("TWD_WAIT") ?? DEFAULT_TWD_WAIT,
     twdPort: explicitTwdPort ? Number(explicitTwdPort) : null,
@@ -222,29 +223,46 @@ function getTabs(twdWait = config().twdWait) {
   return payload.tabs ?? []
 }
 
-async function loginAccount({ accountName, apiBase, publicKey }) {
-  const response = await fetch(`${apiBase}/api/v1/auth/login`, {
+export async function bridgeAccountSession({
+  accountName,
+  apiBase,
+  publicKey,
+  authBridgeSecret,
+  fetchImpl = fetch,
+}) {
+  if (!authBridgeSecret) {
+    throw new Error("AUTH_BRIDGE_SECRET is required for trusted TWD authentication")
+  }
+  const normalizedAccountName = String(accountName ?? "").trim()
+  if (!normalizedAccountName) {
+    throw new Error("TWD_ACCOUNT is required for trusted TWD authentication")
+  }
+  const normalizedApiBase = String(apiBase ?? "").replace(/\/+$/, "")
+  const response = await fetchImpl(`${normalizedApiBase}/api/v1/auth/better-auth/bridge`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Public-Key": publicKey,
+      "X-Auth-Bridge-Secret": authBridgeSecret,
     },
-    body: JSON.stringify({ name: accountName, displayName: accountName }),
+    body: JSON.stringify({
+      userId: `twd:${normalizedAccountName}`,
+      name: normalizedAccountName,
+    }),
   })
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "")
-    throw new Error(`Login failed: HTTP ${response.status}${text ? ` ${text}` : ""}`)
+    throw new Error(`Trusted auth bridge failed: HTTP ${response.status}`)
   }
 
   const data = await response.json()
   if (!data?.sessionToken) {
-    throw new Error(`Login response did not include sessionToken: ${JSON.stringify(data)}`)
+    throw new Error("Trusted auth bridge response did not include sessionToken")
   }
   return data.sessionToken
 }
 
-function injectCookie(selection, sessionToken, twdWait) {
+function injectCookie(selection, sessionToken, twdWait, runTwdImpl = runTwd) {
   const script = `
 const cookieName = ${JSON.stringify(SESSION_COOKIE)};
 const token = ${JSON.stringify(sessionToken)};
@@ -256,9 +274,16 @@ return {
   hasCookie: document.cookie.split("; ").some((item) => item.startsWith(cookieName + "=")),
 };
 `
-  const payload = runTwd(["--compact", "eval", ...selection.args, "--wait", twdWait, script])
+  let payload
+  try {
+    payload = runTwdImpl(["--compact", "eval", ...selection.args, "--wait", twdWait, script])
+  } catch {
+    // The eval script contains the reusable session token. Do not retain the
+    // command/error as a cause: runTwd diagnostics include the complete argv.
+    throw new Error("Session cookie injection command failed")
+  }
   if (!payload.result?.hasCookie) {
-    throw new Error(`Session cookie injection failed on ${payload.tabUrl ?? payload.result?.href ?? "unknown tab"}`)
+    throw new Error("Session cookie injection verification failed")
   }
   return payload
 }
@@ -285,9 +310,81 @@ function probeFinalPage({ tabId, frontendBase, targetUrl, twdWait }) {
 }
 
 async function ensureAuthOnSelection(selection, cfg) {
-  const token = await loginAccount(cfg)
+  const token = await bridgeAccountSession(cfg)
   const injected = injectCookie(selection, token, cfg.twdWait)
   return { token, injected }
+}
+
+function exactTabSelection(tabId) {
+  const normalized = String(tabId ?? "").trim()
+  if (!normalized) throw new Error("Exact tab ID is required")
+  return { args: ["--tab", normalized], reason: "exact-tab", tabId: normalized }
+}
+
+function assertExactTabPayload(payload, tabId, operation) {
+  if (String(payload?.tabId ?? "") !== tabId) {
+    throw new Error(
+      `Exact-tab ${operation} returned ${payload?.tabId ?? "<unknown>"}; expected ${tabId}`,
+    )
+  }
+}
+
+export async function openTargetOnExactTab(target, tabId, options = {}) {
+  const {
+    runTwdImpl = runTwd,
+    ensureTwdServeImpl = ensureTwdServe,
+    bridgeAccountSessionImpl = bridgeAccountSession,
+    ...configOverrides
+  } = options
+  const cfg = { ...config(), ...configOverrides }
+  const selection = exactTabSelection(tabId)
+  await ensureTwdServeImpl(cfg)
+  const targetUrl = normalizeTarget(target, cfg.frontendBase)
+
+  const authenticate = async () => {
+    const token = await bridgeAccountSessionImpl(cfg)
+    const injected = injectCookie(selection, token, cfg.twdWait, runTwdImpl)
+    assertExactTabPayload(injected, selection.tabId, "cookie injection")
+  }
+  const navigateAndProbe = () => {
+    const opened = runTwdImpl([
+      "--compact",
+      "goto",
+      ...selection.args,
+      "--wait",
+      cfg.twdWait,
+      targetUrl.href,
+    ])
+    assertExactTabPayload(opened, selection.tabId, "navigation")
+    const probe = runTwdImpl([
+      "--compact",
+      "eval",
+      ...selection.args,
+      "--wait",
+      cfg.twdWait,
+      probeScript(),
+    ])
+    assertExactTabPayload(probe, selection.tabId, "final probe")
+    return { opened, probe }
+  }
+
+  await authenticate()
+  let { opened, probe } = navigateAndProbe()
+  if (probe.result?.pathname === "/login") {
+    await authenticate()
+    const retried = navigateAndProbe()
+    opened = retried.opened
+    probe = retried.probe
+  }
+
+  assertTargetResult(probe.result, targetUrl)
+  return {
+    ok: true,
+    target: `${targetUrl.pathname}${targetUrl.search}`,
+    tabId: selection.tabId,
+    tabUrl: probe.tabUrl ?? probe.result?.href ?? opened.tabUrl,
+    result: probe.result,
+  }
 }
 
 export async function openTarget(target, options = {}) {
@@ -358,16 +455,37 @@ export async function evalOnTarget(target, script, options = {}) {
   }
 }
 
+export function parseGuardTabOption(args) {
+  let tabId = null
+  const positionals = []
+
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index]
+    if (value !== "--tab") {
+      positionals.push(value)
+      continue
+    }
+    if (tabId !== null) throw new Error("--tab may only be supplied once")
+    const candidate = String(args[index + 1] ?? "").trim()
+    if (!candidate) throw new Error("--tab requires a non-empty value")
+    tabId = candidate
+    index += 1
+  }
+
+  return { tabId, positionals }
+}
+
 function usage() {
   return `Usage:
   tools/twd-guard/twd-auth [account-name]
-  tools/twd-guard/twd-open <path-or-url>
+  tools/twd-guard/twd-open [--tab <exact-tab-id>] <path-or-url>
   tools/twd-guard/twd-eval <path-or-url> <javascript>
 
 Environment:
   FRONTEND_BASE=http://127.0.0.1:3000
   API_BASE=http://localhost:8000
   PUBLIC_KEY=sk_public_local
+  AUTH_BRIDGE_SECRET=<trusted-local-bridge-secret>
   TWD_ACCOUNT=zy-ean
   TWD_WAIT=5`
 }
@@ -385,7 +503,12 @@ async function main(argv) {
   }
 
   if (command === "open") {
-    console.log(JSON.stringify(await openTarget(args[0])))
+    const { tabId, positionals } = parseGuardTabOption(args)
+    if (positionals.length !== 1) throw new Error(`open requires exactly one target\n${usage()}`)
+    const result = tabId
+      ? await openTargetOnExactTab(positionals[0], tabId)
+      : await openTarget(positionals[0])
+    console.log(JSON.stringify(result))
     return
   }
 

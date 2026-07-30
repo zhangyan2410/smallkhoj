@@ -4,8 +4,17 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    BigInteger, Boolean, CheckConstraint, Column, DateTime, ForeignKey,
-    Identity, Index, Integer, String, Text, UniqueConstraint, text,
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -208,6 +217,36 @@ class AgentWorkspace(Base):
     agent = relationship("Member", back_populates="workspaces")
 
 
+
+class LlmRunLease(Base):
+    __tablename__ = "llm_run_leases"
+    __table_args__ = (
+        Index("idx_llm_run_leases_status_expiry", "status", "expires_at"),
+        Index("idx_llm_run_leases_server_created", "server_id", "created_at"),
+        CheckConstraint(
+            "status IN ('waiting', 'active', 'released', 'expired', 'failed')",
+            name="ck_llm_run_leases_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    computer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("computers.id", ondelete="CASCADE"), nullable=False)
+    agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="waiting")
+    failure_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    acquired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    server = relationship("Server")
+    computer = relationship("Computer")
+    agent = relationship("Member")
+
+
 # ── Channels ─────────────────────────────────────────────────
 
 class Channel(Base):
@@ -267,7 +306,14 @@ class Message(Base):
         default=list,
         server_default=text("'{}'::uuid[]"),
     )
-    seq: Mapped[int] = mapped_column(BigInteger, autoincrement=True, unique=True)
+    seq: Mapped[int] = mapped_column(
+        BigInteger,
+        # Alembic's final transition barrier reconciles legacy explicit values and
+        # switches this column to GENERATED ALWAYS.  Application writers omit seq;
+        # PostgreSQL is the only allocator.
+        Identity(always=True, start=1, increment=1),
+        unique=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
@@ -404,13 +450,36 @@ class TaskAssignment(Base):
 class TaskRunTemplate(Base):
     __tablename__ = "task_run_templates"
     __table_args__ = (
-        UniqueConstraint("slug", name="uq_task_run_templates_slug"),
         Index("idx_task_run_templates_status", "status"),
+        Index("idx_task_run_templates_server", "server_id", "status"),
+        Index(
+            "uq_task_run_templates_builtin_slug",
+            "slug",
+            unique=True,
+            postgresql_where=text("visibility = 'builtin' AND server_id IS NULL"),
+        ),
+        Index(
+            "uq_task_run_templates_server_slug",
+            "server_id",
+            "slug",
+            unique=True,
+            postgresql_where=text("server_id IS NOT NULL"),
+        ),
         CheckConstraint("status IN ('active', 'disabled')", name="ck_task_run_templates_status"),
         CheckConstraint("visibility IN ('builtin', 'server', 'user')", name="ck_task_run_templates_visibility"),
+        CheckConstraint(
+            "(visibility = 'builtin' AND server_id IS NULL) OR "
+            "(visibility IN ('server', 'user') AND server_id IS NOT NULL)",
+            name="ck_task_run_templates_tenant_scope",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("servers.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     slug: Mapped[str] = mapped_column(String(120), nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -430,6 +499,7 @@ class TaskRunTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
     creator = relationship("Member", foreign_keys=[created_by])
+    server = relationship("Server")
 
 
 class TaskRun(Base):

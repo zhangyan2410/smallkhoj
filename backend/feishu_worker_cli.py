@@ -3,11 +3,11 @@
 import argparse
 import asyncio
 import json
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from models import async_session
 from services.feishu_channel_transport import run_feishu_channel_worker
-
 
 FEISHU_WORKER_CLI_FAILED = "FEISHU_WORKER_CLI_FAILED"
 FEISHU_WORKER_CLI_DISCONNECT_FAILED = "FEISHU_WORKER_CLI_DISCONNECT_FAILED"

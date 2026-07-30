@@ -1,7 +1,7 @@
-from types import SimpleNamespace
 import inspect
 import sys
 import uuid
+from types import SimpleNamespace
 
 import pytest
 

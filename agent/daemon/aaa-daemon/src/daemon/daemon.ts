@@ -25,6 +25,7 @@ import { type SlockWrapperResult, writeSlockWrapper } from '../runtime/slock-wra
 import { ClaudeRuntimeDriver, getContentBlocks } from '../runtime/claude-runtime.js';
 import { CodexAcpRuntimeDriver } from '../runtime/codex-acp-runtime.js';
 import { OpenCodeServerRuntimeDriver } from '../runtime/opencode-server-runtime.js';
+import { PiRuntimeDriver, resolveBundledPiLayout } from '../runtime/pi-runtime.js';
 import type { ManagedRuntimeDriver } from '../runtime/runtime-driver.js';
 import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
 import {
@@ -186,7 +187,7 @@ interface RuntimeRecord {
   };
 }
 
-type DaemonRuntimeImplementation = 'claude_code' | 'codex' | 'opencode';
+type DaemonRuntimeImplementation = 'pi' | 'claude_code' | 'codex' | 'opencode';
 
 export function workspacePathSegment(value: string | undefined, fallback: string): string {
   const segment = (value || fallback).trim().replace(/[^A-Za-z0-9_.-]/g, '_');
@@ -537,7 +538,7 @@ export class DaemonCore extends EventEmitter {
       this.startDaemonHeartbeat();
     }
 
-    if ((this.config.runtime === 'claude_code' || this.config.runtime === 'codex' || this.config.runtime === 'codex_acp' || this.config.runtime === 'opencode') && this.credential.agentId) {
+    if ((this.config.runtime === 'claude_code' || this.config.runtime === 'codex' || this.config.runtime === 'codex_acp' || this.config.runtime === 'opencode' || this.config.runtime === 'pi') && this.credential.agentId) {
       this.startRuntimeForAgent(this.credential.agentId, {
         runtime: this.config.runtime,
         runtimeCommand: this.config.runtimeCommand,
@@ -840,6 +841,11 @@ export class DaemonCore extends EventEmitter {
     if (runtimeType === 'opencode' && providerLaunch.opencodeConfig) {
       baseEnv.XDG_CONFIG_HOME = writeOpenCodeRuntimeConfig(workspacePath, providerLaunch.opencodeConfig);
     }
+    const bundledPi = runtimeType === 'pi' ? resolveBundledPiLayout() : undefined;
+    if (runtimeType === 'pi' && !bundledPi) {
+      this.log('Cannot start pi runtime: bundled Pi layout is unavailable or incomplete', 'warn');
+      return;
+    }
     const proxyToken = generateProxyToken();
     this.proxy.register({
       token: proxyToken,
@@ -855,7 +861,23 @@ export class DaemonCore extends EventEmitter {
       allowWrites: runtimeAllowWrites,
       writeTargetAllowlist,
     });
-    const driver: ManagedRuntimeDriver = runtimeType === 'codex'
+    const driver: ManagedRuntimeDriver = runtimeType === 'pi'
+      ? new PiRuntimeDriver({
+          credential,
+          workspacePath,
+          nodePath: bundledPi!.nodePath,
+          piEntry: bundledPi!.piEntry,
+          proxyUrl: this.proxy.getProxyUrl(),
+          proxyToken,
+          wrapperDir: wrapper.wrapperDir,
+          slockHome: wrapper.slockHome,
+          launchId: wrapper.launchId,
+          manageCapacity: true,
+          model,
+          apiFormat: process.env.SMALLKHOJ_PI_LLM_API_FORMAT === 'openai' ? 'openai' : 'anthropic',
+          baseEnv,
+        })
+      : runtimeType === 'codex'
       ? new CodexAcpRuntimeDriver({
           credential,
           workspacePath,
@@ -1327,11 +1349,18 @@ export class DaemonCore extends EventEmitter {
       status: 'starting',
     });
 
-    // Inject a startup warmup probe. The message is queued inside the driver
-    // (pendingUserMessages) and self-drains once the child is writable.
-    // The runtime must call a `slock` tool successfully for the daemon to flip
-    // the status to 'running'; otherwise the warmup timer degrades it to ready.
-    const warmupText = [
+    if (runtime.runtime === 'pi') {
+      // Pi is a lazy one-process-per-turn runtime. Driver initialization has
+      // already validated and written its bundled configuration, while sending
+      // a synthetic warmup would consume scarce trial LLM capacity before the
+      // user has spoken. The first real message performs the live model check.
+      this.markRuntimeReady(runtime, 'pi_lazy_driver_ready');
+    } else {
+      // Inject a startup warmup probe. The message is queued inside the driver
+      // (pendingUserMessages) and self-drains once the child is writable.
+      // The runtime must call a `slock` tool successfully for the daemon to flip
+      // the status to 'running'; otherwise the warmup timer degrades it to ready.
+      const warmupText = [
       '[event=system.warmup type=system]',
       'This is a startup readiness check, not a user message.',
       `Run \`${runtime.wrapper.bashWrapper} server info\` once to confirm Slock connectivity and your agent identity,`,
@@ -1341,6 +1370,7 @@ export class DaemonCore extends EventEmitter {
     runtime.driver.sendUserMessage(warmupText);
     runtime.warmupStartedAt = Date.now();
     this.startWarmupTimer(runtime);
+    }
 
     if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
   }
@@ -2243,6 +2273,7 @@ function normalizeDaemonRuntimeType(runtime: string | undefined): DaemonRuntimeI
   if (!runtime || runtime === 'claude' || runtime === 'claude_code') return 'claude_code';
   if (runtime === 'codex' || runtime === 'codex_acp') return 'codex';
   if (runtime === 'opencode') return 'opencode';
+  if (runtime === 'pi') return 'pi';
   return undefined;
 }
 

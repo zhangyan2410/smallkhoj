@@ -1,15 +1,15 @@
-from types import SimpleNamespace
-from datetime import datetime, timedelta, timezone
 import uuid
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
 import models.seed as seed
-import routers.public_api as public_api
 import routers.agent_api as agent_api
+import routers.public_api as public_api
 from models import Base, TaskAssignment, TaskRun, TaskRunTemplate
-from services.task_runs import create_task_assignment_and_run, serialize_task_run, update_task_run_lifecycle
 from services.task_run_templates import create_template, update_template
+from services.task_runs import create_task_assignment_and_run, serialize_task_run, update_task_run_lifecycle
 
 
 class _ExecuteResult:
@@ -110,25 +110,30 @@ class _SeedEngine:
 
 
 @pytest.mark.asyncio
-async def test_startup_seed_emits_task_assignment_and_run_table_ddl(monkeypatch):
+async def test_startup_seed_emits_builtin_task_run_templates(monkeypatch):
+    """Schema (tables/indexes/constraints) is owned by Alembic — see the
+    ``0001_baseline`` migration for task_assignments/task_runs/task_run_templates
+    DDL and the ck_task_assignments_mode CHECK (incl. 'external_feishu').
+    seed.create_tables() now only emits runtime data seeding; this test guards
+    the builtin-template INSERTs that ship with the app.
+    """
     fake_engine = _SeedEngine()
     monkeypatch.setattr(seed, "engine", fake_engine)
 
     await seed.create_tables()
 
     statements = "\n".join(fake_engine.conn.statements)
-    assert "CREATE TABLE IF NOT EXISTS task_assignments" in statements
-    assert "CREATE TABLE IF NOT EXISTS task_runs" in statements
-    assert "CREATE TABLE IF NOT EXISTS task_run_templates" in statements
     assert "INSERT INTO task_run_templates" in statements
     assert "general-task-runner" in statements
     assert "research-analyst" in statements
     assert "created_at" in statements
     assert "updated_at" in statements
-    assert "CREATE INDEX IF NOT EXISTS idx_task_runs_task" in statements
-    assert "CREATE INDEX IF NOT EXISTS idx_task_assignments_assignee" in statements
-    assert "ALTER TABLE task_assignments DROP CONSTRAINT IF EXISTS ck_task_assignments_role" in statements
-    assert "external_feishu" in statements
+    # Schema DDL must NOT be emitted by create_tables() anymore — it lives in
+    # the Alembic baseline migration. If any of these appear, schema has crept
+    # back into seed.py.
+    assert "CREATE TABLE IF NOT EXISTS task_assignments" not in statements
+    assert "CREATE TABLE IF NOT EXISTS task_run_templates" not in statements
+    assert "CREATE INDEX IF NOT EXISTS idx_task_runs_task" not in statements
 
 
 def test_task_run_tables_are_declared_with_runtime_context_columns():
@@ -327,6 +332,7 @@ async def test_agent_assignment_snapshots_task_run_template_and_role_policies():
 @pytest.mark.asyncio
 async def test_task_run_template_service_validates_structured_role_presets():
     db = _FakeSession()
+    server_id = uuid.uuid4()
 
     with pytest.raises(ValueError, match="rolePresets\\[0\\]\\.roleKey"):
         await create_template(
@@ -337,6 +343,7 @@ async def test_task_run_template_service_validates_structured_role_presets():
                 "systemInstruction": "Do work.",
                 "rolePresets": [{"displayName": "Missing Key"}],
             },
+            server_id=server_id,
         )
 
     template = await create_template(
@@ -368,6 +375,7 @@ async def test_task_run_template_service_validates_structured_role_presets():
                 }
             ],
         },
+        server_id=server_id,
     )
 
     assert isinstance(template, TaskRunTemplate)
@@ -375,7 +383,12 @@ async def test_task_run_template_service_validates_structured_role_presets():
     assert template.role_presets[0]["roleKey"] == "researcher"
     assert db.flushed is True
 
-    updated = await update_template(db, template, {"name": "Updated Research Notes"})
+    updated = await update_template(
+        db,
+        template,
+        {"name": "Updated Research Notes"},
+        server_id=server_id,
+    )
 
     assert updated.name == "Updated Research Notes"
     assert updated.updated_at.tzinfo == timezone.utc
@@ -383,7 +396,9 @@ async def test_task_run_template_service_validates_structured_role_presets():
 
 @pytest.mark.asyncio
 async def test_public_task_run_template_routes_create_update_disable_and_list(monkeypatch):
-    _patch_active_server_context(monkeypatch, SimpleNamespace(id=uuid.uuid4()))
+    server = SimpleNamespace(id=uuid.uuid4())
+    member = SimpleNamespace(id=uuid.uuid4())
+    _patch_active_server_context(monkeypatch, server, member=member)
 
     create_db = _FakeSession()
     created = await public_api.create_task_run_template(
@@ -492,8 +507,9 @@ async def test_public_task_assignment_endpoint_auto_starts_with_template_snapsho
         assert role == "task assignment actor"
         return actor
 
-    async def fake_get_template_by_ref(_db, template_ref):
+    async def fake_get_template_by_ref(_db, template_ref, *, server_id):
         assert template_ref == "research-analyst"
+        assert server_id == server.id
         return template
 
     async def fake_create_assignment_and_run(_db, **kwargs):
@@ -566,8 +582,23 @@ async def test_public_task_assignment_endpoint_auto_starts_with_template_snapsho
     async def fake_serialize_task(_db, task_arg):
         return {"id": str(task_arg.id), "assigneeId": str(task_arg.assignee_id)}
 
-    _patch_active_server_context(monkeypatch, server)
+    async def fake_ensure_task_channel_access(
+        _db,
+        server_arg,
+        task_arg,
+        member_id,
+    ):
+        assert server_arg is server
+        assert task_arg is task
+        assert member_id == actor.id
+
+    _patch_active_server_context(monkeypatch, server, member=actor)
     monkeypatch.setattr(public_api, "_resolve_task_by_id_or_number", fake_resolve_task)
+    monkeypatch.setattr(
+        public_api,
+        "_ensure_task_channel_access",
+        fake_ensure_task_channel_access,
+    )
     monkeypatch.setattr(public_api, "_resolve_member", fake_resolve_member)
     monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
     monkeypatch.setattr(public_api, "get_template_by_ref", fake_get_template_by_ref)
@@ -1377,7 +1408,6 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
     )
     db = _FakeSession(
         _ExecuteResult(channel),
-        _ExecuteResult(creator),
         _ExecuteResult(assignee),
         _ExecuteResult(0),
         _ExecuteResult(creator),
@@ -1397,9 +1427,13 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
     async def fake_push(_db, *, server_id):
         return 0
 
+    async def fake_resolve_human_actor(*_args, **_kwargs):
+        return creator
+
     monkeypatch.setattr(public_api, "create_task_assignment_and_run", fake_create_task_assignment_and_run)
     monkeypatch.setattr(public_api, "_push_committed_events", fake_push)
-    _patch_active_server_context(monkeypatch, server)
+    monkeypatch.setattr(public_api, "_resolve_human_actor", fake_resolve_human_actor)
+    _patch_active_server_context(monkeypatch, server, member=creator)
 
     response = await public_api.create_task(
         _JsonRequest({"channel": "#work", "creator": "@zy-ean", "assignee": "@minimax", "title": "Run it"}),
@@ -1427,7 +1461,7 @@ async def test_agent_create_task_targets_worker_and_creates_task_run(monkeypatch
         id=uuid.uuid4(),
         display_name="architect",
         kind="agent",
-        config={},
+        config={"permissions": {"createTask": True}},
     )
     worker = SimpleNamespace(id=uuid.uuid4(), display_name="worker", kind="agent")
     run_id = uuid.uuid4()

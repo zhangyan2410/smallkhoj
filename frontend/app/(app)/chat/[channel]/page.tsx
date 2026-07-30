@@ -88,6 +88,8 @@ export default async function ChannelPage({
       initialAllMembers={allMembers}
       initialDms={initialDms}
       sessionToken={sessionToken}
+      activeServerId={session.server.id}
+      canManageServer={canManageActiveServer(session)}
       currentMemberId={session.member.id}
       initialThreadId={firstParam(query.thread)}
       initialMessageId={firstParam(query.message)}

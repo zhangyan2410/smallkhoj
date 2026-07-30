@@ -13,10 +13,35 @@ dependencies = [
     "python-multipart>=0.0.9",
     "lark-channel-sdk>=1.1.0",
     "openai>=1.0.0",
+    "alembic>=1.18.5",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
+    "ruff>=0.15.0",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = [".venv", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+ignore = [
+    "E501",  # Line length is formatter-owned; generated migrations also contain long DDL.
+    "E203",  # Compatibility with formatter whitespace around slice punctuation.
+    "B008",  # FastAPI dependency injection intentionally calls Depends in defaults.
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Package re-exports are intentional.
+"alembic/versions/*.py" = ["I", "UP", "W291"]  # Applied migration files are checksum-immutable.
+"tests/*" = ["E501"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+testpaths = ["tests"]

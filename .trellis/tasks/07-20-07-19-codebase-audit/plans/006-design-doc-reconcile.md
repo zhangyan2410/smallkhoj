@@ -1,5 +1,22 @@
 # Plan 006 (Direction): Reconcile DESIGN.md with the shipped tri-theme reality
 
+## Current remediation disposition (2026-07-24)
+
+- **Disposition**: `ACCEPT_DOC_TRUTH`
+- **Implementation**: `DEFERRED`
+- **Release scope**: `RELEASE_EXCLUDED`
+- **Decision**: accept the shipped `water` / `dark` / `shuimo` themes as the
+  current product reality. Reconciling `DESIGN.md` and the historical frontend
+  handoff is a later docs-only task; it is not part of the important-bug audit
+  release scope.
+- **Current truth**: `DESIGN.md` remains the stale old version. This plan was
+  not completed by the current candidate, and no theme source code is changed
+  by this disposition.
+
+The plan below is retained as historical advisory context. Its steps and done
+criteria are not an instruction to implement the deferred work during the audit
+remediation.
+
 > **Executor instructions**: This is a **design/docs reconciliation plan**,
 > not a build-everything task. The goal is to make the design system doc
 > match what actually shipped so future agents (impeccable, improve, and

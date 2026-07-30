@@ -35,6 +35,7 @@ release-artifacts/
 .dev-pids/
 .dev-logs/
 /frontend/.playwright-cli/
+/frontend/.runtime/
 /remotion/
 smallkhoj-daemon.pid
 .slock/

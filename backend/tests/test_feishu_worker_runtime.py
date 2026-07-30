@@ -1,6 +1,6 @@
-from types import SimpleNamespace
 import inspect
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,8 +17,8 @@ from services.feishu_worker_runtime import (
     FEISHU_WORKER_EVENT_LOOP_FAILED,
     FEISHU_WORKER_EVENT_PROCESSED,
     FEISHU_WORKER_JIRA_CREDENTIALS_MISSING,
-    FeishuWorkerDependencies,
     FakeFeishuEventTransport,
+    FeishuWorkerDependencies,
     close_feishu_worker_dependencies,
     handle_feishu_worker_raw_event,
     load_feishu_worker_connectors,

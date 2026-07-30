@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { API_BASE, PUBLIC_KEY, runtimeLabel, type Channel, type Computer, type Member } from "@/lib/control-plane"
+import { API_BASE, PUBLIC_KEY, PUBLIC_RUNTIME_ENV, runtimeLabel, type Channel, type Computer, type Member } from "@/lib/control-plane"
 import { resolvePublicApiBase } from "@/lib/runtime-url"
 
 type SubmitState = {
@@ -56,7 +56,7 @@ export function ComputerConnectForm({ compact = false }: { compact?: boolean }) 
       const data = await postJson("/api/v1/computers/connect-command", {
         name: fieldValue(form, "name") || "New computer",
         os: fieldValue(form, "os") || "unknown",
-        serverUrl: fieldValue(form, "serverUrl") || resolvePublicApiBase(),
+        serverUrl: fieldValue(form, "serverUrl") || resolvePublicApiBase(PUBLIC_RUNTIME_ENV),
       })
       setState({ command: data.command, token: data.machineToken })
       router.refresh()

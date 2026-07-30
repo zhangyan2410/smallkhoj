@@ -875,6 +875,9 @@ test('daemon runtime delivery gate ignores non-actionable event noise', () => {
 
   assert.equal(isRuntimeActionableEventType('task.updated'), false);
   assert.equal(isRuntimeActionableEventType('task.claimed'), false);
+  assert.equal(isRuntimeActionableEventType('task.deleted'), false);
+  assert.equal(isRuntimeActionableEventType('task_deleted'), false);
+  assert.equal(isRuntimeActionableEventType('file.deleted'), false);
   assert.equal(isRuntimeActionableEventType('thread.followed'), false);
   assert.equal(isRuntimeActionableEventType('memory.updated'), false);
   assert.equal(isRuntimeActionableEventType('memory.proposal.created'), false);

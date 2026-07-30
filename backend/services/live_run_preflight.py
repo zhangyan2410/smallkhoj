@@ -9,7 +9,6 @@ from services.integration_gateway import resolve_external_route
 from services.integration_runtime import resolve_jira_writeback_credentials
 from services.jira_rest import JiraRestError, resolve_jira_config
 
-
 LIVE_RUN_PREFLIGHT_READY = "LIVE_RUN_PREFLIGHT_READY"
 LIVE_RUN_PREFLIGHT_CONNECTOR_CONFIG_INVALID = "LIVE_RUN_PREFLIGHT_CONNECTOR_CONFIG_INVALID"
 LIVE_RUN_PREFLIGHT_JIRA_CREDENTIALS_MISSING = "LIVE_RUN_PREFLIGHT_JIRA_CREDENTIALS_MISSING"
