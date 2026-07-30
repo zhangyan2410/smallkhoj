@@ -137,3 +137,36 @@ Closed final peer-review findings with Red-to-Green coverage for late channel au
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: Repair portable credential log scanning
+
+**Date**: 2026-07-30
+**Task**: Repair portable credential log scanning
+**Branch**: `feat/integration-gate-restoration`
+
+### Summary
+
+Reproduced PR #2 GitHub Actions failure caused by an unprovisioned ripgrep dependency, replaced it with baseline grep while preserving fail-closed scan semantics, added regression/spec/bug evidence, passed canonical make ci and exact-SHA independent review, and recorded the unavailable cloud-review fallback.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3330c1d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
