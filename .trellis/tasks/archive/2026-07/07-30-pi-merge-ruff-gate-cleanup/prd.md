@@ -50,7 +50,7 @@ merged on top of a green Pi-enabled baseline.
   dependency installed.
 - [x] Integration Gate tests pass 39/39.
 - [x] Canonical `make ci` passes against a disposable PostgreSQL instance.
-- [ ] `git diff --check` passes and the feature worktree is clean after commit.
+- [x] `git diff --check` passes and the feature worktree is clean after commit.
 
 ## Out of Scope
 
