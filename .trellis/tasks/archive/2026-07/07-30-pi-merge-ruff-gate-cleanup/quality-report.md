@@ -77,5 +77,5 @@
 
 ## Result
 
-Pass. The only remaining unchecked PRD item is the post-commit clean-worktree
-assertion, which is verified after the work commit and before task archival.
+Pass. The post-commit clean-worktree assertion was verified before task
+archival, so every acceptance criterion is complete.
