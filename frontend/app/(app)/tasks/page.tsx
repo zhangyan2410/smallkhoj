@@ -222,68 +222,16 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   }
 
   return (
-    <TaskMaterialStateProvider>
-    <ProductShell
-      title={copy.title}
-      description={copy.description}
-      listTitle={copy.boardListSurface}
-      listConfig={{ storageKey: "smallkhoj.tasks.listWidth", defaultWidth: 300, min: 240, max: 440 }}
-      list={
-        <TaskListPanel
-          tasks={visibleTasks}
-          selectedTaskId={selectedTask?.id}
-          filters={filterRecord}
-          createLabel={copy.createTask}
-          emptyLabel="No tasks"
-        />
-      }
-      sidebarTitle={copy.detailTitle}
-      sidebarDescription={copy.detailDescription}
-      sidebar={<TaskDetail task={selectedTask} activity={activity} memoryEntries={memoryEntries} copy={copy} />}
-      mainScrollable={false}
-      actions={
-        <>
-          <TaskFormDialogs
-            createAction={createTaskAction}
-            updateAction={updateTaskAction}
-            channels={channels}
-            agents={agents}
-            templates={activeTemplates}
-            tasks={tasks}
-            copy={{
-              create: copy.create,
-              createTask: copy.createTask,
-              createTaskDesc: copy.createTaskDesc,
-              createTitlePlaceholder: copy.createTitlePlaceholder,
-              titleLabel: copy.titleLabel,
-              descriptionLabel: copy.descriptionLabel,
-              createDescPlaceholder: copy.createDescPlaceholder,
-              channel: copy.channel,
-              assignee: copy.assignee,
-              unassigned: copy.unassigned,
-              taskRunTemplate: copy.taskRunTemplate,
-              status: copy.status,
-              update: copy.update,
-              updateTask: copy.updateTask,
-              updateTaskDesc: copy.updateTaskDesc,
-              task: copy.task,
-              keepBlankPlaceholder: copy.keepBlankPlaceholder,
-            }}
-          />
-          <Link href="/daemon">
-            <Button variant="outline" size="sm">
-              {copy.controlPlane}
-            </Button>
-          </Link>
-        </>
-      }
+    <TaskProjectionProvider
+      scopeKey={`${session.account.id}:${activeServerId}`}
+      initialTasks={tasks}
+      sessionToken={sessionToken}
+      activeServerId={activeServerId}
     >
       <TaskMaterialStateProvider>
         <ProductShell
-          active="tasks"
           title={t("title")}
           description={t("description")}
-          session={session}
           listTitle={t("boardListSurface")}
           listConfig={{ storageKey: "smallkhoj.tasks.listWidth", defaultWidth: 300, min: 240, max: 440 }}
           list={<TaskRouteList filters={filters} selectedTaskId={selectedTaskId} />}

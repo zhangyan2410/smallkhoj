@@ -573,7 +573,10 @@ test("Task surfaces stay static material objects and do not expose drawing contr
 
 test("chat and task routes expose mobile proof roles for later twd checks", () => {
   const chatSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
-  const taskPageSource = readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8")
+  const taskPageSource = [
+    readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../components/task-route-projection.tsx", import.meta.url), "utf8"),
+  ].join("\n")
   const taskBoardSource = readFileSync(new URL("../components/task-dnd-board.tsx", import.meta.url), "utf8")
   const shellBodySource = readFileSync(new URL("../components/product-shell-body.tsx", import.meta.url), "utf8")
   const taskMaterialStateSource = readFileSync(new URL("../components/task-material-state.tsx", import.meta.url), "utf8")
@@ -747,7 +750,10 @@ test("ProductShell mobile list drawer has a reachable toggle and coupled open st
 })
 
 test("task board mobile filters, board, cards, list, and overlay are contained", () => {
-  const taskPageSource = readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8")
+  const taskPageSource = [
+    readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../components/task-route-projection.tsx", import.meta.url), "utf8"),
+  ].join("\n")
   const taskDndBoardSource = readFileSync(new URL("../components/task-dnd-board.tsx", import.meta.url), "utf8")
   const taskBoardSource = readFileSync(new URL("../components/task-board.tsx", import.meta.url), "utf8")
 
@@ -986,7 +992,10 @@ test("member and computer detail surfaces expose contained mobile owners", () =>
 test("task mobile detail dialog contains material detail, evidence, and review surfaces", () => {
   const taskDialogSource = readFileSync(new URL("../components/task-detail-dialog.tsx", import.meta.url), "utf8")
   const taskMaterialStateSource = readFileSync(new URL("../components/task-material-state.tsx", import.meta.url), "utf8")
-  const taskPageSource = readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8")
+  const taskPageSource = [
+    readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../components/task-route-projection.tsx", import.meta.url), "utf8"),
+  ].join("\n")
 
   const dialogContentMatch = taskDialogSource.match(
     /<DialogContent[\s\S]*?data-inkframe-mobile-role="task-detail-dialog"[\s\S]*?className="([^"]*)"[\s\S]*?>/,

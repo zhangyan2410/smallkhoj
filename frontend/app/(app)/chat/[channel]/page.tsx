@@ -1,6 +1,7 @@
 import { ChannelClient } from "./channel-client"
 import { API_BASE, type Member } from "@/lib/control-plane"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { canManageActiveServer } from "@/lib/server-permissions"
 import { fetchChatDms, fetchChatMembers } from "../chat-server-fetches"
 
 type ChannelMessage = {

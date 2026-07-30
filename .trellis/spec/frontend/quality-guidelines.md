@@ -342,6 +342,60 @@ Required evidence:
 
 If the real browser behavior disagrees with automated tests, treat the task as failing and keep fixing.
 
+### Convention: Reconcile Long-Lived Branches Across Frontend Ownership Moves
+
+**What**: When a branch crosses a route-group move, shell-owner move, or UI
+extraction, resolve the semantic ownership contract instead of accepting a
+textually conflict-free merge. Source-contract tests must follow the current
+owner and current route path.
+
+**Why**: A branch created before the `(app)` persistent-shell migration merged
+cleanly enough for Git but left three incompatible generations together:
+tests read `app/tasks/page.tsx`, task UI lived in
+`components/task-route-projection.tsx`, and `RealtimeProvider` had no mounted
+owner. Unit tests, type-check, and the production build exposed the drift at
+different stages.
+
+**Required checks**:
+
+- Update source-reading tests from moved paths such as `app/tasks/page.tsx` to
+  `app/(app)/tasks/page.tsx`.
+- When route UI is extracted, read the route and extracted component together
+  instead of weakening assertions or copying UI back into the route.
+- Keep each shared provider mounted exactly once. For the persistent shell,
+  `app/(app)/layout.tsx` owns `RealtimeProvider`; body-only `ProductShell`
+  instances must not create another transport.
+- Run the complete frontend sequence after reconciliation:
+  `bun test`, `bun run lint`, `bun run typecheck`,
+  `bun run typecheck:e2e`, and a production `bun run build`.
+- Use `./twd` against the reconciled worktree to verify the affected routes,
+  because source-contract tests cannot prove that the composed page renders.
+
+**Wrong vs Correct**:
+
+```tsx
+// Wrong: keep both pre-migration and post-migration page trees after a merge.
+<ProductShell>{/* old inline task UI */}
+  <ProductShell>{/* new TaskRouteWorkspace */}</ProductShell>
+</ProductShell>
+
+// Correct: keep one current owner tree.
+<TaskProjectionProvider>
+  <ProductShell>
+    <TaskRouteWorkspace />
+  </ProductShell>
+</TaskProjectionProvider>
+```
+
+**Tests Required**:
+
+- A source-contract test asserts current `(app)` paths and extracted component
+  owners.
+- A realtime ownership test asserts one physical transport creator and one
+  persistent shell provider mount.
+- Type-check and production build must pass after the final conflict
+  resolution, not only before rebasing.
+
 #### Scenario: Exact-Tab Authenticated WebDriver Guard
 
 ##### 1. Scope / Trigger

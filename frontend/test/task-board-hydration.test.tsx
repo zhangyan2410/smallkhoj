@@ -54,7 +54,10 @@ test("TaskBoard embedded detail includes the task memory reminder action", () =>
 })
 
 test("Tasks product route keeps task material visual-only without drawing controls", () => {
-  const routeSource = readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8")
+  const routeSource = [
+    readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../components/task-route-projection.tsx", import.meta.url), "utf8"),
+  ].join("\n")
   const dndBoardSource = readFileSync(new URL("../components/task-dnd-board.tsx", import.meta.url), "utf8")
   const stateSource = readFileSync(new URL("../components/task-material-state.tsx", import.meta.url), "utf8")
   const taskBoardSource = readFileSync(new URL("../components/task-board.tsx", import.meta.url), "utf8")

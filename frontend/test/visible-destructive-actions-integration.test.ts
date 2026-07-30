@@ -9,8 +9,8 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), "utf8")
 
 test("channel file deletion is server-authorized, strictly scoped, and collection-local", async () => {
   const [page, client] = await Promise.all([
-    read("../app/chat/[channel]/page.tsx"),
-    read("../app/chat/[channel]/channel-client.tsx"),
+    read("../app/(app)/chat/[channel]/page.tsx"),
+    read("../app/(app)/chat/[channel]/channel-client.tsx"),
   ])
 
   assert.match(page, /activeServerId=\{session\.server\.id\}/)

@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { AppDeskBackground } from "@/components/inkframe/app-desk-background"
 import { InkMaterialRuntimeScript } from "@/components/inkframe/ink-material-engine"
 import { AppRail } from "@/components/app-rail"
+import { RealtimeProvider } from "@/components/realtime-provider"
 import { requireCurrentAccount } from "@/lib/server-auth"
 
 /**
@@ -23,21 +24,23 @@ import { requireCurrentAccount } from "@/lib/server-auth"
 export default async function AppShellLayout({ children }: { children: ReactNode }) {
   const session = await requireCurrentAccount()
   return (
-    <main
-      data-slot="workbench-desk"
-      data-inkframe-background-owner="product-shell"
-      data-inkframe-background-scope="global-desk"
-      className="sk-workbench-desk relative isolate h-screen overflow-hidden text-foreground"
-    >
-      <InkMaterialRuntimeScript />
-      <AppDeskBackground />
-      {/* Col 0 — icon rail：fixed 钉死在视口左侧，不随任何滚动离开位置。 */}
-      <AppRail session={session} />
-      {/* 主内容区—— 留出 rail 宽度 (w-14 = 56px)，自身占满 h-screen。
-          子栏的滚动由各页 ProductShellBody 内部按列独立控制。 */}
-      <div className="relative z-10 flex h-screen min-w-0 flex-col sm:ml-14">
-        {children}
-      </div>
-    </main>
+    <RealtimeProvider serverId={session?.server.id}>
+      <main
+        data-slot="workbench-desk"
+        data-inkframe-background-owner="product-shell"
+        data-inkframe-background-scope="global-desk"
+        className="sk-workbench-desk relative isolate h-screen overflow-hidden text-foreground"
+      >
+        <InkMaterialRuntimeScript />
+        <AppDeskBackground />
+        {/* Col 0 — icon rail：fixed 钉死在视口左侧，不随任何滚动离开位置。 */}
+        <AppRail session={session} />
+        {/* 主内容区—— 留出 rail 宽度 (w-14 = 56px)，自身占满 h-screen。
+            子栏的滚动由各页 ProductShellBody 内部按列独立控制。 */}
+        <div className="relative z-10 flex h-screen min-w-0 flex-col sm:ml-14">
+          {children}
+        </div>
+      </main>
+    </RealtimeProvider>
   )
 }

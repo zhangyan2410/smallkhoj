@@ -66,10 +66,10 @@ test("fetchAllTaskPages owns the bounded task URL and encodes cursors", async ()
 
 test("every task-list consumer uses the shared all-pages contract", () => {
   const consumers = [
-    "app/page.tsx",
-    "app/tasks/page.tsx",
-    "app/daemon/page.tsx",
-    "app/control/integration/page.tsx",
+    "app/(app)/page.tsx",
+    "app/(app)/tasks/page.tsx",
+    "app/(app)/daemon/page.tsx",
+    "app/(app)/control/integration/page.tsx",
     "components/task-board.tsx",
     "components/task-projection-provider.tsx",
   ]

@@ -116,6 +116,11 @@ from services.pagination import (
     encode_task_cursor,
     encode_thread_cursor,
 )
+from services.pi_llm_relay import (
+    require_pi_runtime_member,
+    resolve_pi_llm_config,
+    validate_pi_relay_request,
+)
 from services.task_memory_request import add_task_memory_request_event, normalize_output_directions
 from services.task_run_writeback import handle_terminal_task_run_writeback, serialize_task_run_writeback_outcome
 from services.task_runs import (
@@ -134,11 +139,6 @@ from services.upload_storage import (
     close_upload,
     rollback_and_cleanup_upload,
     stage_upload,
-)
-from services.pi_llm_relay import (
-    require_pi_runtime_member,
-    resolve_pi_llm_config,
-    validate_pi_relay_request,
 )
 
 router = APIRouter(prefix="/internal/agent-api", tags=["agent-api"])
@@ -4502,7 +4502,7 @@ async def release_builtin_llm_run(
 
 
 @router.post("/llm/anthropic/{path:path}")
-async def relay_builtin_pi_llm(
+async def relay_builtin_pi_anthropic_llm(
     path: str,
     request: Request,
     x_smallkhoj_llm_run_id: str = Header(..., alias="X-SmallKhoj-Llm-Run-Id"),
@@ -4513,7 +4513,7 @@ async def relay_builtin_pi_llm(
 
 
 @router.post("/llm/openai/v1/{path:path}")
-async def relay_builtin_pi_llm(
+async def relay_builtin_pi_openai_llm(
     path: str,
     request: Request,
     x_smallkhoj_llm_run_id: str = Header(..., alias="X-SmallKhoj-Llm-Run-Id"),
