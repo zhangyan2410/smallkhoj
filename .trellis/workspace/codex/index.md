@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-07-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~106 | Active |
+| `journal-1.md` | ~139 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-07-30 | Close Integration Gate review P2s | `cd7d1bc` | `feat/integration-gate-restoration` |
 | 8 | 2026-07-30 | Repair Pi merge gate regressions | `929ad3e` | `feat/integration-gate-restoration` |
 | 7 | 2026-07-29 | Isolate Integration Gate fixture reports | `6c5183c` | `feat/integration-gate-restoration` |
 | 6 | 2026-07-29 | Restore Integration Gate and visual control surface | `dbe6589` | `feat/integration-gate-restoration` |

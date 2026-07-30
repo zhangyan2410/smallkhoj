@@ -104,3 +104,36 @@ Rebased Integration Gate restoration onto Pi-enabled main; repaired backend lint
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: Close Integration Gate review P2s
+
+**Date**: 2026-07-30
+**Task**: Close Integration Gate review P2s
+**Branch**: `feat/integration-gate-restoration`
+
+### Summary
+
+Closed final peer-review findings with Red-to-Green coverage for late channel audience resolution and fail-closed bounded daemon control-result collection; swept the sibling channel-group path; passed Integration Gate, daemon, and canonical CI; received independent approval.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd7d1bc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
