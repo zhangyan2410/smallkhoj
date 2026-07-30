@@ -548,6 +548,7 @@ export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeD
 
   sendUserMessage(text: string, options?: RuntimeSendOptions): boolean {
     if (!this.getWritableChild() || this.isBusy()) {
+      if (options?.control) return false;
       this.pendingUserMessages.push({ text, options });
       return false;
     }

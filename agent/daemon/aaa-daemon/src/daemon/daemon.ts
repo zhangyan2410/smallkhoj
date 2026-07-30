@@ -147,6 +147,7 @@ export interface DaemonRuntimeControlResult {
   slashCommand?: string;
   reason?: string;
   output?: string;
+  outputTruncated?: boolean;
   error?: string;
 }
 
@@ -1505,21 +1506,38 @@ export class DaemonCore extends EventEmitter {
       runtime: runtime.runtime,
       slashCommand,
     };
-    const resultPromise = command.waitForResult
+    if (runtime.driver.busy) {
+      const result: DaemonRuntimeControlResult = {
+        ...baseResult,
+        reason: 'runtime_control_busy',
+      };
+      this.emit('runtime_control', result);
+      return result;
+    }
+    const resultCollector = command.waitForResult
       ? collectRuntimeControlResult(runtime.driver, baseResult, command.timeoutMs)
       : null;
     let delivered = false;
     try {
       delivered = runtime.driver.sendUserMessage(slashCommand, { control: true });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      resultCollector?.settle({ error: message });
       const result = {
         ...baseResult,
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       };
       this.emit('runtime_control', result);
       return result;
     }
-    const result: DaemonRuntimeControlResult = { ...baseResult, delivered };
+    const result: DaemonRuntimeControlResult = {
+      ...baseResult,
+      delivered,
+      ...(!delivered ? { reason: 'runtime_control_not_delivered' } : {}),
+    };
+    if (!delivered) {
+      resultCollector?.settle({ reason: result.reason });
+    }
     this.emit('runtime_control', result);
     this.emitRuntimeTrace({
       type: 'runtime_control',
@@ -1529,7 +1547,9 @@ export class DaemonCore extends EventEmitter {
       delivered,
       sessionId: runtime.driver.sessionId,
     });
-    return resultPromise ? resultPromise.then((settled) => ({ ...settled, delivered })) : result;
+    return resultCollector && delivered
+      ? resultCollector.promise.then((settled) => ({ ...settled, delivered: true }))
+      : result;
   }
 
   private startRuntimeStallWatchdog(runtime: RuntimeRecord): void {
@@ -2393,13 +2413,21 @@ function runtimeControlSlashCommand(runtime: string, action: DaemonRuntimeContro
   return null;
 }
 
+const RUNTIME_CONTROL_OUTPUT_MAX_CHARS = 65_536;
+
 function collectRuntimeControlResult(
   driver: ManagedRuntimeDriver,
   baseResult: DaemonRuntimeControlResult,
   timeoutMs = 30_000,
-): Promise<DaemonRuntimeControlResult> {
+): {
+  promise: Promise<DaemonRuntimeControlResult>;
+  settle: (patch?: Partial<DaemonRuntimeControlResult>) => void;
+} {
   const chunks: string[] = [];
-  return new Promise((resolveResult) => {
+  let capturedChars = 0;
+  let outputTruncated = false;
+  let settleCollector: (patch?: Partial<DaemonRuntimeControlResult>) => void = () => {};
+  const promise = new Promise<DaemonRuntimeControlResult>((resolveResult) => {
     let settled = false;
     const cleanup = () => {
       clearTimeout(timer);
@@ -2412,9 +2440,11 @@ function collectRuntimeControlResult(
       resolveResult({
         ...baseResult,
         output: chunks.join('').trim() || undefined,
+        ...(outputTruncated ? { outputTruncated: true } : {}),
         ...patch,
       });
     };
+    settleCollector = settle;
     const boundedTimeout = Math.min(120_000, Math.max(100, timeoutMs));
     const timer = setTimeout(() => settle({ reason: 'runtime_control_timeout' }), boundedTimeout);
     timer.unref?.();
@@ -2422,7 +2452,16 @@ function collectRuntimeControlResult(
       if (!isRecord(event)) return;
       if (event.type === 'assistant') {
         for (const block of getContentBlocks(event)) {
-          if (block.type === 'text' && typeof block.text === 'string') chunks.push(block.text);
+          if (block.type !== 'text' || typeof block.text !== 'string') continue;
+          const remaining = RUNTIME_CONTROL_OUTPUT_MAX_CHARS - capturedChars;
+          if (remaining <= 0) {
+            outputTruncated = true;
+            continue;
+          }
+          const captured = block.text.slice(0, remaining);
+          chunks.push(captured);
+          capturedChars += captured.length;
+          if (captured.length < block.text.length) outputTruncated = true;
         }
       }
       if (event.type === 'result') {
@@ -2432,6 +2471,7 @@ function collectRuntimeControlResult(
     };
     driver.on('stream_event', onStreamEvent);
   });
+  return { promise, settle: settleCollector };
 }
 
 function unwrapControlPayload(input: unknown): unknown {

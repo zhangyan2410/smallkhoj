@@ -580,7 +580,6 @@ test('integration gate CLI runs channel group mode with explicit responder polic
       '--account-token', 'test-session',
       '--agent-id', 'agent-1',
       '--channel', 'gate-lab',
-      '--channel-id', 'channel-1',
       '--expected-agent-ids', 'agent-1',
       '--responder-policy', 'one',
       '--trace-id', 'chat-gate:trace-group',
@@ -598,6 +597,10 @@ test('integration gate CLI runs channel group mode with explicit responder polic
     assert.deepEqual(report.target.visibleAgentIds, ['agent-1', 'agent-2']);
     assert.deepEqual(report.target.expectedResponderAgentIds, ['agent-1']);
     assert.equal(report.audienceEvidence.repliesByAuthor['agent-1'], 1);
+    assert.equal(
+      server.requests.filter((request) => request.url === '/api/v1/channels/channel-1/members').length,
+      1,
+    );
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });
@@ -769,7 +772,6 @@ test('integration gate CLI runs V1 channel collaboration mode and writes a separ
       '--frontend-base', server.url,
       '--account-token', 'test-session',
       '--channel', 'gate-lab',
-      '--channel-id', 'channel-1',
       '--trace-id', 'collab:trace-v1',
       '--marker', 'COLLAB-GATE:test-v1',
       '--architect-agent-id', 'agent-architect',
@@ -791,6 +793,10 @@ test('integration gate CLI runs V1 channel collaboration mode and writes a separ
     assert.equal(report.messages.workerResult.id, 'msg-worker-result');
     assert.equal(report.artifactEvidence.artifactId, 'artifact-v1');
     assert.equal(report.roles.workerAgentId, 'agent-worker');
+    assert.equal(
+      server.requests.filter((request) => request.url === '/api/v1/channels/channel-1/members').length,
+      1,
+    );
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });

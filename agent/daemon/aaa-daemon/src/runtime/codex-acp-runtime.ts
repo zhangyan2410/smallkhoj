@@ -151,6 +151,7 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
 
   sendUserMessage(text: string, options?: RuntimeSendOptions): boolean {
     if (!this.started || this.busy || (!this.currentSessionId && !options)) {
+      if (options?.control) return false;
       this.pendingUserMessages.push({ text, options });
       void this.flushQueuedMessages();
       return false;

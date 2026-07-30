@@ -249,3 +249,17 @@ test('codex acp runtime queues one prompt while another is in flight', async () 
     if (existsSync(root)) rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('codex acp runtime rejects control prompts that cannot be delivered immediately', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-codex-acp-control-reject-'));
+  const marker = join(root, 'marker.json');
+  const { driver } = makeDriver(root, marker);
+
+  try {
+    assert.equal(driver.sendUserMessage('/status', { control: true }), false);
+    assert.equal(driver.queuedMessageCount, 0);
+  } finally {
+    driver.stop();
+    if (existsSync(root)) rmSync(root, { recursive: true, force: true });
+  }
+});

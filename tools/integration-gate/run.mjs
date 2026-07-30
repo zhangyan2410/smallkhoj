@@ -298,6 +298,7 @@ async function runChatReplyGate({
 
   if (target.readyForSend) {
     try {
+      const audienceChannelId = target.channelId;
       const sendResult = await sendChatMarker({
         apiBase,
         headers,
@@ -307,9 +308,19 @@ async function runChatReplyGate({
         expectedAck,
       });
       sentMessage = sendResult.message;
+      const resolvedChannelId = target.channelId ?? sentMessage?.channelId ?? null;
+      let resolvedVisibleAgentIds = target.visibleAgentIds;
+      if (target.kind === 'channel-group' && resolvedChannelId && resolvedChannelId !== audienceChannelId) {
+        const resolvedMembers = await fetchChannelMembers({ apiBase, headers, channelId: resolvedChannelId });
+        resolvedVisibleAgentIds = resolvedMembers
+          .filter((member) => member.kind === 'agent')
+          .map((member) => member.id)
+          .filter(Boolean);
+      }
       target = {
         ...target,
-        channelId: target.channelId ?? sentMessage?.channelId ?? null,
+        channelId: resolvedChannelId,
+        visibleAgentIds: resolvedVisibleAgentIds,
         dmId: target.dmId ?? (target.kind === 'dm' ? sentMessage?.channelId ?? null : null),
         userMemberId: target.userMemberId ?? (target.kind === 'dm' ? sentMessage?.senderId ?? null : null),
         replyTarget: target.replyTarget ?? (target.kind === 'dm' && sentMessage?.sender
@@ -430,6 +441,7 @@ async function runCollabGate({
   const reviewer = args.reviewerAgentId
     ? selectRuntimeAgent(computersSnapshot.computers, args.reviewerAgentId)
     : null;
+  let audienceChannelId = channel.id;
   const members = channel.id
     ? await fetchChannelMembers({ apiBase, headers, channelId: channel.id })
     : [];
@@ -470,6 +482,14 @@ async function runCollabGate({
     sentMessage = sendResult.message;
     channel.id = channel.id ?? sentMessage?.channelId ?? null;
     roles.humanMemberId = roles.humanMemberId ?? sentMessage?.senderId ?? null;
+    if (channel.id && channel.id !== audienceChannelId) {
+      const resolvedMembers = await fetchChannelMembers({ apiBase, headers, channelId: channel.id });
+      roles.visibleAgentIds = resolvedMembers
+        .filter((member) => member.kind === 'agent')
+        .map((member) => member.id)
+        .filter(Boolean);
+      audienceChannelId = channel.id;
+    }
   } catch (error) {
     sendError = error instanceof Error ? error.message : String(error);
   }
