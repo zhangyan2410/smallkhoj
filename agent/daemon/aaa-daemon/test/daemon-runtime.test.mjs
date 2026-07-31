@@ -1467,6 +1467,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
               workspaceId: 'workspace-dynamic',
               config: {
                 runtime: 'claude_code',
+                allowWrites: true,
               },
             },
           },
@@ -1497,6 +1498,17 @@ test('daemon handles backend start_runtime control command dynamically', async (
 
   writeFakeClaudeScript(fakeClaude, marker, true, true);
   chmodSync(fakeClaude, 0o755);
+  const env = {
+    ...process.env,
+    SLOCK_AGENT_TOKEN: 'sk_machine_real',
+    SLOCK_SERVER_ID: 'server-control',
+    SLOCK_COMPUTER_ID: 'computer-control',
+    SLOCK_CLAUDE_COMMAND: fakeClaude,
+  };
+  delete env.SLOCK_ALLOW_WRITES;
+  delete env.AAA_DAEMON_ALLOW_WRITES;
+  delete env.SLOCK_WRITE_TARGET_ALLOWLIST;
+  delete env.AAA_DAEMON_WRITE_TARGET_ALLOWLIST;
 
   const daemon = spawn(process.execPath, [
     resolve('dist/cmd/main.js'),
@@ -1512,14 +1524,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
     '--register-daemon',
   ], {
     cwd: resolve('.'),
-    env: {
-      ...process.env,
-      SLOCK_AGENT_TOKEN: 'sk_machine_real',
-      SLOCK_SERVER_ID: 'server-control',
-      SLOCK_COMPUTER_ID: 'computer-control',
-      SLOCK_CLAUDE_COMMAND: fakeClaude,
-      SLOCK_ALLOW_WRITES: '1',
-    },
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -1540,10 +1545,22 @@ test('daemon handles backend start_runtime control command dynamically', async (
     assert.match(runtime.serverStdout, /server-control|Channels:/);
     assert.equal(runtime.sendStatus, 0, runtime.sendStderr);
     assert.match(runtime.sendStdout, /Message sent/);
+    assert.equal(runtime.allowWrites, '1');
     assert.equal(runtime.pathHead, join(runtimeWorkspace, '.slock'));
     assert.equal(runtime.slockHome, join(runtimeWorkspace, '.slock'));
     assert.equal(runtime.currentWorkspacePath, runtimeWorkspace);
     assert.equal(runtime.systemPromptFile, join(runtimeWorkspace, '.slock', 'claude-system-prompt.md'));
+    assert.match(
+      readFileSync(join(runtimeWorkspace, '.slock', 'slock'), 'utf-8'),
+      /SLOCK_ALLOW_WRITES='1'/,
+    );
+
+    await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/send'));
+    const sendRequest = upstream.requests.find(item => item.req.url === '/internal/agent-api/send');
+    assert.deepEqual(JSON.parse(sendRequest.body), {
+      target: '#general',
+      content: 'hello from runtime',
+    });
 
     await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-dynamic' && workspace.status === 'running')));
     const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-dynamic' && workspace.status === 'running'));
@@ -1567,6 +1584,123 @@ test('daemon handles backend start_runtime control command dynamically', async (
       await waitFor(() => shutdownBodies.length > 0);
       assert.equal(shutdownBodies.at(-1).status, 'offline');
     }
+    await upstream.close();
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
+  }
+});
+
+test('daemon keeps dynamic start_runtime writes fail-closed without allowWrites', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-control-runtime-no-writes-'));
+  const runtimeWorkspace = join(root, '.slock-runtimes', 'server-control', 'computer-control', 'workspace-no-writes');
+  const marker = join(root, 'runtime-marker.json');
+  const fakeClaude = join(root, 'fake-claude-control.mjs');
+  let sendRequests = 0;
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/register') {
+      res.end(JSON.stringify({
+        registered: true,
+        controlCommands: [
+          {
+            type: 'control',
+            command: {
+              type: 'start_runtime',
+              agentId: 'agent-no-writes',
+              workspaceId: 'workspace-no-writes',
+              config: {
+                runtime: 'claude_code',
+              },
+            },
+          },
+        ],
+      }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      res.end(JSON.stringify({ ok: true, controlCommands: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/server') {
+      res.end(JSON.stringify({ id: 'server-control', channels: [{ name: 'general' }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      sendRequests += 1;
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeFakeClaudeScript(fakeClaude, marker, true);
+  chmodSync(fakeClaude, 0o755);
+  const env = {
+    ...process.env,
+    SLOCK_AGENT_TOKEN: 'sk_machine_real',
+    SLOCK_SERVER_ID: 'server-control',
+    SLOCK_COMPUTER_ID: 'computer-control',
+    SLOCK_CLAUDE_COMMAND: fakeClaude,
+  };
+  delete env.SLOCK_ALLOW_WRITES;
+  delete env.AAA_DAEMON_ALLOW_WRITES;
+  delete env.SLOCK_WRITE_TARGET_ALLOWLIST;
+  delete env.AAA_DAEMON_WRITE_TARGET_ALLOWLIST;
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'none',
+    '--agent-id', 'bootstrap-agent',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'none',
+    '--register-daemon',
+  ], {
+    cwd: resolve('.'),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => existsSync(marker));
+    const runtime = JSON.parse(readFileSync(marker, 'utf-8'));
+
+    assert.equal(runtime.agentId, 'agent-no-writes');
+    assert.equal(runtime.serverStatus, 0, runtime.serverStderr);
+    assert.notEqual(runtime.sendStatus, 0);
+    assert.match(runtime.sendStderr, /WRITES_NOT_ALLOWED/);
+    assert.equal(runtime.allowWrites, null);
+    assert.doesNotMatch(
+      readFileSync(join(runtimeWorkspace, '.slock', 'slock'), 'utf-8'),
+      /SLOCK_ALLOW_WRITES=/,
+    );
+    assert.equal(sendRequests, 0);
+  } catch (err) {
+    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
     await upstream.close();
     await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
     try {

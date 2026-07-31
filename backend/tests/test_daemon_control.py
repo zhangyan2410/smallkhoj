@@ -285,6 +285,15 @@ def test_runtime_start_command_uses_runtime_provider_without_command_args():
     assert "runtimeCommand" not in config
 
 
+def test_runtime_start_command_enables_writes_for_server_managed_runtime():
+    workspace = _workspace(status="pending_start")
+    agent = _runtime_member(config={})
+
+    command = runtime_start_command(workspace, agent)
+
+    assert command["command"]["config"]["allowWrites"] is True
+
+
 def test_runtime_start_command_does_not_infer_provider_from_legacy_fields():
     workspace = _workspace(status="pending_start")
     agent = _runtime_member(config={"provider": "Kimi", "backend": "Claude"}, backend="Claude")
@@ -336,6 +345,7 @@ def test_runtime_control_command_reuses_start_config_for_restart():
     assert config["workspaceId"] == str(workspace.id)
     assert config["runtimeModel"] == "glm-5.1"
     assert config["workspacePath"] == "/tmp/runtime-workspace"
+    assert config["allowWrites"] is True
 
 
 @pytest.mark.asyncio

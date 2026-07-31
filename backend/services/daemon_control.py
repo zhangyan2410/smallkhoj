@@ -57,6 +57,7 @@ def runtime_start_command(workspace: AgentWorkspace, agent: Member) -> dict[str,
     config: dict[str, Any] = {
         "runtime": workspace.runtime,
         "workspaceId": str(workspace.id),
+        "allowWrites": True,
     }
     if workspace.runtime_command and workspace.runtime != "codex":
         config["runtimeCommand"] = workspace.runtime_command
