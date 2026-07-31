@@ -172,6 +172,42 @@ class DeployPreflightTests(unittest.TestCase):
             failed = [check for check in report.checks if check.name == "repo.frontend.buildAuthEnv"]
             self.assertEqual(failed[0].status, "failed")
 
+    def test_repo_config_passes_when_build_runs_in_multiline_buildkit_secret_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_repo(root)
+            # The production Dockerfile executes `bun run build` inside a
+            # multi-line RUN block that mounts a BuildKit secret. The gate must
+            # recognize this without weakening the auth-env contract.
+            write(root / "frontend" / "Dockerfile", """
+                FROM oven/bun:1 AS builder
+                ARG BETTER_AUTH_SECRET=sk_better_auth_build_placeholder_min_32_chars
+                ARG BETTER_AUTH_URL=http://localhost
+                ARG BETTER_AUTH_DATABASE_URL=postgresql://smallkhoj:smallkhoj@localhost:5432/smallkhoj
+                ARG AUTH_BRIDGE_SECRET=sk_auth_bridge_build_placeholder_min_32_chars
+                ENV BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
+                ENV BETTER_AUTH_URL=$BETTER_AUTH_URL
+                ENV BETTER_AUTH_DATABASE_URL=$BETTER_AUTH_DATABASE_URL
+                ENV AUTH_BRIDGE_SECRET=$AUTH_BRIDGE_SECRET
+                RUN --mount=type=secret,id=public_api_key \\
+                    public_api_key=""; \\
+                    if [ "$NEXT_PUBLIC_DEPLOYMENT_ENV" = "local-dev" ]; then \\
+                      public_api_key="$NEXT_PUBLIC_API_KEY"; \\
+                    fi; \\
+                    NEXT_PUBLIC_API_KEY="$public_api_key" bun run build
+                FROM oven/bun:1 AS runner
+                COPY --from=builder /app/.next/standalone ./
+                COPY --from=builder /app/.next/static ./.next/static
+                CMD ["bun", "run", "server.js"]
+            """)
+
+            report = preflight.run_preflight(root=root)
+
+            self.assertTrue(report.ready)
+            self.assertEqual(report.failures, 0)
+            build_check = next(check for check in report.checks if check.name == "repo.frontend.buildAuthEnv")
+            self.assertEqual(build_check.status, "passed")
+
     def test_repo_config_fails_when_backend_image_omits_daemon_release_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

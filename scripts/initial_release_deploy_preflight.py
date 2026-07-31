@@ -11,10 +11,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -103,6 +103,25 @@ def require_file(root: Path, relative_path: str) -> tuple[Path, CheckResult | No
 
 def contains_all(text: str, needles: tuple[str, ...] | list[str]) -> bool:
     return all(needle in text for needle in needles)
+
+
+# Frontend production build may run inside a multi-line RUN block that wires
+# BuildKit secrets into env before invoking bun, e.g.:
+#   RUN --mount=type=secret,id=public_api_key \
+#       ...
+#       NEXT_PUBLIC_API_KEY="$public_api_key" bun run build
+# Match the RUN block (one-line or multi-line) instead of only the literal
+# "RUN bun run build", so the gate stays green without weakening the
+# BuildKit-secret contract.  Multi-line RUN blocks continue with lines ending
+# in a backslash until the final command line.
+_RUN_BUILD_RE = re.compile(
+    r"RUN\b[^\n]*\\\n(?:[^\n]*\\\n)*[^\n]*\bbun run build\b"
+    r"|RUN\b[^\n]*\bbun run build\b"
+)
+
+
+def has_bun_run_build(dockerfile: str) -> bool:
+    return bool(_RUN_BUILD_RE.search(dockerfile))
 
 
 def has_caddy_port_contract(compose_text: str) -> bool:
@@ -281,16 +300,17 @@ def check_repo_config(root: Path) -> list[CheckResult]:
                 "DEPLOY_PREFLIGHT_FRONTEND_DOCKERFILE_CONTRACT_MISSING",
                 "Frontend Dockerfile must copy .next/standalone and start server.js.",
             ))
-        if contains_all(
+        auth_env_present = contains_all(
             dockerfile,
             (
                 "BETTER_AUTH_SECRET",
                 "BETTER_AUTH_URL",
                 "BETTER_AUTH_DATABASE_URL",
                 "AUTH_BRIDGE_SECRET",
-                "RUN bun run build",
             ),
-        ):
+        )
+        build_present = has_bun_run_build(dockerfile)
+        if auth_env_present and build_present:
             checks.append(passed(
                 "repo.frontend.buildAuthEnv",
                 "Frontend Dockerfile provides build-time auth env placeholders for Next production build.",
@@ -306,7 +326,7 @@ def check_repo_config(root: Path) -> list[CheckResult]:
                         "BETTER_AUTH_URL",
                         "BETTER_AUTH_DATABASE_URL",
                         "AUTH_BRIDGE_SECRET",
-                        "RUN bun run build",
+                        "bun run build (in a RUN block)",
                     ]
                 },
             ))
