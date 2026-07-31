@@ -389,3 +389,37 @@ Fixed the 'loading workbench' flash on page switches. Corrected an initial misdi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: Bundled Pi runtime + MiniMax relay + dynamic runtime select; first-use guide task planned
+
+**Date**: 2026-07-31
+**Task**: Bundled Pi runtime + MiniMax relay + dynamic runtime select; first-use guide task planned
+**Branch**: `main`
+
+### Summary
+
+在 main 基线上实现 bundled Pi runtime 全链路: daemon PiRuntimeDriver + bundled Pi 检测 + backend LlmRunLease(alembic 0005) + scoped LLM relay(支持 openai/anthropic 双格式) + lease acquire/heartbeat/release. 修了 runtime 下拉写死 bug(改用 detectedRuntimes 动态生成, 没装的灰掉). 真测打通 daemon->Pi->lease->relay->MiniMax(200), 过程中发现并修了 5 处代码问题(pi runtime alias 缺失/config.runtime 未存储/proxy 只认 Bearer 不认 x-api-key/缺 anthropic relay 路由/apiFormat 写死). 已合并 main(d8d194f). Pi<->MiniMax SSE usage 映射是 Pi 包内部边缘, 后置. 另创建引导方案任务 07-30-first-use-agent-guide(纯前端, 规划完成).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2a4a0b0` | (see git log) |
+| `d8d194f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
