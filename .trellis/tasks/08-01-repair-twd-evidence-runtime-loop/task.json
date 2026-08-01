@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "08-01-real-delivery-workflow-mvp"
+  ],
   "parent": null,
   "relatedFiles": [
     "agent/daemon/webdriver/twd.py",
