@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
-- **Last Active**: 2026-07-31
+- **Total Sessions**: 13
+- **Last Active**: 2026-08-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~425 | Active |
+| `journal-1.md` | ~458 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-08-02 | 完成开发与真实验证最小入口 | `70adad1` | `main` |
 | 12 | 2026-07-31 | Bundled Pi runtime + MiniMax relay + dynamic runtime select; first-use guide task planned | `2a4a0b0`, `d8d194f` | `main` |
 | 11 | 2026-07-29 | Chat transition fast path: scroll rail + fetch dedupe + shell persistence | `5687844`, `b528edf`, `3b486db`, `09b5cb6`, `3a21c32`, `ba644e4`, `c0a037b` | `main` |
 | 10 | 2026-07-10 | Release frontend and compatible daemon package | `35325e9`, `a0da9db`, `1db6868`, `dc1e64f` | `main` |
