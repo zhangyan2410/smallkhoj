@@ -216,6 +216,50 @@ For the recommended same-origin deployment, leave `NEXT_PUBLIC_API_BASE_URL` and
 
 Only set `NEXT_PUBLIC_API_BASE_URL` or `NEXT_PUBLIC_WS_BASE_URL` when the browser must call a different public host. Because these are `NEXT_PUBLIC_*` values, they must be present when the frontend image is built, not only when the container starts.
 
+### Apple Silicon cross-arch build pitfalls (linux/amd64 target)
+
+Building `--platform linux/amd64` frontend images on an Apple Silicon host
+(`aarch64`) has two failure modes that the `--platform` guidance above does not
+cover. Both were hit during the 2026-07-31 deploy and must be handled together:
+
+1. **`Next.js build worker exited with signal SIGILL`** — the default Docker
+   driver (colima's embedded buildkit) runs the amd64 build through QEMU
+   userspace emulation, and Next.js's V8/worker build crashes under emulation.
+   The fix is a separate `docker-container` buildx builder, which runs buildkit
+   in its own container and handles cross-arch through binfmt more stably:
+
+   ```bash
+   # buildkitd config pointing Docker Hub at a reachable mirror
+   cat > /tmp/buildkitd.toml <<'EOF'
+   [registry."docker.io"]
+     mirrors = ["docker.m.daocloud.io", "dockerproxy.net"]
+   EOF
+
+   docker buildx create --name amd64builder --driver docker-container \
+     --config /tmp/buildkitd.toml --driver-opt network=host --use
+   docker buildx inspect amd64builder --bootstrap
+
+   docker buildx build --builder amd64builder --platform linux/amd64 --no-cache \
+     --secret id=public_api_key,env=PUBLIC_API_KEY --load \
+     -t smallkhoj-frontend:local-release -f frontend/Dockerfile frontend
+   ```
+
+2. **DNS / registry resolution inside the builder container** — the
+   `docker-container` builder has its own network namespace and does NOT inherit
+   the colima daemon's `registry-mirrors` or proxy. Without configuration it
+   fails with `lookup docker.m.daocloud.io ... i/o timeout` or
+   `dial tcp auth.docker.io ... connection refused`. Two things must be set on
+   the builder itself: a `--config buildkitd.toml` with `[registry."docker.io"]`
+   mirrors, and `--driver-opt network=host` so the builder reuses the VM's DNS
+   and VPN proxy. Do not rely on `~/.docker/config.json` `proxies` — that only
+   affects buildx's standalone builders, not colima's embedded buildkit, and the
+   `docker-container` driver needs the explicit `--config`/`--driver-opt`.
+
+The backend image (Python only, no Next.js) builds fine under the colima
+embedded buildkit with `--platform linux/amd64` once the daemon's
+`/etc/docker/daemon.json` has `registry-mirrors`; it does not need the separate
+buildx builder. Only the frontend needs the docker-container builder.
+
 ## Environment
 
 Set deployment env outside the repo, for example in a server-side `.env.prod` file that is not committed.
@@ -885,6 +929,74 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T backend \
 
 Only start `feishu-worker` after preflight reports `ready: true`.
 
+## Registry-free Manual Deploy: Deviations And Gotchas
+
+The `production_image_transfer.py` flow above is the supported path: it validates
+a formal capacity report, writes release evidence, inspects image IDs/platforms,
+and refuses a dirty tree. A **manual** `docker build` → `docker save` → `scp` →
+`docker load` → `compose up` flow is sometimes used to move fast, but every guard
+it skips is a footgun. The list below was collected from a 2026-07-31 deploy that
+bypassed the tool; follow the supported path when you can, and when you cannot,
+check each item manually.
+
+### Deviations from the supported flow (and how to compensate)
+
+- **Build with a `docker-container` buildx builder on Apple Silicon, not the
+  colima embedded buildkit.** The embedded buildkit emulates `linux/amd64`
+  through QEMU and the Next.js production build crashes with
+  `SIGILL` (`build worker exited with signal SIGILL`). Create a
+  `docker-container` builder with a `buildkitd.toml` registry-mirror and
+  `--driver-opt network=host` (see the "Apple Silicon cross-arch build pitfalls"
+  section). The backend image (Python only) builds fine under the embedded
+  buildkit once `/etc/docker/daemon.json` has `registry-mirrors`; only the
+  frontend needs the separate builder.
+- **Do NOT hand-edit `Dockerfile` to point `FROM` at a mirror.** When the
+  embedded buildkit cannot reach Docker Hub, fix the daemon's
+  `registry-mirrors` or switch builders; never rewrite `FROM python:3.12-slim`
+  to a mirror URL. A temp-edit Dockerfile is easy to forget and silently
+  diverges production images from the tracked Dockerfile contract.
+- **Prefer the `legacy_schema_preflight.py` adopt helper over a hand-rolled
+  `alembic stamp`.** When starting a new backend image against a database that
+  predates Alembic, `backend/scripts/legacy_schema_preflight.py` fingerprints
+  the current schema against the 0001 baseline and tells you exactly which
+  post-baseline objects are missing. Stamping by guess skips it and leaves the
+  schema/version inconsistent (see the `messages.seq` gotcha under "Adopting a
+  pre-existing database" below). `alembic stamp` writes only the version row;
+  it never applies or verifies the migration DDL.
+- **Manual transfer loses release evidence.** `production_image_transfer.py`
+  writes `<archive>.release-evidence.json` binding tested HEAD/tree, image IDs,
+  archive hash, and capacity report. A manual `docker save | gzip` produces
+  none. At minimum record by hand: source HEAD (`git rev-parse HEAD`), each
+  image ID (`docker inspect --format '{{.Id}}'`), the archive SHA-256, and the
+  pre/post Alembic revision — or you cannot answer "what exactly is running".
+
+### Gotchas hit during the 2026-07-31 deploy
+
+- **`.env.prod` must contain `PUBLIC_API_KEY`, not only `NEXT_PUBLIC_API_KEY`.**
+  New backend builds (`config.py` since `5749828`) reject the
+  `sk_public_local` development value when `DEBUG=false` and require the env
+  var to be present. An older `.env.prod` that only had `NEXT_PUBLIC_API_KEY`
+  fails with `PUBLIC_API_KEY must be configured when DEBUG=false`. Compose then
+  bridges that single `PUBLIC_API_KEY` to the frontend; do not maintain two
+  separate values.
+- **`docker compose --env-file .env.prod -f docker-compose.prod.yml ...` order
+  matters.** `--env-file` must accompany `-f`; running `compose -f <file>
+  config` alone reports `required variable ... is missing` even when the env
+  file has it, because variable interpolation only happens against the env
+  file you pass. Always validate with the exact `--env-file ... -f ...` pair
+  you will deploy with.
+- **`docker load` of an image whose tag already exists renames the old image to
+  `<none>:<none>`.** The previous image is not lost (you can still reference it
+  by ID), but the tag is silently reassigned. Before any deploy, tag the
+  currently-running image as `smallkhoj-<svc>:rollback-pre-<reason>-<UTC>` so a
+  partial failure can retag back; do not rely on remembering the old image ID.
+- **A partial-service rollback must keep `PUBLIC_API_KEY` consistent.** Rolling
+  back only the frontend image to a build that baked an older key, while
+  backend `.env.prod` moved to a new key, makes every authenticated request
+  return 401 `Invalid API key` and hangs server-component route changes. See the
+  Failure Modes entry "Page navigation hangs (~15s) after a partial frontend
+  rollback" for diagnosis.
+
 ## Failure Modes
 
 - `curl https://domain/api/health` fails but `/` works: check Caddy `/api/*` routing and backend container logs.
@@ -894,3 +1006,51 @@ Only start `feishu-worker` after preflight reports `ready: true`.
 - Browser WebSocket uses `ws://` on HTTPS page: check `NEXT_PUBLIC_WS_BASE_URL`; empty same-origin should derive `wss://`.
 - Caddy cannot issue a certificate: check DNS A record, firewall ports 80/443, and ICP/provider restrictions.
 - Server runs out of memory during deploy: do not build images on the server; pull prebuilt backend/frontend images or use `scripts/production_image_transfer.py` to load locally built images.
+- **Page navigation hangs (~15s) after a partial frontend rollback**: the rolled-back frontend image baked an older `NEXT_PUBLIC_API_KEY` while backend `.env.prod` already moved to a new `PUBLIC_API_KEY`. Every authenticated API call returns 401 `Invalid API key`, so server-component route changes (`requireCurrentAccount`) retry/redirect and the UI freezes. This is a credential-mismatch symptom, not a code performance regression — diagnose with `curl /api/v1/auth/me` (returns 401 fast) before profiling the frontend. A partial rollback is only safe when the rolled-back image's baked key equals the current backend key; otherwise roll both back together. Same root cause as the `Invalid API key` note in Environment, but the user-visible failure mode is a hang, so it is easy to misread as a Next.js / bundle problem.
+
+### Adopting a pre-existing database (alembic stamp + owner guard)
+
+When a backend image from commit `5749828` or later first starts against a
+database that predates Alembic management, startup fails with three distinct,
+cascading errors. Each is a deliberate safety guard, not a bug; resolve them in
+this order (hit during the 2026-07-31 deploy):
+
+1. **`relation "servers" already exists` / `DuplicateTableError`** — the
+   database has tables but no `alembic_version` row, so `alembic upgrade head`
+   replays the baseline `CREATE TABLE`. First inspect which migration-introduced
+   tables/columns already exist (`llm_run_leases`, `task_run_templates.server_id`),
+   then `alembic stamp <last-applied-revision>` to the highest revision whose
+   schema is already present, and let `upgrade head` apply only the missing
+   ones. Do not stamp past a revision whose DDL has not actually been applied
+   (e.g. stamping to `0004` when `task_run_templates.server_id` is missing leaves
+   the schema/version inconsistent and the next startup still fails). If a
+   later table was created out of band, drop it before re-running `upgrade head`
+   so the migration owns its creation.
+
+   **`alembic stamp` only writes the version row; it does NOT execute or verify
+   the migration DDL.** Column-level transforms are easy to miss when adopting
+   a pre-managed database: `messages.seq` was made `GENERATED ALWAYS AS
+   IDENTITY` by revisions 0002/0003, but an unmanaged legacy DB keeps the old
+   plain `NOT NULL` column. After stamping past those revisions, the app INSERTs
+   without a `seq` value (expecting the identity to fill it), hits
+   `NotNullViolationError: null value in column "seq"`, and every message send
+   fails. Always spot-check identity/default-bearing columns
+   (`information_schema.columns.is_identity`) after stamping; if a stamped
+   revision's DDL is actually missing, apply it by hand (`ALTER TABLE ...
+   ADD GENERATED ... AS IDENTITY; SELECT setval(...)`) so the schema matches the
+   stamped version before restarting.
+
+2. **`LEGACY_MEMBERSHIP_MULTIPLE_ACTIVE_OWNERS`** — `models/seed.py` refuses to
+   guess which account to demote when a server has more than one active owner.
+   Inspect `server_memberships` (`role='owner' AND status='active'`), keep the
+   one true owner (typically the oldest human account), and
+   `UPDATE ... SET role='member'` for the rest before restarting.
+
+3. **`PUBLIC_API_KEY must not use the repository-known development value when
+   DEBUG=false`** — `backend/config.py` and `frontend/runtime-url.ts` reject
+   `sk_public_local` in production. Generate a real key, set both
+   `PUBLIC_API_KEY` and `NEXT_PUBLIC_API_KEY` in `.env.prod` to the same value,
+   and rebuild the frontend image with that key as the BuildKit secret (the
+   running frontend baked the old key into browser assets). Rotating the key
+   invalidates connect tickets and machine tokens signed under the old key, so
+   do it during a window when no Computers need to stay connected.
