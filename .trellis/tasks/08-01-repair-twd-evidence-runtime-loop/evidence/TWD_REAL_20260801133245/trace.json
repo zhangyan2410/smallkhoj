@@ -1,0 +1,21 @@
+{
+  "environment": "local-dev",
+  "daemonUrl": "http://127.0.0.1:62255",
+  "daemonOk": true,
+  "agentId": "4cd70dde-e598-459e-9f8e-6f99e415c4e0",
+  "agentName": "realreply-133245",
+  "runtime": "claude_code",
+  "provider": "Zhipu GLM",
+  "model": "glm-5.2",
+  "sessionId": "f8b5a90b-6980-48f3-81d8-3d0287c005c7",
+  "traceId": "chat-send:ms9y9glv:d67b19e7-dea",
+  "flow": "message_to_agent_reply",
+  "span": "daemon.runtime.result",
+  "status": "ok",
+  "elapsedMs": 144331,
+  "runtimeResult": {
+    "at": "2026-08-01T05:50:03.883Z",
+    "eventType": "result",
+    "subtype": "success"
+  }
+}

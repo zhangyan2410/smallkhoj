@@ -1,0 +1,345 @@
+{
+  "scenario": "chat-reply-channel-base",
+  "runId": "chat-gate-msa0f7dh",
+  "traceId": "chat-gate:chat-gate-msa0f7dh",
+  "status": "failed",
+  "ok": false,
+  "startedAt": "2026-08-01T06:48:06.677Z",
+  "completedAt": "2026-08-01T06:51:08.041Z",
+  "agentId": "fb1dfb45-5fab-454b-9adc-1557eabd914f",
+  "agentName": "loopagent-142749",
+  "computerId": "10bd4b45-ad8c-4e0b-a877-81e9163b1134",
+  "daemonId": null,
+  "runtimeProvider": "15955baf-aff7-42cb-afbd-bb561752f081",
+  "runtimeModel": null,
+  "runtimeKind": "claude_code",
+  "sessionId": "8abed099-82f2-4368-b902-fcefbb8d5700",
+  "agent": {
+    "id": "fb1dfb45-5fab-454b-9adc-1557eabd914f",
+    "name": "loopagent-142749",
+    "computerId": "10bd4b45-ad8c-4e0b-a877-81e9163b1134",
+    "daemonId": "",
+    "runtimeProvider": "15955baf-aff7-42cb-afbd-bb561752f081",
+    "runtimeModel": null,
+    "runtimeKind": "claude_code",
+    "sessionId": "8abed099-82f2-4368-b902-fcefbb8d5700"
+  },
+  "target": {
+    "kind": "channel",
+    "channelId": "5e20e51a-db54-4488-bcbc-fc66ba261251",
+    "channelName": "twd-loop-142749",
+    "replyTarget": "#twd-loop-142749",
+    "visibleAgentIds": [
+      "fb1dfb45-5fab-454b-9adc-1557eabd914f"
+    ],
+    "expectedResponderAgentIds": [
+      "fb1dfb45-5fab-454b-9adc-1557eabd914f"
+    ],
+    "responderPolicy": "one",
+    "readyForSend": true,
+    "dmId": null,
+    "userMemberId": null,
+    "apiBase": "http://127.0.0.1:18000",
+    "frontendBase": "http://127.0.0.1:13000",
+    "daemonRpcBase": null,
+    "serverId": "cd849e71-a112-4616-a22c-47e69f217d0e"
+  },
+  "marker": "TWD_GATE_202608011503",
+  "expectedAck": "ACK_TWD_GATE_202608011503",
+  "messages": {
+    "userMessageId": "fe8c1342-42a6-43ef-a386-6400b263dfe9",
+    "replyMessageId": "9f3b7e55-3a3e-4cd8-84d3-ed111a14cc62",
+    "replies": [
+      {
+        "id": "9f3b7e55-3a3e-4cd8-84d3-ed111a14cc62",
+        "authorId": "fb1dfb45-5fab-454b-9adc-1557eabd914f",
+        "targetId": "5e20e51a-db54-4488-bcbc-fc66ba261251",
+        "content": "ACK_TWD_GATE_202608011503",
+        "createdAt": "2026-08-01T06:48:28.605940+00:00",
+        "visible": true,
+        "raw": {
+          "id": "9f3b7e55-3a3e-4cd8-84d3-ed111a14cc62",
+          "authorId": "fb1dfb45-5fab-454b-9adc-1557eabd914f",
+          "targetId": "5e20e51a-db54-4488-bcbc-fc66ba261251",
+          "content": "ACK_TWD_GATE_202608011503",
+          "createdAt": "2026-08-01T06:48:28.605940+00:00",
+          "visible": true
+        }
+      }
+    ]
+  },
+  "userMessageId": "fe8c1342-42a6-43ef-a386-6400b263dfe9",
+  "replyMessageId": "9f3b7e55-3a3e-4cd8-84d3-ed111a14cc62",
+  "steps": [
+    {
+      "id": "foundation-preflight",
+      "label": "Foundation preflight",
+      "status": "passed",
+      "evidence": {
+        "source": "foundation-preflight"
+      }
+    },
+    {
+      "id": "chat-target-ready",
+      "label": "Chat target ready",
+      "status": "passed",
+      "evidence": {
+        "source": "chat-target-ready"
+      }
+    },
+    {
+      "id": "user-message-sent",
+      "label": "User message sent",
+      "status": "passed",
+      "evidence": {
+        "source": "user-message-sent"
+      }
+    },
+    {
+      "id": "user-message-persisted",
+      "label": "User message persisted",
+      "status": "passed",
+      "evidence": {
+        "source": "user-message-persisted"
+      }
+    },
+    {
+      "id": "runtime-delivered",
+      "label": "Runtime delivered",
+      "status": "passed",
+      "evidence": {
+        "source": "runtime-delivered"
+      }
+    },
+    {
+      "id": "provider-thinking",
+      "label": "Provider thinking",
+      "status": "passed",
+      "evidence": {
+        "source": "provider-thinking"
+      }
+    },
+    {
+      "id": "tool-output",
+      "label": "Tool output",
+      "status": "passed",
+      "evidence": {
+        "source": "tool-output"
+      }
+    },
+    {
+      "id": "slock-send-observed",
+      "label": "Slock send observed",
+      "status": "failed",
+      "evidence": {
+        "source": "slock-send-observed"
+      },
+      "failure": {
+        "category": "tool",
+        "code": "SLOCK_SEND_MISSING",
+        "message": "No slock message send evidence was observed."
+      },
+      "failureCode": "SLOCK_SEND_MISSING"
+    },
+    {
+      "id": "runtime-idle",
+      "label": "Runtime idle",
+      "status": "passed",
+      "evidence": {
+        "source": "runtime-idle"
+      }
+    },
+    {
+      "id": "reply-persisted",
+      "label": "Reply persisted",
+      "status": "passed",
+      "evidence": {
+        "source": "reply-persisted"
+      }
+    },
+    {
+      "id": "reply-visible",
+      "label": "Reply visible",
+      "status": "passed",
+      "evidence": {
+        "source": "reply-visible"
+      }
+    }
+  ],
+  "latency": {
+    "sendToPersistMs": null,
+    "persistToRuntimeDeliveryMs": 117,
+    "deliveryToThinkingMs": 15465,
+    "thinkingToToolMs": 1620,
+    "toolToReplyPersistMs": 4645,
+    "replyPersistToVisibleMs": 0,
+    "totalSendToVisibleMs": 21847,
+    "runtimeWallClockMs": 26931,
+    "providerDurationApiMs": null,
+    "runtimeIdleAt": "2026-08-01T06:48:33.758133+00:00"
+  },
+  "usage": {
+    "inputTokens": null,
+    "outputTokens": null,
+    "cacheReadTokens": 116672,
+    "durationMs": 26867,
+    "wallClockMs": 26931,
+    "usageSource": "provider-stream-json",
+    "runSpecific": true
+  },
+  "context": null,
+  "runtimeTimeline": [
+    {
+      "kind": "runtime_working",
+      "at": "2026-08-01T06:48:06.875202+00:00",
+      "details": {
+        "target": "#twd-loop-142749",
+        "messageId": "fe8c1342-42a6-43ef-a386-6400b263dfe9",
+        "sourceChannel": "5e20e51a-db54-4488-bcbc-fc66ba261251"
+      }
+    },
+    {
+      "kind": "runtime_thinking",
+      "at": "2026-08-01T06:48:22.340111+00:00",
+      "details": {
+        "thought": "This is a new message from @zy-ean (actor 3931a439...). It's an integration-chat-gate marker `TWD_GATE_202608011503`. The instruction:\n\n\"[integration-chat-gate TWD_GATE_202608011503]\nPlease reply with",
+        "sessionId": "8abed099-82f2-4368-b902-fcefbb8d5700"
+      }
+    },
+    {
+      "kind": "runtime_output",
+      "at": "2026-08-01T06:48:23.960617+00:00",
+      "details": {
+        "toolName": "Bash",
+        "commandPreview": "/Users/code/project/smallkhoj-repair-twd-evidence-runtime-loop/.slock-runtimes/cd849e71-a112-4616-a22c-47e69f217d0e/10bd4b45-ad8c-4e0b-a877-81e9163b1134/ef7f0b04-2282-49bf-925b-13841ecba687/.slock/slo…"
+      }
+    },
+    {
+      "kind": "runtime_thinking",
+      "at": "2026-08-01T06:48:28.527581+00:00",
+      "details": {
+        "sessionId": "8abed099-82f2-4368-b902-fcefbb8d5700"
+      }
+    },
+    {
+      "kind": "runtime_output",
+      "at": "2026-08-01T06:48:28.528851+00:00",
+      "details": {
+        "toolName": "Bash",
+        "commandPreview": "/Users/code/project/smallkhoj-repair-twd-evidence-runtime-loop/.slock-runtimes/cd849e71-a112-4616-a22c-47e69f217d0e/10bd4b45-ad8c-4e0b-a877-81e9163b1134/ef7f0b04-2282-49bf-925b-13841ecba687/.slock/slo…"
+      }
+    },
+    {
+      "kind": "message_sent",
+      "at": "2026-08-01T06:48:28.607784+00:00",
+      "details": {
+        "seq": 4,
+        "target": "#twd-loop-142749",
+        "channel": "#twd-loop-142749",
+        "content": "ACK_TWD_GATE_202608011503",
+        "shortId": "b701d213",
+        "traceId": "chat-gate:chat-gate-msa0f7dh",
+        "mentions": [],
+        "parentId": null,
+        "senderId": "fb1dfb45-5fab-454b-9adc-1557eabd914f",
+        "threadId": "9f3b7e55-3a3e-4cd8-84d3-ed111a14cc62",
+        "messageId": "9f3b7e55-3a3e-4cd8-84d3-ed111a14cc62",
+        "messageSeq": 4,
+        "channelType": "public",
+        "messageSnippet": "ACK_TWD_GATE_202608011503"
+      }
+    },
+    {
+      "kind": "runtime_thinking",
+      "at": "2026-08-01T06:48:33.186358+00:00",
+      "details": {
+        "thought": "The ACK was sent successfully (seq=4). The task is done — just a simple echo reply as requested. No task claim needed since this was a conversational reply request, not a work task.\n\nI'll stop and wai",
+        "sessionId": "8abed099-82f2-4368-b902-fcefbb8d5700"
+      }
+    },
+    {
+      "kind": "runtime_idle",
+      "at": "2026-08-01T06:48:33.758133+00:00",
+      "details": {
+        "tokens": {
+          "cacheRead": 116672
+        },
+        "durationMs": 26867,
+        "usageSource": "provider-stream-json",
+        "wallClockMs": 26931
+      }
+    }
+  ],
+  "toolEvidence": [
+    {
+      "toolName": "Bash",
+      "toolId": null,
+      "commandPreview": "/Users/code/project/smallkhoj-repair-twd-evidence-runtime-loop/.slock-runtimes/cd849e71-a112-4616-a22c-47e69f217d0e/10bd4b45-ad8c-4e0b-a877-81e9163b1134/ef7f0b04-2282-49bf-925b-13841ecba687/.slock/slo…",
+      "isSlockMessageSend": false,
+      "ok": true,
+      "target": null,
+      "replyMessageId": null,
+      "matchingMethod": "fallbackWindow",
+      "raw": {
+        "toolName": "Bash",
+        "toolId": "",
+        "commandPreview": "/Users/code/project/smallkhoj-repair-twd-evidence-runtime-loop/.slock-runtimes/cd849e71-a112-4616-a22c-47e69f217d0e/10bd4b45-ad8c-4e0b-a877-81e9163b1134/ef7f0b04-2282-49bf-925b-13841ecba687/.slock/slo…",
+        "isSlockMessageSend": false,
+        "ok": true,
+        "target": null,
+        "replyMessageId": "",
+        "matchingMethod": "fallbackWindow"
+      }
+    },
+    {
+      "toolName": "Bash",
+      "toolId": null,
+      "commandPreview": "/Users/code/project/smallkhoj-repair-twd-evidence-runtime-loop/.slock-runtimes/cd849e71-a112-4616-a22c-47e69f217d0e/10bd4b45-ad8c-4e0b-a877-81e9163b1134/ef7f0b04-2282-49bf-925b-13841ecba687/.slock/slo…",
+      "isSlockMessageSend": false,
+      "ok": true,
+      "target": null,
+      "replyMessageId": null,
+      "matchingMethod": "fallbackWindow",
+      "raw": {
+        "toolName": "Bash",
+        "toolId": "",
+        "commandPreview": "/Users/code/project/smallkhoj-repair-twd-evidence-runtime-loop/.slock-runtimes/cd849e71-a112-4616-a22c-47e69f217d0e/10bd4b45-ad8c-4e0b-a877-81e9163b1134/ef7f0b04-2282-49bf-925b-13841ecba687/.slock/slo…",
+        "isSlockMessageSend": false,
+        "ok": true,
+        "target": null,
+        "replyMessageId": "",
+        "matchingMethod": "fallbackWindow"
+      }
+    }
+  ],
+  "replyEvidence": {
+    "replyMessageId": "9f3b7e55-3a3e-4cd8-84d3-ed111a14cc62",
+    "authorId": "fb1dfb45-5fab-454b-9adc-1557eabd914f",
+    "targetId": "5e20e51a-db54-4488-bcbc-fc66ba261251",
+    "expectedTargetId": "5e20e51a-db54-4488-bcbc-fc66ba261251",
+    "markerMatch": true,
+    "visible": true,
+    "matchingReplyCount": 1
+  },
+  "audienceEvidence": null,
+  "warnings": [
+    {
+      "category": "context",
+      "code": "CONTEXT_EVIDENCE_MISSING",
+      "message": "Context evidence is missing."
+    }
+  ],
+  "failure": {
+    "category": "tool",
+    "code": "SLOCK_SEND_MISSING",
+    "message": "No slock message send evidence was observed."
+  },
+  "summary": {
+    "total": 11,
+    "passed": 10,
+    "failed": 1,
+    "warning": 0
+  },
+  "schemaVersion": 1,
+  "mode": "chat-reply-channel-base"
+}

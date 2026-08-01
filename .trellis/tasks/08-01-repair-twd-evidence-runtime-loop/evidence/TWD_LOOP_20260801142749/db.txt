@@ -1,0 +1,39 @@
+Database cross-check (PostgreSQL container smallkhoj-twd-loop-db-20260801)
+============================================================================
+
+Server: cd849e71-a112-4616-a22c-47e69f217d0e
+Channel: 5e20e51a-db54-4488-bcbc-fc66ba261251 | twd-loop-142749 | public
+Computer: 10bd4b45-ad8c-4e0b-a877-81e9163b1134 | twd-loop-142749 | online
+Agent: fb1dfb45-5fab-454b-9adc-1557eabd914f | loopagent-142749 | online
+Workspace: ef7f0b04-2282-49bf-925b-13841ecba687 | claude_code | running
+
+Original real task/conversation:
+  seq=1 human  99a449f0-8cdc-40b9-bc5a-6bc474ab4672
+    content contains TWD_LOOP_20260801142749
+  seq=2 agent  a11e4520-c708-4819-be5d-6777a49d2d3f
+    parent_id=99a449f0-8cdc-40b9-bc5a-6bc474ab4672
+    content=ACK_TWD_LOOP_20260801142749
+
+Integration Gate false-negative reproduction:
+  seq=3 human  fe8c1342-42a6-43ef-a386-6400b263dfe9
+    marker=TWD_GATE_202608011503
+  seq=4 agent  9f3b7e55-3a3e-4cd8-84d3-ed111a14cc62
+    content=ACK_TWD_GATE_202608011503
+
+Integration Gate after daemon preview repair:
+  seq=5 human  e08a0a2f-5a4d-44af-a850-9b9ceb7a76aa
+    marker=TWD_GATE_REPAIR_202608011500
+  seq=6 agent  24185b35-bca1-4281-a69f-c5257eae5693
+    content=ACK_TWD_GATE_REPAIR_202608011500
+
+Task:
+  id=ca0116a0-683d-4b97-ba4d-f45d5974aa84
+  number=1
+  channel_id=5e20e51a-db54-4488-bcbc-fc66ba261251
+  status=in_review
+  assignee_id=fb1dfb45-5fab-454b-9adc-1557eabd914f
+  message_id=NULL
+  data.source={"type":"message","channel":"#twd-loop-142749"}
+
+The NULL tasks.message_id source-linkage defect is recorded as an existing
+product issue and was not broadened into this TWD/tooling repair.

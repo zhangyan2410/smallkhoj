@@ -1,0 +1,20 @@
+environment=local-dev
+server_id=49acf4ea-9620-409c-9049-c86990c7af84
+channel_id=40c13a64-6546-4c4f-86f6-cb52c502805b
+channel_name=twd-real-133245
+members=realreply-133245:agent,zy-ean:human
+
+message seq=1 id=db92485a-b9d6-4586-8833-c2a9e22a4045 short_id=949d2fab sender=zy-ean:human channel_id=40c13a64-6546-4c4f-86f6-cb52c502805b
+message seq=2 id=f9113678-c517-4564-9801-4ecb10e35582 short_id=76238daf sender=realreply-133245:agent channel_id=40c13a64-6546-4c4f-86f6-cb52c502805b
+message seq=3 id=a0f190e6-bf63-49db-8780-3c51575e6cc2 short_id=b683fc2e sender=realreply-133245:agent channel_id=40c13a64-6546-4c4f-86f6-cb52c502805b
+
+task id=29a0062f-a48c-4f92-8929-6a4ad27af25a number=1 status=in_review creator=zy-ean assignee=realreply-133245 channel_id=40c13a64-6546-4c4f-86f6-cb52c502805b
+task.data.source={"type":"message","channel":"#twd-real-133245"}
+task.message_id=NULL
+
+event seq=4 type=message.created message_id=db92485a-b9d6-4586-8833-c2a9e22a4045 trace_id=chat-send:ms9y9glv:d67b19e7-dea target=#twd-real-133245
+event seq=5 type=task.created task_id=29a0062f-a48c-4f92-8929-6a4ad27af25a
+event seq=6 type=message.created message_id=f9113678-c517-4564-9801-4ecb10e35582 trace_id=chat-send:ms9y9glv:d67b19e7-dea target=#twd-real-133245
+event seq=7 type=task.claimed task_id=29a0062f-a48c-4f92-8929-6a4ad27af25a actor_id=4cd70dde-e598-459e-9f8e-6f99e415c4e0
+event seq=8 type=message.created message_id=a0f190e6-bf63-49db-8780-3c51575e6cc2 trace_id=chat-send:ms9y9glv:d67b19e7-dea target=#twd-real-133245
+event seq=9 type=task.updated task_id=29a0062f-a48c-4f92-8929-6a4ad27af25a status=in_review actor_id=4cd70dde-e598-459e-9f8e-6f99e415c4e0

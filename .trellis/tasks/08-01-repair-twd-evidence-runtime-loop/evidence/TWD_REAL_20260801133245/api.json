@@ -1,0 +1,45 @@
+{
+  "environment": "local-dev",
+  "frontend": "http://127.0.0.1:13000",
+  "backend": "http://127.0.0.1:18000",
+  "exactTabId": "1617512975",
+  "href": "http://127.0.0.1:13000/chat/twd-real-133245",
+  "status": {
+    "channels": 200,
+    "messages": 200,
+    "tasks": 200
+  },
+  "channel": {
+    "id": "40c13a64-6546-4c4f-86f6-cb52c502805b",
+    "name": "#twd-real-133245",
+    "description": "TWD_REAL_20260801133245 real runtime verification channel",
+    "type": "public"
+  },
+  "messages": [
+    {
+      "id": "db92485a-b9d6-4586-8833-c2a9e22a4045",
+      "seq": 1,
+      "content": "TWD_REAL_20260801133245 请收到后只通过 slock 回复当前会话，回复内容必须包含 ACK_TWD_REAL_20260801133245。"
+    },
+    {
+      "id": "f9113678-c517-4564-9801-4ecb10e35582",
+      "seq": 2,
+      "content": "ACK_TWD_REAL_20260801133245 — 已收到，通过 slock 在当前会话回复确认。"
+    },
+    {
+      "id": "a0f190e6-bf63-49db-8780-3c51575e6cc2",
+      "seq": 3,
+      "content": "任务 #1 已完成。按要求通过 slock 在当前会话回复，ACK token 为 ACK_TWD_REAL_20260801133245（已在上一条消息 seq=2 发送）。现提交人工复核。"
+    }
+  ],
+  "task": {
+    "id": "29a0062f-a48c-4f92-8929-6a4ad27af25a",
+    "number": 1,
+    "channelId": "40c13a64-6546-4c4f-86f6-cb52c502805b",
+    "status": "in_review",
+    "source": {
+      "type": "message",
+      "channel": "#twd-real-133245"
+    }
+  }
+}

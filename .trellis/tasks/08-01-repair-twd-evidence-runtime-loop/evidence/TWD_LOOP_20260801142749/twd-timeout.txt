@@ -1,0 +1,24 @@
+Live exact-tab timeout isolation
+================================
+
+Candidate: feature worktree TWD master on WebSocket port 28765
+Exact tab: 1617512975
+Target at probe time: http://127.0.0.1:13000/chat/twd-loop-142749
+
+Delayed command:
+  ./twd --compact eval --tab 1617512975 --timeout 0.25
+  return await new Promise(resolve => setTimeout(() => resolve({marker: 'LATE_TWD_LOOP_20260801142749'}), 1200))
+
+Observed exit: 1
+Observed JSON:
+  {"ok":false,"code":"EXECUTION_TIMEOUT","message":"Session 1617512975 delivered the script but returned no result within 0.25s","type":"TMWebDriverError"}
+
+After waiting for the delayed browser result to arrive, a new exact-tab eval ran:
+  ./twd --compact eval --tab 1617512975 --timeout 3
+
+Observed exit: 0
+Observed JSON:
+  {"ok":true,"tabId":"1617512975","result":{"marker":"AFTER_TIMEOUT_TWD_LOOP_20260801142749","path":"/chat/twd-loop-142749","title":"Chat - SmallKhoj"}}
+
+Conclusion: the timed-out execution failed closed, its late result did not
+complete or contaminate a later command, and the same exact tab remained usable.

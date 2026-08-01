@@ -26,7 +26,7 @@ try:
 except Exception:
     pass
 
-from tmwebdriver_core import TMWebDriver
+from tmwebdriver_core import TMWebDriver, TMWebDriverError
 
 try:
     from bs4 import BeautifulSoup
@@ -55,6 +55,10 @@ def jdump(obj: Any, pretty: bool = True) -> str:
 
 def print_json(obj: Any, pretty: bool = True) -> None:
     print(jdump(obj, pretty=pretty))
+
+
+def emit_json(args: argparse.Namespace, obj: Any) -> None:
+    print_json(obj, pretty=not getattr(args, "compact", False))
 
 
 def ok(**kw: Any) -> dict[str, Any]:
@@ -98,6 +102,28 @@ def explicit_twd_port(args: argparse.Namespace) -> int | None:
     return None
 
 
+def collect_candidate_sessions(
+    args: argparse.Namespace,
+    session_probe: Callable[[str, int, str | None], list[dict[str, Any]] | None] | None = None,
+) -> list[dict[str, Any]]:
+    if session_probe is None:
+        session_probe = probe_http_sessions
+    host = getattr(args, "host", DEFAULT_HOST)
+    token = getattr(args, "token", None) or os.environ.get("TWD_TOKEN")
+    explicit = explicit_twd_port(args)
+    ports = [explicit] if explicit is not None else twd_port_candidates()
+    collected: list[dict[str, Any]] = []
+    for port in ports:
+        sessions = session_probe(host, port, token)
+        if not sessions:
+            continue
+        for session in sessions:
+            item = _normalise_session(session)
+            item["port"] = port
+            collected.append(item)
+    return collected
+
+
 def probe_http_sessions(host: str, port: int, token: str | None) -> list[dict[str, Any]] | None:
     headers = {"Content-Type": "application/json"}
     if token:
@@ -131,9 +157,40 @@ def resolve_twd_port(
     host = getattr(args, "host", DEFAULT_HOST)
     token = getattr(args, "token", None) or os.environ.get("TWD_TOKEN")
     candidates = twd_port_candidates()
+    sessions = collect_candidate_sessions(args, session_probe=session_probe)
+    tab_id = getattr(args, "tab", None)
+    url_match = getattr(args, "url_match", None)
+
+    if tab_id is not None:
+        wanted = str(tab_id)
+        matches = [session for session in sessions if session.get("id") == wanted]
+    elif url_match:
+        matches = [session for session in sessions if url_match in str(session.get("url", ""))]
+    else:
+        matches = []
+
+    owner_ports = list(dict.fromkeys(int(session["port"]) for session in matches))
+    if len(owner_ports) > 1:
+        summaries = [_candidate_summary(session) for session in matches]
+        selector = f"--tab {tab_id}" if tab_id is not None else f"--url-match {url_match!r}"
+        raise TabSelectionError(
+            "AMBIGUOUS_BRIDGE",
+            f"{selector} is visible through multiple TWD bridges. Use explicit --port or TWD_PORT.",
+            summaries,
+        )
+    if owner_ports:
+        return owner_ports[0]
+
+    if tab_id is not None or url_match:
+        selector = f"--tab {tab_id}" if tab_id is not None else f"--url-match {url_match!r}"
+        raise TabSelectionError(
+            "NO_MATCHING_BRIDGE",
+            f"{selector} is not visible through any configured TWD bridge.",
+            [_candidate_summary(session) for session in sessions],
+        )
+
     for port in candidates:
-        sessions = session_probe(host, port, token)
-        if sessions:
+        if any(int(session["port"]) == port for session in sessions):
             return port
     return candidates[0]
 
@@ -178,6 +235,8 @@ def _candidate_summary(session: dict[str, Any]) -> dict[str, Any]:
         out["active"] = bool(session.get("active"))
     if "windowId" in session:
         out["windowId"] = session.get("windowId")
+    if "port" in session:
+        out["port"] = session.get("port")
     return out
 
 
@@ -316,7 +375,19 @@ def selected_tab_fields(args: argparse.Namespace, sid: str) -> dict[str, Any]:
 
 def unwrap_exec_result(r: Any) -> Any:
     """TMWebDriver returns {'data': ...}; remote master returns same under r."""
-    return _unwrap_driver_result(r)
+    result = _unwrap_driver_result(r)
+    if isinstance(result, dict) and isinstance(result.get("result"), str):
+        message = result["result"]
+        normalized = message.lower()
+        if (
+            "no response data in" in normalized
+            or " no response in" in normalized
+            or "script not polled" in normalized
+        ):
+            raise TMWebDriverError("EXECUTION_TIMEOUT", message)
+        if "reloaded" in normalized:
+            raise TMWebDriverError("EXECUTION_INTERRUPTED", message)
+    return result
 
 
 def load_script(args: argparse.Namespace) -> str:
@@ -334,9 +405,18 @@ def parse_jsonish(s: str) -> Any:
         return ast.literal_eval(s)
 
 
+def parse_text_bool(value: str) -> bool:
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "off"}:
+        return False
+    raise argparse.ArgumentTypeError("expected true or false")
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     driver = make_driver(args)
-    print_json(ok(message="TMWebDriver master running", host=args.host, ws_port=args.port, http_port=args.port + 1, token_protected=bool(driver.token)))
+    emit_json(args, ok(message="TMWebDriver master running", host=args.host, ws_port=args.port, http_port=args.port + 1, token_protected=bool(driver.token)))
     print("Press Ctrl+C to stop.", file=sys.stderr)
     try:
         while True:
@@ -349,9 +429,19 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_tabs(args: argparse.Namespace) -> int:
-    driver = make_driver(args)
-    sessions = wait_sessions(driver, timeout=args.wait)
-    print_json(ok(tabs=sessions, count=len(sessions)), pretty=not args.compact)
+    if explicit_twd_port(args) is not None:
+        driver = make_driver(args)
+        sessions = wait_sessions(driver, timeout=args.wait)
+        sessions = [{**_normalise_session(session), "port": args.port} for session in sessions]
+    else:
+        deadline = time.time() + args.wait
+        sessions = []
+        while True:
+            sessions = collect_candidate_sessions(args)
+            if sessions or time.time() >= deadline:
+                break
+            time.sleep(0.25)
+    emit_json(args, ok(tabs=sessions, count=len(sessions)))
     return 0 if sessions else 2
 
 
@@ -359,11 +449,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected. Start Chrome with TMWD extension and/or run `python twd.py serve`."))
+        emit_json(args, err("NO_TAB", "No browser tab connected. Start Chrome with TMWD extension and/or run `python twd.py serve`."))
         return 2
     script = load_script(args)
     r = driver.execute_js(script, timeout=args.timeout, session_id=sid)
-    print_json(ok(**selected_tab_fields(args, sid), result=unwrap_exec_result(r)), pretty=not args.compact)
+    emit_json(args, ok(**selected_tab_fields(args, sid), result=unwrap_exec_result(r)))
     return 0
 
 
@@ -371,7 +461,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     if args.text:
         js = "return document.body ? document.body.innerText : '';"
@@ -380,9 +470,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
     r = unwrap_exec_result(driver.execute_js(js, timeout=args.timeout, session_id=sid))
     if args.out:
         Path(args.out).write_text(str(r), encoding="utf-8")
-        print_json(ok(**selected_tab_fields(args, sid), path=str(Path(args.out).resolve()), chars=len(str(r))))
+        emit_json(args, ok(**selected_tab_fields(args, sid), path=str(Path(args.out).resolve()), chars=len(str(r))))
     else:
-        print_json(ok(**selected_tab_fields(args, sid), text=r if args.text else None, html=None if args.text else r), pretty=not args.compact)
+        emit_json(args, ok(**selected_tab_fields(args, sid), text=r if args.text else None, html=None if args.text else r))
     return 0
 
 
@@ -390,12 +480,24 @@ def cmd_goto(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     target = json.dumps(args.target, ensure_ascii=False)
     js = f"location.href = {target}; return true;"
     r = unwrap_exec_result(driver.execute_js(js, timeout=args.timeout, session_id=sid))
-    print_json(ok(**selected_tab_fields(args, sid), navigated=bool(r), url=args.target), pretty=not args.compact)
+    if r is not True and r != args.target:
+        emit_json(
+            args,
+            err(
+                "NAVIGATION_UNCONFIRMED",
+                "Browser did not return an explicit navigation acknowledgement.",
+                **selected_tab_fields(args, sid),
+                result=r,
+                url=args.target,
+            ),
+        )
+        return 3
+    emit_json(args, ok(**selected_tab_fields(args, sid), navigated=True, url=args.target))
     return 0
 
 
@@ -403,7 +505,7 @@ def cmd_input(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     text = sys.stdin.read() if args.text == "-" else args.text
     selector = json.dumps(args.selector)
@@ -425,7 +527,7 @@ el.dispatchEvent(new Event('change', {{ bubbles: true }}));
 return {{ valueLength: (el.value || '').length, tag: el.tagName, selector }};
 """
     r = unwrap_exec_result(driver.execute_js(js, timeout=args.timeout, session_id=sid))
-    print_json(ok(**selected_tab_fields(args, sid), result=r), pretty=not args.compact)
+    emit_json(args, ok(**selected_tab_fields(args, sid), result=r))
     return 0
 
 
@@ -433,7 +535,7 @@ def cmd_click(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     selector = json.dumps(args.selector)
     contains = json.dumps(args.contains, ensure_ascii=False)
@@ -449,7 +551,7 @@ el.click();
 return {{ clicked: true, tag: el.tagName, text: (el.innerText || el.value || el.getAttribute('aria-label') || '').slice(0, 100) }};
 """
     r = unwrap_exec_result(driver.execute_js(js, timeout=args.timeout, session_id=sid))
-    print_json(ok(**selected_tab_fields(args, sid), result=r), pretty=not args.compact)
+    emit_json(args, ok(**selected_tab_fields(args, sid), result=r))
     return 0
 
 
@@ -457,13 +559,13 @@ def cmd_cdp(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     params = parse_jsonish(args.params) if args.params else {}
     cmd = {"cmd": "cdp", "tabId": int(sid), "method": args.method, "params": params}
     # Extension WS protocol treats JSON strings with cmd as bridge commands.
     r = unwrap_exec_result(driver.execute_js(json.dumps(cmd, ensure_ascii=False), timeout=args.timeout, session_id=sid))
-    print_json(ok(**selected_tab_fields(args, sid), result=r), pretty=not args.compact)
+    emit_json(args, ok(**selected_tab_fields(args, sid), result=r))
     return 0
 
 
@@ -471,17 +573,17 @@ def cmd_screenshot(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     cmd = {"cmd": "cdp", "tabId": int(sid), "method": "Page.captureScreenshot", "params": {"format": args.format}}
     r = unwrap_exec_result(driver.execute_js(json.dumps(cmd), timeout=args.timeout, session_id=sid))
     out = Path(args.out)
     data = r.get("data") if isinstance(r, dict) else None
     if not data:
-        print_json(err("NO_SCREENSHOT", "CDP did not return screenshot data", result=r))
+        emit_json(args, err("NO_SCREENSHOT", "CDP did not return screenshot data", result=r))
         return 3
     out.write_bytes(base64.b64decode(data))
-    print_json(ok(**selected_tab_fields(args, sid), path=str(out.resolve()), bytes=out.stat().st_size))
+    emit_json(args, ok(**selected_tab_fields(args, sid), path=str(out.resolve()), bytes=out.stat().st_size))
     return 0
 
 
@@ -489,13 +591,13 @@ def cmd_ext(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     obj = parse_jsonish(sys.stdin.read() if args.json == "-" else args.json)
     if isinstance(obj, dict) and obj.get("tabId") is None:
         obj["tabId"] = int(sid)
     r = unwrap_exec_result(driver.execute_js(json.dumps(obj, ensure_ascii=False), timeout=args.timeout, session_id=sid))
-    print_json(ok(**selected_tab_fields(args, sid), result=r), pretty=not args.compact)
+    emit_json(args, ok(**selected_tab_fields(args, sid), result=r))
     return 0
 
 
@@ -610,23 +712,34 @@ def _drain_monitor(driver, sid: str, timeout: float) -> dict:
     return r if isinstance(r, dict) else {"transients": []}
 
 
+def cleanup_selector(driver: TMWebDriver, selector: str, sid: str, timeout: float) -> Any:
+    selector_json = json.dumps(selector, ensure_ascii=False)
+    script = (
+        f"const selector = {selector_json};"
+        "const nodes = Array.from(document.querySelectorAll(selector));"
+        "nodes.forEach((node) => node.remove());"
+        "return nodes.length;"
+    )
+    return unwrap_exec_result(driver.execute_js(script, timeout=timeout, session_id=sid))
+
+
 def cmd_snapshot(args: argparse.Namespace) -> int:
     """Take an optHTML snapshot of the current tab. Default = text-only optimized HTML."""
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     try:
         html = _take_snapshot(driver, sid, text_only=not args.html, timeout=args.timeout)
     except Exception as e:
-        print_json(err("SNAPSHOT_FAIL", str(e)))
+        emit_json(args, err("SNAPSHOT_FAIL", str(e)))
         return 3
     if args.out:
         Path(args.out).write_text(html, encoding="utf-8")
-        print_json(ok(**selected_tab_fields(args, sid), path=str(Path(args.out).resolve()), chars=len(html), mode=("html" if args.html else "text")))
+        emit_json(args, ok(**selected_tab_fields(args, sid), path=str(Path(args.out).resolve()), chars=len(html), mode=("html" if args.html else "text")))
         return 0
-    print_json(ok(**selected_tab_fields(args, sid), snapshot=html, chars=len(html), mode=("html" if args.html else "text")), pretty=not args.compact)
+    emit_json(args, ok(**selected_tab_fields(args, sid), snapshot=html, chars=len(html), mode=("html" if args.html else "text")))
     return 0
 
 
@@ -638,10 +751,10 @@ def cmd_act(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     if OPT_HTML_JS is None or INJECT_HELPERS_JS is None:
-        print_json(err("ASSETS_MISSING", "act_assets.py is not importable in this Python environment."))
+        emit_json(args, err("ASSETS_MISSING", "act_assets.py is not importable in this Python environment."))
         return 4
 
     script = load_script(args)
@@ -660,11 +773,13 @@ def cmd_act(args: argparse.Namespace) -> int:
 
     # 3) execute the user action
     action_error: str | None = None
+    action_error_code: str | None = None
     result: Any = None
     try:
         result = unwrap_exec_result(driver.execute_js(script, timeout=args.timeout, session_id=sid))
     except Exception as e:
         action_error = str(e)
+        action_error_code = str(getattr(e, "code", None) or "ACTION_FAILED")
 
     # Give the page a moment to settle (animations, network for post-action hooks)
     settle = max(0.0, float(args.settle))
@@ -675,17 +790,20 @@ def cmd_act(args: argparse.Namespace) -> int:
     after_html = _take_snapshot(driver, sid, text_only=True, timeout=args.timeout)
 
     # 4b) optional cleanup (DOM hygiene) - run as JS, does not affect before/after snapshots
+    cleanup_result: Any = None
+    cleanup_error: str | None = None
+    cleanup_error_code: str | None = None
     if args.cleanup_after:
         try:
-            _js = (
-                "(function(sel){"
-                "try{var n=document.querySelectorAll(sel);n.forEach(function(e){e.remove();});"
-                "return n.length;}catch(e){return -1;}"
-                "})(arguments[0])"
+            cleanup_result = cleanup_selector(
+                driver,
+                args.cleanup_after,
+                sid,
+                min(args.timeout, 5.0),
             )
-            unwrap_exec_result(driver.execute_js(_js, timeout=min(args.timeout, 5.0), session_id=sid, args=[args.cleanup_after]))
-        except Exception:
-            pass
+        except Exception as e:
+            cleanup_error = str(e)
+            cleanup_error_code = "CLEANUP_FAILED"
 
     # 5) drain monitor (collects transients like "New chat", toast strings)
     transients: list[str] = []
@@ -705,7 +823,7 @@ def cmd_act(args: argparse.Namespace) -> int:
 
     payload: dict[str, Any] = {
         **selected_tab_fields(args, sid),
-        "ok": action_error is None,
+        "ok": action_error is None and cleanup_error is None,
         "summary": summary,
         "result": result,
         "action_error": action_error,
@@ -716,15 +834,22 @@ def cmd_act(args: argparse.Namespace) -> int:
         "after_html_preview": (diff.get("after_html") or after_html)[: args.preview_chars],
         "transients": transients[: args.max_transients],
         "monitor_meta": monitor_meta,
+        "cleanup_result": cleanup_result,
+        "cleanup_error": cleanup_error,
     }
+    if action_error is not None or cleanup_error is not None:
+        payload["code"] = action_error_code or cleanup_error_code
+        payload["message"] = action_error or cleanup_error
     if args.save_after:
         Path(args.save_after).write_text(diff.get("after_html") or after_html, encoding="utf-8")
         payload["after_path"] = str(Path(args.save_after).resolve())
     if args.save_before:
         Path(args.save_before).write_text(before_html, encoding="utf-8")
         payload["before_path"] = str(Path(args.save_before).resolve())
-    print_json(ok(**payload), pretty=not args.compact)
-    return 0 if action_error is None else 5
+    emit_json(args, ok(**payload))
+    if action_error is not None:
+        return 5
+    return 0 if cleanup_error is None else 6
 
 
 # ------------------------------------------------------------------ groups
@@ -735,37 +860,37 @@ def cmd_groups(args: argparse.Namespace) -> int:
     driver = make_driver(args)
     sid = choose_session(driver, args)
     if not sid:
-        print_json(err("NO_TAB", "No browser tab connected."))
+        emit_json(args, err("NO_TAB", "No browser tab connected."))
         return 2
     method = args.groups_method
     payload: dict[str, Any] = {"cmd": "groups", "method": method}
     if method == "create":
         if not args.title:
-            print_json(err("USAGE", "groups create requires --title"))
+            emit_json(args, err("USAGE", "groups create requires --title"))
             return 2
         tabs = [int(x) for x in args.tabs.split(",") if x.strip()] if args.tabs else []
         if not tabs:
-            print_json(err("USAGE", "groups create requires --tabs id1,id2"))
+            emit_json(args, err("USAGE", "groups create requires --tabs id1,id2"))
             return 2
         payload["title"] = args.title
         payload["color"] = args.color if args.color and args.color in VALID_COLORS else "blue"
         payload["tabs"] = tabs
     elif method == "add":
         if not args.group_id or not args.tabs:
-            print_json(err("USAGE", "groups add requires --group-id and --tabs"))
+            emit_json(args, err("USAGE", "groups add requires --group-id and --tabs"))
             return 2
         payload["groupId"] = args.group_id
         payload["tabs"] = [int(x) for x in args.tabs.split(",") if x.strip()]
     elif method == "remove":
         if not args.group_id:
-            print_json(err("USAGE", "groups remove requires --group-id"))
+            emit_json(args, err("USAGE", "groups remove requires --group-id"))
             return 2
         payload["groupId"] = args.group_id
         if args.tabs:
             payload["tabs"] = [int(x) for x in args.tabs.split(",") if x.strip()]
     elif method == "update":
         if not args.group_id:
-            print_json(err("USAGE", "groups update requires --group-id"))
+            emit_json(args, err("USAGE", "groups update requires --group-id"))
             return 2
         payload["groupId"] = args.group_id
         if args.title:
@@ -778,7 +903,7 @@ def cmd_groups(args: argparse.Namespace) -> int:
     r = unwrap_exec_result(
         driver.execute_js(json.dumps(payload, ensure_ascii=False), timeout=args.timeout, session_id=sid)
     )
-    print_json(ok(**selected_tab_fields(args, sid), method=method, result=r), pretty=not args.compact)
+    emit_json(args, ok(**selected_tab_fields(args, sid), method=method, result=r))
     return 0
 
 
@@ -880,23 +1005,30 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--title", help="group title (create/update)")
     sp.add_argument("--color", help="group color: " + "|".join(VALID_COLORS))
     sp.add_argument("--tabs", help="comma-separated tab ids (e.g. 123,456)")
-    sp.add_argument("--collapsed", type=bool, default=None, help="true/false (update)")
+    sp.add_argument("--collapsed", type=parse_text_bool, default=None, help="true/false (update)")
     sp.set_defaults(func=cmd_groups)
     return p
 
 
+def normalize_cli_argv(argv: list[str] | None) -> list[str]:
+    values = list(sys.argv[1:] if argv is None else argv)
+    if "--compact" not in values:
+        return values
+    return ["--compact", *(value for value in values if value != "--compact")]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(normalize_cli_argv(argv))
     try:
         return int(args.func(args) or 0)
     except KeyboardInterrupt:
         return 130
     except TabSelectionError as e:
-        print_json(err(e.code, e.message, candidates=e.candidates), pretty=not getattr(args, "compact", False))
+        emit_json(args, err(e.code, e.message, candidates=e.candidates))
         return 2
     except Exception as e:
-        print_json(err("EXCEPTION", str(e), type=type(e).__name__))
+        emit_json(args, err(getattr(e, "code", "EXCEPTION"), str(e), type=type(e).__name__))
         return 1
 
 

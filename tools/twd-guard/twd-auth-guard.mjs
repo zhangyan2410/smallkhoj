@@ -15,6 +15,7 @@ const DEFAULT_ACCOUNT = "zy-ean"
 const DEFAULT_TWD_WAIT = "5"
 const DEFAULT_TWD_PORT_CANDIDATES = Object.freeze([28765, 18765])
 const SESSION_COOKIE = "smallkhoj_session"
+const ACTIVE_SERVER_COOKIE = "smallkhoj_active_server"
 
 function envValue(...names) {
   for (const name of names) {
@@ -61,11 +62,6 @@ export function normalizeTarget(target, frontendBase = DEFAULT_FRONTEND_BASE) {
 
 export function urlMatchForTarget(targetUrl) {
   return `${targetUrl.host}${targetUrl.pathname}${targetUrl.search}`
-}
-
-function loginMatch(frontendBase) {
-  const loginUrl = normalizeTarget("/login", frontendBase)
-  return urlMatchForTarget(loginUrl)
 }
 
 export function parseLastJson(output) {
@@ -142,7 +138,7 @@ async function ensureTwdServe(cfg) {
   const controlPort = wsPort + 1
   if (await isPortOpen(controlPort)) return
 
-  const args = cfg.twdPort ? ["--port", String(cfg.twdPort), "serve"] : ["serve"]
+  const args = ["--port", String(wsPort), "serve"]
   const child = spawn(TWD, args, {
     cwd: ROOT,
     detached: true,
@@ -169,31 +165,64 @@ function uniqueActive(tabs) {
   return active.length === 1 ? active[0] : null
 }
 
+function exactTabSelectionFrom(tab, reason) {
+  const tabId = String(tab?.id ?? "").trim()
+  if (!tabId) throw new Error(`Selected ${reason} tab did not include an ID`)
+  return { args: ["--tab", tabId], reason, tabId }
+}
+
+function chooseExactTab(tabs, reason) {
+  if (tabs.length === 1) return exactTabSelectionFrom(tabs[0], reason)
+  const active = uniqueActive(tabs)
+  if (active) return exactTabSelectionFrom(active, reason)
+  throw new Error(`Ambiguous ${reason} tabs; choose an exact tab before guarded verification:\n${tabListMessage(tabs)}`)
+}
+
+function locationFromResult(result) {
+  const hrefUrl = asUrl(result?.href)
+  return {
+    href: hrefUrl?.href ?? result?.href ?? null,
+    origin: result?.origin ?? hrefUrl?.origin ?? null,
+    pathname: result?.pathname ?? hrefUrl?.pathname ?? null,
+    search: result?.search ?? hrefUrl?.search ?? "",
+    hash: result?.hash ?? hrefUrl?.hash ?? "",
+    readyState: result?.readyState ?? null,
+  }
+}
+
+function tabMatchesUrl(tab, targetUrl) {
+  const current = asUrl(tab?.url)
+  return Boolean(
+    current
+      && current.origin === targetUrl.origin
+      && current.pathname === targetUrl.pathname
+      && current.search === targetUrl.search
+      && current.hash === targetUrl.hash,
+  )
+}
+
 export function selectLocalTab({ tabs, frontendBase = DEFAULT_FRONTEND_BASE, targetUrl }) {
   const frontendUrl = normalizeTarget("/", frontendBase)
-  const targetMatch = urlMatchForTarget(targetUrl)
-  const loginUrlMatch = loginMatch(frontendBase)
   const localTabs = tabs.filter((tab) => asUrl(tab.url)?.origin === frontendUrl.origin)
-  const targetTabs = localTabs.filter((tab) => String(tab.url ?? "").includes(targetMatch))
-  const loginTabs = localTabs.filter((tab) => String(tab.url ?? "").includes(loginUrlMatch))
+  const targetTabs = localTabs.filter((tab) => tabMatchesUrl(tab, targetUrl))
+  const loginUrl = normalizeTarget("/login", frontendBase)
+  const loginTabs = localTabs.filter((tab) => tabMatchesUrl(tab, loginUrl))
 
   if (targetTabs.length > 0) {
-    return { args: ["--url-match", targetMatch], reason: "target" }
+    return chooseExactTab(targetTabs, "target")
   }
 
   if (loginTabs.length > 0) {
-    return { args: ["--url-match", loginUrlMatch], reason: "login" }
+    return chooseExactTab(loginTabs, "login")
   }
 
   if (localTabs.length === 1) {
-    const currentUrl = asUrl(localTabs[0].url)
-    return { args: ["--url-match", urlMatchForTarget(currentUrl)], reason: "single-local-tab" }
+    return exactTabSelectionFrom(localTabs[0], "single-local-tab")
   }
 
   const active = uniqueActive(localTabs)
   if (active) {
-    const currentUrl = asUrl(active.url)
-    return { args: ["--url-match", urlMatchForTarget(currentUrl)], reason: "active-local-tab" }
+    return exactTabSelectionFrom(active, "active-local-tab")
   }
 
   if (localTabs.length === 0) {
@@ -206,15 +235,16 @@ export function selectLocalTab({ tabs, frontendBase = DEFAULT_FRONTEND_BASE, tar
 }
 
 export function assertTargetResult(result, targetUrl) {
-  const expectedPath = targetUrl.pathname
-  const actualPath = result?.pathname
-  const expectedSearch = targetUrl.search
-  const actualSearch = result?.search ?? ""
-
-  if (actualPath !== expectedPath || (expectedSearch && actualSearch !== expectedSearch)) {
-    const expected = `${expectedPath}${expectedSearch}`
-    const actual = `${actualPath ?? "<unknown>"}${actualSearch}`
-    throw new Error(`Expected ${expected}, but browser is at ${actual}`)
+  const actual = locationFromResult(result)
+  if (
+    actual.origin !== targetUrl.origin
+    || actual.pathname !== targetUrl.pathname
+    || actual.search !== targetUrl.search
+    || actual.hash !== targetUrl.hash
+  ) {
+    const actualLocation = actual.href
+      ?? `${actual.origin ?? "<unknown-origin>"}${actual.pathname ?? "<unknown-path>"}${actual.search}${actual.hash}`
+    throw new Error(`Expected ${targetUrl.href}, but browser is at ${actualLocation}`)
   }
 }
 
@@ -228,6 +258,7 @@ export async function bridgeAccountSession({
   apiBase,
   publicKey,
   authBridgeSecret,
+  includeContext = false,
   fetchImpl = fetch,
 }) {
   if (!authBridgeSecret) {
@@ -259,19 +290,40 @@ export async function bridgeAccountSession({
   if (!data?.sessionToken) {
     throw new Error("Trusted auth bridge response did not include sessionToken")
   }
+  if (includeContext) {
+    return {
+      sessionToken: data.sessionToken,
+      serverId: data.server?.id ?? null,
+    }
+  }
   return data.sessionToken
 }
 
-function injectCookie(selection, sessionToken, twdWait, runTwdImpl = runTwd) {
+function authContext(value) {
+  if (typeof value === "string") return { sessionToken: value, serverId: null }
+  return {
+    sessionToken: value?.sessionToken,
+    serverId: value?.serverId ?? null,
+  }
+}
+
+function injectCookie(selection, sessionToken, twdWait, runTwdImpl = runTwd, serverId = null) {
   const script = `
 const cookieName = ${JSON.stringify(SESSION_COOKIE)};
+const activeServerCookieName = ${JSON.stringify(ACTIVE_SERVER_COOKIE)};
 const token = ${JSON.stringify(sessionToken)};
+const serverId = ${JSON.stringify(serverId)};
 document.cookie = cookieName + "=" + encodeURIComponent(token) + "; path=/; max-age=2592000; SameSite=Lax";
+document.cookie = activeServerCookieName + "=; path=/; max-age=0; SameSite=Lax";
+if (serverId) {
+  document.cookie = activeServerCookieName + "=" + encodeURIComponent(serverId) + "; path=/; max-age=2592000; SameSite=Lax";
+}
 return {
   href: location.href,
   pathname: location.pathname,
   search: location.search,
   hasCookie: document.cookie.split("; ").some((item) => item.startsWith(cookieName + "=")),
+  activeServerId: document.cookie.split("; ").find((item) => item.startsWith(activeServerCookieName + "="))?.slice(activeServerCookieName.length + 1) ?? null,
 };
 `
   let payload
@@ -289,30 +341,20 @@ return {
 }
 
 function probeScript() {
-  return "return {href: location.href, pathname: location.pathname, search: location.search, title: document.title}"
-}
-
-function probeFinalPage({ tabId, frontendBase, targetUrl, twdWait }) {
-  const attempts = []
-  attempts.push(["--url-match", urlMatchForTarget(targetUrl)])
-  attempts.push(["--url-match", loginMatch(frontendBase)])
-  if (tabId) attempts.push(["--tab", String(tabId)])
-
-  let lastError = null
-  for (const args of attempts) {
-    try {
-      return runTwd(["--compact", "eval", ...args, "--wait", twdWait, probeScript()])
-    } catch (error) {
-      lastError = error
-    }
-  }
-  throw lastError ?? new Error("Unable to probe final browser page")
+  return "return {href: location.href, origin: location.origin, pathname: location.pathname, search: location.search, hash: location.hash, readyState: document.readyState, title: document.title}"
 }
 
 async function ensureAuthOnSelection(selection, cfg) {
-  const token = await bridgeAccountSession(cfg)
-  const injected = injectCookie(selection, token, cfg.twdWait)
-  return { token, injected }
+  await ensureFrontendOrigin({
+    selection,
+    cfg,
+    runTwdImpl: runTwd,
+    sleepImpl: sleep,
+  })
+  const context = authContext(await bridgeAccountSession({ ...cfg, includeContext: true }))
+  if (!context.sessionToken) throw new Error("Trusted auth bridge did not return a session token")
+  const injected = injectCookie(selection, context.sessionToken, cfg.twdWait, runTwd, context.serverId)
+  return { token: context.sessionToken, serverId: context.serverId, injected }
 }
 
 function exactTabSelection(tabId) {
@@ -329,11 +371,106 @@ function assertExactTabPayload(payload, tabId, operation) {
   }
 }
 
+function isReadyForAcceptance(result) {
+  const readyState = locationFromResult(result).readyState
+  return readyState === null || readyState === "interactive" || readyState === "complete"
+}
+
+function isExactTarget(result, targetUrl) {
+  try {
+    assertTargetResult(result, targetUrl)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isFrontendLogin(result, frontendBase) {
+  const actual = locationFromResult(result)
+  const frontend = normalizeTarget("/", frontendBase)
+  return actual.origin === frontend.origin && actual.pathname === "/login"
+}
+
+async function pollExactTabLocation({
+  selection,
+  targetUrl,
+  frontendBase,
+  twdWait,
+  runTwdImpl,
+  sleepImpl,
+  timeoutMs,
+  intervalMs,
+}) {
+  const deadline = Date.now() + Math.max(0, timeoutMs)
+  let lastProbe = null
+  while (true) {
+    const probe = runTwdImpl([
+      "--compact",
+      "eval",
+      ...selection.args,
+      "--wait",
+      twdWait,
+      probeScript(),
+    ])
+    assertExactTabPayload(probe, selection.tabId, "final probe")
+    lastProbe = probe
+    if (isReadyForAcceptance(probe.result) && isExactTarget(probe.result, targetUrl)) {
+      return { state: "target", probe }
+    }
+    if (isReadyForAcceptance(probe.result) && isFrontendLogin(probe.result, frontendBase)) {
+      return { state: "login", probe }
+    }
+    if (Date.now() >= deadline) {
+      assertTargetResult(lastProbe.result, targetUrl)
+      throw new Error("Browser navigation did not reach a stable target")
+    }
+    await sleepImpl(Math.max(0, intervalMs))
+  }
+}
+
+async function ensureFrontendOrigin({ selection, cfg, runTwdImpl, sleepImpl }) {
+  const frontendUrl = normalizeTarget("/", cfg.frontendBase)
+  const current = runTwdImpl([
+    "--compact",
+    "eval",
+    ...selection.args,
+    "--wait",
+    cfg.twdWait,
+    probeScript(),
+  ])
+  assertExactTabPayload(current, selection.tabId, "authentication origin probe")
+  if (locationFromResult(current.result).origin === frontendUrl.origin) return current
+
+  const loginUrl = normalizeTarget("/login", cfg.frontendBase)
+  const opened = runTwdImpl([
+    "--compact",
+    "goto",
+    ...selection.args,
+    "--wait",
+    cfg.twdWait,
+    loginUrl.href,
+  ])
+  assertExactTabPayload(opened, selection.tabId, "authentication origin navigation")
+  const polled = await pollExactTabLocation({
+    selection,
+    targetUrl: loginUrl,
+    frontendBase: cfg.frontendBase,
+    twdWait: cfg.twdWait,
+    runTwdImpl,
+    sleepImpl,
+    timeoutMs: Number(cfg.navigationTimeoutMs ?? Number(cfg.twdWait) * 1000),
+    intervalMs: Number(cfg.navigationPollIntervalMs ?? 200),
+  })
+  assertTargetResult(polled.probe.result, loginUrl)
+  return polled.probe
+}
+
 export async function openTargetOnExactTab(target, tabId, options = {}) {
   const {
     runTwdImpl = runTwd,
     ensureTwdServeImpl = ensureTwdServe,
     bridgeAccountSessionImpl = bridgeAccountSession,
+    sleepImpl = sleep,
     ...configOverrides
   } = options
   const cfg = { ...config(), ...configOverrides }
@@ -342,11 +479,19 @@ export async function openTargetOnExactTab(target, tabId, options = {}) {
   const targetUrl = normalizeTarget(target, cfg.frontendBase)
 
   const authenticate = async () => {
-    const token = await bridgeAccountSessionImpl(cfg)
-    const injected = injectCookie(selection, token, cfg.twdWait, runTwdImpl)
+    await ensureFrontendOrigin({ selection, cfg, runTwdImpl, sleepImpl })
+    const context = authContext(await bridgeAccountSessionImpl({ ...cfg, includeContext: true }))
+    if (!context.sessionToken) throw new Error("Trusted auth bridge did not return a session token")
+    const injected = injectCookie(
+      selection,
+      context.sessionToken,
+      cfg.twdWait,
+      runTwdImpl,
+      context.serverId,
+    )
     assertExactTabPayload(injected, selection.tabId, "cookie injection")
   }
-  const navigateAndProbe = () => {
+  const navigateAndProbe = async () => {
     const opened = runTwdImpl([
       "--compact",
       "goto",
@@ -356,25 +501,27 @@ export async function openTargetOnExactTab(target, tabId, options = {}) {
       targetUrl.href,
     ])
     assertExactTabPayload(opened, selection.tabId, "navigation")
-    const probe = runTwdImpl([
-      "--compact",
-      "eval",
-      ...selection.args,
-      "--wait",
-      cfg.twdWait,
-      probeScript(),
-    ])
-    assertExactTabPayload(probe, selection.tabId, "final probe")
-    return { opened, probe }
+    const polled = await pollExactTabLocation({
+      selection,
+      targetUrl,
+      frontendBase: cfg.frontendBase,
+      twdWait: cfg.twdWait,
+      runTwdImpl,
+      sleepImpl,
+      timeoutMs: Number(cfg.navigationTimeoutMs ?? Number(cfg.twdWait) * 1000),
+      intervalMs: Number(cfg.navigationPollIntervalMs ?? 200),
+    })
+    return { opened, ...polled }
   }
 
   await authenticate()
-  let { opened, probe } = navigateAndProbe()
-  if (probe.result?.pathname === "/login") {
+  let { opened, probe, state } = await navigateAndProbe()
+  if (state === "login") {
     await authenticate()
-    const retried = navigateAndProbe()
+    const retried = await navigateAndProbe()
     opened = retried.opened
     probe = retried.probe
+    state = retried.state
   }
 
   assertTargetResult(probe.result, targetUrl)
@@ -388,41 +535,40 @@ export async function openTargetOnExactTab(target, tabId, options = {}) {
 }
 
 export async function openTarget(target, options = {}) {
-  const cfg = { ...config(), ...options }
-  await ensureTwdServe(cfg)
+  const {
+    ensureTwdServeImpl = ensureTwdServe,
+    getTabsImpl = getTabs,
+    ...configOverrides
+  } = options
+  const cfg = { ...config(), ...configOverrides }
+  await ensureTwdServeImpl(cfg)
   const targetUrl = normalizeTarget(target, cfg.frontendBase)
-  const tabs = getTabs(cfg.twdWait)
-  let selection = selectLocalTab({ tabs, frontendBase: cfg.frontendBase, targetUrl })
-  await ensureAuthOnSelection(selection, cfg)
-
-  let opened = runTwd(["--compact", "goto", ...selection.args, "--wait", cfg.twdWait, targetUrl.href])
-  let probe = probeFinalPage({ tabId: opened.tabId, frontendBase: cfg.frontendBase, targetUrl, twdWait: cfg.twdWait })
-
-  if (probe.result?.pathname === "/login") {
-    const retryTabs = getTabs(cfg.twdWait)
-    selection = selectLocalTab({ tabs: retryTabs, frontendBase: cfg.frontendBase, targetUrl })
-    await ensureAuthOnSelection(selection, cfg)
-    opened = runTwd(["--compact", "goto", ...selection.args, "--wait", cfg.twdWait, targetUrl.href])
-    probe = probeFinalPage({ tabId: opened.tabId, frontendBase: cfg.frontendBase, targetUrl, twdWait: cfg.twdWait })
-  }
-
-  assertTargetResult(probe.result, targetUrl)
-  return {
-    ok: true,
-    target: `${targetUrl.pathname}${targetUrl.search}`,
-    tabId: probe.tabId ?? opened.tabId,
-    tabUrl: probe.tabUrl ?? probe.result?.href,
-    result: probe.result,
-  }
+  const tabs = getTabsImpl(cfg.twdWait)
+  const selection = selectLocalTab({ tabs, frontendBase: cfg.frontendBase, targetUrl })
+  return openTargetOnExactTab(target, selection.tabId, {
+    ...configOverrides,
+    ensureTwdServeImpl: async () => {},
+  })
 }
 
-export async function authOnly(accountName) {
-  const cfg = { ...config(), accountName: accountName || config().accountName }
-  await ensureTwdServe(cfg)
+export async function authOnly(accountName, options = {}) {
+  const {
+    ensureTwdServeImpl = ensureTwdServe,
+    getTabsImpl = getTabs,
+    ensureAuthOnSelectionImpl = ensureAuthOnSelection,
+    ...configOverrides
+  } = options
+  const cfg = {
+    ...config(),
+    ...configOverrides,
+    accountName: accountName || configOverrides.accountName || config().accountName,
+  }
+  await ensureTwdServeImpl(cfg)
   const targetUrl = normalizeTarget("/login", cfg.frontendBase)
-  const tabs = getTabs(cfg.twdWait)
+  const tabs = getTabsImpl(cfg.twdWait)
   const selection = selectLocalTab({ tabs, frontendBase: cfg.frontendBase, targetUrl })
-  const { injected } = await ensureAuthOnSelection(selection, cfg)
+  const { injected } = await ensureAuthOnSelectionImpl(selection, cfg)
+  assertExactTabPayload(injected, selection.tabId, "cookie injection")
   return {
     ok: true,
     accountName: cfg.accountName,
@@ -434,12 +580,22 @@ export async function authOnly(accountName) {
 
 export async function evalOnTarget(target, script, options = {}) {
   if (!script) throw new Error("JavaScript script is required")
-  const cfg = { ...config(), ...options }
-  await ensureTwdServe(cfg)
+  const {
+    ensureTwdServeImpl = ensureTwdServe,
+    openTargetImpl = openTarget,
+    runTwdImpl = runTwd,
+    ...configOverrides
+  } = options
+  const cfg = { ...config(), ...configOverrides }
+  await ensureTwdServeImpl(cfg)
   const targetUrl = normalizeTarget(target, cfg.frontendBase)
-  const opened = await openTarget(target, cfg)
-  const payload = runTwd(["--compact", "eval", "--url-match", urlMatchForTarget(targetUrl), "--wait", cfg.twdWait, script])
-  const probe = runTwd(["--compact", "eval", "--url-match", urlMatchForTarget(targetUrl), "--wait", cfg.twdWait, probeScript()])
+  const opened = await openTargetImpl(target, cfg)
+  const exactTabId = String(opened.tabId)
+  const exactArgs = ["--tab", exactTabId]
+  const payload = runTwdImpl(["--compact", "eval", ...exactArgs, "--wait", cfg.twdWait, script])
+  assertExactTabPayload(payload, exactTabId, "guarded eval")
+  const probe = runTwdImpl(["--compact", "eval", ...exactArgs, "--wait", cfg.twdWait, probeScript()])
+  assertExactTabPayload(probe, exactTabId, "final probe")
   assertTargetResult(probe.result, targetUrl)
   return {
     ok: true,

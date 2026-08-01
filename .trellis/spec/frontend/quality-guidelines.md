@@ -421,10 +421,40 @@ different stages.
   `--url-match`; it does not fall back to those mechanisms after a failure.
 - Every WebDriver payload must return the requested `tabId`. A missing or
   different ID fails before the result is accepted.
+- `./twd` execution timeout, no-ACK, ACK-without-result and page reload are
+  failures with `ok=false` and a nonzero exit; diagnostic mappings from an
+  older persistent master must never be rewrapped as `ok=true`.
+- Without explicit `--port` / `TWD_PORT`, exact-tab and URL selection searches
+  every configured bridge. Multiple owning bridges fail closed; `tabs`
+  aggregates live bridges and includes each tab's source port.
+- Navigation evidence compares origin, pathname, search and hash after bounded
+  polling on the same exact tab. An empty expected query/hash still rejects an
+  unexpected actual value.
+- A real Chrome navigation assignment may acknowledge `goto` with either
+  boolean `true` or the exact requested URL string. Any other string, mapping,
+  timeout diagnostic, or interrupted result fails closed.
+- `--compact` is a command-wide one-line JSON contract for both success and
+  handled failure, including file-writing commands such as `scan --out`,
+  `snapshot --out`, and `screenshot`.
+- Guard authentication must replace the loopback tab's active Server cookie
+  with the Server returned by the trusted auth bridge. Cookies are shared by
+  host across ports, so retaining an older localhost Server selection can make
+  a local candidate silently read another environment's tenant data.
+- Before requesting or injecting a reusable session token, the guard must use a
+  token-free exact-tab probe to confirm the configured frontend origin. A
+  `chrome-error://` page or another origin is first navigated on the same tab to
+  the configured loopback `/login`; the token is obtained only after that
+  origin is proven.
 - The cookie-injection eval script contains the reusable session token. Any
   command failure at that boundary must be replaced with a fixed safe error;
   the original argv, output, payload and error must not be interpolated or
   retained as an exception `cause`.
+- Guarded cookie injection, business eval and final probe payloads each verify
+  the returned exact `tabId`; checking only the initial selection is not enough
+  to establish exact-tab evidence.
+- Handled `act` failures retain the underlying stable command code such as
+  `EXECUTION_TIMEOUT`; a cleanup failure uses `CLEANUP_FAILED`. Callers must not
+  parse human error text to distinguish these paths.
 - Legacy discovery remains available only when the caller deliberately omits
   `--tab`; it is not a substitute when the task boundary forbids reading other
   tabs.
@@ -435,12 +465,15 @@ different stages.
 - Duplicate `--tab` options -> reject CLI input.
 - Cookie/goto/probe payload returns another tab ID -> fail closed with expected
   and actual IDs; do not retry through discovery.
+- Token-free origin probe reports a non-frontend origin -> navigate that exact
+  tab to the configured `/login` before obtaining a session token.
 - Cookie-injection eval exits nonzero or returns `ok=false` -> fail with a
   fixed cookie-injection command error that contains no session token or raw
   WebDriver diagnostic.
 - Exact target redirects to `/login` -> re-authenticate and navigate the same
-  exact tab once; never enumerate tabs.
-- Final pathname/search differs from the requested target -> reject browser
+  exact tab once, but only when `/login` is on the configured frontend origin;
+  never enumerate tabs.
+- Final origin/pathname/search/hash differs from the requested target -> reject browser
   evidence.
 
 ##### 5. Good/Base/Bad Cases
@@ -458,6 +491,14 @@ different stages.
   retry, asserting every command contains the requested `--tab` pair.
 - The same test rejects any `tabs` command or `--url-match` argument.
 - Unit tests cover empty/duplicate CLI options and a mismatched returned tab ID.
+- Core/CLI tests cover no-ACK and ACK-without-result timeouts, old-master
+  diagnostic compatibility, source-port aggregation and target-aware
+  multi-bridge selection.
+- CLI tests cover real navigation acknowledgement shapes and compact success
+  output for file-writing commands; guard tests cover active Server cookie
+  replacement across same-host candidates, pre-token origin recovery, and
+  exact-tab validation of every returned payload.
+- `act` tests assert stable error codes for both action and cleanup failures.
 - A mock runner must echo the sensitive eval argv in its thrown error and prove
   the guard replaces it without retaining the session token in `message` or
   `cause`.

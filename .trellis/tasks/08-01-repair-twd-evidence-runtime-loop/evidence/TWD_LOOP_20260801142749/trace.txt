@@ -1,0 +1,25 @@
+Runtime trace cross-check
+=========================
+
+Command family:
+  SMALLKHOJ_BACKEND=http://127.0.0.1:18000
+  SMALLKHOJ_FRONTEND=http://127.0.0.1:13000
+  SMALLKHOJ_DAEMON=http://127.0.0.1:62255
+  ./smallkhoj-trace latency --tail 20 --json
+
+Backend health: HTTP 200
+Frontend health: HTTP 200
+Trace ID: chat-gate:chat-gate-msa0udpg
+Flow: message_to_agent_reply
+Span: daemon.runtime.result
+Status: ok
+Elapsed/wall clock: 23290 ms
+Agent: fb1dfb45-5fab-454b-9adc-1557eabd914f
+Runtime session: 28804d27-3285-44bb-b73f-8aca9220365a
+Model: glm-5.2
+Input tokens: 2753
+Output tokens: 1476
+Usage source: provider-stream-json
+
+The successful trace belongs to marker TWD_GATE_REPAIR_202608011500 and the
+reply persisted as message 24185b35-bca1-4281-a69f-c5257eae5693.

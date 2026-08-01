@@ -69,6 +69,30 @@ test("trusted bridge auth sends the secret only in the bridge header", async () 
   assert.equal(captured.options.body.includes(secret), false)
 })
 
+test("trusted bridge auth can return the current Server context for cookie isolation", async () => {
+  const context = await bridgeAccountSession({
+    accountName: "reviewer",
+    apiBase: "http://localhost:8000",
+    publicKey: "public-test-key",
+    authBridgeSecret: "bridge-test-secret",
+    includeContext: true,
+    fetchImpl: async () => ({
+      ok: true,
+      async json() {
+        return {
+          sessionToken: "sk_session_from_bridge",
+          server: { id: "server-current" },
+        }
+      },
+    }),
+  })
+
+  assert.deepEqual(context, {
+    sessionToken: "sk_session_from_bridge",
+    serverId: "server-current",
+  })
+})
+
 test("trusted bridge auth errors never echo a secret-bearing response", async () => {
   const secret = "bridge-secret-must-not-leak"
 
@@ -155,7 +179,7 @@ test("parsePortCandidates accepts comma separated discovery order", () => {
   assert.deepEqual(parsePortCandidates("39000, 39010"), [39000, 39010])
 })
 
-test("selectLocalTab prefers a target tab when present", () => {
+test("selectLocalTab resolves a target tab once and returns an exact-tab selection", () => {
   const selection = selectLocalTab({
     tabs: [
       { id: "1", url: "http://127.0.0.1:3000/login" },
@@ -165,7 +189,8 @@ test("selectLocalTab prefers a target tab when present", () => {
     targetUrl: normalizeTarget("/tasks", "http://127.0.0.1:3000"),
   })
 
-  assert.deepEqual(selection.args, ["--url-match", "127.0.0.1:3000/tasks"])
+  assert.deepEqual(selection.args, ["--tab", "2"])
+  assert.equal(selection.tabId, "2")
 })
 
 test("selectLocalTab uses login when target is absent", () => {
@@ -175,7 +200,7 @@ test("selectLocalTab uses login when target is absent", () => {
     targetUrl: normalizeTarget("/tasks", "http://127.0.0.1:3000"),
   })
 
-  assert.deepEqual(selection.args, ["--url-match", "127.0.0.1:3000/login"])
+  assert.deepEqual(selection.args, ["--tab", "1"])
 })
 
 test("selectLocalTab uses the current URL instead of a fixed tab id for a single local tab", () => {
@@ -185,7 +210,7 @@ test("selectLocalTab uses the current URL instead of a fixed tab id for a single
     targetUrl: normalizeTarget("/tasks", "http://127.0.0.1:3000"),
   })
 
-  assert.deepEqual(selection.args, ["--url-match", "127.0.0.1:3000/chat/all"])
+  assert.deepEqual(selection.args, ["--tab", "1"])
 })
 
 test("selectLocalTab rejects ambiguous local tabs", () => {
@@ -206,7 +231,232 @@ test("selectLocalTab rejects ambiguous local tabs", () => {
 test("assertTargetResult rejects login redirects", () => {
   const target = normalizeTarget("/tasks", "http://127.0.0.1:3000")
 
-  assert.throws(() => assertTargetResult({ pathname: "/login", search: "" }, target), /Expected \/tasks/)
+  assert.throws(() => assertTargetResult({ pathname: "/login", search: "" }, target), /Expected .*\/tasks/)
+})
+
+test("assertTargetResult rejects a matching path on the wrong origin", () => {
+  const target = normalizeTarget("/members", "http://127.0.0.1:3000")
+
+  assert.throws(
+    () => assertTargetResult({ href: "http://124.222.40.40/members" }, target),
+    /127\.0\.0\.1:3000\/members/,
+  )
+})
+
+test("assertTargetResult rejects unexpected query and hash components", () => {
+  const target = normalizeTarget("/members", "http://127.0.0.1:3000")
+
+  assert.throws(
+    () => assertTargetResult({ href: "http://127.0.0.1:3000/members?stale=1" }, target),
+    /stale=1/,
+  )
+  assert.throws(
+    () => assertTargetResult({ href: "http://127.0.0.1:3000/members#stale" }, target),
+    /#stale/,
+  )
+})
+
+test("exact-tab open polls stale navigation state until the target is ready", async () => {
+  const exactTabId = "approved-local-tab"
+  const calls = []
+  let probeCount = 0
+
+  const result = await authGuard.openTargetOnExactTab("/tasks", exactTabId, {
+    frontendBase: "http://127.0.0.1:38181",
+    twdWait: "1",
+    navigationTimeoutMs: 50,
+    navigationPollIntervalMs: 0,
+    sleepImpl: async () => {},
+    ensureTwdServeImpl: async () => {},
+    bridgeAccountSessionImpl: async () => "session-from-bridge",
+    runTwdImpl(args) {
+      calls.push(args)
+      const command = args[1]
+      const script = args.at(-1)
+      if (command === "goto") return { ok: true, tabId: exactTabId }
+      if (command === "eval" && script.includes("const cookieName")) {
+        return { ok: true, tabId: exactTabId, result: { hasCookie: true } }
+      }
+      probeCount += 1
+      const path = probeCount < 3 ? "/members" : "/tasks"
+      return {
+        ok: true,
+        tabId: exactTabId,
+        result: {
+          href: `http://127.0.0.1:38181${path}`,
+          origin: "http://127.0.0.1:38181",
+          pathname: path,
+          search: "",
+          hash: "",
+          readyState: "complete",
+        },
+      }
+    },
+  })
+
+  assert.equal(result.result.pathname, "/tasks")
+  assert.equal(probeCount, 3)
+  assert.ok(calls.every((args) => args.includes("--tab") && args.includes(exactTabId)))
+})
+
+test("exact-tab open rejects a stale same-origin page after the bounded poll", async () => {
+  const exactTabId = "approved-local-tab"
+  const calls = []
+  let probeCount = 0
+
+  await assert.rejects(
+    authGuard.openTargetOnExactTab("/tasks", exactTabId, {
+      frontendBase: "http://127.0.0.1:38181",
+      twdWait: "1",
+      navigationTimeoutMs: 20,
+      navigationPollIntervalMs: 1,
+      sleepImpl: async () => new Promise((resolve) => setTimeout(resolve, 5)),
+      ensureTwdServeImpl: async () => {},
+      bridgeAccountSessionImpl: async () => "session-from-bridge",
+      runTwdImpl(args) {
+        calls.push(args)
+        const command = args[1]
+        const script = args.at(-1)
+        if (command === "goto") return { ok: true, tabId: exactTabId }
+        if (command === "eval" && script.includes("const cookieName")) {
+          return { ok: true, tabId: exactTabId, result: { hasCookie: true } }
+        }
+        probeCount += 1
+        return {
+          ok: true,
+          tabId: exactTabId,
+          result: {
+            href: "http://127.0.0.1:38181/members",
+            origin: "http://127.0.0.1:38181",
+            pathname: "/members",
+            search: "",
+            hash: "",
+            readyState: "complete",
+          },
+        }
+      },
+    }),
+    /browser is at http:\/\/127\.0\.0\.1:38181\/members/,
+  )
+
+  assert.ok(probeCount >= 2)
+  assert.ok(calls.every((args) => args.includes("--tab") && args.includes(exactTabId)))
+  assert.ok(calls.every((args) => !args.includes("tabs") && !args.includes("--url-match")))
+})
+
+test("exact-tab open recovers a browser error page before cookie injection", async () => {
+  const exactTabId = "approved-local-tab"
+  const calls = []
+  const navigatedTargets = []
+  let cookieAttempt = 0
+  let currentHref = "chrome-error://chromewebdata/"
+  let currentOrigin = "null"
+  let currentPath = "/"
+
+  const result = await authGuard.openTargetOnExactTab("/tasks", exactTabId, {
+    frontendBase: "http://127.0.0.1:38181",
+    twdWait: "1",
+    navigationTimeoutMs: 20,
+    navigationPollIntervalMs: 0,
+    sleepImpl: async () => {},
+    ensureTwdServeImpl: async () => {},
+    bridgeAccountSessionImpl: async () => "session-from-bridge",
+    runTwdImpl(args) {
+      calls.push(args)
+      const command = args[1]
+      const script = args.at(-1)
+      if (command === "goto") {
+        const target = new URL(script)
+        currentHref = target.href
+        currentOrigin = target.origin
+        currentPath = target.pathname
+        navigatedTargets.push(target.href)
+        return { ok: true, tabId: exactTabId, tabUrl: target.href }
+      }
+      if (command === "eval" && script.includes("const cookieName")) {
+        cookieAttempt += 1
+        if (currentOrigin !== "http://127.0.0.1:38181") {
+          return {
+            ok: true,
+            tabId: exactTabId,
+            tabUrl: currentHref,
+            result: {
+              href: currentHref,
+              origin: currentOrigin,
+              hasCookie: false,
+              needsFrontendNavigation: true,
+            },
+          }
+        }
+        return { ok: true, tabId: exactTabId, result: { hasCookie: true } }
+      }
+      if (command === "eval") {
+        return {
+          ok: true,
+          tabId: exactTabId,
+          result: {
+            href: currentHref,
+            origin: currentOrigin,
+            pathname: currentPath,
+            search: "",
+            hash: "",
+            readyState: "complete",
+          },
+        }
+      }
+      throw new Error(`Unexpected mock command: ${args.join(" ")}`)
+    },
+  })
+
+  assert.equal(result.result.pathname, "/tasks")
+  assert.equal(cookieAttempt, 1)
+  assert.deepEqual(navigatedTargets, [
+    "http://127.0.0.1:38181/login",
+    "http://127.0.0.1:38181/tasks",
+  ])
+  assert.ok(calls.every((args) => args.includes("--tab") && args.includes(exactTabId)))
+})
+
+test("foreign-origin login never triggers a trusted re-auth retry", async () => {
+  let bridgeCount = 0
+
+  await assert.rejects(
+    authGuard.openTargetOnExactTab("/tasks", "approved-local-tab", {
+      frontendBase: "http://127.0.0.1:38181",
+      twdWait: "1",
+      navigationTimeoutMs: 0,
+      navigationPollIntervalMs: 0,
+      sleepImpl: async () => {},
+      ensureTwdServeImpl: async () => {},
+      bridgeAccountSessionImpl: async () => {
+        bridgeCount += 1
+        return "session-from-bridge"
+      },
+      runTwdImpl(args) {
+        const command = args[1]
+        const script = args.at(-1)
+        if (command === "goto") return { ok: true, tabId: "approved-local-tab" }
+        if (command === "eval" && script.includes("const cookieName")) {
+          return { ok: true, tabId: "approved-local-tab", result: { hasCookie: true } }
+        }
+        return {
+          ok: true,
+          tabId: "approved-local-tab",
+          result: {
+            href: "http://124.222.40.40/login",
+            origin: "http://124.222.40.40",
+            pathname: "/login",
+            search: "",
+            hash: "",
+            readyState: "complete",
+          },
+        }
+      },
+    }),
+    /browser is at http:\/\/124\.222\.40\.40\/login/,
+  )
+
+  assert.equal(bridgeCount, 0)
 })
 
 test("exact-tab open never enumerates or URL-matches tabs, including login retry", async () => {
@@ -227,7 +477,7 @@ test("exact-tab open never enumerates or URL-matches tabs, including login retry
     ensureTwdServeImpl: async () => {},
     bridgeAccountSessionImpl: async () => {
       bridgeCount += 1
-      return "session-from-bridge"
+      return { sessionToken: "session-from-bridge", serverId: "server-current" }
     },
     runTwdImpl(args) {
       calls.push(args)
@@ -239,6 +489,8 @@ test("exact-tab open never enumerates or URL-matches tabs, including login retry
       const script = args.at(-1)
       if (command === "goto") return { ok: true, tabId: exactTabId, tabUrl: "http://127.0.0.1:38181/tasks" }
       if (command === "eval" && script.includes("const cookieName")) {
+        assert.equal(script.includes("smallkhoj_active_server"), true)
+        assert.equal(script.includes("server-current"), true)
         return {
           ok: true,
           tabId: exactTabId,
@@ -248,7 +500,7 @@ test("exact-tab open never enumerates or URL-matches tabs, including login retry
       }
       if (command === "eval") {
         probeCount += 1
-        const pathname = probeCount === 1 ? "/login" : "/tasks"
+        const pathname = probeCount < 4 ? "/login" : "/tasks"
         return {
           ok: true,
           tabId: exactTabId,
@@ -263,10 +515,55 @@ test("exact-tab open never enumerates or URL-matches tabs, including login retry
   assert.equal(result.tabId, exactTabId)
   assert.equal(result.result.pathname, "/tasks")
   assert.equal(bridgeCount, 2)
-  assert.equal(probeCount, 2)
+  assert.equal(probeCount, 4)
   assert.equal(calls.filter((args) => args[1] === "goto").length, 2)
   assert.ok(calls.length > 0)
   assert.ok(calls.every((args) => args.includes("--tab") && args.includes(exactTabId)))
+})
+
+test("legacy open discovers once then pins every operation to the selected exact tab", async () => {
+  const exactTabId = "legacy-selected-tab"
+  let discoveryCount = 0
+  const calls = []
+
+  const result = await authGuard.openTarget("/tasks", {
+    frontendBase: "http://127.0.0.1:38181",
+    twdWait: "1",
+    ensureTwdServeImpl: async () => {},
+    getTabsImpl() {
+      discoveryCount += 1
+      return [{ id: exactTabId, url: "http://127.0.0.1:38181/members" }]
+    },
+    bridgeAccountSessionImpl: async () => "session-from-bridge",
+    runTwdImpl(args) {
+      calls.push(args)
+      assert.equal(args.includes("tabs"), false)
+      assert.equal(args.includes("--url-match"), false)
+      assert.deepEqual(args.slice(args.indexOf("--tab"), args.indexOf("--tab") + 2), ["--tab", exactTabId])
+      const command = args[1]
+      const script = args.at(-1)
+      if (command === "goto") return { ok: true, tabId: exactTabId }
+      if (command === "eval" && script.includes("const cookieName")) {
+        return { ok: true, tabId: exactTabId, result: { hasCookie: true } }
+      }
+      return {
+        ok: true,
+        tabId: exactTabId,
+        result: {
+          href: "http://127.0.0.1:38181/tasks",
+          origin: "http://127.0.0.1:38181",
+          pathname: "/tasks",
+          search: "",
+          hash: "",
+          readyState: "complete",
+        },
+      }
+    },
+  })
+
+  assert.equal(result.tabId, exactTabId)
+  assert.equal(discoveryCount, 1)
+  assert.ok(calls.length >= 3)
 })
 
 test("guard CLI extracts one exact tab option before the open target", () => {
@@ -289,7 +586,22 @@ test("exact-tab open rejects a WebDriver response from another tab", async () =>
       twdWait: "1",
       ensureTwdServeImpl: async () => {},
       bridgeAccountSessionImpl: async () => "session-from-bridge",
-      runTwdImpl() {
+      runTwdImpl(args) {
+        const script = args.at(-1)
+        if (!script.includes("const cookieName")) {
+          return {
+            ok: true,
+            tabId: "approved-local-tab",
+            result: {
+              href: "http://127.0.0.1:38181/login",
+              origin: "http://127.0.0.1:38181",
+              pathname: "/login",
+              search: "",
+              hash: "",
+              readyState: "complete",
+            },
+          }
+        }
         return {
           ok: true,
           tabId: "unexpected-tab",
@@ -298,6 +610,96 @@ test("exact-tab open rejects a WebDriver response from another tab", async () =>
       },
     }),
     /cookie injection returned unexpected-tab; expected approved-local-tab/,
+  )
+})
+
+test("auth-only rejects a cookie injection response from another tab", async () => {
+  const exactTabId = "approved-local-tab"
+
+  await assert.rejects(
+    authGuard.authOnly("reviewer", {
+      frontendBase: "http://127.0.0.1:38181",
+      twdWait: "1",
+      ensureTwdServeImpl: async () => {},
+      getTabsImpl: () => [{ id: exactTabId, url: "http://127.0.0.1:38181/login" }],
+      ensureAuthOnSelectionImpl: async (selection) => {
+        assert.equal(selection.tabId, exactTabId)
+        return {
+          injected: {
+            ok: true,
+            tabId: "unexpected-tab",
+            result: { hasCookie: true, pathname: "/login", search: "" },
+          },
+        }
+      },
+    }),
+    /cookie injection returned unexpected-tab; expected approved-local-tab/,
+  )
+})
+
+test("guarded eval rejects an action response from another tab", async () => {
+  const exactTabId = "approved-local-tab"
+  let evalCount = 0
+
+  await assert.rejects(
+    authGuard.evalOnTarget("/tasks", "return document.title", {
+      frontendBase: "http://127.0.0.1:38181",
+      twdWait: "1",
+      ensureTwdServeImpl: async () => {},
+      openTargetImpl: async () => ({ ok: true, target: "/tasks", tabId: exactTabId }),
+      runTwdImpl() {
+        evalCount += 1
+        if (evalCount === 1) {
+          return { ok: true, tabId: "unexpected-tab", result: "foreign result" }
+        }
+        return {
+          ok: true,
+          tabId: exactTabId,
+          result: {
+            href: "http://127.0.0.1:38181/tasks",
+            origin: "http://127.0.0.1:38181",
+            pathname: "/tasks",
+            search: "",
+            hash: "",
+            readyState: "complete",
+          },
+        }
+      },
+    }),
+    /guarded eval returned unexpected-tab; expected approved-local-tab/,
+  )
+})
+
+test("guarded eval rejects a final probe response from another tab", async () => {
+  const exactTabId = "approved-local-tab"
+  let evalCount = 0
+
+  await assert.rejects(
+    authGuard.evalOnTarget("/tasks", "return document.title", {
+      frontendBase: "http://127.0.0.1:38181",
+      twdWait: "1",
+      ensureTwdServeImpl: async () => {},
+      openTargetImpl: async () => ({ ok: true, target: "/tasks", tabId: exactTabId }),
+      runTwdImpl() {
+        evalCount += 1
+        if (evalCount === 1) {
+          return { ok: true, tabId: exactTabId, result: "SmallKhoj" }
+        }
+        return {
+          ok: true,
+          tabId: "unexpected-tab",
+          result: {
+            href: "http://127.0.0.1:38181/tasks",
+            origin: "http://127.0.0.1:38181",
+            pathname: "/tasks",
+            search: "",
+            hash: "",
+            readyState: "complete",
+          },
+        }
+      },
+    }),
+    /final probe returned unexpected-tab; expected approved-local-tab/,
   )
 })
 
@@ -314,6 +716,20 @@ test("cookie injection command failures never echo the session token", async () 
       runTwdImpl(args) {
         const renderedCommand = args.join("\n")
         assert.equal(args[1], "eval")
+        if (!renderedCommand.includes("const cookieName")) {
+          return {
+            ok: true,
+            tabId: "approved-local-tab",
+            result: {
+              href: "http://127.0.0.1:38181/login",
+              origin: "http://127.0.0.1:38181",
+              pathname: "/login",
+              search: "",
+              hash: "",
+              readyState: "complete",
+            },
+          }
+        }
         assert.equal(renderedCommand.includes(sessionToken), true)
         receivedSensitiveEval = true
         throw new Error(`raw WebDriver failure:\n${renderedCommand}`)

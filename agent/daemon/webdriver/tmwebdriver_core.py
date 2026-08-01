@@ -4,6 +4,22 @@ from simple_websocket_server import WebSocketServer, WebSocket
 import bottle
 from bottle import request
 
+
+class TMWebDriverError(RuntimeError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+class ExecutionTimeoutError(TMWebDriverError):
+    def __init__(self, message: str):
+        super().__init__('EXECUTION_TIMEOUT', message)
+
+
+class ExecutionInterruptedError(TMWebDriverError):
+    def __init__(self, message: str):
+        super().__init__('EXECUTION_INTERRUPTED', message)
+
 class Session:
     def __init__(self, session_id, info, client=None):
         self.id = session_id
@@ -64,9 +80,11 @@ class TMWebDriver:
         self.host, self.port = host, port
         self.token = token
         self.sessions, self.results, self.acks = {}, {}, {}
+        self.pending = set()
         self.default_session_id = None
         self.latest_session_id = None
-        self.is_remote = socket.socket().connect_ex((host, port+1)) == 0
+        with socket.socket() as probe_socket:
+            self.is_remote = probe_socket.connect_ex((host, port+1)) == 0
         if not self.is_remote:
             self.start_ws_server()
             self.start_http_server()
@@ -112,7 +130,7 @@ class TMWebDriver:
             while time.time() - start_time < 5:
                 try:
                     msg = msgQ.get(timeout=0.2)
-                    try: self.acks[json.loads(msg).get('id','')] = True
+                    try: self._record_ack(json.loads(msg).get('id',''))
                     except Exception: traceback.print_exc()
                     return msg
                 except queue.Empty: continue
@@ -124,9 +142,9 @@ class TMWebDriver:
                 return self._token_error()
             data = request.json
             if data.get('type') == 'result':
-                self.results[data.get('id')] = {'success': True, 'data': data.get('result'), 'newTabs': data.get('newTabs', [])}
+                self._record_result(data.get('id'), success=True, data=data.get('result'), new_tabs=data.get('newTabs', []))
             elif data.get('type') == 'error':
-                self.results[data.get('id')] = {'success': False, 'data': data.get('error'), 'newTabs': data.get('newTabs', [])}
+                self._record_result(data.get('id'), success=False, data=data.get('error'), new_tabs=data.get('newTabs', []))
             return 'ok'
 
         @app.route('/link', method=['GET','POST'])
@@ -147,7 +165,7 @@ class TMWebDriver:
                     print('[remote result]', (str(code)[:50] + ' RESULT:' +str(result)[:50]).replace('\n', ' '), file=sys.stderr)
                     return json.dumps({'r': result}, ensure_ascii=False)
                 except Exception as e:
-                    return json.dumps({'r': {'error': str(e)}}, ensure_ascii=False)
+                    return json.dumps({'r': {'error': str(e), 'code': getattr(e, 'code', 'EXECUTION_FAILED')}}, ensure_ascii=False)
             return 'ok'
         def run():
             from wsgiref.simple_server import make_server, WSGIServer, WSGIRequestHandler
@@ -187,11 +205,11 @@ class TMWebDriver:
                                 sess.mark_disconnected()
                         for tab in tabs:
                             upsert_ext_tab_session(driver, tab, self)
-                    elif data.get('type') == 'ack': driver.acks[data.get('id','')] = True
+                    elif data.get('type') == 'ack': driver._record_ack(data.get('id',''))
                     elif data.get('type') == 'result':
-                        driver.results[data.get('id')] = {'success': True, 'data': data.get('result'), 'newTabs': data.get('newTabs', [])}
+                        driver._record_result(data.get('id'), success=True, data=data.get('result'), new_tabs=data.get('newTabs', []))
                     elif data.get('type') == 'error':
-                        driver.results[data.get('id')] = {'success': False, 'data': data.get('error'), 'newTabs': data.get('newTabs', [])}
+                        driver._record_result(data.get('id'), success=False, data=data.get('error'), new_tabs=data.get('newTabs', []))
                 except Exception as e:
                     print(f"Error handling message: {e}", file=sys.stderr)
                     if hasattr(self, 'data'): print(self.data, file=sys.stderr)
@@ -225,13 +243,30 @@ class TMWebDriver:
         for session in self.sessions.values():
             if session.ws_client == client: session.mark_disconnected()
 
+    def _record_ack(self, exec_id: str) -> bool:
+        if not exec_id or exec_id not in self.pending:
+            return False
+        self.acks[exec_id] = True
+        return True
+
+    def _record_result(self, exec_id: str, *, success: bool, data: Any, new_tabs=None) -> bool:
+        if not exec_id or exec_id not in self.pending:
+            return False
+        self.results[exec_id] = {
+            'success': success,
+            'data': data,
+            'newTabs': new_tabs or [],
+        }
+        return True
+
     def execute_js(self, code, timeout=15, session_id=None) -> Any:
         explicit_session_id = session_id is not None
         if session_id is None: session_id = self.default_session_id
         if self.is_remote:
             response = self._remote_cmd({"cmd": "execute_js", "sessionId": session_id,
                                          "code": code, "timeout": str(timeout)}).get('r', {})
-            if response.get('error'): raise Exception(response['error'])
+            if response.get('error'):
+                raise TMWebDriverError(response.get('code', 'EXECUTION_FAILED'), response['error'])
             return response
 
         session = self.sessions.get(session_id)
@@ -256,38 +291,51 @@ class TMWebDriver:
         payload_dict = {'id': exec_id, 'code': code}
         if tp == 'ext_ws': payload_dict['tabId'] = int(session.id)
         payload = json.dumps(payload_dict)
-
-        if tp in ['ws', 'ext_ws']: session.ws_client.send_message(payload)
-        elif tp == 'http': session.http_queue.put(payload)
-
-        start_time = time.time()
-        self.clean_sessions()
-        hasjump = acked = False
-
-        while exec_id not in self.results:
-            time.sleep(0.2)
-            if not acked and exec_id in self.acks:
-                acked = True; start_time = time.time()
+        self.pending.add(exec_id)
+        try:
             if tp in ['ws', 'ext_ws']:
-                if not session.is_active(): hasjump = True
-                if hasjump and session.is_active():
-                    return {'result': f"Session {session_id} reloaded.", "closed":1}
-            if time.time() - start_time > timeout:
-                if tp in ['ws', 'ext_ws']:
-                    if hasjump: return {'result': f"Session {session_id} reloaded and new page is loading...", 'closed':1}
-                    if acked: return {"result": f"No response data in {timeout}s (ACK received, script may still be running)"}
-                    return {"result": f"No response data in {timeout}s (no ACK, script may not have been delivered)"}
-                elif tp == 'http':
-                    if acked: return {"result": f"Session {session_id} no response in {timeout}s (delivered but no result)"}
-                    return {"result": f"Session {session_id} no response in {timeout}s (script not polled)"}
+                session.ws_client.send_message(payload)
+            elif tp == 'http':
+                session.http_queue.put(payload)
 
-        result = self.results.pop(exec_id)
-        if exec_id in self.acks: self.acks.pop(exec_id)
-        if not result['success']: raise Exception(result['data'])
-        rr = {'data': result['data']}
-        newtabs = result.get('newTabs', []); [x.pop('ts', None) for x in newtabs]
-        if newtabs: rr['newTabs'] = newtabs
-        return rr
+            start_time = time.time()
+            self.clean_sessions()
+            hasjump = acked = False
+
+            while exec_id not in self.results:
+                time.sleep(0.2)
+                if not acked and exec_id in self.acks:
+                    acked = True
+                    start_time = time.time()
+                if tp in ['ws', 'ext_ws']:
+                    if not session.is_active():
+                        hasjump = True
+                    if hasjump and session.is_active():
+                        raise ExecutionInterruptedError(f"Session {session_id} reloaded before the script returned a result")
+                if time.time() - start_time > timeout:
+                    if hasjump:
+                        raise ExecutionInterruptedError(f"Session {session_id} reloaded and the new page did not return a result")
+                    if acked:
+                        raise ExecutionTimeoutError(
+                            f"Session {session_id} delivered the script but returned no result within {timeout}s"
+                        )
+                    raise ExecutionTimeoutError(
+                        f"Session {session_id} did not acknowledge the script; it was not delivered within {timeout}s"
+                    )
+
+            result = self.results.pop(exec_id)
+            if not result['success']:
+                raise TMWebDriverError('EXECUTION_FAILED', str(result['data']))
+            rr = {'data': result['data']}
+            newtabs = result.get('newTabs', [])
+            [x.pop('ts', None) for x in newtabs]
+            if newtabs:
+                rr['newTabs'] = newtabs
+            return rr
+        finally:
+            self.pending.discard(exec_id)
+            self.acks.pop(exec_id, None)
+            self.results.pop(exec_id, None)
 
     def _remote_cmd(self, cmd):
         headers = {"Content-Type": "application/json"}

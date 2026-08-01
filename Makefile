@@ -62,6 +62,7 @@ scripts-test: twd-guard-test
 	python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
 twd-guard-test:
+	python3 -m unittest agent/daemon/webdriver/test_twd_selection.py
 	node --check tools/twd-guard/twd-auth-guard.mjs
 	node --test tools/twd-guard/twd-auth-guard.test.mjs
 

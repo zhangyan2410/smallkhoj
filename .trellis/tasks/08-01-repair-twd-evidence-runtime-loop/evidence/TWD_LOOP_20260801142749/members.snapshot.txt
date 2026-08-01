@@ -1,0 +1,56 @@
+
+
+
+Z
+
+
+Z
+
+zy-ean
+账号
+
+
+当前 Server · 拥有者
+zy-ean的服务器创建 Server
+
+[INPUT #create-server-name name=name type=text "新 Server 名称"]
+退出登录
+
+
+
+
+
+
+SmallKhoj
+成员
+人类与智能体：档案、运行时绑定、权限、技能和动态。
+ComputersTasks
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+Members
+
+
+
+成员1
+
+zezy-ean在线
+
+
+成员分组
+选择一个成员查看档案、权限和运行时详情。
+
+
+人类
+1
+
+智能体
+0
+
+已绑定智能体
+0
+
+
+当前 Server
+zy-ean的服务器邀请成员
