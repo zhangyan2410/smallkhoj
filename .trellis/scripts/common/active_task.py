@@ -44,6 +44,7 @@ _KNOWN_PLATFORMS = {
     "copilot",
     "pi",
     "trae",
+    "zcode",
 }
 
 _ENV_SESSION_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -59,6 +60,7 @@ _ENV_SESSION_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("copilot", ("COPILOT_SESSION_ID", "COPILOT_SESSIONID")),
     ("pi", ("PI_SESSION_ID", "PI_SESSIONID")),
     ("trae", ("TRAE_SESSION_ID",)),
+    ("zcode", ("ZCODE_SESSION_ID", "CLAUDE_SESSION_ID")),
 )
 _ENV_CONVERSATION_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("cursor", ("CURSOR_CONVERSATION_ID", "CURSOR_CONVERSATIONID")),
@@ -211,6 +213,8 @@ def _iter_env_keys(
 
 def _env_platform_name(platform_name: str | None) -> str | None:
     if not platform_name or platform_name == "session":
+        if _string_value(os.environ.get("ZCODE_PROJECT_DIR")):
+            return "zcode"
         return None
     return _ENV_PLATFORM_ALIASES.get(platform_name, platform_name)
 

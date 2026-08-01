@@ -1,0 +1,20 @@
+{
+  "$schema": "https://zcode.dev/schema/hooks.v1.json",
+  "hooks": {
+    "enabled": true,
+    "events": {
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python3 -X utf8 \"${ZCODE_PROJECT_DIR}/.codex/hooks/inject-workflow-state.py\"",
+              "timeout": 15,
+              "statusMessage": "Loading Trellis task context"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

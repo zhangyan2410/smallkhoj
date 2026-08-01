@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmallKhoj 真实测试"
+  short_description: "加载候选环境上下文并安全验证 SmallKhoj 核心真实链路"
+  default_prompt: "Use $smallkhoj-real-test to load the current candidate context and run the smallest safe real verification flow."

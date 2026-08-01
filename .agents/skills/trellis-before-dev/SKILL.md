@@ -23,7 +23,11 @@ description: "在 SmallKhoj 开发前收集当前任务、规范、代码入口�
 6. 运行中文入口列出的 Integration Gate 快速合同基线。涉及 Server、Computer、
    Agent、Channel/DM/Chat、协作、Task 或 runtime 时，再选择一个适用 live mode
    建立修改前基线；环境不具备时记录 blocker，不得写成 PASS。
-7. 从中文入口选择修改后的自动测试、真实 `./twd`、API/DB、
+7. 涉及真实 UI、runtime、核心链路或任何本地测试栈/数据库选择时，必须加载
+   `smallkhoj-real-test` 并先运行它的只读 context collector。派发给任何子 Agent
+   时，prompt 必须原样携带 collector 的完整上下文块；不得让子 Agent 重新探索
+   端口、数据库、登录方式或启动命令。
+8. 从中文入口选择修改后的自动测试、真实 `./twd`、API/DB、
    `./smallkhoj-trace`、Integration Gate 和部署验证范围。
 
 ## 编辑前输出
@@ -40,4 +44,3 @@ description: "在 SmallKhoj 开发前收集当前任务、规范、代码入口�
 
 简报存在且任务 workflow 允许实现后才能编辑。完成实现后重跑同一基线和选定验证；
 截图、本地测试或未执行的云端 gate 都不能被扩大解释。
-
