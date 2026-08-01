@@ -1379,14 +1379,16 @@ export function ChannelClient({
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // IME 组词期间的 Enter 用于确认候选词，不提交（isComposing / keyCode 229）。
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault()
       handleSend()
     }
   }
 
   function handleThreadKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // IME 组词期间的 Enter 用于确认候选词，不提交（isComposing / keyCode 229）。
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault()
       handleThreadSend()
     }

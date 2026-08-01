@@ -21,6 +21,16 @@ export function MessageComposer({ path, placeholder = "Type a message", allowTas
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
 
+  // IME（中文/日文等输入法）组词期间的 Enter 用于确认候选词，不应提交消息。
+  // keyCode 229 是 IME 仍在组合的兼容信号；isComposing 是标准属性。
+  // 拦截组合期间的 Enter，避免把拼音/半截中文发出去。
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return
+    if (event.nativeEvent.isComposing || event.keyCode === 229) {
+      event.preventDefault()
+    }
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!content.trim()) return
@@ -56,6 +66,7 @@ export function MessageComposer({ path, placeholder = "Type a message", allowTas
         <Input
           value={content}
           onChange={(event) => setContent(event.target.value)}
+          onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={pending}
           className="flex-1"
