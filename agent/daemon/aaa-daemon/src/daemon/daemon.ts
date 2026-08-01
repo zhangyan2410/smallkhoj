@@ -2607,6 +2607,9 @@ export function sanitizeRuntimeCommandPreview(command: string): string {
       .replace(new RegExp(`^\\s*\\$env:${name}=.*(?:\\r?\\n|$)`, 'gmi'), '')
       .replace(new RegExp(`\\b${name}=(?:'((?:'\\\\''|[^'])*)'|"[^"]*"|\\S+)\\s*`, 'g'), '');
   }
+  preview = preview
+    .replace(/(["'`])[^"'`\r\n]*[\\/]\.slock[\\/]slock(?:\.(?:cmd|ps1))?\1/gi, 'slock')
+    .replace(/(^|\s)(?:[^\s"'`]*[\\/])?\.slock[\\/]slock(?:\.(?:cmd|ps1))?(?=$|\s)/gim, '$1slock');
   preview = preview.replace(/[^\s'"]*agent-proxy-tokens[^\s'"]*/g, '[slock-proxy-token-file]');
   return preview
     .split(/\r?\n/)

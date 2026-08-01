@@ -151,6 +151,23 @@ test('runtime activity command preview redacts Slock proxy internals', () => {
   assert.match(preview, /slock message send --target '#all' hello/);
 });
 
+test('runtime activity command preview collapses generated Slock wrapper paths before truncation', () => {
+  const preview = sanitizeRuntimeCommandPreview(
+    "/Users/code/project/smallkhoj-repair-twd-evidence-runtime-loop/.slock-runtimes/"
+      + "cd849e71-a112-4616-a22c-47e69f217d0e/"
+      + "10bd4b45-ad8c-4e0b-a877-81e9163b1134/"
+      + "ef7f0b04-2282-49bf-925b-13841ecba687/.slock/slock "
+      + "message send --target '#twd-loop-142749' ACK_TWD_GATE",
+  );
+
+  assert.equal(
+    preview,
+    "slock message send --target '#twd-loop-142749' ACK_TWD_GATE",
+  );
+  assert.doesNotMatch(preview, /\.slock-runtimes|smallkhoj-repair-twd/);
+  assert.ok(preview.length < 200);
+});
+
 test('claude system prompt is written under slock home', () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-claude-prompt-'));
   try {
