@@ -82,6 +82,9 @@ tengxun-ssh-key*
 .gemini/
 .kimi/
 BACKLOG.md
+# Runtime agent may write a workspace MEMORY.md stub at repo root; the real
+# runtime memory lives under .slock/. Keep the root clean.
+/MEMORY.md
 .claude/settings.json
 .claude/settings.local.json
 .codex/config.toml
