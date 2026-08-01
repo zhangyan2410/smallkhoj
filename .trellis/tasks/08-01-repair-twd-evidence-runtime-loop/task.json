@@ -1,0 +1,32 @@
+{
+  "id": "repair-twd-evidence-runtime-loop",
+  "name": "repair-twd-evidence-runtime-loop",
+  "title": "Repair TWD evidence truth and real runtime verification loop",
+  "description": "Fail-closed TWD execution, target-aware bridge selection, exact URL navigation proof, and a real local agent/channel/task conversation verification loop.",
+  "status": "planning",
+  "dev_type": "bugfix",
+  "scope": "tooling-runtime",
+  "package": null,
+  "priority": "P0",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-08-01",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "agent/daemon/webdriver/twd.py",
+    "agent/daemon/webdriver/tmwebdriver_core.py",
+    "agent/daemon/webdriver/test_twd_selection.py",
+    "tools/twd-guard/twd-auth-guard.mjs",
+    "tools/twd-guard/twd-auth-guard.test.mjs"
+  ],
+  "notes": "",
+  "meta": {}
+}
