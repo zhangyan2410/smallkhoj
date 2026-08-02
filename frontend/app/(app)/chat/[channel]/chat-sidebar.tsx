@@ -9,7 +9,7 @@ import { AvatarObject, SidebarEntityItem } from "@/components/inkframe-object-ui
 import { CreateAgentDialog } from "./create-agent-dialog"
 import { CreateChannelDialog } from "./create-channel-dialog"
 import { useChatData, type DmInfo } from "../chat-data-context"
-import { useChatUnreadStore } from "@/hooks/use-chat-unread-store"
+import { useActivityUnreadStore } from "@/hooks/use-activity-unread-store"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { chatEntityKeys, chatReadCursorRequestForEntity, deriveChatUnreadView, type ChatUnreadEntity } from "@/lib/chat-unread-state"
 import { apiPost } from "@/lib/control-plane"
@@ -33,7 +33,7 @@ function dmAvatarMember(dm: DmInfo) {
 
 export function ChatSidebar() {
   const { channels, dms, allMembers, currentChannelName } = useChatData()
-  const { store: unreadStore, clearEntity } = useChatUnreadStore()
+  const { store: unreadStore, clearKeys: clearUnreadKeys } = useActivityUnreadStore()
   const [clearedServerReadSeq, setClearedServerReadSeq] = useState<Record<string, number>>({})
   const tChat = useTranslations("chat")
   const tNav = useTranslations("nav")
@@ -43,7 +43,7 @@ export function ChatSidebar() {
     const activeDm = dms.find((dm) => dm.name === currentChannelName)
     const activeEntity = activeChannel ?? activeDm
     if (!activeEntity) return
-    clearEntity(activeEntity)
+    clearUnreadKeys(chatEntityKeys(activeEntity))
     const cursorRequest = chatReadCursorRequestForEntity(activeEntity)
     if (!cursorRequest) return
     void apiPost("/api/v1/chat/read-cursors", cursorRequest)
@@ -59,7 +59,7 @@ export function ChatSidebar() {
       .catch((error) => {
         console.warn("[chat] read cursor write failed", error)
       })
-  }, [channels, dms, currentChannelName, clearEntity])
+  }, [channels, dms, currentChannelName, clearUnreadKeys])
 
   const entityWithLocalClear = (entity: ChatUnreadEntity): ChatUnreadEntity => {
     const latestSeq = Math.max(0, entity.latestSeq ?? 0)

@@ -16,6 +16,13 @@ import {
 } from "lucide-react"
 
 import type { AccountSession } from "@/lib/control-plane"
+import {
+  AGENT_ACTIVITY_UNREAD_KEY,
+  CHAT_ACTIVITY_UNREAD_PREFIX,
+  TASK_ACTIVITY_UNREAD_KEY,
+} from "@/lib/activity-unread-state"
+import { useActivityIndicator } from "@/hooks/use-activity-indicator"
+import { ActivityIndicator } from "@/components/activity-indicator"
 import { cn } from "@/lib/utils"
 import { ServerSwitcher } from "@/components/server-switcher"
 
@@ -63,6 +70,16 @@ export function AppRail({ session }: { session?: AccountSession | null }) {
   const t = useTranslations("nav")
   const pathname = usePathname()
   const active = useActiveNavKey(pathname)
+  // 实时活动指示（R3）：chat 计数徽标（chat: 全域聚合），tasks/activity 红点。
+  // 当前所在路由对应的指示自动隐藏；task/activity 域由 tracker 在访问时清除。
+  const chatUnread = useActivityIndicator({ prefix: CHAT_ACTIVITY_UNREAD_PREFIX, suppressed: active === "chat" })
+  const tasksUnread = useActivityIndicator({ keys: [TASK_ACTIVITY_UNREAD_KEY], suppressed: active === "tasks" })
+  const activityUnread = useActivityIndicator({ keys: [AGENT_ACTIVITY_UNREAD_KEY], suppressed: active === "activity" })
+  const unreadByKey: Partial<Record<NavKey, { hasUnread: boolean; count: number }>> = {
+    chat: { hasUnread: chatUnread.hasUnread, count: chatUnread.count },
+    tasks: { hasUnread: tasksUnread.hasUnread, count: 0 },
+    activity: { hasUnread: activityUnread.hasUnread, count: 0 },
+  }
 
   return (
     <nav
@@ -88,6 +105,7 @@ export function AppRail({ session }: { session?: AccountSession | null }) {
       )}
       {railItems.map(({ key, href, labelKey, icon: Icon, accent }) => {
         const label = t(labelKey as never)
+        const u = unreadByKey[key]
         return (
           <Link
             key={key}
@@ -100,7 +118,13 @@ export function AppRail({ session }: { session?: AccountSession | null }) {
               active === key ? `sk-rail-active-${accent}` : "sk-rail-icon"
             )}
           >
-            <Icon className="size-[18px]" />
+            <ActivityIndicator
+              hasUnread={Boolean(u?.hasUnread)}
+              count={u?.count ? u.count : undefined}
+              label={label}
+            >
+              <Icon className="size-[18px]" />
+            </ActivityIndicator>
           </Link>
         )
       })}

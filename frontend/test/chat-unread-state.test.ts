@@ -18,23 +18,26 @@ import {
 
 test("chat unread keys include stable id and route name fallbacks", () => {
   assert.deepEqual(chatEntityKeys({ id: "ch-1", name: "#general", type: "public" }), [
-    "channel:id:ch-1",
-    "channel:name:general",
+    "chat:channel:id:ch-1",
+    "chat:channel:name:general",
   ])
   assert.deepEqual(chatEntityKeys({ id: "dm-1", name: "DM @zy", type: "dm" }), [
-    "dm:id:dm-1",
-    "dm:name:DM @zy",
+    "chat:dm:id:dm-1",
+    "chat:dm:name:DM @zy",
+    // 旧后端把 DM 事件 scope.kind 标成 channel 的历史别名键，清除时必须带上。
+    "chat:channel:id:dm-1",
+    "chat:channel:name:DM @zy",
   ])
   assert.deepEqual(chatScopeKeys({ kind: "channel", id: "ch-1", name: "#general" }), [
-    "channel:id:ch-1",
-    "channel:name:general",
+    "chat:channel:id:ch-1",
+    "chat:channel:name:general",
   ])
 })
 
 test("local pending unread augments server unread but active entity stays quiet", () => {
   const store: ChatUnreadStore = {
-    "channel:id:ch-1": { count: 2, lastSeq: 8 },
-    "channel:name:general": { count: 1, lastSeq: 9 },
+    "chat:channel:id:ch-1": { count: 2, lastSeq: 8 },
+    "chat:channel:name:general": { count: 1, lastSeq: 9 },
   }
 
   assert.deepEqual(
@@ -50,13 +53,13 @@ test("local pending unread augments server unread but active entity stays quiet"
 
 test("realtime message events increment and clear local unread store by entity", () => {
   const store = incrementChatUnreadForScope({}, { kind: "dm", id: "dm-1", name: "DM @zy" }, 12)
-  assert.equal(store["dm:id:dm-1"].count, 1)
-  assert.equal(store["dm:name:DM @zy"].count, 1)
-  assert.equal(store["dm:id:dm-1"].lastSeq, 12)
+  assert.equal(store["chat:dm:id:dm-1"].count, 1)
+  assert.equal(store["chat:dm:name:DM @zy"].count, 1)
+  assert.equal(store["chat:dm:id:dm-1"].lastSeq, 12)
 
   const next = incrementChatUnreadForScope(store, { kind: "dm", id: "dm-1", name: "DM @zy" }, 13)
-  assert.equal(next["dm:id:dm-1"].count, 2)
-  assert.equal(next["dm:name:DM @zy"].count, 2)
+  assert.equal(next["chat:dm:id:dm-1"].count, 2)
+  assert.equal(next["chat:dm:name:DM @zy"].count, 2)
 
   assert.deepEqual(clearChatUnreadForEntity(next, { id: "dm-1", name: "DM @zy", type: "dm" }), {})
 })
@@ -67,19 +70,33 @@ test("replayed realtime events do not inflate local unread counts", () => {
   const older = incrementChatUnreadForScope(duplicate, { kind: "channel", id: "ch-1", name: "#general" }, 20)
   const newer = incrementChatUnreadForScope(older, { kind: "channel", id: "ch-1", name: "#general" }, 22)
 
-  assert.equal(first["channel:id:ch-1"].count, 1)
-  assert.equal(duplicate["channel:id:ch-1"].count, 1)
-  assert.equal(older["channel:name:general"].count, 1)
-  assert.equal(newer["channel:id:ch-1"].count, 2)
-  assert.equal(newer["channel:name:general"].lastSeq, 22)
+  assert.equal(first["chat:channel:id:ch-1"].count, 1)
+  assert.equal(duplicate["chat:channel:id:ch-1"].count, 1)
+  assert.equal(older["chat:channel:name:general"].count, 1)
+  assert.equal(newer["chat:channel:id:ch-1"].count, 2)
+  assert.equal(newer["chat:channel:name:general"].lastSeq, 22)
+})
+
+test("dm entity clear also removes legacy channel-kind keys from the pre-fix backend", () => {
+  // 后端修复前 DM 事件 scope.kind=channel，计数写在 chat:channel:* 下。
+  const polluted: ChatUnreadStore = {
+    "chat:channel:id:dm-1": { count: 4, lastSeq: 30 },
+    "chat:channel:name:DM @zy": { count: 4, lastSeq: 30 },
+    "chat:dm:id:dm-1": { count: 1, lastSeq: 31 },
+  }
+  // 未读视图能读到历史污染计数（徽标显示的 4）。
+  const view = deriveChatUnreadView({ id: "dm-1", name: "DM @zy", type: "dm" }, polluted, "other")
+  assert.equal(view.unreadCount, 4)
+  // 进 DM 页清除后 channel 别名键一并清空，徽标归零。
+  assert.deepEqual(clearChatUnreadForEntity(polluted, { id: "dm-1", name: "DM @zy", type: "dm" }), {})
 })
 
 test("backend chat read cursor keys match sidebar entity keys", () => {
-  assert.equal(chatReadCursorKey({ scope: { kind: "channel", channelId: "ch-1" }, memberId: "m-1", lastReadSeq: 8 }), "channel:id:ch-1")
-  assert.equal(chatReadCursorKey({ scope: { kind: "dm", channelId: "dm-1" }, memberId: "m-1", lastReadSeq: 9 }), "dm:id:dm-1")
+  assert.equal(chatReadCursorKey({ scope: { kind: "channel", channelId: "ch-1" }, memberId: "m-1", lastReadSeq: 8 }), "chat:channel:id:ch-1")
+  assert.equal(chatReadCursorKey({ scope: { kind: "dm", channelId: "dm-1" }, memberId: "m-1", lastReadSeq: 9 }), "chat:dm:id:dm-1")
   assert.equal(
     chatReadCursorKey({ scope: { kind: "thread", rootMessageId: "root-1" }, memberId: "m-1", lastReadSeq: 10 }),
-    "thread:id:root-1",
+    "chat:thread:id:root-1",
   )
 })
 
@@ -214,7 +231,7 @@ test("chat route code writes backend read cursors instead of only clearing local
 
   assert.match(sidebarSource, /apiPost\(["']\/api\/v1\/chat\/read-cursors/)
   assert.match(sidebarSource, /chatReadCursorRequestForEntity/)
-  assert.match(sidebarSource, /clearEntity\(activeEntity\)/)
+  assert.match(sidebarSource, /clearUnreadKeys\(chatEntityKeys\(activeEntity\)\)/)
   assert.match(sidebarSource, /setClearedServerReadSeq/)
   assert.match(sidebarSource, /unreadCount: 0, hasUnread: false/)
   assert.match(channelSource, /chatReadCursorRequestForThread/)
