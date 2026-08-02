@@ -455,7 +455,27 @@
     "safetyControlsTitle": "Safety Controls",
     "safetyControlsDesc": "Experimental toggles require explicit persisted backend support.",
     "featureFlagsPlanned": "Feature flags planned",
-    "destructiveActionsRequireConfirm": "Destructive actions require confirm"
+    "destructiveActionsRequireConfirm": "Destructive actions require confirm",
+    "notifications": {
+      "title": "Notifications",
+      "description": "Browser notifications when SmallKhoj is in the background.",
+      "permissionLabel": "Permission",
+      "status": {
+        "granted": "Granted",
+        "denied": "Blocked",
+        "default": "Not requested",
+        "unsupported": "Unsupported"
+      },
+      "enable": "Enable notifications",
+      "deniedHint": "Notifications are blocked by the browser. Allow them for this site in your browser's site settings, then reload this page.",
+      "unsupportedHint": "This browser does not support the Notification API; background notifications are unavailable.",
+      "domainsTitle": "Notify me about",
+      "domains": {
+        "chat": "DMs and @mentions",
+        "tasks": "Task assignments and updates",
+        "memory": "Memory proposals awaiting review"
+      }
+    }
   },
   "integrationGate": {
     "title": "Repeatable Integration Gates",
@@ -527,5 +547,27 @@
     "label": "Language",
     "zhCN": "中文",
     "en": "English"
+  },
+  "notifications": {
+    "dm_message": {
+      "title": "New DM from {sender}",
+      "body": "You have a new direct message.",
+      "summary": "{count} new direct messages from {sender}."
+    },
+    "mention": {
+      "title": "Mentioned in #{channel}",
+      "body": "{sender} mentioned you.",
+      "summary": "{count} new mentions in #{channel}."
+    },
+    "task": {
+      "title": "Task update",
+      "body": "A task needs your attention.",
+      "summary": "{count} new task updates."
+    },
+    "memory": {
+      "title": "Memory proposal awaiting review",
+      "body": "A memory proposal is waiting for review.",
+      "summary": "{count} new memory proposals await review."
+    }
   }
 }

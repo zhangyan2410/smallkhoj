@@ -2,10 +2,11 @@ import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { KeyRound, Palette, Server, Shield, SlidersHorizontal } from "lucide-react"
+import { KeyRound, Bell, Palette, Server, Shield, SlidersHorizontal } from "lucide-react"
 import { getTranslations } from "next-intl/server"
 
 import { AttachmentSheet, ChannelDivider, ObjectField } from "@/components/inkframe-object-ui"
+import { NotificationSettings } from "@/components/notification-settings"
 import { ProductShell } from "@/components/product-shell"
 import { EmptyState, ProductRow, RuntimeChip } from "@/components/product-ui"
 import { ThemeSwitcher } from "@/components/theme-switcher"
@@ -76,6 +77,19 @@ export default async function SettingsPage() {
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <ObjectField label={t("account")} value={session.account.displayName || session.account.name} mono={false} />
             <ObjectField label={t("server")} value={session.server.name} mono={false} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Bell className="size-4 text-accent-mint" />
+              {t("notifications.title")}
+            </CardTitle>
+            <CardDescription>{t("notifications.description")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <NotificationSettings />
           </CardContent>
         </Card>
 

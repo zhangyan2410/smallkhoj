@@ -455,7 +455,27 @@
     "safetyControlsTitle": "安全控制",
     "safetyControlsDesc": "实验性开关需要明确的后端持久化支持。",
     "featureFlagsPlanned": "功能开关待规划",
-    "destructiveActionsRequireConfirm": "破坏性操作需要确认"
+    "destructiveActionsRequireConfirm": "破坏性操作需要确认",
+    "notifications": {
+      "title": "通知",
+      "description": "当 SmallKhoj 处于后台时，通过浏览器通知提醒你。",
+      "permissionLabel": "权限",
+      "status": {
+        "granted": "已授权",
+        "denied": "已被浏览器阻止",
+        "default": "未请求",
+        "unsupported": "不支持"
+      },
+      "enable": "开启通知",
+      "deniedHint": "通知已被浏览器阻止。请在浏览器的网站设置中允许本站通知，然后刷新页面。",
+      "unsupportedHint": "当前浏览器不支持 Notification API，无法使用后台通知。",
+      "domainsTitle": "通知我以下内容",
+      "domains": {
+        "chat": "私信和 @提及",
+        "tasks": "任务指派与状态变更",
+        "memory": "待审的 memory 提案"
+      }
+    }
   },
   "integrationGate": {
     "title": "可重复集成门禁",
@@ -527,5 +547,27 @@
     "label": "语言",
     "zhCN": "中文",
     "en": "English"
+  },
+  "notifications": {
+    "dm_message": {
+      "title": "来自 {sender} 的新私信",
+      "body": "你有一条新的私信。",
+      "summary": "来自 {sender} 的 {count} 条新私信。"
+    },
+    "mention": {
+      "title": "在 #{channel} 中被提及",
+      "body": "{sender} 提到了你。",
+      "summary": "#{channel} 中有 {count} 条新提及。"
+    },
+    "task": {
+      "title": "任务更新",
+      "body": "有任务需要你处理。",
+      "summary": "有 {count} 条新的任务更新。"
+    },
+    "memory": {
+      "title": "待审的 memory 提案",
+      "body": "有一条 memory 提案等待你审阅。",
+      "summary": "有 {count} 条新的 memory 提案等待审阅。"
+    }
   }
 }

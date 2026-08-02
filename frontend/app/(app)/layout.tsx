@@ -3,6 +3,8 @@ import type { ReactNode } from "react"
 import { AppDeskBackground } from "@/components/inkframe/app-desk-background"
 import { InkMaterialRuntimeScript } from "@/components/inkframe/ink-material-engine"
 import { AppRail } from "@/components/app-rail"
+import { ActivityUnreadTracker } from "@/components/activity-unread-tracker"
+import { BackgroundNotificationTracker } from "@/components/background-notification-tracker"
 import { RealtimeProvider } from "@/components/realtime-provider"
 import { requireCurrentAccount } from "@/lib/server-auth"
 
@@ -23,8 +25,18 @@ import { requireCurrentAccount } from "@/lib/server-auth"
  */
 export default async function AppShellLayout({ children }: { children: ReactNode }) {
   const session = await requireCurrentAccount()
+  // 当前账号的 member 名字集合：tracker 用它排除「自己发的消息」未读。
+  const currentMemberNames = session?.member
+    ? [session.member.name, session.member.displayName, session.member.handle].filter(
+        (n): n is string => Boolean(n)
+      )
+    : undefined
   return (
     <RealtimeProvider serverId={session?.server.id}>
+      {/* 全局未读活动 tracker（无 UI）：订阅复用同一条 SSE，事件→未读键映射写入统一存储。 */}
+      <ActivityUnreadTracker currentMemberNames={currentMemberNames} />
+      {/* 后台系统通知 tracker（无 UI）：同一条 SSE 订阅，权限授予且页面不在前台对应路由时弹通知。 */}
+      <BackgroundNotificationTracker currentMemberNames={currentMemberNames} />
       <main
         data-slot="workbench-desk"
         data-inkframe-background-owner="product-shell"
