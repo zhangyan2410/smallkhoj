@@ -284,7 +284,11 @@ def _event_scope(record: EventRecord) -> dict[str, Any]:
             scope["name"] = channel_name
         return scope
     if event_type.startswith("message.") or event_type.startswith("file.") or event_type == "reaction.updated":
-        scope: dict[str, Any] = {"kind": "channel"}
+        # DM 事件的 scope.kind 必须是 "dm"，否则前端按 dm:* 清除未读时与
+        # 计数写入的 channel:* 键对不上（未读徽标只增不减）。
+        # channelType 已在 payload 中（实测 dm / public），无需查 DB。
+        channel_type = payload.get("channelType") or payload.get("channel_type")
+        scope: dict[str, Any] = {"kind": "dm" if channel_type == "dm" else "channel"}
         channel_id = record.channel_id or payload.get("channelId")
         if channel_id:
             scope["id"] = str(channel_id)

@@ -66,6 +66,43 @@ def test_public_event_envelope_uses_stable_browser_contract():
     assert event["payload"]["content"] == "hello"
 
 
+def test_dm_message_event_uses_dm_scope_kind_from_channel_type():
+    channel_id = uuid.uuid4()
+    record = _record(
+        channel_id=channel_id,
+        payload={
+            "channelType": "dm",
+            "channel": "dm:@zy-ean",
+            "content": "hello",
+        },
+    )
+
+    event = public_event_envelope_from_record(record)
+
+    assert event["type"] == "message.created"
+    assert event["scope"] == {
+        "kind": "dm",
+        "id": str(channel_id),
+        "name": "dm:@zy-ean",
+    }
+
+
+def test_channel_message_event_without_channel_type_keeps_channel_scope():
+    channel_id = uuid.uuid4()
+    record = _record(
+        channel_id=channel_id,
+        payload={"channelType": "public", "channel": "#all"},
+    )
+
+    event = public_event_envelope_from_record(record)
+
+    assert event["scope"] == {
+        "kind": "channel",
+        "id": str(channel_id),
+        "name": "all",
+    }
+
+
 def test_task_event_scope_prefers_task_id_over_channel_id():
     channel_id = uuid.uuid4()
     task_id = uuid.uuid4()
