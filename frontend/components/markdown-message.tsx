@@ -1,3 +1,4 @@
+import { memo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import type { Plugin } from "unified"
@@ -51,7 +52,10 @@ function isBlockedElement(node: Parents): node is Element {
   return node.type === "element" && ["a", "code", "pre"].includes(node.tagName)
 }
 
-export function MarkdownMessage({ content, compact = false }: { content: string; compact?: boolean }) {
+// memo：消息列表里每条消息都挂一个 MarkdownMessage。父级（消息行/MessageList）
+// 因无关 state 重渲时，content 没变的消息直接跳过重渲，不为未变化的消息
+// 重新跑 react-markdown 解析。
+export const MarkdownMessage = memo(function MarkdownMessage({ content, compact = false }: { content: string; compact?: boolean }) {
   return (
     <div className={`markdown-body min-w-0 break-words [overflow-wrap:anywhere] ${compact ? "text-sm" : ""}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeMentions]}>
@@ -59,4 +63,4 @@ export function MarkdownMessage({ content, compact = false }: { content: string;
       </ReactMarkdown>
     </div>
   )
-}
+})

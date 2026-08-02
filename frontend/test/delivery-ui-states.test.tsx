@@ -87,7 +87,10 @@ test("critical routes and heavy boards use strict loading/error and lazy boundar
   const errorSource = await readFile(new URL("../app/error.tsx", import.meta.url), "utf8")
   const tasksSource = await readFile(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8")
   const taskRouteSource = await readFile(new URL("../components/task-route-projection.tsx", import.meta.url), "utf8")
-  const channelSource = await readFile(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const channelSource = [
+    await readFile(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    await readFile(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+  ].join("\n")
   const lazyBoardSource = await readFile(new URL("../components/task-dnd-board-lazy.tsx", import.meta.url), "utf8")
   const taskSurfaceSource = `${tasksSource}\n${taskRouteSource}`
 

@@ -538,6 +538,8 @@ test("Main page object taxonomy documents and preserves aligned object classes",
     readFileSync(new URL("../app/(app)/chat/page.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../app/(app)/chat/[channel]/chat-sidebar.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/composer.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/message-frame.tsx", import.meta.url), "utf8"),
   ].join("\n")
   const taskSources = [

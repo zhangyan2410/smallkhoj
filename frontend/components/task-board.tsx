@@ -483,7 +483,7 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
 
 function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionToken?: string | null }) {
   const [entries, setEntries] = useState<MemoryEntry[]>([])
-  const [loadingTaskId, setLoadingTaskId] = useState(taskId)
+  const [loading, setLoading] = useState(true)
 
   const refreshMemory = useCallback(async () => {
     const data = await apiGet<{ entries: MemoryEntry[] }>(
@@ -492,7 +492,7 @@ function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionTok
       sessionToken,
     )
     setEntries(data.entries || [])
-    setLoadingTaskId("")
+    setLoading(false)
   }, [taskId, sessionToken])
 
   useEffect(() => {
@@ -504,7 +504,7 @@ function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionTok
     ).then((data) => {
       if (!cancelled) {
         setEntries(data.entries || [])
-        setLoadingTaskId("")
+        setLoading(false)
       }
     })
     return () => {
@@ -518,8 +518,6 @@ function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionTok
     if (event.scope.id !== taskId && payloadTaskId !== taskId) return
     void refreshMemory()
   })
-
-  const loading = loadingTaskId === taskId
 
   if (loading) {
     return (
@@ -671,9 +669,11 @@ export function TaskBoard({
     ? tasks.find((task) => task.id === selectedTaskId) ?? null
     : null
 
-  const refreshTasks = useCallback(async () => {
+  // background=true 时是 SSE 驱动的静默刷新：已有任务列表留在屏幕上，
+  // 不再触发可见的 "Loading tasks..." 闪烁。只有首屏（无数据）才显示 loading。
+  const refreshTasks = useCallback(async (options?: { background?: boolean }) => {
     if (controlled) return
-    setLocalLoading(true)
+    if (!options?.background) setLocalLoading(true)
     try {
       const fetchedTasks = await fetchAllTaskPages<Task>((path) => (
         apiGet<TaskCursorPage<Task>>(path, { tasks: [], nextCursor: null })
@@ -694,10 +694,8 @@ export function TaskBoard({
 
   useEffect(() => {
     if (controlled) return
-    const timer = window.setTimeout(() => {
-      void refreshTasks()
-    }, 0)
-    return () => window.clearTimeout(timer)
+    // microtask  deferral：避免在 effect 体内同步 setState（react-hooks/set-state-in-effect）。
+    queueMicrotask(() => void refreshTasks())
   }, [controlled, refreshTasks])
 
   useEffect(() => {
@@ -705,7 +703,7 @@ export function TaskBoard({
     const scheduleRefresh = () => {
       if (taskRefreshTimerRef.current) window.clearTimeout(taskRefreshTimerRef.current)
       taskRefreshTimerRef.current = window.setTimeout(() => {
-        void refreshTasks()
+        void refreshTasks({ background: true })
         taskRefreshTimerRef.current = null
       }, 150)
     }

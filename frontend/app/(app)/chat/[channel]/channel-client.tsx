@@ -1,44 +1,35 @@
 "use client"
 
-import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type RefObject } from "react"
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import dynamic from "next/dynamic"
-import Link from "next/link"
 import { useTranslations } from "next-intl"
 import {
   Activity,
-  Bookmark,
-  CheckSquare,
-  Clipboard,
   Database,
+  Droplets,
   Files,
   ImageIcon,
   ListChecks,
   MessageCircle,
-  Paperclip,
   Paintbrush,
   Plus,
   RotateCcw,
   Save,
-  Send,
-  Smile,
-  Droplets,
   Trash2,
   Users,
   X,
 } from "lucide-react"
 
-import { MessageFrame } from "@/components/message-frame"
 import { DestructiveActionDialog } from "@/components/destructive-action-dialog"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
-import { EmptyState, RuntimeChip } from "@/components/product-ui"
+import { RuntimeChip } from "@/components/product-ui"
 import { useRealtimeSubscription } from "@/components/realtime-provider"
 import { AgentActivityList } from "@/components/agent-activity-list"
-import { AttachmentSheet, AvatarObject, ChannelDivider, ChatComposerSurface, ChatTaskToggle, EventBadge, InkframeObjectSurface, MemberNameTag, MessageToolStrip } from "@/components/inkframe-object-ui"
+import { AttachmentSheet, AvatarObject, ChannelDivider, InkframeObjectSurface, MemberNameTag } from "@/components/inkframe-object-ui"
 import { ChannelMemorySurface, MemoryProposalQueue } from "@/components/memory-entry-surface"
-import { INKFRAME_DESK_PAPER_TINT, MaterialSurface, type MaterialPointerMode, type MaterialSurfaceMode } from "@/components/inkframe/material-surface"
+import type { MaterialPointerMode, MaterialSurfaceMode } from "@/components/inkframe/material-surface"
 import type { MaterialResource } from "@/components/inkframe/material-resource"
 import { resolveAppDeskMaterialAction, type AppDeskMaterialAction } from "@/components/inkframe/app-desk-background"
 import {
@@ -66,23 +57,12 @@ import {
   mergeMessageById,
   shouldHandleRealtimeEvent,
 } from "@/lib/realtime-events"
-import { chatReadCursorRequestForThread, hasUnreadThreadActivity, markChatUnreadScope } from "@/lib/chat-unread-state"
+import { chatReadCursorRequestForThread } from "@/lib/chat-unread-state"
 import { channelMemberAddPayload } from "@/lib/channel-members"
-import { memberForMessageSender } from "@/lib/member-avatar"
 
-function LazyWidgetLoading() {
-  const t = useTranslations("common")
-  return (
-    <span role="status" aria-live="polite" className="text-sm text-muted-foreground">
-      {t("loading")}
-    </span>
-  )
-}
-
-const MarkdownMessage = dynamic(
-  () => import("@/components/markdown-message").then((module) => ({ default: module.MarkdownMessage })),
-  { ssr: false, loading: () => <LazyWidgetLoading /> },
-)
+import type { ChannelMessage, ThreadData } from "./chat-types"
+import { LazyWidgetLoading, MessageItem, MessageList } from "./message-list"
+import { ChatComposer, ThreadComposer } from "./composer"
 
 const TaskBoard = dynamic(
   () => import("@/components/task-board").then((module) => ({ default: module.TaskBoard })),
@@ -107,129 +87,6 @@ type DmInfo = {
   latestSeq?: number
   unreadCount?: number
   hasUnread?: boolean
-}
-type ThreadSummary = {
-  summary?: string | null
-  status?: string | null
-}
-type ReactionItem = {
-  id: string
-  reaction: string
-  memberId: string
-  member: string | null
-  createdAt?: string | null
-}
-
-type ChannelMessage = {
-  id: string
-  shortId?: string
-  seq: number
-  sender: string
-  senderType: string
-  content: string
-  time: string
-  parentId?: string | null
-  threadId?: string
-  threadShortId?: string | null
-  replyCount?: number
-  threadSummary?: ThreadSummary | null
-  threadLatestSeq?: number
-  threadUnreadCount?: number
-  hasThreadUnread?: boolean
-  reactions?: ReactionItem[]
-  reactionCounts?: Record<string, number>
-}
-
-const CHAT_SCROLL_TICK_COUNT = 12
-
-/**
- * 自包含的滚动进度导航条：自己挂 ONE 条 rAF 合并的 scroll + ResizeObserver
- * 监听，把进度直接写进 DOM（data-visible / 每个 tick 的 data-active / data-near），
- * 全程不进 React state —— 因此滚动时不会触发 ChannelClient 重渲、不会重渲消息列表。
- *
- * 进度协议与 globals.css 的 .sk-chat-scroll-rail[data-visible] /
- * .sk-chat-scroll-rail-tick[data-active|data-near] 完全对齐，CSS 无需改动。
- */
-function ChatScrollRail({ scrollContainerRef }: { scrollContainerRef: RefObject<HTMLDivElement | null> }) {
-  const railRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const scroller = scrollContainerRef.current
-    const rail = railRef.current
-    if (!scroller || !rail) return
-
-    const ticks = Array.from(rail.querySelectorAll<HTMLSpanElement>("[data-slot='chat-scroll-rail-tick']"))
-    let frame = 0
-
-    const update = () => {
-      const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-      const progress = maxScroll > 0 ? Math.max(0, Math.min(1, scroller.scrollTop / maxScroll)) : 0
-      const visible = maxScroll > 8
-      const activeIndex = Math.round(progress * (CHAT_SCROLL_TICK_COUNT - 1))
-
-      rail.dataset.visible = visible ? "true" : "false"
-      for (let index = 0; index < ticks.length; index += 1) {
-        const tick = ticks[index]
-        if (!tick) continue
-        tick.dataset.active = index === activeIndex ? "true" : "false"
-        tick.dataset.near = Math.abs(index - activeIndex) === 1 ? "true" : "false"
-      }
-    }
-
-    const onScrollOrResize = () => {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(update)
-    }
-
-    update()
-    scroller.addEventListener("scroll", onScrollOrResize, { passive: true })
-    window.addEventListener("resize", onScrollOrResize)
-    const resizeObserver = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(onScrollOrResize)
-    resizeObserver?.observe(scroller)
-    if (scroller.firstElementChild) resizeObserver?.observe(scroller.firstElementChild)
-
-    return () => {
-      cancelAnimationFrame(frame)
-      scroller.removeEventListener("scroll", onScrollOrResize)
-      window.removeEventListener("resize", onScrollOrResize)
-      resizeObserver?.disconnect()
-    }
-  }, [scrollContainerRef])
-
-  return (
-    <div
-      ref={railRef}
-      aria-hidden="true"
-      data-slot="chat-scroll-rail"
-      data-visible="false"
-      className="sk-chat-scroll-rail"
-    >
-      {Array.from({ length: CHAT_SCROLL_TICK_COUNT }, (_, index) => (
-        <span
-          key={index}
-          data-slot="chat-scroll-rail-tick"
-          data-active="false"
-          data-near="false"
-          className="sk-chat-scroll-rail-tick"
-        />
-      ))}
-    </div>
-  )
-}
-
-type ThreadData = {
-  thread?: ChannelMessage
-  replies?: ChannelMessage[]
-  messages?: ChannelMessage[]
-  replyCount?: number
-  threadSummary?: ThreadSummary | null
-}
-type SavedItem = {
-  id: string
-  itemType: string
-  itemId: string
 }
 
 const conversationTabs = [
@@ -336,6 +193,12 @@ function subscribePanelWidthStore() {
   return () => {}
 }
 
+type SavedItem = {
+  id: string
+  itemType: string
+  itemId: string
+}
+
 export function ChannelClient({
   initialChannel,
   initialMessages = [],
@@ -394,8 +257,6 @@ export function ChannelClient({
   const [allMembers, setAllMembers] = useState<Member[]>(initialAllMembers)
   const [channels, setChannels] = useState<ChannelInfo[]>(initialChannels)
   const [dms, setDms] = useState<DmInfo[]>(initialDms)
-  const [input, setInput] = useState("")
-  const [threadInput, setThreadInput] = useState("")
   const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null)
   const [threadUnreadRootIds, setThreadUnreadRootIds] = useState<Set<string>>(() => new Set())
   const [activeMaterialMessageId, setActiveMaterialMessageId] = useState<string | null>(null)
@@ -412,7 +273,6 @@ export function ChannelClient({
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(() => new Set())
   const [taskMessageIds, setTaskMessageIds] = useState<Set<string>>(() => new Set())
   const [taskLinks, setTaskLinks] = useState<Record<string, string>>({})
-  const [asTask, setAsTask] = useState(false)
   const [activeTab, setActiveTab] = useState<"chat" | "tasks" | "memory" | "files" | "activity">("chat")
   const filesChannelName = channelName === initialChannel ? channelName : null
   const filesChannelId = filesChannelName ? channelId : ""
@@ -434,12 +294,6 @@ export function ChannelClient({
   const [threadWidthOverride, setThreadWidthOverride] = useState<number | null>(null)
   const dragDepthRef = useRef(0)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const messageListRef = useRef<HTMLDivElement>(null)
-  const messageScrollRef = useRef<HTMLDivElement>(null)
-  const chatDeskMaterialLayerRef = useRef<HTMLDivElement>(null)
-  const chatDeskPointerForwardingRef = useRef(false)
-  const messageEndRef = useRef<HTMLDivElement>(null)
   const realtimeCatchUpTimerRef = useRef<number | null>(null)
   const fileRequestGenerationRef = useRef(0)
   const fileRequestAbortRef = useRef<AbortController | null>(null)
@@ -463,11 +317,10 @@ export function ChannelClient({
   })()
   const currentIsDm = Boolean(currentDm)
   const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
-  const allKnownMembers = [...members, ...allMembers]
-  const didReact = (message: ChannelMessage, emoji: string) =>
-    Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
+  // useMemo：消息行 memo 的前提 —— 父组件重渲时该数组引用必须保持稳定，
+  // 否则所有 MessageItem 的 allKnownMembers prop 都会变、memo 失效。
+  const allKnownMembers = useMemo(() => [...members, ...allMembers], [members, allMembers])
   const memberKindLabel = (kind: string) => kind === "agent" ? tChat("agentKind") : kind === "human" ? tChat("humanKind") : kind
-  const messageRoleLabels = { assistant: tChat("agentKind"), member: tChat("members") }
 
   const markVisibleThreadRead = useCallback(async (threadId: string, data: ThreadData) => {
     const replies = data.replies ?? (data.messages || []).filter((msg) => msg.parentId)
@@ -624,14 +477,6 @@ export function ChannelClient({
   }, [initialMessageId, messages])
 
   useEffect(() => {
-    if (initialMessageId || activeTab !== "chat") return
-    const frame = window.requestAnimationFrame(() => {
-      messageEndRef.current?.scrollIntoView({ block: "end" })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [activeTab, channelName, initialMessageId, messages.length])
-
-  useEffect(() => {
     fileRequestAbortRef.current?.abort()
     fileRequestAbortRef.current = null
     const generation = ++fileRequestGenerationRef.current
@@ -739,7 +584,7 @@ export function ChannelClient({
     return () => window.clearTimeout(timer)
   }, [refreshSavedItems])
 
-  async function handleFileUpload(file: File) {
+  const handleFileUpload = useCallback(async (file: File) => {
     if (!filesChannelId || !file) return
     setUploading(true)
     try {
@@ -757,16 +602,14 @@ export function ChannelClient({
         throw new Error((error as { detail?: string }).detail || `HTTP ${response.status}`)
       }
       await refreshFiles()
-      if (activeTab !== "files") {
-        setActiveTab("files")
-      }
+      setActiveTab("files")
     } catch (e) {
       console.error("Upload failed:", e)
       alert(`Upload failed: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setUploading(false)
     }
-  }
+  }, [activeServerId, filesChannelId, refreshFiles, sessionToken])
 
   // Native file drop handlers
   function handleDragEnter(e: React.DragEvent) {
@@ -807,16 +650,6 @@ export function ChannelClient({
     // Upload the first file in MVP
     const file = droppedFiles[0]
     await handleFileUpload(file)
-  }
-
-  function openFilePicker(accept?: string) {
-    if (!fileInputRef.current || uploading) return
-    if (accept) {
-      fileInputRef.current.accept = accept
-    } else {
-      fileInputRef.current.removeAttribute("accept")
-    }
-    fileInputRef.current.click()
   }
 
   const refreshMessages = useCallback(async () => {
@@ -924,14 +757,7 @@ export function ChannelClient({
     if (!shouldHandleRealtimeEvent(event, { channelId, channelName })) {
       // Event belongs to another channel/DM or to a non-chat scope:
       // refresh sidebar lists so unread/new channels are visible.
-      if (event.type === "message.created" && (event.scope.kind === "channel" || event.scope.kind === "dm")) {
-        markChatUnreadScope(
-          typeof window === "undefined" ? undefined : window.localStorage,
-          typeof window === "undefined" ? undefined : window,
-          event.scope,
-          event.seq,
-        )
-      }
+      // 未读标记由全局 ActivityUnreadTracker 统一处理（07-30-realtime-activity-indicators）。
       void refreshChannelsAndDms()
       return
     }
@@ -973,7 +799,7 @@ export function ChannelClient({
     if (realtimeCatchUpTimerRef.current) window.clearTimeout(realtimeCatchUpTimerRef.current)
   }, [])
 
-  async function openThread(message: ChannelMessage) {
+  const openThread = useCallback(async (message: ChannelMessage) => {
     const threadId = message.threadId || message.id
     setActiveThreadId(threadId)
     setThreadUnreadRootIds((previous) => {
@@ -984,7 +810,7 @@ export function ChannelClient({
       return next
     })
     await refreshThread(threadId)
-  }
+  }, [refreshThread])
 
   async function handleAddMember() {
     const memberId = addMemberSelectRef.current?.value
@@ -998,44 +824,7 @@ export function ChannelClient({
     }
   }
 
-  async function handleSend() {
-    if (!input.trim()) return
-    try {
-      const encodedChannel = channelPathSegment(channelName)
-      const traceId = createLatencyTraceId("chat-send")
-      const result = await apiPost<{ id: string }>(`/api/v1/channels/${encodedChannel}/messages`, { content: input.trim(), traceId }, sessionToken)
-      setInput("")
-      if (asTask) {
-        setAsTask(false)
-        await createTaskFromContent(input.trim(), result?.id)
-        if (result?.id) {
-          setTaskMessageIds((previous) => new Set(previous).add(result.id))
-        }
-      }
-      await refreshMessages()
-    } catch (e) {
-      console.error("Send failed:", e)
-    }
-  }
-
-  async function handleThreadSend() {
-    if (!threadInput.trim() || !activeThreadId) return
-    try {
-      const encodedChannel = channelPathSegment(channelName)
-      const traceId = createLatencyTraceId("thread-send")
-      await apiPost(`/api/v1/channels/${encodedChannel}/messages`, {
-        content: threadInput.trim(),
-        threadId: activeThreadId,
-        traceId,
-      }, sessionToken)
-      setThreadInput("")
-      await Promise.all([refreshMessages(), refreshThread(activeThreadId)])
-    } catch (e) {
-      console.error("Thread reply failed:", e)
-    }
-  }
-
-  async function createTaskFromContent(content: string, messageId?: string) {
+  const createTaskFromContent = useCallback(async (content: string, messageId?: string) => {
     const mentionPattern = /@([A-Za-z0-9_\-]+)/g
     const mentions = Array.from(content.matchAll(mentionPattern)).map((m) => m[1])
     const agentPool = allMembers.length > 0 ? allMembers : members
@@ -1077,9 +866,48 @@ export function ChannelClient({
       },
     }, sessionToken)
     return result.task?.id ?? null
-  }
+  }, [allMembers, channelName, currentChannel, currentDm, currentTitle, members, sessionToken])
 
-  async function handleCreateTaskFromMessage(message: ChannelMessage) {
+  // Composer 回调：内容由 ChatComposer 的内部 state 提交上来。
+  // 返回是否发送成功，Composer 据此决定要不要清空草稿。
+  const handleSend = useCallback(async (content: string, asTask: boolean): Promise<boolean> => {
+    try {
+      const encodedChannel = channelPathSegment(channelName)
+      const traceId = createLatencyTraceId("chat-send")
+      const result = await apiPost<{ id: string }>(`/api/v1/channels/${encodedChannel}/messages`, { content, traceId }, sessionToken)
+      if (asTask) {
+        await createTaskFromContent(content, result?.id)
+        if (result?.id) {
+          setTaskMessageIds((previous) => new Set(previous).add(result.id))
+        }
+      }
+      await refreshMessages()
+      return true
+    } catch (e) {
+      console.error("Send failed:", e)
+      return false
+    }
+  }, [channelName, createTaskFromContent, refreshMessages, sessionToken])
+
+  const handleThreadSend = useCallback(async (content: string): Promise<boolean> => {
+    if (!activeThreadId) return false
+    try {
+      const encodedChannel = channelPathSegment(channelName)
+      const traceId = createLatencyTraceId("thread-send")
+      await apiPost(`/api/v1/channels/${encodedChannel}/messages`, {
+        content,
+        threadId: activeThreadId,
+        traceId,
+      }, sessionToken)
+      await Promise.all([refreshMessages(), refreshThread(activeThreadId)])
+      return true
+    } catch (e) {
+      console.error("Thread reply failed:", e)
+      return false
+    }
+  }, [activeThreadId, channelName, refreshMessages, refreshThread, sessionToken])
+
+  const handleCreateTaskFromMessage = useCallback(async (message: ChannelMessage) => {
     if (taskMessageIds.has(message.id)) return
     try {
       const taskId = await createTaskFromContent(message.content, message.id)
@@ -1091,17 +919,17 @@ export function ChannelClient({
     } catch (e) {
       console.error("Create task from message failed:", e)
     }
-  }
+  }, [createTaskFromContent, taskMessageIds])
 
-  async function handleCopyMessage(message: ChannelMessage) {
+  const handleCopyMessage = useCallback(async (message: ChannelMessage) => {
     try {
       await navigator.clipboard.writeText(message.content)
     } catch (e) {
       console.error("Copy message failed:", e)
     }
-  }
+  }, [])
 
-  async function toggleSaved(messageId: string) {
+  const toggleSaved = useCallback(async (messageId: string) => {
     const isSaved = savedMessageIds.has(messageId)
     setSavedMessageIds((previous) => {
       const next = new Set(previous)
@@ -1119,10 +947,10 @@ export function ChannelClient({
       console.error("Save message failed:", e)
       await refreshSavedItems()
     }
-  }
+  }, [refreshSavedItems, savedMessageIds, sessionToken])
 
-  async function toggleReaction(message: ChannelMessage, emoji = "👍") {
-    const hasReacted = didReact(message, emoji)
+  const toggleReaction = useCallback(async (message: ChannelMessage, emoji = "👍") => {
+    const hasReacted = Boolean(message.reactions?.some((r) => r.reaction === emoji && r.memberId === currentMemberId))
     try {
       const h = apiHeaders(sessionToken)
       const url = `${API_BASE}/api/v1/messages/${encodeURIComponent(message.id)}/reactions`
@@ -1144,18 +972,18 @@ export function ChannelClient({
     } catch (e) {
       console.error("Reaction failed:", e)
     }
-  }
+  }, [activeThreadId, currentMemberId, refreshMessages, refreshThread, sessionToken])
 
-  function setMessageMaterialResource(messageId: string, resource: MaterialResource | null) {
+  const setMessageMaterialResource = useCallback((messageId: string, resource: MaterialResource | null) => {
     setMessageMaterialResources((previous) => {
       const next = { ...previous }
       if (resource) next[messageId] = resource
       else delete next[messageId]
       return next
     })
-  }
+  }, [])
 
-  function setMessageMaterialMode(messageId: string, mode: MaterialSurfaceMode) {
+  const setMessageMaterialMode = useCallback((messageId: string, mode: MaterialSurfaceMode) => {
     setMessageMaterialModes((previous) => {
       const next = { ...previous, [messageId]: mode }
       if (mode === "static") delete next[messageId]
@@ -1164,19 +992,19 @@ export function ChannelClient({
     if (mode === "static" || mode === "fallback") {
       setActiveMaterialMessageId((current) => (current === messageId ? null : current))
     }
-  }
+  }, [])
 
-  function activateMessageMaterial(messageId: string, pointerMode: MaterialPointerMode) {
+  const activateMessageMaterial = useCallback((messageId: string, pointerMode: MaterialPointerMode) => {
     setActiveMaterialMessageId(messageId)
     setActiveMaterialPointerMode(pointerMode)
     setMessageMaterialModes((previous) => ({ ...previous, [messageId]: "active" }))
-  }
+  }, [])
 
-  function requestMessageMaterialAction(messageId: string, mode: Extract<MaterialSurfaceMode, "keeping" | "discarding">) {
+  const requestMessageMaterialAction = useCallback((messageId: string, mode: Extract<MaterialSurfaceMode, "keeping" | "discarding">) => {
     setActiveMaterialMessageId(messageId)
     setActiveMaterialPointerMode("none")
     setMessageMaterialModes((previous) => ({ ...previous, [messageId]: mode }))
-  }
+  }, [])
 
   function requestChatDeskMaterialAction(action: AppDeskMaterialAction) {
     const next = resolveAppDeskMaterialAction(action)
@@ -1184,177 +1012,8 @@ export function ChannelClient({
     setChatDeskMaterialMode(next.mode)
   }
 
-  function isChatDeskMaterialCapturing() {
-    return chatDeskMaterialMode === "active" && chatDeskPointerMode !== "none"
-  }
-
-  function forwardChatDeskPointerEvent(event: ReactPointerEvent<HTMLElement>) {
-    const materialSurface = chatDeskMaterialLayerRef.current?.querySelector<HTMLElement>('[data-slot="material-surface"]')
-    if (!materialSurface || typeof window === "undefined") return
-    const PointerCtor = window.PointerEvent ?? window.MouseEvent
-    materialSurface.dispatchEvent(new PointerCtor(event.type, {
-      bubbles: true,
-      cancelable: true,
-      clientX: event.clientX,
-      clientY: event.clientY,
-      screenX: event.screenX,
-      screenY: event.screenY,
-      button: event.button,
-      buttons: event.buttons,
-      ctrlKey: event.ctrlKey,
-      shiftKey: event.shiftKey,
-      altKey: event.altKey,
-      metaKey: event.metaKey,
-      pointerId: event.pointerId,
-      pointerType: event.pointerType,
-      pressure: event.pressure,
-      movementX: event.movementX,
-      movementY: event.movementY,
-    } as PointerEventInit))
-  }
-
-  function handleChatDeskPointerDownCapture(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!isChatDeskMaterialCapturing()) return
-    event.preventDefault()
-    event.stopPropagation()
-    chatDeskPointerForwardingRef.current = true
-    forwardChatDeskPointerEvent(event)
-  }
-
-  function handleChatDeskPointerMoveCapture(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!chatDeskPointerForwardingRef.current) return
-    event.preventDefault()
-    event.stopPropagation()
-    forwardChatDeskPointerEvent(event)
-  }
-
-  function handleChatDeskPointerUpCapture(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!chatDeskPointerForwardingRef.current) return
-    event.preventDefault()
-    event.stopPropagation()
-    forwardChatDeskPointerEvent(event)
-    chatDeskPointerForwardingRef.current = false
-  }
-
   function messageMaterialMode(messageId: string): MaterialSurfaceMode {
     return messageMaterialModes[messageId] ?? (activeMaterialMessageId === messageId ? "active" : "static")
-  }
-
-  function renderMessageActions(message: ChannelMessage) {
-    const hasReacted = didReact(message, "👍")
-    const isSaved = savedMessageIds.has(message.id)
-    const isTasked = taskMessageIds.has(message.id)
-    const isMaterialActive = activeMaterialMessageId === message.id
-    const materialMode = messageMaterialMode(message.id)
-    const isDrawing = isMaterialActive && materialMode === "active" && activeMaterialPointerMode === "draw"
-    const isWatering = isMaterialActive && materialMode === "active" && activeMaterialPointerMode === "water"
-    const hasMaterialResource = Boolean(messageMaterialResources[message.id])
-    return (
-      <MessageToolStrip>
-        <button
-          type="button"
-          data-slot="message-material-pen"
-          data-active={isDrawing ? "true" : "false"}
-          onClick={() => {
-            if (isDrawing) setMessageMaterialMode(message.id, "static")
-            else activateMessageMaterial(message.id, "draw")
-          }}
-          aria-label="Annotate message"
-          title="Annotate message"
-          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
-            isDrawing ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <Paintbrush className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          data-slot="message-material-water"
-          data-active={isWatering ? "true" : "false"}
-          onClick={() => activateMessageMaterial(message.id, "water")}
-          aria-label="Water annotation"
-          title="Water annotation"
-          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
-            isWatering ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <Droplets className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          data-slot="message-material-keep"
-          disabled={!isMaterialActive}
-          onClick={() => requestMessageMaterialAction(message.id, "keeping")}
-          aria-label="Keep annotation"
-          title="Keep annotation"
-          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35"
-        >
-          <Save className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          data-slot="message-material-discard"
-          disabled={!isMaterialActive && !hasMaterialResource}
-          onClick={() => requestMessageMaterialAction(message.id, "discarding")}
-          aria-label="Clear annotation"
-          title="Clear annotation"
-          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35"
-        >
-          <RotateCcw className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => openThread(message)}
-          aria-label={tChat("replyInThread")}
-          title={tChat("reply")}
-          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <MessageCircle className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleReaction(message, "👍")}
-          aria-label={tChat("react")}
-          title={tChat("react")}
-          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
-            hasReacted ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <Smile className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => void toggleSaved(message.id)}
-          aria-label={tChat("saveMessage")}
-          title={tChat("saveMessage")}
-          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
-            isSaved ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <Bookmark className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => handleCreateTaskFromMessage(message)}
-          aria-label={tChat("createTaskFromMessage")}
-          title={tChat("asTask")}
-          className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
-            isTasked ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <CheckSquare className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => handleCopyMessage(message)}
-          aria-label={tChat("copyMessage")}
-          title={tChat("copyMessage")}
-          className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Clipboard className="size-3.5" />
-        </button>
-      </MessageToolStrip>
-    )
   }
 
   async function handleRemoveMember(memberId: string) {
@@ -1378,25 +1037,12 @@ export function ChannelClient({
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    // IME 组词期间的 Enter 用于确认候选词，不提交（isComposing / keyCode 229）。
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-  function handleThreadKeyDown(e: React.KeyboardEvent) {
-    // IME 组词期间的 Enter 用于确认候选词，不提交（isComposing / keyCode 229）。
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
-      e.preventDefault()
-      handleThreadSend()
-    }
-  }
-
   const activeRoot = threadData?.thread
   const activeReplies = threadData?.replies ?? (threadData?.messages || []).filter((msg) => msg.parentId)
   const headerDmMember = currentDm ? dmAvatarMember(currentDm) : null
+  const composerPlaceholder = currentDm
+    ? tChat("dmComposePlaceholder", { peer: currentTitle.replace(/^DM @/, "") })
+    : tChat("composePlaceholder", { channel: currentTitle.replace(/^#/, "") })
 
   return (
     <div className="sk-chat-main flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-chat-root data-region="chat-main" data-inkframe-mobile-role="chat-workspace">
@@ -1721,209 +1367,48 @@ export function ChannelClient({
               </div>
             ) : (
               <>
-                <div ref={messageListRef} data-testid="chat-message-list" data-region="message-list" data-inkframe-mobile-role="chat-message-list" className="sk-chat-message-list relative isolate min-h-0 min-w-0 flex-1 overflow-hidden">
-                <ChatScrollRail scrollContainerRef={messageScrollRef} />
-                <div
-                  ref={chatDeskMaterialLayerRef}
-                  data-slot="chat-desk-material-layer"
-                  data-inkframe-purpose="chat-desk-canvas"
-                  data-captures-pointer={chatDeskMaterialMode === "active" && chatDeskPointerMode !== "none" ? "true" : "false"}
-                  className="sk-chat-desk-material-layer pointer-events-none absolute inset-0 z-0 data-[captures-pointer=true]:pointer-events-auto data-[captures-pointer=true]:cursor-crosshair"
-                >
-                  <MaterialSurface
-                    ownerKind="app-background"
-                    ownerId={`chat-desk:${channelName}`}
-                    region="chat-main"
-                    tint="desk"
-                    mode={chatDeskMaterialMode}
-                    pointerMode={chatDeskPointerMode}
-                    waterStyle="wash"
-                    washableFixedInk
-                    paperTint={INKFRAME_DESK_PAPER_TINT}
-                    vignette={0}
-                    cleanPaper
-                    resource={chatDeskMaterialResource}
-                    onResourceChange={setChatDeskMaterialResource}
-                    onModeChange={setChatDeskMaterialMode}
-                    className="sk-chat-desk-material-surface absolute inset-0 min-h-full !border-0 !bg-transparent"
-                  >
-                    <div data-slot="chat-desk-static" className="sk-chat-desk-static absolute inset-0" />
-                  </MaterialSurface>
-                </div>
-                <div
-                  ref={messageScrollRef}
-                  data-slot="chat-message-scroll"
-                  onPointerDownCapture={handleChatDeskPointerDownCapture}
-                  onPointerMoveCapture={handleChatDeskPointerMoveCapture}
-                  onPointerUpCapture={handleChatDeskPointerUpCapture}
-                  onPointerCancelCapture={handleChatDeskPointerUpCapture}
-                  className={`sk-chat-message-scroll pointer-events-auto relative z-10 h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-4`}
-                >
-                <div className="sk-chat-message-stack pointer-events-none relative mr-auto w-full max-w-[1248px] min-w-0 space-y-3">
-                {messages.map((msg) => {
-                  const isSaved = savedMessageIds.has(msg.id)
-                  const senderMember = memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)
-                  const hasThreadUnread = hasUnreadThreadActivity(msg, threadUnreadRootIds)
-                  return (
-                    <div
-                      key={msg.id}
-                      data-testid={`message-${msg.id}`}
-                      className={`group/message relative -mx-2 min-w-0 px-2 py-1.5 pointer-events-none transition-colors ${
-                        isSaved ? "sk-accent-rose-soft/40" : ""
-                      }`}
-                      tabIndex={0}
-                    >
-                      <div className={isChatDeskMaterialCapturing() ? "pointer-events-none" : "pointer-events-auto"}>
-                      <MessageFrame
-                        member={senderMember}
-                        senderType={msg.senderType}
-                        agentId={senderMember.kind === "agent" ? senderMember.id : undefined}
-                        time={msg.time}
-                        contentLength={msg.content.length}
-                        avatarSize="lg"
-                        showStatus={senderMember.kind === "agent"}
-                        roleLabels={messageRoleLabels}
-                        materialSurface={{
-                          ownerId: msg.id,
-                          mode: messageMaterialMode(msg.id),
-                          pointerMode: activeMaterialMessageId === msg.id ? activeMaterialPointerMode : "none",
-                          resource: messageMaterialResources[msg.id] ?? null,
-                          onResourceChange: (resource) => setMessageMaterialResource(msg.id, resource),
-                          onModeChange: (mode) => setMessageMaterialMode(msg.id, mode),
-                        }}
-                        badges={
-                          <>
-                            {isSaved && (
-                              <Bookmark className="size-3 text-accent-rose" aria-label={tChat("savedBadge")} />
-                            )}
-                            {taskLinks[msg.id] && (
-                              <Link
-                                href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                                className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-accent-rose-soft px-1.5 py-0.5 text-[0.7rem] font-medium hover:opacity-85"
-                              >
-                                <CheckSquare className="size-3" />
-                                {tChat("taskBadge")}
-                              </Link>
-                            )}
-                          </>
-                        }
-                        actions={renderMessageActions(msg)}
-                      >
-                      <MarkdownMessage content={msg.content} />
-                      {(msg.replyCount || msg.threadSummary) && (
-                        <div className="mt-1.5 pl-10">
-                          {msg.threadSummary?.summary && (
-                            <p className="mb-1 text-xs text-sand-muted">{msg.threadSummary.summary}</p>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => openThread(msg)}
-                            className="inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] bg-paper px-1.5 py-0.5 text-xs font-medium text-accent-blue hover:sk-accent-blue-soft"
-                          >
-                            <MessageCircle className="size-3" />
-                            {msg.replyCount ? tChat("replyCount", { count: msg.replyCount }) : tChat("reply")}
-                            {hasThreadUnread ? (
-                              <EventBadge active label={tChat("unread", { count: 1 })} />
-                            ) : null}
-                          </button>
-                        </div>
-                      )}
-                      {msg.reactionCounts && Object.keys(msg.reactionCounts).length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {Object.entries(msg.reactionCounts).map(([emoji, count]) => (
-                            <button
-                              key={emoji}
-                              type="button"
-                              onClick={() => toggleReaction(msg, emoji)}
-                              className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs transition-colors ${
-                                didReact(msg, emoji)
-                                  ? "sk-accent-rose-soft"
-                                  : "bg-paper text-sand-ink hover:bg-muted/60"
-                              }`}
-                              aria-label={tChat("reactionCount", { count, reaction: emoji })}
-                            >
-                              <span>{emoji}</span>
-                              <span className="text-[0.7rem] font-medium">{count}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      </MessageFrame>
-                      </div>
-                    </div>
-                  )
-                })}
-                {messages.length === 0 && (
-                  <EmptyState
-                    title={tChat("noMessages", { channel: currentTitle })}
-                    description={currentDm ? tChat("dmComposePlaceholder", { peer: currentTitle.replace(/^DM @/, "") }) : tChat("composePlaceholder", { channel: currentTitle.replace(/^#/, "") })}
-                    className="sk-chat-empty-note"
-                  />
-                )}
-                <div ref={messageEndRef} data-testid="chat-message-list-end" aria-hidden="true" />
-              </div>
-              </div>
-            </div>
+                <MessageList
+                  messages={messages}
+                  allKnownMembers={allKnownMembers}
+                  currentMemberId={currentMemberId}
+                  savedMessageIds={savedMessageIds}
+                  taskMessageIds={taskMessageIds}
+                  taskLinks={taskLinks}
+                  threadUnreadRootIds={threadUnreadRootIds}
+                  activeMaterialMessageId={activeMaterialMessageId}
+                  activeMaterialPointerMode={activeMaterialPointerMode}
+                  messageMaterialModes={messageMaterialModes}
+                  messageMaterialResources={messageMaterialResources}
+                  channelName={channelName}
+                  deskMode={chatDeskMaterialMode}
+                  deskPointerMode={chatDeskPointerMode}
+                  deskResource={chatDeskMaterialResource}
+                  onDeskResourceChange={setChatDeskMaterialResource}
+                  onDeskModeChange={setChatDeskMaterialMode}
+                  activeTab={activeTab}
+                  initialMessageId={initialMessageId}
+                  emptyTitle={tChat("noMessages", { channel: currentTitle })}
+                  emptyDescription={composerPlaceholder}
+                  onOpenThread={openThread}
+                  onToggleReaction={toggleReaction}
+                  onToggleSaved={toggleSaved}
+                  onCreateTask={handleCreateTaskFromMessage}
+                  onCopyMessage={handleCopyMessage}
+                  onMaterialResourceChange={setMessageMaterialResource}
+                  onMaterialModeChange={setMessageMaterialMode}
+                  onActivateMaterial={activateMessageMaterial}
+                  onRequestMaterialAction={requestMessageMaterialAction}
+                />
 
-            <div data-region="composer" data-inkframe-mobile-role="chat-composer" className="sk-chat-composer min-w-0 shrink-0 overflow-x-hidden border-t-2 border-[var(--ink)] p-3">
-              <ChatComposerSurface className="mr-auto flex w-full max-w-[1248px] min-w-0 flex-wrap items-end gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="sr-only"
-                  aria-hidden="true"
-                  tabIndex={-1}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) void handleFileUpload(file)
-                    e.target.value = ""
-                  }}
+                <ChatComposer
+                  placeholder={composerPlaceholder}
+                  uploading={uploading}
+                  attachDisabled={!filesChannelId}
+                  onUpload={handleFileUpload}
+                  onSend={handleSend}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-label={tChat("attachFile")}
-                  title={tChat("attachFile")}
-                  disabled={uploading || !filesChannelId}
-                  onClick={() => openFilePicker()}
-                >
-                  <Paperclip className="size-3.5" />
-                </Button>
-                <Input
-                  name="content"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={currentDm ? tChat("dmComposePlaceholder", { peer: currentTitle.replace(/^DM @/, "") }) : tChat("composePlaceholder", { channel: currentTitle.replace(/^#/, "") })}
-                  className="min-w-0 flex-1"
-                  style={{ backgroundColor: "var(--paper)" }}
-                />
-                <ChatTaskToggle
-                  active={asTask}
-                  onClick={() => setAsTask(!asTask)}
-                  aria-pressed={asTask}
-                  aria-label={tChat("sendAsTask")}
-                  title={tChat("asTask")}
-                >
-                  <span data-slot="chat-task-toggle-mark" className="sk-chat-task-toggle-mark">
-                    {asTask && <CheckSquare className="size-3 pointer-events-none" />}
-                  </span>
-                  {tChat("asTask")}
-                </ChatTaskToggle>
-                <Button
-                  type="button"
-                  size="icon"
-                  aria-label={tChat("sendMessage")}
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                >
-                  <Send className="size-3.5" />
-                </Button>
-              </ChatComposerSurface>
-            </div>
-          </>
-          )}
+              </>
+            )}
           </div>
 
           {activeThreadId && (
@@ -1977,141 +1462,61 @@ export function ChannelClient({
 
                 <div className="min-h-0 min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto pr-1">
                   {activeRoot && (
-                    <div className="group/message relative -mx-1 px-1 py-1.5 rounded-none" tabIndex={0}>
-                      <MessageFrame
-                        member={memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers)}
-                        senderType={activeRoot.senderType}
-                        agentId={activeRoot.senderType === "agent" ? memberForMessageSender(activeRoot.sender, activeRoot.senderType, allKnownMembers).id : undefined}
-                        time={activeRoot.time}
-                        contentLength={activeRoot.content.length}
-                        timeVariant="compact"
-                        avatarSize="sm"
-                        showStatus={activeRoot.senderType === "agent"}
-                        roleLabels={messageRoleLabels}
-                        materialSurface={{
-                          ownerId: activeRoot.id,
-                          mode: messageMaterialMode(activeRoot.id),
-                          pointerMode: activeMaterialMessageId === activeRoot.id ? activeMaterialPointerMode : "none",
-                          resource: messageMaterialResources[activeRoot.id] ?? null,
-                          onResourceChange: (resource) => setMessageMaterialResource(activeRoot.id, resource),
-                          onModeChange: (mode) => setMessageMaterialMode(activeRoot.id, mode),
-                        }}
-                        actions={renderMessageActions(activeRoot)}
-                      >
-                      {taskLinks[activeRoot.id] && (
-                        <Link
-                          href={`/tasks?task=${encodeURIComponent(taskLinks[activeRoot.id])}`}
-                          className="mt-1.5 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-accent-rose-soft px-1.5 py-0.5 text-[0.7rem] font-medium hover:opacity-85"
-                        >
-                          <CheckSquare className="size-3" />
-                          {tChat("openTask")}
-                        </Link>
-                      )}
-                      <MarkdownMessage content={activeRoot.content} compact />
-                      {activeRoot.reactionCounts && Object.keys(activeRoot.reactionCounts).length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {Object.entries(activeRoot.reactionCounts).map(([emoji, count]) => (
-                            <button
-                              key={emoji}
-                              type="button"
-                              onClick={() => toggleReaction(activeRoot, emoji)}
-                              className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs transition-colors ${
-                                didReact(activeRoot, emoji)
-                                  ? "sk-accent-rose-soft"
-                                  : "bg-paper text-sand-ink hover:bg-muted/60"
-                              }`}
-                              aria-label={tChat("reactionCount", { count, reaction: emoji })}
-                            >
-                              <span>{emoji}</span>
-                              <span className="text-[0.7rem] font-medium">{count}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      </MessageFrame>
-                    </div>
+                    <MessageItem
+                      variant="thread"
+                      message={activeRoot}
+                      allKnownMembers={allKnownMembers}
+                      currentMemberId={currentMemberId}
+                      taskLink={taskLinks[activeRoot.id]}
+                      materialMode={messageMaterialMode(activeRoot.id)}
+                      materialPointerMode={activeMaterialMessageId === activeRoot.id ? activeMaterialPointerMode : "none"}
+                      materialResource={messageMaterialResources[activeRoot.id] ?? null}
+                      isMaterialActive={activeMaterialMessageId === activeRoot.id}
+                      onOpenThread={openThread}
+                      onToggleReaction={toggleReaction}
+                      onToggleSaved={toggleSaved}
+                      onCreateTask={handleCreateTaskFromMessage}
+                      onCopyMessage={handleCopyMessage}
+                      onMaterialResourceChange={setMessageMaterialResource}
+                      onMaterialModeChange={setMessageMaterialMode}
+                      onActivateMaterial={activateMessageMaterial}
+                      onRequestMaterialAction={requestMessageMaterialAction}
+                    />
                   )}
 
                   {threadLoading && <p className="py-8 text-center text-sm text-muted-foreground">{tChat("threadLoading")}</p>}
                   {activeReplies.map((msg) => (
-                    <div key={msg.id} className="group/message relative -mx-1 px-1 py-1.5 rounded-none" tabIndex={0}>
-                      <MessageFrame
-                        member={memberForMessageSender(msg.sender, msg.senderType, allKnownMembers)}
-                        senderType={msg.senderType}
-                        agentId={msg.senderType === "agent" ? memberForMessageSender(msg.sender, msg.senderType, allKnownMembers).id : undefined}
-                        time={msg.time}
-                        contentLength={msg.content.length}
-                        timeVariant="compact"
-                        avatarSize="sm"
-                        showStatus={msg.senderType === "agent"}
-                        roleLabels={messageRoleLabels}
-                        materialSurface={{
-                          ownerId: msg.id,
-                          mode: messageMaterialMode(msg.id),
-                          pointerMode: activeMaterialMessageId === msg.id ? activeMaterialPointerMode : "none",
-                          resource: messageMaterialResources[msg.id] ?? null,
-                          onResourceChange: (resource) => setMessageMaterialResource(msg.id, resource),
-                          onModeChange: (mode) => setMessageMaterialMode(msg.id, mode),
-                        }}
-                        actions={renderMessageActions(msg)}
-                      >
-                      {taskLinks[msg.id] && (
-                        <Link
-                          href={`/tasks?task=${encodeURIComponent(taskLinks[msg.id])}`}
-                          className="mt-1.5 inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] sk-accent-rose-soft px-1.5 py-0.5 text-[0.7rem] font-medium hover:opacity-85"
-                        >
-                          <CheckSquare className="size-3" />
-                          {tChat("openTask")}
-                        </Link>
-                      )}
-                      <MarkdownMessage content={msg.content} compact />
-                      {msg.reactionCounts && Object.keys(msg.reactionCounts).length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {Object.entries(msg.reactionCounts).map(([emoji, count]) => (
-                            <button
-                              key={emoji}
-                              type="button"
-                              onClick={() => toggleReaction(msg, emoji)}
-                              className={`inline-flex items-center gap-1 rounded-none border-2 border-[var(--ink)] px-2 py-0.5 text-xs transition-colors ${
-                                didReact(msg, emoji)
-                                  ? "sk-accent-rose-soft"
-                                  : "bg-paper text-sand-ink hover:bg-muted/60"
-                              }`}
-                              aria-label={tChat("reactionCount", { count, reaction: emoji })}
-                            >
-                              <span>{emoji}</span>
-                              <span className="text-[0.7rem] font-medium">{count}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      </MessageFrame>
-                    </div>
+                    <MessageItem
+                      key={msg.id}
+                      variant="thread"
+                      message={msg}
+                      allKnownMembers={allKnownMembers}
+                      currentMemberId={currentMemberId}
+                      taskLink={taskLinks[msg.id]}
+                      materialMode={messageMaterialMode(msg.id)}
+                      materialPointerMode={activeMaterialMessageId === msg.id ? activeMaterialPointerMode : "none"}
+                      materialResource={messageMaterialResources[msg.id] ?? null}
+                      isMaterialActive={activeMaterialMessageId === msg.id}
+                      onOpenThread={openThread}
+                      onToggleReaction={toggleReaction}
+                      onToggleSaved={toggleSaved}
+                      onCreateTask={handleCreateTaskFromMessage}
+                      onCopyMessage={handleCopyMessage}
+                      onMaterialResourceChange={setMessageMaterialResource}
+                      onMaterialModeChange={setMessageMaterialMode}
+                      onActivateMaterial={activateMessageMaterial}
+                      onRequestMaterialAction={requestMessageMaterialAction}
+                    />
                   ))}
                   {!threadLoading && activeReplies.length === 0 && (
                     <p className="py-8 text-center text-sm text-muted-foreground">{tChat("noReplies")}</p>
                   )}
                 </div>
 
-                <div className="mt-3 flex shrink-0 gap-2 border-t pt-3 min-w-0 overflow-x-hidden">
-                  <Input
-                    value={threadInput}
-                    onChange={(e) => setThreadInput(e.target.value)}
-                    onKeyDown={handleThreadKeyDown}
-                    placeholder={tChat("replyPlaceholder")}
-                    className="min-w-0 flex-1"
-                    style={{ backgroundColor: "var(--paper)" }}
-                  />
-                  <Button
-                    type="button"
-                    size="icon"
-                    aria-label={tChat("sendThreadReply")}
-                    onClick={handleThreadSend}
-                    disabled={!threadInput.trim()}
-                  >
-                    <Send className="size-4" />
-                  </Button>
-                </div>
+                <ThreadComposer
+                  placeholder={tChat("replyPlaceholder")}
+                  onSend={handleThreadSend}
+                />
               </div>
             </aside>
           )}

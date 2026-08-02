@@ -176,7 +176,11 @@ test("MaterialSurface renders an active canvas only in active material modes", (
 test("desk material surfaces use clean product paper without vignette or idle darkening", () => {
   const materialSource = readFileSync(new URL("../components/inkframe/material-surface.tsx", import.meta.url), "utf8")
   const appDeskSource = readFileSync(new URL("../components/inkframe/app-desk-background.tsx", import.meta.url), "utf8")
-  const chatSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const chatSource = [
+    readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/composer.tsx", import.meta.url), "utf8"),
+  ].join("\n")
   const engineSource = readFileSync(new URL("../public/inkframe/ink-material-engine.js", import.meta.url), "utf8")
   const globalCss = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
   const appDeskMaterialBlock = globalCss.match(/\.sk-app-desk-material \{[\s\S]*?\n  \}/)?.[0] ?? ""
@@ -398,7 +402,11 @@ test("message annotation material is explicitly washable without making all surf
 })
 
 test("chat message material actions expose pen water keep and discard controls", () => {
-  const source = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const source = [
+    readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/composer.tsx", import.meta.url), "utf8"),
+  ].join("\n")
 
   assert.match(source, /message-material-pen/)
   assert.match(source, /message-material-water/)
@@ -406,12 +414,16 @@ test("chat message material actions expose pen water keep and discard controls",
   assert.match(source, /message-material-discard/)
   assert.match(source, /setMessageMaterialResources/)
   assert.match(source, /onResourceChange/)
-  assert.match(source, /pointerMode: activeMaterialMessageId === msg\.id \? activeMaterialPointerMode : "none"/)
-  assert.match(source, /pointerMode: activeMaterialMessageId === activeRoot\.id \? activeMaterialPointerMode : "none"/)
+  assert.match(source, /materialPointerMode=\{activeMaterialMessageId === msg\.id \? activeMaterialPointerMode : "none"\}/)
+  assert.match(source, /materialPointerMode=\{activeMaterialMessageId === activeRoot\.id \? activeMaterialPointerMode : "none"\}/)
 })
 
 test("chat route exposes a separate desk material layer for blank chat workspace areas", () => {
-  const source = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const source = [
+    readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/composer.tsx", import.meta.url), "utf8"),
+  ].join("\n")
 
   assert.match(source, /data-slot="chat-desk-material-layer"/)
   assert.match(source, /data-inkframe-purpose="chat-desk-canvas"/)
@@ -424,7 +436,11 @@ test("chat route exposes a separate desk material layer for blank chat workspace
 })
 
 test("chat desk drawing owns the message list pointer layer while active", () => {
-  const source = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const source = [
+    readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/composer.tsx", import.meta.url), "utf8"),
+  ].join("\n")
   const messageFrameSource = readFileSync(new URL("../components/message-frame.tsx", import.meta.url), "utf8")
 
   assert.match(source, /chatDeskPointerForwardingRef/)
@@ -437,7 +453,7 @@ test("chat desk drawing owns the message list pointer layer while active", () =>
   assert.doesNotMatch(source, /closest\(/)
   assert.match(source, /className=\{`[^`]*pointer-events-auto/)
   assert.match(source, /group\/message relative -mx-2 min-w-0 px-2 py-1\.5 pointer-events-none/)
-  assert.match(source, /isChatDeskMaterialCapturing\(\) \? "pointer-events-none" : "pointer-events-auto"/)
+  assert.match(source, /deskCapturing \? "pointer-events-none" : "pointer-events-auto"/)
   assert.doesNotMatch(source, /sk-chat-message-stack pointer-events-auto/)
   assert.match(messageFrameSource, /w-fit max-w-full/)
 })
@@ -523,12 +539,16 @@ test("MessageFrame active material layer creates exactly one message canvas", ()
 })
 
 test("Chat route defaults messages to static material surfaces but exposes one active foreground surface", () => {
-  const source = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const source = [
+    readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/composer.tsx", import.meta.url), "utf8"),
+  ].join("\n")
 
   assert.match(source, /activeMaterialMessageId/)
   assert.match(source, /setActiveMaterialMessageId/)
   assert.match(source, /messageMaterialMode\(msg\.id\)/)
-  assert.match(source, /pointerMode:\s*activeMaterialMessageId === msg\.id \? activeMaterialPointerMode : "none"/)
+  assert.match(source, /materialPointerMode=\{activeMaterialMessageId === msg\.id \? activeMaterialPointerMode : "none"\}/)
   assert.match(source, /data-slot="message-material-pen"/)
   assert.match(source, /data-slot="message-material-water"/)
   assert.match(source, /data-slot="message-material-keep"/)
@@ -572,7 +592,11 @@ test("Task surfaces stay static material objects and do not expose drawing contr
 })
 
 test("chat and task routes expose mobile proof roles for later twd checks", () => {
-  const chatSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const chatSource = [
+    readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/composer.tsx", import.meta.url), "utf8"),
+  ].join("\n")
   const taskPageSource = [
     readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8"),
     readFileSync(new URL("../components/task-route-projection.tsx", import.meta.url), "utf8"),
@@ -604,7 +628,11 @@ test("chat and task routes expose mobile proof roles for later twd checks", () =
 })
 
 test("chat mobile tab strip is horizontally contained instead of widening the header", () => {
-  const chatSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const chatSource = [
+    readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/composer.tsx", import.meta.url), "utf8"),
+  ].join("\n")
   const tabStripMatch = chatSource.match(
     /<div[\s\S]*?data-inkframe-mobile-role="chat-tab-strip"[\s\S]*?className="([^"]*)"[\s\S]*?>/,
   )
@@ -616,7 +644,11 @@ test("chat mobile tab strip is horizontally contained instead of widening the he
 })
 
 test("chat mobile message and composer surfaces are contained flex regions", () => {
-  const chatSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+  const chatSource = [
+    readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/message-list.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../app/(app)/chat/[channel]/composer.tsx", import.meta.url), "utf8"),
+  ].join("\n")
   const messageFrameSource = readFileSync(new URL("../components/message-frame.tsx", import.meta.url), "utf8")
 
   const messageListMatch = chatSource.match(
@@ -694,12 +726,12 @@ test("chat mobile message and composer surfaces are contained flex regions", () 
   assert.match(threadScrollerMatch[1], /(?:^|\s)overflow-x-hidden(?:\s|$)/)
 
   const threadComposerMatch = chatSource.match(
-    /<div className="([^"]*border-t[^"]*min-w-0[^"]*)"[\s\S]*?>\s*<Input[\s\S]*?value=\{threadInput\}/,
+    /<div className="([^"]*border-t[^"]*min-w-0[^"]*)"[\s\S]*?>\s*<Input[\s\S]*?value=\{input\}/,
   )
   assert.ok(threadComposerMatch, "thread reply composer should be a contained flex row")
   assert.match(threadComposerMatch[1], /(?:^|\s)overflow-x-hidden(?:\s|$)/)
 
-  const threadInputMatch = chatSource.match(/<Input[\s\S]*?value=\{threadInput\}[\s\S]*?className="([^"]*)"[\s\S]*\/>/)
+  const threadInputMatch = chatSource.match(/<Input[\s\S]*?placeholder=\{placeholder\}[\s\S]*?className="([^"]*)"[\s\S]*\/>/)
   assert.ok(threadInputMatch, "thread reply input should be a contained flex child")
   assert.match(threadInputMatch[1], /(?:^|\s)min-w-0(?:\s|$)/)
   assert.match(threadInputMatch[1], /(?:^|\s)flex-1(?:\s|$)/)
