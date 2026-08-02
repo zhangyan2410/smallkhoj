@@ -456,3 +456,39 @@ Fixed the 'loading workbench' flash on page switches. Corrected an initial misdi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: 前端三连任务：聊天性能优化、实时活动指示、后台通知
+
+**Date**: 2026-08-02
+**Task**: 前端三连任务：聊天性能优化、实时活动指示、后台通知
+**Branch**: `main`
+
+### Summary
+
+完成 07-30 三个前端任务并合入 main：(1) perf——channel-client 拆分为编排器 + memo 化的 message-list/composer，task-board SSE 失效改后台刷新；(2) activity-indicators——域×scope 统一未读状态层（localStorage 迁移 + seq 高水位去重），AppRail 计数徽标/红点，聊天侧栏迁移；(3) background-notifications——复用同一 SSE 的事件→通知映射（DM 必达、频道仅 @提及、任务/memory），可见聚焦抑制 + 30s 同 scope 折叠 + 点击直达，settings 页权限与分域开关（en/zh-CN）。另修两个测试发现的 bug：后端 _event_scope 对 DM 事件按 channelType 标 dm kind（5bc2fc4）；前端清除路径改基于 localStorage 最新快照并广播（修复徽标清不掉）。验证：前端 243 tests + typecheck + lint 全绿，后端 public_events 22 + read_cursors 27 passed；twd 真机证据由另一 agent 采集。未 push。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `96cbcc2` | (see git log) |
+| `d27f077` | (see git log) |
+| `d56fe57` | (see git log) |
+| `5bc2fc4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

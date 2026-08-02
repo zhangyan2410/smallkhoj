@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
+- **Total Sessions**: 14
 - **Last Active**: 2026-08-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~458 | Active |
+| `journal-1.md` | ~494 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-08-02 | 前端三连任务：聊天性能优化、实时活动指示、后台通知 | `96cbcc2`, `d27f077`, `d56fe57`, `5bc2fc4` | `main` |
 | 13 | 2026-08-02 | 完成开发与真实验证最小入口 | `70adad1` | `main` |
 | 12 | 2026-07-31 | Bundled Pi runtime + MiniMax relay + dynamic runtime select; first-use guide task planned | `2a4a0b0`, `d8d194f` | `main` |
 | 11 | 2026-07-29 | Chat transition fast path: scroll rail + fetch dedupe + shell persistence | `5687844`, `b528edf`, `3b486db`, `09b5cb6`, `3a21c32`, `ba644e4`, `c0a037b` | `main` |
