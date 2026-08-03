@@ -223,8 +223,19 @@ smallkhoj-caddy:local-release
 
 #### Daemon distribution (parallel track)
 
-- Daemon source: `agent/daemon/aaa-daemon/` (current version `0.2.1`).
-  Backend `MINIMUM_DAEMON_VERSION=0.2.0`; lower daemon versions get `426`.
+- Daemon source: `agent/daemon/aaa-daemon/`; its `package.json.version` is
+  the sole manually maintained current candidate version. GitHub Actions reads
+  that field after checkout and exports it to both
+  `DAEMON_RELEASE_VERSION` and `E2E_DAEMON_VERSION` for the authenticated
+  candidate flow. The workflow must not copy the current semantic version into
+  either variable.
+- Backend `MINIMUM_DAEMON_VERSION` is a separate compatibility policy; lower
+  daemon versions get `426`. It must not be derived from the current package
+  version merely to advertise a newer candidate.
+- Production `DAEMON_RELEASE_VERSION` remains an explicit published-artifact
+  selection. It may temporarily differ from the source candidate while a
+  package is awaiting publication, but it must equal the version in the
+  actually bundled and hosted tgz before onboarding is released.
 - `scripts/build_daemon_distribution.py` produces
   `smallkhoj-daemon-v<version>-<platform>.tar.gz` + `.sha256` + `.manifest.json`
   + `install.sh`; `--source-revision` must be a 40-char SHA == current HEAD.

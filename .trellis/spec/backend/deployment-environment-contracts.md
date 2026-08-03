@@ -286,16 +286,38 @@ Use this when a Daemon package changes its executable, packaging contents, or ve
 ### 2. Signatures
 
 ```text
-MINIMUM_DAEMON_VERSION=0.2.0
-DAEMON_RELEASE_VERSION=0.2.1
+Candidate source:
+  agent/daemon/aaa-daemon/package.json.version = <package-version>
 
-npx -y --package <base>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.1.tgz aura --server-url <base> --api-key <token>
+Authenticated CI candidate environment:
+  DAEMON_RELEASE_VERSION=<package-version>
+  E2E_DAEMON_VERSION=<package-version>
+
+Production release environment:
+  MINIMUM_DAEMON_VERSION=<compatibility-floor>
+  DAEMON_RELEASE_VERSION=<published-package-version>
+
+npx -y --package <base>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<published-package-version>.tgz aura --server-url <base> --api-key <token>
 ```
 
 ### 3. Contracts
 
+- `agent/daemon/aaa-daemon/package.json.version` is the sole manually
+  maintained current Daemon candidate version. Generated lockfile metadata may
+  mirror it, but handwritten workflow, test, and current-version documentation
+  must not become competing authorities.
+- After checkout, authenticated CI must parse and validate that package field,
+  then export the same value to `DAEMON_RELEASE_VERSION` and
+  `E2E_DAEMON_VERSION` through `GITHUB_ENV`. Missing, non-string, or
+  non-semantic values fail before candidate installation or E2E.
+- CI must not assign a semantic-version literal directly to either release
+  variable. A package bump therefore changes one manually maintained value.
 - `MINIMUM_DAEMON_VERSION` is an admission gate for Daemon connect, register, and heartbeat requests; it is not the package URL version.
 - `DAEMON_RELEASE_VERSION` selects the generated self-hosted package URL for onboarding and reconnect commands.
+- Production does not automatically follow an unpublished source candidate:
+  operators explicitly select `DAEMON_RELEASE_VERSION`, and that selection
+  must match the tgz actually bundled into the backend image and hosted at the
+  generated URL.
 - A release package at `DAEMON_RELEASE_VERSION` must be regenerated from the matching source and copied into the backend image's `release-artifacts/smallkhoj-daemon/` directory.
 - The package manifest must expose the `aura` bin. Existing `smallkhoj-daemon` bins may remain for command compatibility.
 
@@ -303,20 +325,34 @@ npx -y --package <base>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.
 
 | Condition | Expected behavior |
 | --- | --- |
+| CI assigns a semantic-version literal to either release variable | Delivery-contract failure; derive both values from `package.json.version` instead. |
+| Candidate package version is missing, not a string, or not semantic | Authenticated CI fails closed before installation/E2E. |
+| Source candidate is newer than the currently published production package | Valid pre-release state: CI tests the candidate while production keeps selecting the last hosted package. Do not advertise the candidate in production yet. |
 | `DAEMON_RELEASE_VERSION` is newer than `MINIMUM_DAEMON_VERSION` | New onboarding commands use the new package while compatible older clients continue to register and heartbeat. |
 | Backend advertises `aura` but its bundled tgz has no `aura` bin | Release blocker; regenerate the package before building the backend image. |
 | `MINIMUM_DAEMON_VERSION` is raised only to advertise a new package | Compatibility regression; revert the gate and configure `DAEMON_RELEASE_VERSION` separately. |
-| Hosted `0.2.1` tgz is absent after deployment | Daemon onboarding blocker; do not claim release readiness. |
+| Hosted tgz for `DAEMON_RELEASE_VERSION` is absent after deployment | Daemon onboarding blocker; do not claim release readiness. |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: keep `MINIMUM_DAEMON_VERSION=0.2.0`, publish a tested `0.2.1` package, and confirm the generated command downloads and runs `aura`.
+- Good: bump only `package.json.version`; CI derives both candidate variables,
+  then publish that tested package and explicitly select the same hosted
+  version in production.
+- Base: while publication is pending, CI tests a newer source candidate and
+  production continues advertising the previous verified hosted package.
 - Base: intentionally raise both values only when the new package requires an incompatible protocol change and an upgrade window is communicated.
-- Bad: overwrite a `0.2.0` artifact at the same URL or raise the minimum version merely to change the command alias.
+- Bad: copy the current package version into workflow YAML, overwrite an older
+  artifact at the same URL, or raise the minimum version merely to change the
+  command alias.
 
 ### 6. Tests Required
 
+- Delivery workflow contracts require package-derived `GITHUB_ENV` exports
+  and reject any semantic-version literal assignment to either CI variable.
 - Backend command-generation tests assert that a release version newer than the minimum produces the new hosted tgz URL.
+- Backend default command tests and Daemon register/connect tests derive their
+  current-version expectations from package metadata; independent override and
+  compatibility values remain explicit test data.
 - Daemon package tests assert that package metadata and register/connect payloads use the released version and expose `aura`.
 - Smoke tests request the exact released tgz from `/downloads/smallkhoj-daemon/` after deployment.
 
@@ -325,14 +361,25 @@ npx -y --package <base>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.
 #### Wrong
 
 ```text
-MINIMUM_DAEMON_VERSION=0.2.1  # Required only because the new package is 0.2.1
+CI workflow:
+  DAEMON_RELEASE_VERSION=<copied-current-version>
+  E2E_DAEMON_VERSION=<copied-current-version>
+
+Production:
+  MINIMUM_DAEMON_VERSION=<new-package-version>  # raised only to advertise it
 ```
 
 #### Correct
 
 ```text
-MINIMUM_DAEMON_VERSION=0.2.0  # Compatibility gate
-DAEMON_RELEASE_VERSION=0.2.1 # Recommended package
+CI:
+  package.json.version
+    -> GITHUB_ENV
+    -> DAEMON_RELEASE_VERSION + E2E_DAEMON_VERSION
+
+Production:
+  MINIMUM_DAEMON_VERSION=<compatibility-floor>
+  DAEMON_RELEASE_VERSION=<actually-hosted-package-version>
 ```
 
 ## Scenario: Direct Image Archive Cloud Deployment

@@ -1,4 +1,17 @@
+import json
+from pathlib import Path
+
 from routers import public_api
+
+DAEMON_PACKAGE_VERSION = json.loads(
+    (
+        Path(__file__).resolve().parents[2]
+        / "agent"
+        / "daemon"
+        / "aaa-daemon"
+        / "package.json"
+    ).read_text(encoding="utf-8")
+)["version"]
 
 
 def test_connect_command_uses_hosted_npm_tarball_by_default_not_repo_path():
@@ -9,7 +22,7 @@ def test_connect_command_uses_hosted_npm_tarball_by_default_not_repo_path():
     )
 
     assert command == (
-        "npx -y --package https://smallkhoj.example.com/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.1.tgz "
+        f"npx -y --package https://smallkhoj.example.com/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-{DAEMON_PACKAGE_VERSION}.tgz "
         "aura --server-url https://smallkhoj.example.com --api-key sk_connect_test # 张岩 Server"
     )
     assert "agent/daemon/aaa-daemon" not in command
@@ -34,8 +47,9 @@ def test_connect_command_can_use_configured_npm_package(monkeypatch):
 
 
 def test_connect_command_can_advertise_newer_daemon_without_raising_minimum(monkeypatch):
+    advertised_version = "0.3.0"
     monkeypatch.setattr(public_api.settings, "minimum_daemon_version", "0.2.0")
-    monkeypatch.setattr(public_api.settings, "daemon_release_version", "0.2.1")
+    monkeypatch.setattr(public_api.settings, "daemon_release_version", advertised_version)
 
     command = public_api._computer_connect_command(
         "sk_connect_test",
@@ -43,7 +57,7 @@ def test_connect_command_can_advertise_newer_daemon_without_raising_minimum(monk
         "张岩 Server",
     )
 
-    assert "smallkhoj-smallkhoj-daemon-0.2.1.tgz" in command
+    assert f"smallkhoj-smallkhoj-daemon-{advertised_version}.tgz" in command
     assert "aura --server-url https://smallkhoj.example.com" in command
 
 
@@ -67,7 +81,7 @@ def test_reconnect_command_uses_hosted_npm_tarball_by_default_not_repo_path():
     )
 
     assert command == (
-        "npx -y --package https://smallkhoj.example.com/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.1.tgz "
+        f"npx -y --package https://smallkhoj.example.com/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-{DAEMON_PACKAGE_VERSION}.tgz "
         "aura --server-url https://smallkhoj.example.com --api-key sk_machine_test # 张岩 Server"
     )
     assert "agent/daemon/aaa-daemon" not in command
