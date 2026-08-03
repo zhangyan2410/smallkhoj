@@ -240,6 +240,7 @@ test.describe("Authenticated management integration", () => {
     const computerName = `e2e-computer-${unique}`
     const agentName = `e2e-agent-${unique}`
     const channelName = `e2e-${unique}`
+    const connectDialog = page.getByTestId("connect-computer-dialog")
     let connectToken: string | undefined
 
     await test.step("establish a supported browser session through the real login form", async () => {
@@ -250,6 +251,12 @@ test.describe("Authenticated management integration", () => {
       await page.locator('button[name="mode"][value="signup"]').click()
       await expect(page).toHaveURL(/\/computers(?:\?|$)/)
       await expect(page.locator('[data-region="server-switcher"]')).toBeVisible()
+    })
+
+    await test.step("acknowledge the empty-Server connect dialog before using global chrome", async () => {
+      await expect(connectDialog).toBeVisible()
+      await connectDialog.locator('[data-slot="dialog-close"]').click()
+      await expect(connectDialog).toBeHidden()
     })
 
     const cookies = await context.cookies()
@@ -284,7 +291,9 @@ test.describe("Authenticated management integration", () => {
       })
       expect(correctScope.status()).toBe(200)
 
-      const connectForm = page.locator("form").filter({ has: page.locator("#computer-name") })
+      await page.getByTestId("add-computer-button").click()
+      await expect(connectDialog).toBeVisible()
+      const connectForm = connectDialog.locator("form").filter({ has: page.locator("#computer-name") })
       await connectForm.locator("#computer-name").fill(computerName)
       await connectForm.locator('button[type="submit"]').click()
       await expect(page).toHaveURL(/\/computers\?created=/)
