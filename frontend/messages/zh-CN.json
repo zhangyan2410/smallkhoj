@@ -189,6 +189,7 @@
     "tasks": "任务",
     "connectNew": "连接新电脑",
     "connectDesc": "生成一次性连接命令；daemon 连接后才会创建电脑。",
+    "addComputer": "添加电脑",
     "computerName": "电脑名称",
     "generateConnect": "生成连接命令",
     "pendingConnection": "等待连接",
@@ -237,7 +238,11 @@
     "computerCount": "{count} 台电脑",
     "selectForDetail": "选择查看详情",
     "noComputers": "暂无电脑",
-    "noComputersDesc": "先生成连接命令注册第一台 daemon。"
+    "noComputersDesc": "先生成连接命令注册第一台 daemon。",
+    "alreadyConnectedTitle": "电脑已连接",
+    "alreadyConnectedDesc": "{name} 已连接到当前 server。你可以保持当前连接，或生成新命令连接另一台电脑。",
+    "keepCurrentConnection": "保持当前连接",
+    "connectAnotherComputer": "连接另一台电脑"
   },
   "tasks": {
     "title": "任务",

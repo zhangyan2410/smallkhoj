@@ -132,10 +132,9 @@ default_db_port() {
     echo "$SMALLKHOJ_DB_PORT"
     return
   fi
-  if ! is_windows && port_is_listening 55432; then
-    echo 55432
-    return
-  fi
+  # 不再按监听状态猜端口：历史上 55432 常被 SSH/worker 占用，盲目切换会把后端
+  # 指到别人的数据库。默认始终使用宿主 5432；需要其他端口时显式设置
+  # SMALLKHOJ_DB_PORT。
   echo 5432
 }
 
@@ -232,10 +231,20 @@ cmd_start() {
   : > "$LOG_DIR/backend.log"
   : > "$LOG_DIR/frontend.log"
 
-  # 如果已经在跑，先停
+  # 如果 PID 文件记录的服务在跑，先停（外部占用端口的情况交给下面的 FORCE_RESTART 处理）
   if read_pid "$BACKEND_PID_FILE" &>/dev/null || read_pid "$FRONTEND_PID_FILE" &>/dev/null; then
     warn "Services already running, stopping first..."
     cmd_stop
+  fi
+
+  # 外部进程占用端口时，默认复用并提示可能是旧 build；需要拿到本 worktree
+  # 最新代码时设置 SMALLKHOJ_DEV_FORCE_RESTART=1，由这里统一重启。
+  local force_restart="${SMALLKHOJ_DEV_FORCE_RESTART:-}"
+  if [[ -n "$force_restart" ]]; then
+    if http_ready "http://localhost:$BACKEND_PORT/docs" || http_ready "http://localhost:$FRONTEND_PORT"; then
+      log "SMALLKHOJ_DEV_FORCE_RESTART set — restarting services to pick up the latest code from $(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo current-worktree)@$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)..."
+      cmd_stop
+    fi
   fi
 
   # ── 启动 backend ──
@@ -243,6 +252,7 @@ cmd_start() {
   if http_ready "http://localhost:$BACKEND_PORT/docs"; then
     be_pid=$(pids_on_port "$BACKEND_PORT" | head -n 1)
     log "Backend already ready on :$BACKEND_PORT (PID ${be_pid:-external})"
+    log "Reusing existing backend; it may be an older build. Run './dev.sh restart' (or SMALLKHOJ_DEV_FORCE_RESTART=1 ./dev.sh start) to pick up the latest code."
   else
     log "Starting backend on :$BACKEND_PORT..."
     cd "$BACKEND_DIR"
@@ -276,6 +286,7 @@ cmd_start() {
   if http_ready "http://localhost:$FRONTEND_PORT"; then
     fe_pid=$(pids_on_port "$FRONTEND_PORT" | head -n 1)
     log "Frontend already ready on :$FRONTEND_PORT (PID ${fe_pid:-external})"
+    log "Reusing existing frontend; it may be an older build. Run './dev.sh restart' (or SMALLKHOJ_DEV_FORCE_RESTART=1 ./dev.sh start) to pick up the latest code."
   else
     log "Starting frontend on :$FRONTEND_PORT..."
     cd "$FRONTEND_DIR"

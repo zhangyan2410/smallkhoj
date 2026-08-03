@@ -858,7 +858,12 @@ async def test_daemon_connect_reuses_offline_same_name_computer_when_machine_id_
         _ExecuteResult(),
         _ExecuteResult(scalar_rows=[]),
     )
+
+    async def fake_push(*_args, **_kwargs):
+        return 0
+
     monkeypatch.setattr(agent_api, "_new_machine_token", lambda: "sk_machine_test_token")
+    monkeypatch.setattr(agent_api, "_push_committed_events", fake_push)
 
     result = await agent_api.connect_daemon(
         agent_api.DaemonConnectRequest(
@@ -881,7 +886,61 @@ async def test_daemon_connect_reuses_offline_same_name_computer_when_machine_id_
     assert existing.status == "online"
     assert existing.detected_runtimes == [{"type": "codex", "status": "available"}]
     assert ticket.consumed_at is not None
-    assert len(db.added) == 1
+    # connect 会记录一条 computer.status.updated 事件（action=connect），
+    # 让前端 RealtimeRefresh 自动刷新，不需要手动 reload。
+    assert len(db.added) == 2
+    connect_event = next(item for item in db.added if getattr(item, "event_type", None) == "computer.status.updated")
+    assert connect_event.payload["action"] == "connect"
+    assert connect_event.payload["computerId"] == str(existing.id)
+
+
+@pytest.mark.asyncio
+async def test_daemon_connect_emits_status_event_for_brand_new_computer(monkeypatch):
+    token = "sk_connect_brand_new"
+    server = SimpleNamespace(id=uuid.uuid4())
+    ticket = _connect_ticket(token, server_id=server.id)
+    db = _FakeSession(
+        _ExecuteResult(scalar_rows=[ticket]),
+        _ExecuteResult(scalar_one=server),
+        _ExecuteResult(scalar_one=None),
+        _ExecuteResult(scalar_one=None),
+        _ExecuteResult(),
+        _ExecuteResult(scalar_rows=[]),
+    )
+
+    pushed = []
+
+    async def fake_push(*_args, **_kwargs):
+        pushed.append(True)
+        return 1
+
+    async def fake_serialize_computer(_db, item):
+        return {"id": str(item.id), "status": item.status}
+
+    monkeypatch.setattr(agent_api, "_new_machine_token", lambda: "sk_machine_test_token")
+    monkeypatch.setattr(agent_api, "_push_committed_events", fake_push)
+    monkeypatch.setattr(agent_api, "_serialize_computer", fake_serialize_computer)
+
+    result = await agent_api.connect_daemon(
+        agent_api.DaemonConnectRequest(
+            daemonId="daemon-new",
+            machineId="brand-new-machine-id",
+            name="brand-new",
+            os="darwin",
+            daemonVersion="0.2.0",
+            detectedRuntimes=[],
+        ),
+        authorization=f"Bearer {token}",
+        db=db,
+    )
+
+    assert result["connected"] is True
+    connect_event = next(item for item in db.added if getattr(item, "event_type", None) == "computer.status.updated")
+    assert connect_event.payload["action"] == "connect"
+    # 新电脑的名字以 ticket 上的 requested_name 为准（_connect_ticket 默认 "Mac-mini.local"），
+    # 与 daemon body 里的 name 无关。
+    assert connect_event.payload["computerName"] == "Mac-mini.local"
+    assert pushed, "connect event must be pushed so the UI refreshes without a manual reload"
 
 
 @pytest.mark.asyncio

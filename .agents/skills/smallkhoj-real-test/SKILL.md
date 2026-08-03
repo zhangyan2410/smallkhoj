@@ -24,27 +24,28 @@ rtk bash .agents/skills/smallkhoj-real-test/scripts/collect-context.sh
 ## 硬边界
 
 - collector 只读，不证明任何候选栈包含待测代码。
-- 宿主 `127.0.0.1:5432` 是受保护的共享/旧数据边界；测试流程不得迁移、stamp、
-  清空、删除或修改其业务数据。
-- `55432` 是历史上被 SSH/worker 占用的非可信端口；不得仅因它监听就自动使用。
+- 宿主 `127.0.0.1:5432` 是本地开发库，可删数据重建（用户已授权）；后端固定走
+  `dev.sh` 解析出的 `DATABASE_URL`（默认 `localhost:5432/smallkhoj`），不要自己猜端口。
+- `55432` 历史上被 SSH/worker 占用，不可信；`dev.sh` 已不再按监听状态自动选它。
 - Docker `local-test` 的 DB 在容器网络内；它与宿主 `:5432` 不是同一个数据库。
-- 不得为了测试运行 `./dev.sh stop`、kill 已有进程、`docker compose down`、修改
-  `alembic_version`、调整 owner/admin，或迁移共享数据库。
-- `./dev.sh start` 会停止它认为已有的服务，并按端口猜数据库；没有明确隔离的
-  `DATABASE_URL`、`BETTER_AUTH_DATABASE_URL` 和候选身份时，不得把它当测试入口。
+- 不得为了测试 kill 与本任务无关的进程、`docker compose down` 别人的栈，或修改
+  `alembic_version` 造假。
+- `./dev.sh start` 默认复用已在跑的进程（可能是旧 build）；要保证用到当前
+  worktree 最新代码，用 `./dev.sh restart` 或 `SMALLKHOJ_DEV_FORCE_RESTART=1 ./dev.sh start`。
 
-需要以上任何环境变更时，先给出准确目标和影响；只有用户明确授权后才能执行。
+需要 kill 他人进程、动共享 Docker 栈或修改数据库 owner/admin 时，先给出准确目标
+和影响；只有用户明确授权后才能执行。
 
 ## 候选身份门禁
 
 先证明页面和 API 来自本次待测 worktree/commit：
 
 1. 记录 worktree、branch、HEAD 和改动范围。
-2. 记录 frontend/backend 的 URL、监听进程或容器 image。
-3. Docker 容器比当前改动更早或无法证明 image 来源时，只能证明旧镜像，不得验收
-   当前前端代码。
-4. `:3000` 页面健康但指向坏的 `:8000`，不得修共享库凑出健康状态；改用已证明的
-   隔离候选，或把本 worktree frontend 显式接到同一隔离候选 backend。
+2. 确认 frontend/backend 进程的启动来源：`dev.sh` 启动的进程对应本 worktree 代码
+   （backend `uv run python main.py` 无热重载，改了后端必须 `./dev.sh restart`；
+   frontend `npm run dev` 有热更新）。Docker 容器除非能证明 image 由当前 commit
+   构建，否则只代表旧镜像。
+3. `:3000` 页面健康但指向坏的 `:8000` 时，修配置让两端同属一个候选，不要凑数据。
 
 候选身份不明时输出 `BLOCKED_CANDIDATE_IDENTITY`，不要继续做截图或业务断言。
 
@@ -80,11 +81,11 @@ rtk bash .agents/skills/smallkhoj-real-test/scripts/collect-context.sh
      --result-out <task-evidence-path>
    ```
 
-6. 页面改动必须有 exact-tab URL/DOM 和截图；状态写入必须有 API 或只读 DB 对账；
-   runtime 回复必须有 `./smallkhoj-trace` 或 live Gate 对账。
+6. 页面改动必须有 exact-tab URL/DOM 和截图；状态写入要有 API 或 DB 对账；
+   runtime 回复要有 `./smallkhoj-trace` 或 live Gate 对账。
 7. 只有同一 marker、同一候选和同一身份贯穿浏览器/API/trace/Gate，才能写 PASS。
 
 ## 结束输出
 
-只报告以下五项：候选身份、使用的 URL、执行的验证、证据路径、PASS 或准确 blocker。
-截图、旧 Docker 镜像、共享数据库修补或未运行的 Gate 都不能扩大解释。
+只报告：候选身份、使用的 URL、执行的验证、证据路径、PASS 或准确 blocker。
+截图、旧 Docker 镜像或未运行的 Gate 都不能扩大解释。

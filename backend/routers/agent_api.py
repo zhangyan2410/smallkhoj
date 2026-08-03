@@ -1660,8 +1660,17 @@ async def connect_daemon(
     computer.last_heartbeat_at = now
     ticket.consumed_at = now
 
+    await _record_computer_status_event(
+        db,
+        server,
+        computer,
+        action="connect",
+        previous_status=None,
+    )
+
     await db.commit()
     await db.refresh(computer)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "connected": True,
         "daemonId": daemon_id,

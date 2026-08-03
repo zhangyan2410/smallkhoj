@@ -32,7 +32,7 @@ import { EmptyState, RuntimeChip, type CategoryTone, StatusPill } from "@/compon
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Panel } from "@/components/ui/panel"
-import { ConnectComputerForm } from "./connect-computer-form"
+import { ConnectComputerDialog } from "./connect-computer-form"
 import { buildComputerReconnectUrl, shouldShowConnectComputerForm } from "@/lib/computer-navigation"
 import {
   apiGet,
@@ -717,7 +717,16 @@ export default async function ComputersPage({
         <nav className="flex h-full min-h-0 flex-col">
           <div className="flex items-center justify-between border-b border-sand-border px-3 py-2.5 text-sm">
             <span className="font-semibold text-sand-ink">{copy.computerCount(computers.length)}</span>
-            <span className="text-xs text-sand-muted">{onlineComputers} {copy.online}</span>
+            <span className="flex items-center gap-2">
+              <span className="text-xs text-sand-muted">{onlineComputers} {copy.online}</span>
+              <ConnectComputerDialog
+                action={createComputerConnectCommandAction}
+                credential={credential}
+                connectedComputerName={connectedComputer?.name}
+                error={error}
+                initialStepsOpen={showConnectComputerForm}
+              />
+            </span>
           </div>
           <div data-inkframe-mobile-role="computers-list" className="min-h-0 min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto p-2">
             {computers.map((computer) => (
@@ -776,15 +785,6 @@ export default async function ComputersPage({
             {copy.runningWorkspaces} <span className="font-medium text-foreground">{runningWorkspaces}</span>
           </span>
         </div>
-
-        {showConnectComputerForm && (
-          <ConnectComputerForm
-            action={createComputerConnectCommandAction}
-            credential={credential}
-            connectedComputerName={connectedComputer?.name}
-            error={error}
-          />
-        )}
 
         {selectedComputer ? (
           <ComputerDetail

@@ -189,6 +189,7 @@
     "tasks": "Tasks",
     "connectNew": "Connect New Computer",
     "connectDesc": "Generate a one-time connect command; the computer is created after the daemon connects.",
+    "addComputer": "Add computer",
     "computerName": "Computer Name",
     "generateConnect": "Generate Connect Command",
     "pendingConnection": "Pending Connection",
@@ -237,7 +238,11 @@
     "computerCount": "{count} computer{count, plural, one {} other {s}}",
     "selectForDetail": "select for detail",
     "noComputers": "No computers returned",
-    "noComputersDesc": "Generate a connect command above to register the first daemon."
+    "noComputersDesc": "Generate a connect command above to register the first daemon.",
+    "alreadyConnectedTitle": "Computer already connected",
+    "alreadyConnectedDesc": "{name} is already connected to this server. You can keep the current connection, or generate a new command to connect a different computer.",
+    "keepCurrentConnection": "Keep current connection",
+    "connectAnotherComputer": "Connect a different computer"
   },
   "tasks": {
     "title": "Tasks",
