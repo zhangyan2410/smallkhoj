@@ -12,4 +12,3 @@
 | **6. Warning strategy** | Reject fixes that merely replace `0.2.1`/`0.2.2` with `0.2.3`, derive `MINIMUM_DAEMON_VERSION` from the release package, import the production version constant as the test oracle, skip WebDriver tests, or rely on packages already installed on a developer machine. |
 | **7. User-visible correction** | No product UI changes. Contributors can bump the Daemon package version once without manually synchronizing CI and current-release test fixtures; PR checks fail for real contract drift rather than stale copies or missing ambient dependencies. |
 | **8. Acceptance** | Focused delivery contracts first fail for missing package-derived exports and missing requirements provisioning, then pass after the workflow fix. Backend current-release tests, complete Daemon tests, complete scripts tests, Backend CI, Integration Gate, Compose schema, and diff checks pass before merge. |
-
