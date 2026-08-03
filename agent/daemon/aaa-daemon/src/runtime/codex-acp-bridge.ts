@@ -124,7 +124,9 @@ export class CodexAcpBridge extends EventEmitter {
     const spawnSpec = runtimeCommandSpawnSpec(command, [...(this.options.args ?? args)]);
     const child = spawn(spawnSpec.command, spawnSpec.args, runtimeProcessSpawnOptions({
       cwd: this.options.cwd,
-      env: { ...process.env, ...(this.options.env ?? {}) },
+      // An explicit env is already the caller-owned child environment. Merging
+      // process.env again would refill launcher-only keys the caller removed.
+      env: { ...(this.options.env ?? process.env) },
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: spawnSpec.shell,
     }));

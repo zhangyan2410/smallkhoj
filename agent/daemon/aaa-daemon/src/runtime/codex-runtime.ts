@@ -73,6 +73,10 @@ export function buildCodexRuntimeEnv(options: CodexRuntimeOptions, baseEnv = pro
   delete env.SLOCK_AGENT_PROXY_TOKEN;
   delete env.SLOCK_AGENT_PROXY_TOKEN_FILE;
   delete env.SLOCK_AGENT_ACTIVE_CAPABILITIES;
+  // An outer `npx --package` exports these launcher-only selectors. Letting
+  // them reach the nested ACP npx command silently replaces its explicit package.
+  delete env.npm_config_package;
+  delete env.NPM_CONFIG_PACKAGE;
 
   return env;
 }

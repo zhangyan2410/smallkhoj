@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -82,6 +82,47 @@ test('codex acp bridge drives initialize, session, prompt and update lifecycle',
     await bridge.loadSession('persisted-session-1');
     assert.equal(bridge.sessionIds.has('persisted-session-1'), true);
   } finally {
+    await bridge.stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('codex acp bridge does not refill keys omitted from an explicit child environment', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-codex-acp-env-boundary-'));
+  const marker = join(root, 'child-env.json');
+  const childEnv = { ...process.env };
+  delete childEnv.npm_config_package;
+  delete childEnv.NPM_CONFIG_PACKAGE;
+  const originalPackage = process.env.npm_config_package;
+  const originalUpperPackage = process.env.NPM_CONFIG_PACKAGE;
+  const bridge = new CodexAcpBridge({
+    command: process.execPath,
+    args: ['--input-type=module', '--eval', `
+import { writeFileSync } from 'node:fs';
+writeFileSync(${JSON.stringify(marker)}, JSON.stringify({
+  package: process.env.npm_config_package ?? null,
+  upperPackage: process.env.NPM_CONFIG_PACKAGE ?? null
+}));
+${fakeAcpEval()}
+`],
+    cwd: root,
+    env: childEnv,
+  });
+
+  process.env.npm_config_package = '/tmp/outer-smallkhoj-daemon.tgz';
+  process.env.NPM_CONFIG_PACKAGE = '/tmp/OUTER-SMALLKHOJ-DAEMON-UPPER.tgz';
+  try {
+    await bridge.start();
+    await bridge.createSession();
+    assert.deepEqual(JSON.parse(readFileSync(marker, 'utf-8')), {
+      package: null,
+      upperPackage: null,
+    });
+  } finally {
+    if (originalPackage === undefined) delete process.env.npm_config_package;
+    else process.env.npm_config_package = originalPackage;
+    if (originalUpperPackage === undefined) delete process.env.NPM_CONFIG_PACKAGE;
+    else process.env.NPM_CONFIG_PACKAGE = originalUpperPackage;
     await bridge.stop();
     rmSync(root, { recursive: true, force: true });
   }

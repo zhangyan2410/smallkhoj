@@ -381,6 +381,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 ### 1. Scope / Trigger
 
 - Trigger: evaluating Codex as a resident runtime to reduce `codex exec resume` per-turn startup overhead.
+- Trigger: launching the resident ACP runtime from a Daemon that may itself have been installed or started through `npx --package`.
 - ACP is a separate runtime path from `codex exec/resume`. Do not replace the stable exec driver until ACP proves startup, session resume/load, prompt, cancel, event translation, and cleanup in local daemon tests.
 - Reference implementation: Neutree Agent Platform `agents/codex` uses `codex-acp` plus an ACP bridge with one child process per active session and LRU eviction.
 
@@ -401,6 +402,10 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
   - `CodexAcpBridge.prompt(sessionId, text) -> PromptResponse`
   - `CodexAcpBridge.cancel(sessionId)`
   - `CodexAcpBridge.stop()`
+- Child environment boundary:
+  - `buildCodexRuntimeEnv(options, baseEnv) -> NodeJS.ProcessEnv`
+  - `CodexAcpBridgeOptions.env?: NodeJS.ProcessEnv`
+  - Outer npm launcher selectors `npm_config_package` and `NPM_CONFIG_PACKAGE` are not child runtime configuration.
 
 ### 3. Contracts
 
@@ -414,6 +419,9 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - `session/new` creates a new runtime session; `session/load` restores an existing runtime session. A failed load must be surfaced as a session-continuity error, not silently converted to a new session.
 - MCP servers are passed to ACP `session/new` / `session/load`, so session-scoped headers such as Slock/session tokens belong there, not in global Codex config.
 - Process cleanup must terminate the process group when launched through wrappers such as `npx`, otherwise the smoke can finish the turn but leave the ACP child alive.
+- `buildCodexRuntimeEnv` must remove lowercase and uppercase outer npm package selectors while preserving unrelated npm registry/proxy/cache/TLS settings. The ACP package is selected by explicit child argv, never by an inherited outer launcher option.
+- When `CodexAcpBridgeOptions.env` is provided, it is the complete caller-owned child environment. `CodexAcpBridge.start()` must not merge `process.env` back into it, because omission is how the caller revokes launcher-only keys. Only an omitted `options.env` falls back to `process.env` for standalone smoke usage.
+- Codex ACP warmup result readiness is explicit: only `type:"result", subtype:"success"` may complete the result gate. Error, cancelled, or structurally incomplete results do not become ready; the separate process-exit event owns the numeric exit code. Successful `session/new` / `session/load` remains an independent positive readiness signal.
 
 ### 4. Validation & Error Matrix
 
@@ -424,19 +432,29 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - prompt returns `stopReason:"cancelled"` -> invocation status `cancelled`.
 - child exits while prompt is in flight -> reject the prompt and mark invocation failed, so backend does not remain `agent`/busy forever.
 - stop/eviction must kill `npx` process groups on POSIX and direct child processes on Windows.
+- Daemon inherited `npm_config_package=<daemon.tgz>` -> remove it before nested `npx -y @zed-industries/codex-acp@...`; do not let the nested launcher select the Daemon tarball again.
+- Explicit bridge env omits a key that exists in `process.env` -> the key stays absent in the child; omission is not refilled from the parent.
+- ACP emits `result:error` without `exitCode`, followed by child exit `127` -> never report `running`; preserve the later exit code and report the workspace as `exited`.
 
 ### 5. Good/Base/Bad Cases
 
 - Good: `@zed-industries/codex-acp@0.16.0` starts through `npx`, creates an ACP session, streams `agent_message_chunk` deltas, emits `usage_update`, returns `stopReason:"end_turn"`, and exits cleanly after `stop()`.
 - Good: public daemon runtime `codex` starts a managed ACP child, creates or loads a session, queues prompts while a turn is in flight, maps ACP updates into daemon-compatible `assistant` / `usage` / `result` events, and reports heartbeat workspace state with `runtime:"codex"`, `sessionId`, `pid`, and `status`.
+- Good: a Daemon launched from a self-hosted tgz removes its outer package selector, preserves `npm_config_registry`, and the nested npx initializes the explicitly requested ACP package.
 - Base: fake ACP server exercises initialize/session/prompt/update/cancel without requiring model credentials.
+- Base: the standalone ACP smoke omits `options.env` and intentionally inherits the smoke process environment.
 - Bad: use ACP only for prompt but keep Slock/MCP session headers in global `.codex/config.toml`; concurrent sessions can leak identity or lose per-session auth.
 - Bad: kill only the `npx` wrapper and leave `codex-acp` running.
+- Bad: sanitize a copied env and then spawn with `{ ...process.env, ...sanitizedEnv }`; deleted keys are absent from the second object and therefore reappear from the first.
 
 ### 6. Tests Required
 
 - Unit/integration: fake ACP child covers initialize, `session/new`, `session/load`, `session/prompt`, `session/update`, and process stop.
+- Unit: `buildCodexRuntimeEnv` removes both package-selector casings and preserves an unrelated npm registry setting.
+- Process integration: set an outer package selector, provide an explicit child env that omits it, and assert the ACP bridge child observes neither selector.
+- Daemon integration: an ACP child exiting `127` before session creation produces `starting -> exited`, never `running`, and emits no running agent heartbeat.
 - Smoke: real `@zed-industries/codex-acp` starts via npx and completes one prompt locally.
+- Package smoke: build/extract the Daemon tgz, set that tgz as the outer selector, import the packaged runtime/bridge, and prove real ACP initialize succeeds through nested npx.
 - Future runtime integration: daemon heartbeat includes ACP `sessionId`, `pid`, `busy`, queued count, and last event time.
 - Future MCP integration: session-scoped Slock MCP headers are visible to the ACP session and not persisted globally.
 
@@ -448,10 +466,20 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 Treat `codex-acp` as a global singleton for all agents and all channel workspaces.
 ```
 
+```typescript
+// Reintroduces keys deliberately removed by sanitizedEnv.
+env: { ...process.env, ...sanitizedEnv }
+```
+
 #### Correct
 
 ```text
 Keep ACP session identity scoped to one daemon-managed agent/workspace runtime, then add TTL/count eviction once reuse is proven.
+```
+
+```typescript
+// Explicit env is authoritative; fallback only when no env was supplied.
+env: { ...(options.env ?? process.env) }
 ```
 
 ## Scenario: Daemon-Local Runtime Provider Selection
