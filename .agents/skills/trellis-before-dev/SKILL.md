@@ -1,13 +1,19 @@
 ---
 name: trellis-before-dev
-description: "在 SmallKhoj 开发前收集当前任务、规范、代码入口、Git/worktree、Integration Gate 基线、真实 UI/runtime 验证和部署边界。用于开始或恢复功能、Bug 修复、重构，以及切换受影响 layer 后刷新上下文。"
+description: "SmallKhoj full-lane 开发前上下文与基线收集。仅用于显式 Trellis/integration/release 工作或高风险跨层改动；不用于 contained local fast path。"
 ---
 
 # 开发前准备
 
 在编辑代码前建立本次任务的上下文和验证基线。
 
-## 必须执行
+## Local fast path 豁免
+
+符合 `.trellis/workflow.md` 的 contained local fast path 时不要加载本 skill。若已经加载，确认 dirty state、直接相关代码/spec 和一个 focused validation target 后即停止；不要创建 task/worktree，不跑 Integration Gate 基线、real-test collector、E2E、remote review 或 GitHub CI。
+
+以下“必须执行”只适用于 full lane：用户明确要求 Trellis 规划、并行隔离、PR/CI、main integration、release/deploy，或改动涉及数据库迁移/破坏性数据、auth/security、公开契约、广泛跨层架构。
+
+## Full lane 必须执行
 
 1. 完整读取统一中文入口：
    `docs/agent-development-and-verification-workflow.zh-CN.md`。

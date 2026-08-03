@@ -6,7 +6,7 @@
 
 1. **Plan before code** — figure out what to do before you start
 2. **Specs injected, not remembered** — guidelines are injected via hook/skill, not recalled from memory
-3. **Persist everything** — research, decisions, and lessons all go to files; conversations get compacted, files don't
+3. **Persist durable knowledge** — record decisions and reusable lessons; contained local changes do not need task artifacts
 4. **Incremental development** — one task at a time
 5. **Capture learnings** — after each task, review and write new knowledge back to spec
 
@@ -152,15 +152,29 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 ### Request Triage
 
 - Simple conversation: no task by default for answer-only, read-only inspection, status reports, or narrow lookup work.
-- Inline small task: a contained one-turn edit can run inline when it can be understood and verified immediately; state why inline is acceptable.
-- Full Trellis task: create a task for multi-file code, workflow/platform changes, runtime behavior, user-visible UI, architecture, or decisions that should leave durable task/spec context.
+- Local fast path: the default for a contained local bug fix or small feature that can be understood in one turn and verified with one focused command. Work inline in the current worktree; no Trellis task, new worktree/branch, PR, remote review, GitHub CI wait, full suite, E2E, or pre-change baseline by default.
+- Full Trellis task: use only when the user explicitly asks for planning/integration/release/PR/CI, parallel agents need isolation, or the change crosses a high-risk boundary (database migration/destructive data, auth/security, deployment/release, public contract, or broad cross-layer architecture).
 - Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
 - User approval to create a task is not approval to start implementation. Planning still happens first.
+
+### Local Fast Path (Default)
+
+Use this path while SmallKhoj is being developed locally:
+
+1. Inspect only the relevant code/spec and current dirty state.
+2. Make the smallest contained change directly in the current worktree.
+3. Run the smallest focused verification that can catch a regression in the changed behavior. A bug-fix RED/GREEN run may execute that same focused target before and after the edit; do not add unrelated gates.
+4. If verification fails because of the change, fix it and rerun only that failed/relevant target. Do not rerun already-green checks when relevant code has not changed.
+5. Report the local result. Commit, branch, PR, remote review, GitHub CI, E2E, release, and deployment are separate opt-in actions.
+
+Escalate to the full lane only when a high-risk boundary above is present or the user explicitly requests it. File count alone does not force escalation when the change remains mechanically contained.
 
 ### SmallKhoj Project Guardrails
 
 - Shell commands in this project use `rtk` as the command prefix.
-- Browser-facing frontend verification uses the project WebDriver wrapper `./twd`; do not call `twd.py` directly and do not substitute Playwright for repo UI verification.
+- Browser-facing verification, when the changed behavior actually requires it, uses the project WebDriver wrapper `./twd`; do not call `twd.py` directly. The local fast path does not run browser/E2E checks for non-UI changes.
+- GitHub CI is manual and non-blocking for local completion. Never trigger or wait for it unless the user explicitly asks for CI/integration/release validation.
+- Do not duplicate gates: one scope-matched local verification is the default, and an unchanged green target is not rerun.
 - MCP visibility, skill visibility, channel/runtime UI, self-hosting surfaces, and agent workspace chrome must consult the reference-project guide before design: `.trellis/spec/guides/reference-projects.md`.
 - Codex default dispatch is inline. Codex per-turn workflow breadcrumbs require user-level `[features].hooks = true` and the SmallKhoj `UserPromptSubmit` hook approved/enabled.
 
@@ -184,7 +198,8 @@ Create new children with `task.py create "<title>" --slug <name> --parent <paren
 
 [workflow-state:no_task]
 No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
-Simple conversation: answer directly without a task. Inline small task: allowed only when it is contained and immediately verifiable; state why inline is acceptable. Full Trellis task: create one for multi-file code, workflow/platform changes, runtime behavior, user-visible UI, architecture, or durable decisions.
+Simple conversation: answer directly. Local fast path: contained local fixes/features run inline in the current worktree with one focused verification; do not create a task/worktree/PR or run full suites, E2E, remote review, or GitHub CI unless explicitly requested or a high-risk boundary applies.
+Full Trellis task: reserve it for explicit planning/integration/release/PR/CI, parallel isolation, database/destructive-data, auth/security, deployment, public-contract, or broad architectural work.
 Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
 [/workflow-state:no_task]
 
@@ -302,7 +317,7 @@ When a user request matches one of these intents inside an active task, route fi
 
 - Task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
 - PRD-only is valid for lightweight tasks; complex tasks need `design.md` + `implement.md`.
-- Planning must be persisted to task artifacts; checks must run before reporting completion.
+- Full-lane planning must be persisted to task artifacts. The local fast path uses one scope-matched verification before reporting completion; full suites and external gates are opt-in.
 
 ### Loading Step Detail
 

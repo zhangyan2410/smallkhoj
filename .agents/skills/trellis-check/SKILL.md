@@ -1,11 +1,26 @@
 ---
 name: trellis-check
-description: "Comprehensive quality verification: spec compliance, lint, type-check, tests, cross-layer data flow, code reuse, and consistency checks. Use when code is written and needs quality verification, before committing changes, or to catch context drift during long sessions."
+description: "Scope-aware SmallKhoj verification. Local fast path runs one focused regression target once; comprehensive lint/typecheck/tests/cross-layer checks are reserved for explicit integration/release or high-risk changes."
 ---
 
-# Code Quality Check
+# Scope-Aware Code Quality Check
 
-Comprehensive quality verification for recently written code. Combines spec compliance, cross-layer safety, and pre-commit checks.
+Verify recently written code in proportion to risk without duplicating gates.
+
+## Step 0: Select One Mode
+
+### Local fast path (default)
+
+Use when the change is contained and does not touch database migrations/destructive data, auth/security, deployment/release, a public contract, or broad cross-layer architecture.
+
+- No task artifact, worktree, branch, PR, remote review, GitHub CI, E2E, or full-suite requirement.
+- Select the single smallest command that exercises the changed behavior.
+- A bug-fix RED/GREEN cycle may run the same focused target before and after the edit.
+- After GREEN, do not run broader or duplicate checks unless the relevant code changes again.
+
+### Full lane
+
+Use only when the user explicitly requests integration/release/PR/CI validation or a high-risk boundary above applies. Full lane follows every applicable step below.
 
 ---
 
@@ -18,7 +33,9 @@ git status
 
 ## Step 2: Read Task Artifacts and Applicable Specs
 
-Read the current task artifacts in order:
+Local fast path: read only the directly applicable spec/guideline; no task is required.
+
+Full lane: read the current task artifacts in order:
 
 - `prd.md`
 - `design.md` if present
@@ -38,7 +55,9 @@ Read the specific guideline files referenced — the index is a pointer, not the
 
 ## Step 3: Run Project Checks
 
-Run the project's lint, type-check, and test commands. Fix any failures before proceeding.
+Local fast path: run one focused test, type-check, lint target, or contract command chosen for the changed behavior. Do not automatically combine all four categories.
+
+Full lane: run the applicable project lint, type-check, and test commands. E2E and GitHub CI remain explicit integration/release gates rather than automatic additions.
 
 ## Step 4: Review Against Checklist
 
@@ -64,7 +83,7 @@ Run the project's lint, type-check, and test commands. Fix any failures before p
 
 ## Step 5: Cross-Layer Dimensions (if applicable)
 
-Skip this step if your change is confined to a single layer.
+Skip this step for the local fast path or any change confined to a single layer.
 
 ### A. Data Flow (changes touch 3+ layers)
 
@@ -95,4 +114,4 @@ Skip this step if your change is confined to a single layer.
 
 ## Step 6: Report and Fix
 
-Report violations found and fix them directly. Re-run project checks after fixes.
+Report violations found and fix them directly. Re-run only the failed/relevant focused target after a fix. Do not rerun already-green checks when relevant code has not changed. Run the comprehensive set only in full-lane work.
