@@ -24,6 +24,10 @@ import {
   resolveRuntimeProviderLaunch,
 } from '../dist/runtime/runtime-provider.js';
 
+const DAEMON_PACKAGE_VERSION = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
+).version;
+
 function startServer(handler) {
   const requests = [];
   const server = http.createServer((req, res) => {
@@ -1931,7 +1935,7 @@ test('smallkhoj-daemon packaged CLI connect starts daemon with one-time ticket',
     if (url.pathname === '/internal/agent-api/daemon/connect') {
       assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
       const payload = JSON.parse(body);
-      assert.equal(payload.daemonVersion, '0.2.2');
+      assert.equal(payload.daemonVersion, DAEMON_PACKAGE_VERSION);
       res.end(JSON.stringify({
         connected: true,
         daemonId: 'daemon-cli-connect',
@@ -1985,7 +1989,7 @@ test('smallkhoj-daemon packaged CLI connect starts daemon with one-time ticket',
       assert.fail(`packaged CLI connect exited before daemon registration\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
     }
     const firstRegister = registerBodies[0];
-    assert.equal(firstRegister.daemonVersion, '0.2.2');
+    assert.equal(firstRegister.daemonVersion, DAEMON_PACKAGE_VERSION);
     assert.equal(firstRegister.workspaces.length, 0);
     assert.equal(daemon.exitCode, null, `daemon exited early\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
@@ -2007,7 +2011,7 @@ test('smallkhoj-daemon supports Raft-style one-line npx onboarding arguments', a
     if (url.pathname === '/internal/agent-api/daemon/connect') {
       assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
       const payload = JSON.parse(body);
-      assert.equal(payload.daemonVersion, '0.2.2');
+      assert.equal(payload.daemonVersion, DAEMON_PACKAGE_VERSION);
       res.end(JSON.stringify({
         connected: true,
         daemonId: 'daemon-npx-style-connect',
@@ -2055,7 +2059,7 @@ test('smallkhoj-daemon supports Raft-style one-line npx onboarding arguments', a
     if (registerBodies.length === 0) {
       assert.fail(`one-line npx-style onboarding exited before daemon registration\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
     }
-    assert.equal(registerBodies[0].daemonVersion, '0.2.2');
+    assert.equal(registerBodies[0].daemonVersion, DAEMON_PACKAGE_VERSION);
     assert.equal(daemon.exitCode, null, `daemon exited early\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
     daemon.kill('SIGTERM');

@@ -61,20 +61,27 @@ class DeliveryContractTest(unittest.TestCase):
 
         self.assertNotIn("continue-on-error: true", workflow)
 
+    def test_source_hygiene_installs_webdriver_requirements_before_scripts_tests(self):
+        workflow = WORKFLOW.read_text()
+        source_job = workflow.split("  source-hygiene:", 1)[1].split("  backend:", 1)[0]
+        install_command = (
+            "python3 -m pip install --requirement "
+            "agent/daemon/webdriver/requirements.txt"
+        )
+
+        self.assertIn(install_command, source_job)
+        self.assertLess(source_job.index(install_command), source_job.index("make scripts-test"))
+
     def test_ci_runs_authenticated_flow_against_disposable_services(self):
         workflow = WORKFLOW.read_text()
         self.assertIn("  authenticated-e2e:", workflow)
         e2e_job = workflow.split("  authenticated-e2e:", 1)[1]
-        daemon_version = json.loads(
-            (ROOT / "agent" / "daemon" / "aaa-daemon" / "package.json").read_text()
-        )["version"]
 
         for fragment in (
             "needs: [backend, frontend]",
             "E2E_DATABASE_SCOPE: disposable",
             "E2E_PUBLIC_API_KEY:",
             "E2E_RUN_NAMESPACE:",
-            "E2E_DAEMON_VERSION:",
             "make migration-check",
             "uv run uvicorn main:app",
             "http://127.0.0.1:8000/api/health",
@@ -101,8 +108,23 @@ class DeliveryContractTest(unittest.TestCase):
         self.assertIn("--env BETTER_AUTH_DATABASE_URL", e2e_job)
         self.assertNotIn("host.docker.internal", e2e_job)
         self.assertNotIn("--env BETTER_AUTH_DATABASE_URL=", e2e_job)
-        self.assertIn(f'DAEMON_RELEASE_VERSION: "{daemon_version}"', e2e_job)
-        self.assertIn(f'E2E_DAEMON_VERSION: "{daemon_version}"', e2e_job)
+        self.assertIn("agent/daemon/aaa-daemon/package.json", e2e_job)
+        self.assertIn("DAEMON_RELEASE_VERSION=$daemon_version", e2e_job)
+        self.assertIn("E2E_DAEMON_VERSION=$daemon_version", e2e_job)
+        self.assertIn('"$GITHUB_ENV"', e2e_job)
+        self.assertIn("Daemon package version must be a stable semantic version", e2e_job)
+        self.assertIn("sys.exit(", e2e_job)
+        self.assertNotIn("assert isinstance(value", e2e_job)
+        for variable in (
+            "daemon_version",
+            "DAEMON_RELEASE_VERSION",
+            "E2E_DAEMON_VERSION",
+        ):
+            self.assertNotRegex(
+                e2e_job,
+                rf"(?m){variable}(?:\s*:|=)\s*[\"']?\d+\.\d+\.\d+",
+                f"{variable} must be derived from package.json, not assigned a version literal",
+            )
 
     def test_local_command_matrix_matches_ci(self):
         makefile = (ROOT / "Makefile").read_text()
