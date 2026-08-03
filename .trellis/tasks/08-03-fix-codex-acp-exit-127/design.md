@@ -11,6 +11,7 @@ outer npx --package=<daemon.tgz>
   -> SmallKhoj Daemon process.env (npm_config_package=<daemon.tgz>)
   -> startRuntimeForAgent copies process.env into baseEnv
   -> buildCodexRuntimeEnv clones baseEnv
+  -> CodexAcpBridge merges process.env back over the sanitized omission
   -> CodexAcpBridge spawns npx -y @zed-industries/codex-acp@0.16.0
   -> nested npx selects <daemon.tgz> from inherited config
   -> ACP bridge closes / child exits 127
@@ -31,6 +32,8 @@ outer npx --package=<daemon.tgz>
 The requested ACP package remains explicit in `resolveCodexAcpLaunchCommand().args`, so the inherited package selector has no legitimate authority in the child. Other npm settings remain available for private registries, proxies, caches, and TLS.
 
 This is preferable to changing the generated outer launch command: external users may invoke the Daemon through npm/npx in several supported ways, while the child boundary is centralized and testable.
+
+`CodexAcpBridgeOptions.env` is a complete child environment, not a partial overlay. When it is supplied, `start()` clones it without first spreading `process.env`; otherwise a key deliberately removed by the builder is silently restored. Standalone callers that omit `env` continue to inherit `process.env`.
 
 ### 2. Make readiness semantic, not absence-based
 
@@ -64,15 +67,19 @@ The primary status fix is to prevent the false running write. A direct stopped/o
 1. Environment unit regression:
    - seed both selector casings plus an unrelated npm registry variable;
    - assert selectors are absent and registry remains.
-2. Readiness negative matrix:
+2. Bridge process-boundary regression:
+   - set the selector on the parent process;
+   - pass an explicit child environment that omits it;
+   - assert the spawned ACP child observes neither selector.
+3. Readiness negative matrix:
    - error, cancelled, and missing subtype do not pass;
    - explicit success does pass.
-3. Daemon lifecycle regression:
+4. Daemon lifecycle regression:
    - launch a disposable fake ACP command that exits `127` before session creation;
    - capture Daemon lifecycle and agent-heartbeat requests;
    - assert no running state was sent for the failed generation and an exited state with the real code appears in trace/log evidence.
-4. Existing successful ACP integration remains the positive end-to-end control.
-5. Isolated packaging verification recreates the outer-selector environment without using the shared Daemon or protected database.
+5. Existing successful ACP integration remains the positive end-to-end control.
+6. Isolated packaging verification extracts the built tgz, imports its packaged `dist`, and recreates the outer-selector environment without using the shared Daemon or protected database.
 
 ## Operational safety and rollback
 

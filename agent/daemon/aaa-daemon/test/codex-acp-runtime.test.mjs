@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import { writeSlockWrapper } from '../dist/runtime/slock-wrapper.js';
 import { CodexAcpRuntimeDriver, resolveCodexAcpLaunchCommand } from '../dist/runtime/codex-acp-runtime.js';
+import { buildCodexRuntimeEnv } from '../dist/runtime/codex-runtime.js';
 
 function waitFor(predicate, timeoutMs = 5_000) {
   const started = Date.now();
@@ -197,6 +198,27 @@ test('codex acp runtime resolves npx.cmd on Windows PATH', () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('codex runtime env drops outer npx package selectors without dropping registry config', () => {
+  const env = buildCodexRuntimeEnv({
+    credential: {
+      serverUrl: 'http://127.0.0.1:9',
+      token: 'sk_machine_test',
+      agentId: 'agent-acp-env',
+    },
+    workspacePath: '/tmp/codex-acp-env-workspace',
+    wrapperDir: '/tmp/codex-acp-env-wrapper',
+  }, {
+    PATH: process.env.PATH ?? '',
+    npm_config_package: '/tmp/smallkhoj-daemon.tgz',
+    NPM_CONFIG_PACKAGE: '/tmp/SMALLKHOJ-DAEMON-UPPER.tgz',
+    npm_config_registry: 'https://registry.example.test/',
+  });
+
+  assert.equal(env.npm_config_package, undefined);
+  assert.equal(env.NPM_CONFIG_PACKAGE, undefined);
+  assert.equal(env.npm_config_registry, 'https://registry.example.test/');
 });
 
 test('codex acp runtime sends allowlisted control slash prompts without Slock wrapper', async () => {

@@ -12,9 +12,9 @@
   "assignee": "张岩.ean",
   "createdAt": "2026-08-03",
   "completedAt": null,
-  "branch": null,
+  "branch": "feat/fix-codex-acp-exit-127",
   "base_branch": "main",
-  "worktree_path": null,
+  "worktree_path": "/Users/code/project/smallkhoj-fix-codex-acp-exit-127",
   "commit": null,
   "pr_url": null,
   "subtasks": [],
@@ -22,9 +22,11 @@
   "parent": null,
   "relatedFiles": [
     "agent/daemon/aaa-daemon/src/runtime/codex-runtime.ts",
+    "agent/daemon/aaa-daemon/src/runtime/codex-acp-bridge.ts",
     "agent/daemon/aaa-daemon/src/runtime/codex-acp-runtime.ts",
     "agent/daemon/aaa-daemon/src/daemon/daemon.ts",
     "agent/daemon/aaa-daemon/test/codex-acp-runtime.test.mjs",
+    "agent/daemon/aaa-daemon/test/codex-acp-mvp.test.mjs",
     "agent/daemon/aaa-daemon/test/daemon-runtime.test.mjs",
     "backend/routers/agent_api.py",
     "backend/tests/test_daemon_control.py"

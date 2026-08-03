@@ -1448,6 +1448,103 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
   }
 });
 
+test('daemon does not mark Codex ACP ready when the child exits 127 before creating a session', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-codex-acp-exit-127-'));
+  const failingAcp = join(root, 'failing-acp.mjs');
+  const registerBodies = [];
+  const agentHeartbeatBodies = [];
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/register' || url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      registerBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({ ok: true, registered: true, controlCommands: [] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/daemon/shutdown') {
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/heartbeat') {
+      agentHeartbeatBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/events') {
+      res.end(JSON.stringify({ count: 0, events: [] }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeFileSync(failingAcp, 'process.exit(127);\n');
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'none',
+    '--agent-id', 'agent-acp-exit-127',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'codex',
+    '--runtime-command', process.execPath,
+    '--runtime-command-arg', failingAcp,
+    '--register-daemon',
+  ], {
+    cwd: resolve('.'),
+    env: { ...process.env, SLOCK_AGENT_TOKEN: 'sk_machine_real', SLOCK_ALLOW_WRITES: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stdout = '';
+  let stderr = '';
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+
+  try {
+    await waitFor(() => /runtime agent-acp-exit-127 exited: code=127/.test(stderr));
+    await waitFor(() => /runtime agent-acp-exit-127 error:/.test(stderr));
+    await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => (
+      workspace.agentId === 'agent-acp-exit-127' && workspace.status === 'exited'
+    ))));
+
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+
+    const workspaceStates = registerBodies.flatMap(item => (
+      item.workspaces ?? []
+    )).filter(workspace => (
+      workspace.agentId === 'agent-acp-exit-127'
+    )).map(workspace => workspace.status);
+
+    assert.ok(workspaceStates.includes('exited'), `workspace states: ${workspaceStates.join(', ')}`);
+    assert.equal(workspaceStates.includes('running'), false, `workspace states: ${workspaceStates.join(', ')}`);
+    assert.equal(agentHeartbeatBodies.some(item => item.workspaceStatus === 'running'), false);
+    assert.doesNotMatch(stderr, /Runtime agent-acp-exit-127 ready/);
+    assert.match(stderr, /runtime agent-acp-exit-127 exited: code=127/);
+  } catch (err) {
+    assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    if (daemon.exitCode === null) {
+      daemon.kill('SIGTERM');
+      await waitForExit(daemon);
+    }
+    await upstream.close();
+    await new Promise(resolveCleanup => setTimeout(resolveCleanup, 1000));
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
+  }
+});
+
 test('daemon handles backend start_runtime control command dynamically', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-control-runtime-'));
   const runtimeWorkspace = join(root, '.slock-runtimes', 'server-control', 'computer-control', 'workspace-dynamic');

@@ -1002,8 +1002,8 @@ export class DaemonCore extends EventEmitter {
       // advertised as ready/online.
       if (!runtime.ready) {
         if (runtime.runtime === 'codex' && eventType === 'result') {
-          const exitCode = isRecord(event) && typeof event.exitCode === 'number' ? event.exitCode : undefined;
-          if (exitCode === undefined || exitCode === 0) {
+          const subtype = isRecord(event) && typeof event.subtype === 'string' ? event.subtype : undefined;
+          if (subtype === 'success') {
             this.markRuntimeReady(runtime, 'codex_acp_warmup_complete');
           }
         }
