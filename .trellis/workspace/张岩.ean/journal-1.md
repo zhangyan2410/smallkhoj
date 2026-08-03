@@ -492,3 +492,36 @@ Fixed the 'loading workbench' flash on page switches. Corrected an initial misdi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: Fix Codex ACP nested npx exit 127
+
+**Date**: 2026-08-03
+**Task**: Fix Codex ACP nested npx exit 127
+**Branch**: `feat/fix-codex-acp-exit-127`
+
+### Summary
+
+Removed outer npx package selectors at the Codex child boundary, made explicit ACP bridge environments authoritative, and required explicit-success readiness so exit 127 never appears running.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0d26ab9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
