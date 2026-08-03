@@ -1,0 +1,248 @@
+{
+  "budget": {},
+  "caseId": "codex-appserver-handshake",
+  "cleanup": {
+    "notes": [
+      "process state: terminated"
+    ],
+    "remainingOwnedPids": [],
+    "status": "complete"
+  },
+  "controlResult": {
+    "codexHome": "<HOME>/.codex",
+    "platformFamily": "unix",
+    "platformOs": "macos",
+    "userAgent": "Codex Desktop/0.144.3 (Mac OS 15.5.0; arm64) dumb (smallkhoj-capability-probe; 1)"
+  },
+  "endedAt": "2026-07-14T02:59:21.497822Z",
+  "evidenceId": "appserver-20260714-v2/codex-appserver-handshake/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "cec15b5bf27aa800c0c3b5841765dc2c5498dead12708bde35562bb4211cb5b6",
+    "beforeDigest": "cec15b5bf27aa800c0c3b5841765dc2c5498dead12708bde35562bb4211cb5b6",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/appserver-20260714-v2/codex/appserver-handshake"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "codex",
+      "app-server",
+      "--stdio"
+    ],
+    "providerSessionIds": [
+      "id_ea1b303227c2"
+    ],
+    "transport": "json_rpc"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:59:21.374487Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.374718Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 1,
+          "resultKeys": [
+            "codexHome",
+            "platformFamily",
+            "platformOs",
+            "userAgent"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T02:59:21.374734Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "remoteControl/status/changed",
+          "paramsKeys": [
+            "environmentId",
+            "installationId",
+            "serverName",
+            "status"
+          ],
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T02:59:21.387182Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.387897Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.388745Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.389716Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.417883Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.418990Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.420305Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.420968Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.421660Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T02:59:21.456218Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 2,
+          "resultKeys": [
+            "activePermissionProfile",
+            "approvalPolicy",
+            "approvalsReviewer",
+            "cwd",
+            "instructionSources",
+            "model",
+            "modelProvider",
+            "multiAgentMode",
+            "reasoningEffort",
+            "runtimeWorkspaceRoots",
+            "sandbox",
+            "serviceTier",
+            "thread"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    }
+  ],
+  "posthocEvidenceNormalization": {
+    "protocolFramesSummarized": 13,
+    "sessionUpdateChunksAggregated": 0
+  },
+  "provider": "codex",
+  "redaction": {
+    "count": 32,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "appserver-20260714-v2",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:59:21.323255Z",
+  "surface": "codex-appserver",
+  "terminal": {
+    "adapterState": "control_handshake_completed",
+    "contradictorySignals": []
+  },
+  "uncertainties": [],
+  "versions": {}
+}

@@ -1,0 +1,8 @@
+- generic [active] [ref=f1e1]:
+  - heading "ink-material-engine · 回归测试套件" [level=1] [ref=f1e2]
+  - paragraph [ref=f1e3]: 全数值断言，不靠视觉。每个测试：读初始值 → 操作 → 等帧 → 读终值 → 判定变化方向。 用来验证方案 A（lift + source 绑定 fixed + 彩色墨）每一步是否真的生效，改坏引擎立刻能看出。
+  - generic [ref=f1e4]: 点 "run all" 开始。
+  - paragraph [ref=f1e7]:
+    - button "run all" [ref=f1e8] [cursor=pointer]
+    - button "load cat first" [ref=f1e9] [cursor=pointer]
+    - text: （部分测试需要先加载图）

@@ -1,0 +1,69 @@
+{
+  "caseId": "claude-help",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:47:09.530821Z",
+  "evidenceId": "static-20260714-v2/claude-help/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "176a60678a80fce6b34e648603ae28e6725bc44bf760c832277a22c7ec4f6371",
+    "beforeDigest": "176a60678a80fce6b34e648603ae28e6725bc44bf760c832277a22c7ec4f6371",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714-v2/claude/claude-help"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "claude",
+      "--help"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:47:09.530389Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "claude",
+          "--help"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:47:09.530627Z",
+      "kind": "output",
+      "payload": {
+        "text": {
+          "bytes": 15595,
+          "kind": "digest",
+          "sha256": "6c5e44dd5a1c5b04f7deb4d734ac6d2585561509c6a2d5deaed6914665e03b29"
+        }
+      },
+      "source": "stdout"
+    }
+  ],
+  "provider": "claude",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714-v2",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:47:09.432748Z",
+  "surface": "claude-stream-json",
+  "terminal": {
+    "adapterState": "passed",
+    "contradictorySignals": [],
+    "processExitCode": 0
+  },
+  "uncertainties": [],
+  "versions": {}
+}

@@ -1,0 +1,7 @@
+{"file":".trellis/tasks/07-17-human-guided-harness-audit-mvp/research.md","reason":"MVP-specific Claude adapter, MiniMax calibration, harness-manifest, CLI placement, and validation research."}
+{"file":".trellis/tasks/07-17-coding-agent-harness-diagnostics/research.md","reason":"Parent evidence survey and cross-tool/native-source constraints that the first adapter must preserve."}
+{"file":".trellis/spec/guides/reference-projects.md","reason":"Required prior-art routing before implementing agent/tool visibility or harness inspection concepts."}
+{"file":".trellis/spec/guides/runtime-debugging-sop.md","reason":"Existing evidence-source and MiniMax provider caveats for runtime/session facts and source authority."}
+{"file":".trellis/tasks/archive/2026-06/06-15-minimax-agent-reply-latency/info.md","reason":"Verified MiniMax native-session versus provider-aggregate correction used by the authority regression."}
+{"file":".trellis/tasks/archive/2026-07/06-19-channel-task-workspace-optimization/evidence/runtask-productivity-smoke-20260624.md","reason":"Historical non-trivial MiniMax-M3/Claude Code run proposed for private calibration."}
+{"file":"docs/multi-agent-development-workflow.md","reason":"Required sibling-worktree, real-runtime evidence, review, and merge workflow."}

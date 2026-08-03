@@ -15,6 +15,52 @@ import {
 export type ChatUnreadEntry = ActivityUnreadEntry
 export type ChatUnreadStore = ActivityUnreadStore
 
+/**
+ * 「当前频道正在查看时新到消息」的本地序号推进事件。
+ * channel-client 收到当前频道的 message.created 时 dispatch，
+ * chat-sidebar 监听后把实体 latestSeq 推进、再回写服务端 read-cursor ——
+ * 否则 SSR 实体的 latestSeq 停在进频道那一刻，停留期间收到的消息在下次
+ * SSR 时又被服务端 unreadCount 算出来（看过了还显示未读的回闪）。
+ */
+export const CHAT_LATEST_SEQ_EVENT = "smallkhoj:chat-latest-seq"
+
+export type ChatLatestSeqDetail = {
+  channelId?: string
+  channelName?: string
+  messageSeq: number
+}
+
+/**
+ * 从 message.created 事件提取「正在查看的频道序号推进」信息。
+ * 供 channel-client 的 SSE 处理器调用（该处理器已按 shouldHandleRealtimeEvent
+ * 过滤过，事件一定属于当前频道）。载荷里 channel 字段形如 "#general"，scope
+ * 带 kind/id/name；seq/messageSeq 是频道内消息序号。
+ */
+export function chatLatestSeqDetailFromEvent(event: {
+  scope: Pick<EventScope, "kind" | "id" | "name">
+  payload: Record<string, unknown>
+}): ChatLatestSeqDetail | null {
+  const rawSeq = event.payload?.messageSeq ?? event.payload?.seq
+  const messageSeq = typeof rawSeq === "number" ? rawSeq : typeof rawSeq === "string" ? Number(rawSeq) : NaN
+  if (!Number.isFinite(messageSeq) || messageSeq <= 0) return null
+  const channelId = typeof event.scope?.id === "string" && event.scope.id ? event.scope.id : undefined
+  const rawName =
+    (typeof event.scope?.name === "string" && event.scope.name) ||
+    (typeof event.payload?.channel === "string" ? (event.payload.channel as string) : "")
+  const channelName = rawName.trim().replace(/^#/, "") || undefined
+  if (!channelId && !channelName) return null
+  return { channelId, channelName, messageSeq }
+}
+
+export function notifyChatLatestSeq(
+  target: Pick<Window, "dispatchEvent"> | undefined,
+  detail: ChatLatestSeqDetail,
+) {
+  if (!target || !(detail.messageSeq > 0)) return
+  if (!detail.channelId && !detail.channelName) return
+  target.dispatchEvent(new CustomEvent(CHAT_LATEST_SEQ_EVENT, { detail }))
+}
+
 export type ChatUnreadEntity = {
   id?: string | null
   name?: string | null

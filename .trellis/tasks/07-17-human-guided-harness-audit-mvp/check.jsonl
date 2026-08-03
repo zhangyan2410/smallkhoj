@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/07-17-human-guided-harness-audit-mvp/research.md","reason":"Check implementation claims against the MVP's actual evidence, privacy, adapter, and calibration boundaries."}
+{"file":".trellis/tasks/07-17-coding-agent-harness-diagnostics/research.md","reason":"Verify the child preserves parent evidence authority, tool/model separation, and long-term adapter boundaries."}
+{"file":".trellis/spec/guides/runtime-debugging-sop.md","reason":"Verify runtime/provider symptoms are sourced correctly and are not promoted into unsupported causal conclusions."}
+{"file":".trellis/tasks/archive/2026-06/06-15-minimax-agent-reply-latency/info.md","reason":"Regression oracle for conflicting MiniMax provider and native-session usage values."}
+{"file":".trellis/tasks/archive/2026-07/06-19-channel-task-workspace-optimization/evidence/runtask-productivity-smoke-20260624.md","reason":"Historical outcome and tool-activity evidence for calibration utility review."}
+{"file":"docs/multi-agent-development-workflow.md","reason":"Verify implementation, subject run, and acceptance evidence come from the intended branches/worktrees."}

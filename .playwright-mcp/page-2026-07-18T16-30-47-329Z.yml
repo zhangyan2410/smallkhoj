@@ -1,0 +1,78 @@
+- generic [active] [ref=f5e1]:
+  - generic: ink material · idle · — · —
+  - generic: drag to draw · right-click / b = water · scripted demo below
+  - generic [ref=f5e3]:
+    - generic [ref=f5e4]:
+      - generic [ref=f5e5]: tool
+      - generic [ref=f5e6]:
+        - button "墨笔" [ref=f5e7] [cursor=pointer]
+        - button "水刷" [ref=f5e8] [cursor=pointer]
+    - generic [ref=f5e9]:
+      - generic [ref=f5e10]: state
+      - generic [ref=f5e11]:
+        - button "干纸" [ref=f5e12] [cursor=pointer]
+        - button "运行" [ref=f5e13] [cursor=pointer]
+        - button "审阅" [ref=f5e14] [cursor=pointer]
+        - button "固化" [ref=f5e15] [cursor=pointer]
+        - button "阻塞" [ref=f5e16] [cursor=pointer]
+    - generic [ref=f5e17]:
+      - generic [ref=f5e18]: preset
+      - generic [ref=f5e19]:
+        - button "reference" [ref=f5e20] [cursor=pointer]
+        - button "干墨笔" [ref=f5e21] [cursor=pointer]
+        - button "demo" [ref=f5e22] [cursor=pointer]
+    - generic [ref=f5e23]:
+      - generic [ref=f5e24]: quality
+      - generic [ref=f5e25]:
+        - button "low" [ref=f5e26] [cursor=pointer]
+        - button "med" [ref=f5e27] [cursor=pointer]
+        - button "high" [ref=f5e28] [cursor=pointer]
+    - generic [ref=f5e29]:
+      - generic [ref=f5e30]: feel
+      - generic [ref=f5e31]:
+        - button "默认" [ref=f5e32] [cursor=pointer]
+        - button "粗" [ref=f5e33] [cursor=pointer]
+        - button "细" [ref=f5e34] [cursor=pointer]
+        - button "多水" [ref=f5e35] [cursor=pointer]
+        - button "干笔" [ref=f5e36] [cursor=pointer]
+    - generic [ref=f5e37]:
+      - generic [ref=f5e38]: 水感 water
+      - generic [ref=f5e39]:
+        - button "旋转" [ref=f5e40] [cursor=pointer]
+        - button "静水" [ref=f5e41] [cursor=pointer]
+        - button "水洗" [ref=f5e42] [cursor=pointer]
+        - button "飞溅" [ref=f5e43] [cursor=pointer]
+        - button "露珠" [ref=f5e44] [cursor=pointer]
+    - generic [ref=f5e45]:
+      - generic [ref=f5e46]: size
+      - slider [ref=f5e47] [cursor=pointer]: "0.5"
+    - generic [ref=f5e48]:
+      - generic [ref=f5e49]: flow
+      - slider [ref=f5e50] [cursor=pointer]: "0.6"
+    - generic [ref=f5e51]:
+      - generic [ref=f5e52]: bleed
+      - slider [ref=f5e53] [cursor=pointer]: "0.5"
+    - generic [ref=f5e54]:
+      - generic [ref=f5e55]: dry
+      - slider [ref=f5e56] [cursor=pointer]: "0.45"
+    - generic [ref=f5e57]:
+      - generic [ref=f5e58]: ink
+      - slider [ref=f5e59] [cursor=pointer]: "0.8"
+    - generic [ref=f5e60]:
+      - generic [ref=f5e61]: penWet
+      - slider [ref=f5e62] [cursor=pointer]: "0.16"
+    - generic [ref=f5e63]:
+      - generic [ref=f5e64]: brushInk
+      - slider [ref=f5e65] [cursor=pointer]: "0"
+    - generic [ref=f5e66]:
+      - generic [ref=f5e67]: swirl 搅动
+      - slider [ref=f5e68] [cursor=pointer]: "0.6"
+    - generic [ref=f5e69]:
+      - generic [ref=f5e70]: vortex 涡度
+      - slider [ref=f5e71] [cursor=pointer]: "1"
+    - generic [ref=f5e72]:
+      - generic [ref=f5e73]: action
+      - generic [ref=f5e74]:
+        - button "固化 fix" [ref=f5e75] [cursor=pointer]
+        - button "scripted demo" [ref=f5e76] [cursor=pointer]
+        - button "清纸" [ref=f5e77] [cursor=pointer]

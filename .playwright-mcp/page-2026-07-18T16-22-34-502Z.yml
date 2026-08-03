@@ -1,0 +1,15 @@
+- generic [ref=f2e1]:
+  - heading "ink-material-engine · 回归测试套件" [level=1] [ref=f2e2]
+  - paragraph [ref=f2e3]: 全数值断言，不靠视觉。每个测试：读初始值 → 操作 → 等帧 → 读终值 → 判定变化方向。 用来验证方案 A（lift + source 绑定 fixed + 彩色墨）每一步是否真的生效，改坏引擎立刻能看出。
+  - generic [ref=f2e6]:
+    - generic [ref=f2e11]: "TEST 1: pen() 写 mobile ink"
+    - generic [ref=f2e12]: ✓ ink max 增加
+    - generic [ref=f2e13]: ✓ ink nonZero 增加
+    - generic [ref=f2e14]: "TEST 2: brush() 写 wet 不写 ink"
+    - generic [ref=f2e15]: ✓ wet 增加
+    - generic [ref=f2e16]: ✓ brush 不写 ink（mobile 几乎不变）
+    - generic [ref=f2e17]: "TEST 3: fix() mobile → fixed"
+  - paragraph [ref=f2e7]:
+    - button "run all" [active] [ref=f2e8] [cursor=pointer]
+    - button "load cat first" [ref=f2e9] [cursor=pointer]
+    - text: （部分测试需要先加载图）

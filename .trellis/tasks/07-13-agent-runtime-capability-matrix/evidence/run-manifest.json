@@ -1,0 +1,93 @@
+{
+  "checks": [
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/codex-version/evidence.json",
+      "id": "codex-version",
+      "provider": "codex",
+      "status": "passed",
+      "surface": "codex-exec"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/codex-exec-help/evidence.json",
+      "id": "codex-exec-help",
+      "provider": "codex",
+      "status": "passed",
+      "surface": "codex-exec"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/codex-appserver-schema/evidence.json",
+      "id": "codex-appserver-schema",
+      "provider": "codex",
+      "status": "passed",
+      "surface": "codex-appserver"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/claude-version/evidence.json",
+      "id": "claude-version",
+      "provider": "claude",
+      "status": "passed",
+      "surface": "claude-stream-json"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/claude-help/evidence.json",
+      "id": "claude-help",
+      "provider": "claude",
+      "status": "passed",
+      "surface": "claude-stream-json"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/kimi-version/evidence.json",
+      "id": "kimi-version",
+      "provider": "kimi",
+      "status": "passed",
+      "surface": "kimi-prompt"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/kimi-help/evidence.json",
+      "id": "kimi-help",
+      "provider": "kimi",
+      "status": "passed",
+      "surface": "kimi-prompt"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/opencode-version/evidence.json",
+      "id": "opencode-version",
+      "provider": "opencode",
+      "status": "passed",
+      "surface": "opencode-serve"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/opencode-help/evidence.json",
+      "id": "opencode-help",
+      "provider": "opencode",
+      "status": "passed",
+      "surface": "opencode-serve"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/qoder-version/evidence.json",
+      "id": "qoder-version",
+      "provider": "qoder",
+      "status": "not_executed",
+      "surface": "qoder-cli"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/zcode-version/evidence.json",
+      "id": "zcode-version",
+      "provider": "zcode",
+      "status": "not_executed",
+      "surface": "zcode-cli"
+    },
+    {
+      "evidence": "/Users/code/project/smallkhoj/.trellis/tasks/07-13-agent-runtime-capability-matrix/evidence/static-20260714-v2/pi-version/evidence.json",
+      "id": "pi-version",
+      "provider": "pi",
+      "status": "not_executed",
+      "surface": "pi-owned-loop-candidate"
+    }
+  ],
+  "kind": "static-preflight",
+  "modelBearingInputsReserved": 0,
+  "perProviderLimit": 2,
+  "runId": "static-20260714-v2",
+  "schemaVersion": 1
+}

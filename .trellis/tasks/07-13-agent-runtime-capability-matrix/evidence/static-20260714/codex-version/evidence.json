@@ -1,0 +1,65 @@
+{
+  "caseId": "codex-version",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:45:12.837416Z",
+  "evidenceId": "static-20260714/codex-version/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "54134e98d0346667bad757240bdcfd76d381d79b2a1c0e177e9205c13cf699ea",
+    "beforeDigest": "54134e98d0346667bad757240bdcfd76d381d79b2a1c0e177e9205c13cf699ea",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714/codex/codex-version"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "codex",
+      "--version"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:45:12.837160Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "codex",
+          "--version"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:45:12.837362Z",
+      "kind": "output",
+      "payload": {
+        "text": "codex-cli 0.144.3\n"
+      },
+      "source": "stdout"
+    }
+  ],
+  "provider": "codex",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:45:12.791065Z",
+  "surface": "codex-exec",
+  "terminal": {
+    "adapterState": "passed",
+    "contradictorySignals": [],
+    "processExitCode": 0
+  },
+  "uncertainties": [],
+  "versions": {}
+}

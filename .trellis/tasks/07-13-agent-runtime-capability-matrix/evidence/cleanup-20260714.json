@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "kind": "task-local-cleanup-report",
+  "completedAt": "2026-07-14T04:01:14Z",
+  "scope": "/tmp/smallkhoj-agent-runtime-capability-matrix",
+  "checks": {
+    "ownedProcessRegistry": "no running or cancel_requested records before removal",
+    "temporaryFixtureAndRawRoot": "removed",
+    "sharedLiveBudgetLedger": "removed with the temporary root after task-local reconciliation was preserved",
+    "sanitizedTaskEvidence": "preserved under .trellis/tasks/07-13-agent-runtime-capability-matrix/evidence",
+    "evidenceVerifier": "passed after temporary-root removal",
+    "productionSourceChanges": "none"
+  },
+  "residualUncertainty": [
+    "The Codex app-server dynamic evidence remains delivery_uncertain because a user-level hook executed before cleanup; no additional Codex call was made."
+  ]
+}

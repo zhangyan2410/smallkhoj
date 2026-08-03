@@ -1,0 +1,67 @@
+{
+  "caseId": "zcode-version",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:47:10.957034Z",
+  "evidenceId": "static-20260714-v2/zcode-version/1",
+  "executionStatus": "not_executed",
+  "fixture": {
+    "afterDigest": "ad893f2be66de103cf28598c0de2183131d0d36c02fc00b6d9f22b094e18a58f",
+    "beforeDigest": "ad893f2be66de103cf28598c0de2183131d0d36c02fc00b6d9f22b094e18a58f",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714-v2/zcode/zcode-version"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "zcode",
+      "--version"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:47:10.956911Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "zcode",
+          "--version"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:47:10.956993Z",
+      "kind": "result-reason",
+      "payload": {
+        "reason": "zcode is not installed on PATH"
+      },
+      "source": "controller"
+    }
+  ],
+  "provider": "zcode",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714-v2",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:47:10.956812Z",
+  "surface": "zcode-cli",
+  "terminal": {
+    "adapterState": "not_executed",
+    "contradictorySignals": [],
+    "processExitCode": null
+  },
+  "uncertainties": [
+    "zcode is not installed on PATH"
+  ],
+  "versions": {}
+}

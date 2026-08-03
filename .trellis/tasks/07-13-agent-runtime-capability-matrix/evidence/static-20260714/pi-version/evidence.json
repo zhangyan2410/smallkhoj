@@ -1,0 +1,67 @@
+{
+  "caseId": "pi-version",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:45:14.973611Z",
+  "evidenceId": "static-20260714/pi-version/1",
+  "executionStatus": "not_executed",
+  "fixture": {
+    "afterDigest": "49fbe3393433839d39825ac8aced34abac77292d8c4ae6aa51e4674476a8c690",
+    "beforeDigest": "49fbe3393433839d39825ac8aced34abac77292d8c4ae6aa51e4674476a8c690",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714/pi/pi-version"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "pi",
+      "--version"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:45:14.973484Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "pi",
+          "--version"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:45:14.973563Z",
+      "kind": "result-reason",
+      "payload": {
+        "reason": "pi is not installed on PATH"
+      },
+      "source": "controller"
+    }
+  ],
+  "provider": "pi",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:45:14.973378Z",
+  "surface": "pi-owned-loop-candidate",
+  "terminal": {
+    "adapterState": "not_executed",
+    "contradictorySignals": [],
+    "processExitCode": null
+  },
+  "uncertainties": [
+    "pi is not installed on PATH"
+  ],
+  "versions": {}
+}

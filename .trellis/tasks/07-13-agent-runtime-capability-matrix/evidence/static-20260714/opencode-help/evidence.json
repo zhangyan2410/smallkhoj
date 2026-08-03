@@ -1,0 +1,69 @@
+{
+  "caseId": "opencode-help",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:45:14.927682Z",
+  "evidenceId": "static-20260714/opencode-help/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "e7b58ad080fa98de99143778400756930c31b0a20abf6ea971074055b60e9913",
+    "beforeDigest": "e7b58ad080fa98de99143778400756930c31b0a20abf6ea971074055b60e9913",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714/opencode/opencode-help"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "opencode",
+      "--help"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:45:14.927320Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "opencode",
+          "--help"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:45:14.927574Z",
+      "kind": "output",
+      "payload": {
+        "text": {
+          "bytes": 4285,
+          "kind": "digest",
+          "sha256": "b594ad32674bf8008017157833ab87316170523ed23dbd10c37ae9931d2ba178"
+        }
+      },
+      "source": "stderr"
+    }
+  ],
+  "provider": "opencode",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:45:14.705847Z",
+  "surface": "opencode-serve",
+  "terminal": {
+    "adapterState": "passed",
+    "contradictorySignals": [],
+    "processExitCode": 0
+  },
+  "uncertainties": [],
+  "versions": {}
+}

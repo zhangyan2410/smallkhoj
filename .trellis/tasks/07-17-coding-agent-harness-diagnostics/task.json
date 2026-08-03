@@ -1,0 +1,28 @@
+{
+  "id": "coding-agent-harness-diagnostics",
+  "name": "coding-agent-harness-diagnostics",
+  "title": "Coding Agent Harness Diagnostics",
+  "description": "Build a local-first, evidence-backed audit workflow that explains how requirements, context, tools, workflow, human intervention, and agent decisions shape a coding-agent outcome, then identifies the next harness improvement without conflating coding tools with models.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "agent-audit",
+  "package": null,
+  "priority": "P1",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-07-17",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-17-human-guided-harness-audit-mvp"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

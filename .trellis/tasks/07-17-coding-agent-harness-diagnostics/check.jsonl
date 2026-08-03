@@ -1,0 +1,5 @@
+{"file":".trellis/tasks/07-17-coding-agent-harness-diagnostics/research.md","reason":"Check the initiative against its evidence sources, non-goals, MiniMax caveats, and staged product decisions."}
+{"file":".trellis/spec/guides/reference-projects.md","reason":"Verify the initiative did not invent incompatible agent-platform or capability-visibility semantics."}
+{"file":".trellis/tasks/07-16-session-observability-console/prd.md","reason":"Verify the new initiative remains separate from the existing operational session-observer benchmark."}
+{"file":".trellis/tasks/archive/2026-06/06-15-minimax-agent-reply-latency/info.md","reason":"Verify source-authority rules prevent repeating the disproven MiniMax context-size attribution."}
+{"file":"docs/multi-agent-development-workflow.md","reason":"Verify child work remains isolated, reviewable, and tied to the correct worktree/runtime evidence."}

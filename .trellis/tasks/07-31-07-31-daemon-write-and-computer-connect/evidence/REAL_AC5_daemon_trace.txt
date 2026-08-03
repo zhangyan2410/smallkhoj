@@ -1,0 +1,20 @@
+# Daemon control-plane trace (redacted)
+## daemon-run.log (key lines)
+[Daemon] claude_code runtime 04e86b2f-c316-42d1-8f0d-4c19e82f4807 exited: code=null signal=SIGTERM
+[Daemon] claude_code runtime started for agent f14450ec-1cf0-4fde-9f8b-b75b5e3e5390: pid=45852 (status=starting, awaiting warmup)
+[Daemon] claude_code runtime f14450ec-1cf0-4fde-9f8b-b75b5e3e5390 exited: code=null signal=SIGTERM
+[Daemon] claude_code runtime started for agent f14450ec-1cf0-4fde-9f8b-b75b5e3e5390: pid=46991 (status=starting, awaiting warmup)
+[Daemon] claude_code runtime f14450ec-1cf0-4fde-9f8b-b75b5e3e5390 exited: code=null signal=SIGTERM
+[Daemon] claude_code runtime started for agent f14450ec-1cf0-4fde-9f8b-b75b5e3e5390: pid=47389 (status=starting, awaiting warmup)
+[Daemon] claude_code runtime f14450ec-1cf0-4fde-9f8b-b75b5e3e5390 exited: code=null signal=SIGTERM
+[Daemon] claude_code runtime started for agent f14450ec-1cf0-4fde-9f8b-b75b5e3e5390: pid=47574 (status=starting, awaiting warmup)
+[Daemon] claude_code runtime f14450ec-1cf0-4fde-9f8b-b75b5e3e5390 exited: code=null signal=SIGTERM
+[Daemon] claude_code runtime started for agent f14450ec-1cf0-4fde-9f8b-b75b5e3e5390: pid=47801 (status=starting, awaiting warmup)
+[Daemon] claude_code runtime f14450ec-1cf0-4fde-9f8b-b75b5e3e5390 exited: code=null signal=SIGTERM
+[Daemon] claude_code runtime started for agent f14450ec-1cf0-4fde-9f8b-b75b5e3e5390: pid=48007 (status=starting, awaiting warmup)
+
+## fake runtime marker
+{"allowWrites":"1","serverInfoOk":true,"sendOk":true,"writesBlocked":false,"wrapperDir":"/tmp/smallkhoj-local-connect.ac4-20260731-1723/workspaces-fake/.slock-runtimes/26c991a5-6d01-4d4c-b12f-891b190e8cfb/72e0233a-f71b-4105-b6ce-85f288c78413/2828fc11-90ce-4367-b43f-795c7bd7c212/.slock"}
+## runtime interaction log
+{"ts":"2026-07-31T10:15:29.305Z","type":"user_full_text","text":"## Slock Memory Context\npolicy=selective scope=channel:053de255-ff61-4166-8010-1a659acc1780\nUse these snippets as orientation only. For full details, call `slock memory read` or `slock memory search`.\n\nRead more:\n- slock memory search --scope channel --query <terms>\n- slock memory read --scope task --path <path>\n\n[event=message.created eventSeq=1075 trace=chat-send:ms8se1ce:cda721f1-cb4 target=#general channel=053de255-ff61-4166-8010-1a659acc1780 msg=3a64d7e5-8e21-4d8c-a3d3-76ba7310a757 time=2026-07-31T10:15:29.200695+00:00 actor=da37075a-5e4c-4854-8c89-e6e3c7e9e5fc type=message.created] @LOCA"}
+{"ts":"2026-07-31T10:15:29.860Z","type":"user_received","text":"## Slock Memory Context\npolicy=selective scope=channel:053de255-ff61-4166-8010-1a659acc1780\nUse these snippets as orientation only. For full details, call `slock memory read` or `slock memory search`.","messageId":null,"channel":null,"sender":null,"sendOk":true,"sendStderr":"","writesBlocked":false}

@@ -1,0 +1,478 @@
+{
+  "budget": {
+    "codex": {
+      "limit": 2,
+      "remaining": 0,
+      "reservedOrConsumed": 2
+    }
+  },
+  "caseId": "codex-appserver-active-steer-interrupt",
+  "cleanup": {
+    "notes": [
+      "process state: terminated"
+    ],
+    "remainingOwnedPids": [],
+    "status": "complete"
+  },
+  "controlResult": {
+    "codexHome": "<HOME>/.codex",
+    "platformFamily": "unix",
+    "platformOs": "macos",
+    "userAgent": "Codex Desktop/0.144.3 (Mac OS 15.5.0; arm64) dumb (smallkhoj-capability-probe; 1)"
+  },
+  "endedAt": "2026-07-14T03:18:04.138329Z",
+  "evidenceId": "codex-steer-20260714/codex-appserver-active-steer-interrupt/1",
+  "executionStatus": "delivery_uncertain",
+  "fixture": {
+    "afterDigest": "4cbbb858749f379745ad5992ec1a287cf6119b4cd003a56f57dc2dc473dab366",
+    "beforeDigest": "4cbbb858749f379745ad5992ec1a287cf6119b4cd003a56f57dc2dc473dab366",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/codex-steer-20260714/codex/appserver-active-steer-interrupt"
+  },
+  "interrupt": {
+    "attempted": true,
+    "outcome": "accepted",
+    "response": {}
+  },
+  "invocation": {
+    "commandRedacted": [
+      "codex",
+      "app-server",
+      "--stdio"
+    ],
+    "providerSessionIds": [
+      "id_ef4056ae9d07"
+    ],
+    "providerTurnIds": [
+      "id_c98d0f3bc0f6"
+    ],
+    "transport": "json_rpc"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T03:18:03.932041Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:03.932312Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 1,
+          "resultKeys": [
+            "codexHome",
+            "platformFamily",
+            "platformOs",
+            "userAgent"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:03.932329Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "remoteControl/status/changed",
+          "paramsKeys": [
+            "environmentId",
+            "installationId",
+            "serverName",
+            "status"
+          ],
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:03.959410Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:03.959959Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:03.960642Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:03.961951Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:03.963009Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:03.963948Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:03.992513Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:03.993401Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:03.993970Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "unclassified",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stderr"
+    },
+    {
+      "at": "2026-07-14T03:18:04.030910Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 2,
+          "resultKeys": [
+            "activePermissionProfile",
+            "approvalPolicy",
+            "approvalsReviewer",
+            "cwd",
+            "instructionSources",
+            "model",
+            "modelProvider",
+            "multiAgentMode",
+            "reasoningEffort",
+            "runtimeWorkspaceRoots",
+            "sandbox",
+            "serviceTier",
+            "thread"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.030945Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "thread/started",
+          "paramsKeys": [
+            "thread"
+          ],
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.030951Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "mcpServer/startupStatus/updated",
+          "paramsKeys": [
+            "error",
+            "failureReason",
+            "name",
+            "status",
+            "threadId"
+          ],
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.031952Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 3,
+          "resultKeys": [
+            "turn"
+          ]
+        },
+        "reservationId": "id_c58d7a091398"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.033330Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "thread/status/changed",
+          "paramsKeys": [
+            "status",
+            "threadId"
+          ],
+          "protocol": "jsonrpc"
+        },
+        "reservationId": "id_c58d7a091398"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.033375Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "turn/started",
+          "paramsKeys": [
+            "threadId",
+            "turn"
+          ],
+          "protocol": "jsonrpc"
+        },
+        "reservationId": "id_c58d7a091398"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.034319Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "hookSource": "user",
+          "kind": "notification",
+          "method": "hook/started",
+          "payload": "redacted",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": "id_2bc9320229bf"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.034677Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 4,
+          "resultKeys": [
+            "turnId"
+          ]
+        },
+        "reservationId": "id_2bc9320229bf"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.101067Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "hookSource": "user",
+          "kind": "notification",
+          "method": "hook/completed",
+          "payload": "redacted",
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.101102Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "item/started",
+          "paramsKeys": [
+            "item",
+            "startedAtMs",
+            "threadId",
+            "turnId"
+          ],
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.101106Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "item/completed",
+          "paramsKeys": [
+            "completedAtMs",
+            "item",
+            "threadId",
+            "turnId"
+          ],
+          "protocol": "jsonrpc"
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:18:04.101628Z",
+      "kind": "jsonrpc-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 5,
+          "resultKeys": []
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    }
+  ],
+  "postInterruptSessionUsability": "unverified_no_third_model_input",
+  "posthocEvidenceNormalization": {
+    "protocolFramesSummarized": 24,
+    "sessionUpdateChunksAggregated": 0
+  },
+  "posthocSafetyAssessment": {
+    "basis": "sanitized hook/started and hook/completed observations identify source=user and a <HOME>/.codex/hooks.json path",
+    "conclusion": "the protocol observations remain available, but a fixture-only/no-side-effect claim is not justified"
+  },
+  "provider": "codex",
+  "redaction": {
+    "count": 76,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "codex-steer-20260714",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [
+      "user-level Codex hook executed outside the disposable fixture"
+    ],
+    "risk": "external_or_unknown"
+  },
+  "startedAt": "2026-07-14T03:18:03.874214Z",
+  "steer": {
+    "attempted": true,
+    "outcome": "accepted",
+    "turnId": "id_c98d0f3bc0f6"
+  },
+  "surface": "codex-appserver",
+  "terminal": {
+    "adapterState": "active_turn_steer_and_interrupt_observed",
+    "contradictorySignals": [
+      "user-level hook ran outside fixture boundary"
+    ]
+  },
+  "turnStarted": {
+    "method": "turn/started",
+    "params": {
+      "threadId": "id_ef4056ae9d07",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "id_c98d0f3bc0f6",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1783999084,
+        "status": "inProgress"
+      }
+    }
+  },
+  "uncertainties": [
+    "posthoc safety normalization: user-level Codex hook execution prevents a no-side-effect claim"
+  ],
+  "versions": {}
+}

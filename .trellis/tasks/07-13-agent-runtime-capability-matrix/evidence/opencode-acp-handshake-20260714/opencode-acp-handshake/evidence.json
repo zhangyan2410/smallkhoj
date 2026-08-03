@@ -1,0 +1,143 @@
+{
+  "agentCapabilities": {
+    "loadSession": true,
+    "mcpCapabilities": {
+      "http": true,
+      "sse": true
+    },
+    "promptCapabilities": {
+      "embeddedContext": true,
+      "image": true
+    },
+    "sessionCapabilities": {
+      "close": {},
+      "fork": {},
+      "list": {},
+      "resume": {}
+    }
+  },
+  "budget": {},
+  "caseId": "opencode-acp-handshake",
+  "cleanup": {
+    "notes": [
+      "process state: terminated"
+    ],
+    "remainingOwnedPids": [],
+    "status": "complete"
+  },
+  "endedAt": "2026-07-14T03:27:50.754606Z",
+  "evidenceId": "opencode-acp-handshake-20260714/opencode-acp-handshake/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "b8c2ba9bc42fb6782b836f98983d5f6d93e80bb4c68b61f00e88662e7a5d7647",
+    "beforeDigest": "b8c2ba9bc42fb6782b836f98983d5f6d93e80bb4c68b61f00e88662e7a5d7647",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/opencode-acp-handshake-20260714/opencode/acp-handshake"
+  },
+  "initialize": {
+    "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+        "http": true,
+        "sse": true
+      },
+      "promptCapabilities": {
+        "embeddedContext": true,
+        "image": true
+      },
+      "sessionCapabilities": {
+        "close": {},
+        "fork": {},
+        "list": {},
+        "resume": {}
+      }
+    },
+    "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.17.13"
+    },
+    "authMethods": [
+      {
+        "description": "Run `opencode auth login` in the terminal",
+        "id": "opencode-login",
+        "name": "Login with opencode"
+      }
+    ],
+    "protocolVersion": 1
+  },
+  "invocation": {
+    "commandRedacted": [
+      "opencode",
+      "--pure",
+      "acp",
+      "--cwd",
+      "/tmp/smallkhoj-agent-runtime-capability-matrix/opencode-acp-handshake-20260714/opencode/acp-handshake"
+    ],
+    "providerSessionIds": [
+      "id_3c69ecd11056"
+    ],
+    "transport": "acp"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T03:27:50.494278Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "protocolVersion": 1,
+          "requestId": 1,
+          "resultKeys": [
+            "agentCapabilities",
+            "agentInfo",
+            "authMethods",
+            "protocolVersion"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:27:50.708180Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 2,
+          "resultKeys": [
+            "configOptions",
+            "sessionId"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    }
+  ],
+  "posthocEvidenceNormalization": {
+    "protocolFramesSummarized": 2,
+    "sessionUpdateChunksAggregated": 0
+  },
+  "provider": "opencode",
+  "redaction": {
+    "count": 4,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "opencode-acp-handshake-20260714",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T03:27:49.823624Z",
+  "surface": "opencode-acp",
+  "terminal": {
+    "adapterState": "acp_initialize_and_session_new_completed",
+    "contradictorySignals": []
+  },
+  "uncertainties": [],
+  "versions": {}
+}

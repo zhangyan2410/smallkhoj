@@ -48,6 +48,62 @@ python D:\ai\khoj\smallkhoj\agent\daemon\webdriver\twd.py tabs
 
 输出是 JSON，适合 Claude Code / Codex 解析。
 
+## 测试流程 SOP（怎么开始测当前项目）
+
+三个前提，缺一不可：①bridge 在跑；②扩展已装在某个浏览器里并连上 bridge；
+③那个浏览器里有一个已打开的目标页 tab。下面按顺序排查。
+
+### 1. bridge 在跑吗
+
+```bash
+agent/daemon/webdriver/twd --compact tabs        # 能列出 tab = bridge 活着
+# 或看端口：未指定 TWD_PORT 时默认 28765，HTTP 控制口 = 端口+1
+lsof -nP -iTCP:28765 -sTCP:LISTEN                # 有输出 = master 在跑
+```
+
+`tabs` 能返回 JSON（哪怕 count:0）说明 bridge 正常；若连不上，先 `twd serve` 起常驻 master。
+
+### 2. 扩展连的是哪个浏览器 / 第一个 tab 从哪来
+
+`twd` 只能操作**已经连上 bridge 的 tab**，自己不会开新 tab，`goto` 也只能导航已有 tab。
+出 `NO_TAB` 时，先确认扩展装在哪个浏览器、bridge 实际连的是哪个进程：
+
+```bash
+lsof -nP -iTCP:28765 | grep ESTABLISHED          # 末列 COMMAND 就是持有扩展的浏览器
+```
+
+在**那个浏览器**里打开目标页（用系统 `open` 指到同一 app，或手动开），扩展会自动捕获新 tab：
+
+```bash
+open -a "<上面查到的浏览器 app 名>" "http://127.0.0.1:3000/<path>"   # macOS
+# 不可脚本化时，手动在该浏览器里开该 URL 也可以
+```
+
+几秒后 `twd tabs` 里就应出现这个 tab。**不要在别的浏览器里开**（如 Playwright/自动化 Chromium），它们没装扩展，bridge 看不到。
+
+> 注：具体是哪个浏览器是**本机环境事实**（换机器就变），不要把品牌写死进脚本；
+> 永远用上面的 `lsof` 现场确认。
+
+### 3. 需要登录的页面
+
+受 `X-Public-Key` 保护的页面（如 `/api/v1/*`、登录态页）用项目 guard 一次性注入会话，
+不要手工猜账号：
+
+```bash
+./tools/twd-guard/twd-open /tasks                 # 打开并校验落点路径
+./tools/twd-guard/twd-auth <account>              # 经 trusted bridge 注入 smallkhoj_session
+./tools/twd-guard/twd-eval /tasks "return {path: location.pathname}"
+```
+
+guard 需 `AUTH_BRIDGE_SECRET`（本地 dev 默认值见 `backend/.env.example`；
+生产后端用各自部署 secret，**不要把 secret 写进日志/报告/提交**）。
+
+### 4. 开始测
+
+有了已连接 + 已登录的 tab，回到下面「常用命令」。每个真测用唯一 marker
+（`REAL_<task>_<时间戳>`），证据放当前 task 的 `evidence/`，至少有
+exact-tab URL/DOM + API 或 DB 对账，详见 `docs/real-test-sop-template.md`。
+
 ## 常用命令
 
 ### 列出 tab

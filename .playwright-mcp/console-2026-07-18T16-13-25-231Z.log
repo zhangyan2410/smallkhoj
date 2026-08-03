@@ -1,0 +1,5 @@
+[   69954ms] [WARNING] WebGL: INVALID_ENUM: pixelStorei: invalid parameter name @ http://localhost:8791/ink-material-engine.js?v=2:1308
+[   69958ms] [WARNING] WebGL: INVALID_ENUM: pixelStorei: invalid parameter name @ http://localhost:8791/ink-material-engine.js?v=2:1310
+[  114231ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ http://localhost:8791/ink-material-engine.js?v=2:1342
+[  114802ms] [WARNING] WebGL: INVALID_ENUM: pixelStorei: invalid parameter name @ http://localhost:8791/ink-material-engine.js?v=2:1308
+[  114802ms] [WARNING] WebGL: INVALID_ENUM: pixelStorei: invalid parameter name @ http://localhost:8791/ink-material-engine.js?v=2:1310

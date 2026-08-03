@@ -1,0 +1,36 @@
+{
+  "marker": "REAL_AC5_20260731",
+  "controlPlane": "local feature backend :8100 + frontend :3100 (DB postgres:55432/smallkhoj)",
+  "computer": {
+    "name": "LOCAL_DAEMON_AC4_20260731_1723",
+    "status": "online",
+    "daemonVersion": "0.2.1"
+  },
+  "agent": {
+    "name": "LOCAL_UI_AGENT_180703",
+    "runtime": "claude_code",
+    "createdVia": "Members page Create-agent UI dialog"
+  },
+  "channel": {
+    "name": "#general",
+    "memberCount": 2
+  },
+  "uiInteraction": [
+    {
+      "direction": "human->agent",
+      "ts": "2026-07-31 10:15:29",
+      "content": "@LOCAL_UI_AGENT_180703 LOCAL_PING_AC5_FINAL8526"
+    },
+    {
+      "direction": "agent->channel",
+      "ts": "2026-07-31 10:15:29",
+      "content": "LOCAL_ACK_AC5_20260731_1736 pong:LOCAL_PING_AC5_FINAL8526"
+    }
+  ],
+  "runtimeMarker": {
+    "allowWrites": "1",
+    "serverInfoOk": true,
+    "sendOk": true,
+    "writesBlocked": false
+  }
+}

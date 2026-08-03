@@ -64,21 +64,33 @@ export function detectedRuntimesForInventory(
   inventory: RuntimeProviderInventory,
   bundledPi: BundledPiLayout | undefined = resolveBundledPiLayout(),
 ): Array<DetectedRuntime & Record<string, unknown>> {
+  // 固定上报 4 种产品支持的 runtime，可用性只看本机 CLI 检测，不依赖 ccswitch
+  // 配置 —— 没装 ccswitch 的用户也能看到准确的「这台机器能跑什么」。
+  // provider 条目（ccswitch/ccs-claude/manual/opencode-config）作为可选附加信息
+  // 继续上报，供 Provider 下拉等高级用法使用。
+  void config;
   const base: Array<DetectedRuntime & Record<string, unknown>> = [
     {
-      type: config.runtime ?? 'claude_code',
-      status: 'available',
+      type: 'claude_code',
+      status: inventory.claudeCommand ? 'available' : 'not_installed',
     },
-  ];
-
-  if (bundledPi) {
-    base.push({
+    {
+      type: 'codex',
+      status: inventory.codexCommand ? 'available' : 'not_installed',
+    },
+    {
+      type: 'opencode',
+      status: inventory.opencodeCommand ? 'available' : 'not_installed',
+    },
+    // Pi 是产品内置 runtime，检测层面恒可用；bundled layout 缺失只影响实际启动，
+    // 不应该让「检测到的运行时」把它显示成未安装（灰色）。
+    {
       type: 'pi',
       status: 'available',
       source: 'bundled',
-      version: bundledPi.version,
-    });
-  }
+      ...(bundledPi?.version ? { version: bundledPi.version } : {}),
+    },
+  ];
 
   for (const provider of inventory.providers) {
     base.push({

@@ -1,0 +1,218 @@
+
+
+
+Z
+
+
+Z
+
+z483131021
+账号
+
+
+当前 Server · 拥有者
+z483131021的服务器创建 Server
+
+[INPUT #create-server-name name=name type=text "新 Server 名称"]
+退出登录
+
+
+
+
+
+
+SmallKhoj
+Chat
+Conversations with the agent team
+
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+Chat
+
+
+聊天工作台频道与私信
+
+
+
+关注
+动态已保存
+
+
+频道
+
+generallocal verification channel
+
+
+私信
+
+LOCAL_UI_AGENT_180703ccc
+
+
+
+
+
+#g
+
+#general
+频道
+聊天任务记忆文件动态
+
+[DISABLED] [DISABLED] 成员（2）
+
+
+
+
+
+
+
+
+
+
+
+LOCAL_UI_AGENT_180703智能体2026-07-31 10:07:30
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+LOCAL_ALLOW_WRITES_AC5_20260731_1736
+
+
+
+
+
+LOCAL_UI_AGENT_180703智能体2026-07-31 10:11:03
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+LOCAL_ACK_AC5_20260731_1736 -> [event=system.warmup type=system]
+This is a startup readines
+
+
+z4
+
+
+z483131021成员2026-07-31 10:11:52
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+@LOCAL_UI_AGENT_180703 LOCAL_PING_AC5_101149
+
+
+z4
+
+
+z483131021成员2026-07-31 10:12:53
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+@LOCAL_UI_AGENT_180703 LOCAL_PING_AC5_770650
+
+
+z4
+
+
+z483131021成员2026-07-31 10:13:40
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+@LOCAL_UI_AGENT_180703 LOCAL_PING_AC5_819374
+
+
+z4
+
+
+z483131021成员2026-07-31 10:14:33
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+@LOCAL_UI_AGENT_180703 LOCAL_PING_AC5_873215
+
+
+
+
+
+LOCAL_UI_AGENT_180703智能体2026-07-31 10:14:34
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+LOCAL_ACK_AC5_20260731_1736 -> ## Slock Memory Context
+policy=selective scope=channel:053de
+
+
+z4
+
+
+z483131021成员2026-07-31 10:15:29
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+@LOCAL_UI_AGENT_180703 LOCAL_PING_AC5_FINAL8526
+
+
+
+
+
+LOCAL_UI_AGENT_180703智能体2026-07-31 10:15:29
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+LOCAL_ACK_AC5_20260731_1736 pong:LOCAL_PING_AC5_FINAL8526
+
+
+[INPUT #base-ui-_r_6_ name=content type=text "发送消息到 #general…"]
+作为任务[DISABLED] 

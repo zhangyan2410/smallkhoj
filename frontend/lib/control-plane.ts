@@ -623,6 +623,8 @@ export function runtimeLabel(runtime: RuntimeInfo) {
     codex: "Codex",
     codex_cli: "Codex",
     codex_acp: "Codex",
+    opencode: "OpenCode",
+    pi: "Built-in Pi",
     custom: "Custom",
   }
   if (typeof runtime === "string") return labels[runtime] ?? runtime

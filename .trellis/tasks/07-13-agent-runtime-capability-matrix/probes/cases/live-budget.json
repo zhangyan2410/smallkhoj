@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "perProviderLimit": 2,
+  "countingRule": "Every model-bearing user input, prompt, turn, or steer input reserves one slot before transmission. Cancel, interrupt, initialize, and pure thread/session load do not consume a slot unless they carry model input.",
+  "providers": {
+    "codex": [
+      "active app-server turn",
+      "same-turn steer input"
+    ],
+    "claude": [
+      "stream-json active-window input",
+      "second stream-json user input"
+    ],
+    "kimi": [
+      "selected surface normal input",
+      "selected surface continuation or active cancel input"
+    ],
+    "opencode": [
+      "server normal input",
+      "server busy input or active abort input"
+    ]
+  }
+}

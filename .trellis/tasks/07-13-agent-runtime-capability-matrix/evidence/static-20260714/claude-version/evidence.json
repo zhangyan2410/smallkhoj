@@ -1,0 +1,65 @@
+{
+  "caseId": "claude-version",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:45:13.305599Z",
+  "evidenceId": "static-20260714/claude-version/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "c3b130ae71c3e5f33733e95a3f5415cd8a6576b64cb7e0ff5942fed32fce432e",
+    "beforeDigest": "c3b130ae71c3e5f33733e95a3f5415cd8a6576b64cb7e0ff5942fed32fce432e",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714/claude/claude-version"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "claude",
+      "--version"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:45:13.305351Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "claude",
+          "--version"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:45:13.305545Z",
+      "kind": "output",
+      "payload": {
+        "text": "2.1.183 (Claude Code)\n"
+      },
+      "source": "stdout"
+    }
+  ],
+  "provider": "claude",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:45:13.261478Z",
+  "surface": "claude-stream-json",
+  "terminal": {
+    "adapterState": "passed",
+    "contradictorySignals": [],
+    "processExitCode": 0
+  },
+  "uncertainties": [],
+  "versions": {}
+}

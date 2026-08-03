@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { detectedProviderOptions, runtimeOptionsFromDetected, unavailableProviderOptions } from "../lib/runtime-options"
+import { detectedProviderOptions, publicRuntimeValue, runtimeOptionsFromDetected, unavailableProviderOptions } from "../lib/runtime-options"
 import type { Computer } from "../lib/control-plane"
 
 const computers = [{
@@ -110,4 +110,34 @@ test("runtimeOptionsFromDetected respects computerId filter", () => {
   // 只看 computer b：codex 不可选
   const fromB = runtimeOptionsFromDetected(two, { computerId: "b" })
   assert.equal(fromB.find((o) => o.value === "codex")?.available, false)
+})
+
+test("runtimeOptionsFromDetected ignores not_installed entries (no ccswitch env)", () => {
+  // 无 ccswitch：daemon 固定上报 4 条 runtime 条目，未安装的标 not_installed。
+  // 这些条目不能被聚合成「可用 runtime」，否则创建 agent 的下拉会误亮。
+  const bareMachine = [{
+    id: "bare",
+    name: "bare",
+    status: "online",
+    detectedRuntimes: [
+      { type: "claude_code", status: "available" },
+      { type: "codex", status: "not_installed" },
+      { type: "opencode", status: "not_installed" },
+      { type: "pi", status: "available", source: "bundled", version: "0.1.0" },
+    ],
+    agentWorkspaces: [],
+  }] satisfies Computer[]
+
+  const opts = runtimeOptionsFromDetected(bareMachine)
+  const byValue = new Map(opts.map((o) => [o.value, o]))
+  assert.equal(byValue.get("claude_code")?.available, true)
+  assert.equal(byValue.get("codex")?.available, false)
+  assert.equal(byValue.get("opencode")?.available, false)
+  assert.equal(byValue.get("pi")?.available, true)
+  assert.equal(byValue.get("pi")?.bundled, true)
+})
+
+test("publicRuntimeValue normalizes opencode family", () => {
+  assert.equal(publicRuntimeValue({ type: "opencode", status: "available" }), "opencode")
+  assert.equal(publicRuntimeValue("open_code"), "opencode")
 })

@@ -1,0 +1,71 @@
+{
+  "caseId": "codex-exec-help",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:47:09.024587Z",
+  "evidenceId": "static-20260714-v2/codex-exec-help/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "1e82dcf9a1bcbc7363887243328924919a1a06595c66a1241ab5eb1703d1d818",
+    "beforeDigest": "1e82dcf9a1bcbc7363887243328924919a1a06595c66a1241ab5eb1703d1d818",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714-v2/codex/codex-exec-help"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "codex",
+      "exec",
+      "--help"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:47:09.024288Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "codex",
+          "exec",
+          "--help"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:47:09.024488Z",
+      "kind": "output",
+      "payload": {
+        "text": {
+          "bytes": 3681,
+          "kind": "digest",
+          "sha256": "9f86f0115238ddde2514587e5f95b0ab0aa6b89495e5912878d49ad26038aa19"
+        }
+      },
+      "source": "stdout"
+    }
+  ],
+  "provider": "codex",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714-v2",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:47:08.978631Z",
+  "surface": "codex-exec",
+  "terminal": {
+    "adapterState": "passed",
+    "contradictorySignals": [],
+    "processExitCode": 0
+  },
+  "uncertainties": [],
+  "versions": {}
+}

@@ -1,0 +1,74 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - heading "Inkframe" [level=1] [ref=f4e3]
+    - generic [ref=f4e4]: 文房桌面 · 材料状态语言
+  - generic [ref=f4e5]:
+    - button "干纸待命" [ref=f4e6] [cursor=pointer]
+    - button "酝酿" [ref=f4e7] [cursor=pointer]
+    - button "运行中" [ref=f4e8] [cursor=pointer]
+    - button "待审阅" [ref=f4e9] [cursor=pointer]
+    - button "已固化" [ref=f4e10] [cursor=pointer]
+    - button "阻塞" [ref=f4e11] [cursor=pointer]
+  - generic [ref=f4e12]:
+    - generic "砚台" [ref=f4e13]
+    - generic "毛笔" [ref=f4e14]
+    - generic "印盒" [ref=f4e15]: 印
+    - generic [ref=f4e19]:
+      - paragraph [ref=f4e20]: "@gate-minimax"
+      - paragraph [ref=f4e21]: runtime · working
+      - generic [ref=f4e22]:
+        - generic [ref=f4e23]: MiniMax-M3
+        - generic [ref=f4e24]: session dfc7aff9
+    - generic [ref=f4e27]:
+      - generic [ref=f4e28] [cursor=pointer]:
+        - generic [ref=f4e29]: screenshot
+        - generic [ref=f4e30]: REAL marker screenshot generated at 00:17.
+      - generic [ref=f4e31] [cursor=pointer]:
+        - generic [ref=f4e32]: trace
+        - generic [ref=f4e33]: daemon → runtime → message delivery observed end-to-end.
+      - generic [ref=f4e34] [cursor=pointer]:
+        - generic [ref=f4e35]: api_proof
+        - generic [ref=f4e36]: POST /tasks/:id/memory returned 200 with summary.
+    - generic [ref=f4e39]:
+      - generic [ref=f4e40]:
+        - generic [ref=f4e41]: "deploy-auth #184"
+        - generic [ref=f4e42]: reviewer · 张岩
+      - generic [ref=f4e43]: RUNNING
+      - generic [ref=f4e45]:
+        - button "落章 approve" [ref=f4e46] [cursor=pointer]
+        - button "返工 rework" [ref=f4e47] [cursor=pointer]
+    - generic [ref=f4e49]:
+      - generic [ref=f4e50]:
+        - generic [ref=f4e51]: candidate · drying
+        - text: auth 模块用 better-auth，session 存在 cookie；daemon 通过 runtime layer 转发消息。 记忆固化不是保存，是 fix：沉入纸面、变淡、稳定。
+      - generic [ref=f4e52]:
+        - button "固化 fix" [ref=f4e53] [cursor=pointer]
+        - button "驳回" [ref=f4e54] [cursor=pointer]
+    - generic [ref=f4e56]:
+      - generic [ref=f4e57]:
+        - generic [ref=f4e58]: "# deploy-room · 右键纸面 = 局部注水"
+        - generic [ref=f4e59]: 0 次局部注水
+      - generic [ref=f4e60]:
+        - generic [ref=f4e61]:
+          - generic [ref=f4e62]: "@gate-minimax · 00:00"
+          - text: 收到，开始部署 auth 服务。
+        - generic [ref=f4e63]:
+          - generic [ref=f4e64]: 你 · 00:09
+          - text: 好，注意 session 转发。
+        - generic [ref=f4e65]:
+          - generic [ref=f4e66]: "@gate-minimax · 00:17"
+          - text: "done. evidence attached: trace + screenshot."
+        - generic [ref=f4e67]:
+          - generic [ref=f4e68]: task ref
+          - text: "deploy-auth #184 →"
+          - generic [ref=f4e69] [cursor=pointer]: 跳转到任务
+      - generic [ref=f4e70]:
+        - textbox "说点什么…" [ref=f4e71]
+        - button "贴上纸面" [ref=f4e72] [cursor=pointer]
+  - generic [ref=f4e73]:
+    - text: 程序化驱动：
+    - code [ref=f4e74]: window.InkframeScholarDesk.setState("review")
+    - text: ·
+    - code [ref=f4e75]: window.InkframeScholarDesk.approve()
+    - text: ·
+    - code [ref=f4e76]: window.InkframeScholarDesk.fixMemory()

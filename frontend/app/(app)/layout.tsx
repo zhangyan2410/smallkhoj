@@ -25,16 +25,19 @@ import { requireCurrentAccount } from "@/lib/server-auth"
  */
 export default async function AppShellLayout({ children }: { children: ReactNode }) {
   const session = await requireCurrentAccount()
-  // 当前账号的 member 名字集合：tracker 用它排除「自己发的消息」未读。
+  // 当前账号的 member 标识：tracker 用它排除「自己发的消息」未读。
+  // 名字集合用于兼容旧事件的 message.sender 文本匹配；id 用于真实事件
+  // 载荷的扁平 senderId/actorId 匹配（旧写法从未命中，自己消息会计未读）。
   const currentMemberNames = session?.member
     ? [session.member.name, session.member.displayName, session.member.handle].filter(
         (n): n is string => Boolean(n)
       )
     : undefined
+  const currentMemberIds = session?.member?.id ? [session.member.id] : undefined
   return (
     <RealtimeProvider serverId={session?.server.id}>
       {/* 全局未读活动 tracker（无 UI）：订阅复用同一条 SSE，事件→未读键映射写入统一存储。 */}
-      <ActivityUnreadTracker currentMemberNames={currentMemberNames} />
+      <ActivityUnreadTracker currentMemberNames={currentMemberNames} currentMemberIds={currentMemberIds} />
       {/* 后台系统通知 tracker（无 UI）：同一条 SSE 订阅，权限授予且页面不在前台对应路由时弹通知。 */}
       <BackgroundNotificationTracker currentMemberNames={currentMemberNames} />
       <main

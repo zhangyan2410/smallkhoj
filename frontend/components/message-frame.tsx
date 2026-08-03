@@ -39,14 +39,45 @@ function roleLabel(senderType?: string | null) {
   return senderType === "agent" || senderType === "assistant" ? "assistant" : "member"
 }
 
+/**
+ * 后端 time 字段是 UTC 墙上钟字符串（"YYYY-MM-DD HH:MM:SS"，strftime 自
+ * timezone-aware UTC 的 created_at，public_api.py `_serialize_public_message`），
+ * 不带任何时区标记。直接 `new Date(value)` 会被 JS 当作浏览器本地时区解析 ——
+ * 非 UTC 机器上显示的时间就错了（聊天时间对、其它地方用 ISO createdAt 的对）。
+ * 统一按 UTC 解析再格式化到浏览器本地时区。
+ */
+export function parseBackendUtcTime(value: string): Date | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  // 已带时区标记（ISO 8601）的走原生解析；裸墙上钟按 UTC 处理。
+  const hasZone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(trimmed)
+  const normalized = hasZone ? trimmed : `${trimmed.replace(" ", "T")}Z`
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 function compactTimeLabel(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
+  const date = parseBackendUtcTime(value)
+  if (!date) return value
   return new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+  }).format(date)
+}
+
+function localTimeLabel(value: string) {
+  const date = parseBackendUtcTime(value)
+  if (!date) return value
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   }).format(date)
 }
 
@@ -76,7 +107,11 @@ export function MessageFrame({
 }: MessageFrameProps) {
   const role = roleLabel(senderType)
   const visibleRole = role === "assistant" ? (roleLabels?.assistant ?? role) : (roleLabels?.member ?? role)
-  const visibleTime = time && timeVariant === "compact" ? compactTimeLabel(time) : time
+  const visibleTime = time
+    ? timeVariant === "compact"
+      ? compactTimeLabel(time)
+      : localTimeLabel(time)
+    : time
   const avatarMember = senderType === "agent" || senderType === "assistant"
     ? { ...member, kind: "agent" as const }
     : member

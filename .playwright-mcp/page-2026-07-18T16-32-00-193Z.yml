@@ -1,0 +1,35 @@
+- generic [active] [ref=f6e1]:
+  - banner [ref=f6e2]:
+    - heading "Inkify" [level=1] [ref=f6e3]
+    - generic [ref=f6e4]: SVG → 手工墨画
+  - paragraph [ref=f6e5]: 提供一张图（PNG/SVG，粗描边扁平风最适合），引擎把它重新渲染成生宣纸上的水墨手工画。 三种模式：原图（对照）/ 墨画贴图（静态墨化）/ 墨画可改（把图烤进流体场，可用水刷晕开、墨笔加墨）。 默认载入一张 blush open-doodles 样本。可拖入自己的图。
+  - generic [ref=f6e9]:
+    - generic [ref=f6e10]:
+      - generic [ref=f6e11]: 选择插图
+      - generic [ref=f6e43] [cursor=pointer]: 拖入 .svg 文件 或 点击上传
+    - generic [ref=f6e44]:
+      - generic [ref=f6e45]: 渲染模式
+      - generic [ref=f6e46]:
+        - button "原图" [ref=f6e47] [cursor=pointer]
+        - button "墨画(贴图)" [ref=f6e48] [cursor=pointer]
+        - button "墨画(可改)" [ref=f6e49] [cursor=pointer]
+    - generic [ref=f6e50]:
+      - generic [ref=f6e51]: 墨色
+      - generic [ref=f6e52]:
+        - button "彩色水洗" [ref=f6e53] [cursor=pointer]
+        - button "单色墨" [ref=f6e54] [cursor=pointer]
+    - generic [ref=f6e55]:
+      - generic [ref=f6e56]: 墨晕 bleed 0.50
+      - slider [ref=f6e57]: "0.5"
+    - generic [ref=f6e58]:
+      - generic [ref=f6e59]: 边缘 edge 1.20
+      - slider [ref=f6e60]: "1.2"
+    - generic [ref=f6e61]:
+      - generic [ref=f6e62]: 颗粒 grain 0.55
+      - slider [ref=f6e63]: "0.55"
+    - generic [ref=f6e64]:
+      - generic [ref=f6e65]: 墨深 strength 1.60
+      - slider [ref=f6e66]: "1.6"
+    - generic [ref=f6e68] [cursor=pointer]:
+      - checkbox "对比：原始 SVG（左半）/ 墨画（右半）" [ref=f6e69]
+      - text: 对比：原始 SVG（左半）/ 墨画（右半）

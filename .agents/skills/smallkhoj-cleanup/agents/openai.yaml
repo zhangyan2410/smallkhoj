@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmallKhoj Cleanup"
+  short_description: "Audit and safely clean SmallKhoj dev artifacts"
+  default_prompt: "Use $smallkhoj-cleanup to audit this project and prepare a safe cleanup plan."

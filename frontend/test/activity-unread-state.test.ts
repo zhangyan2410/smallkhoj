@@ -10,10 +10,12 @@ import {
   activityUnreadClearKeysForPath,
   activityUnreadCount,
   activityUnreadKeysForEvent,
+  activityUnreadSeqForEvent,
   clearActivityUnread,
   clearActivityUnreadMarked,
   incrementActivityUnread,
   readActivityUnreadStore,
+  resetActivityUnreadHighWater,
   type ActivityUnreadStore,
 } from "../lib/activity-unread-state"
 import { chatScopeKeys } from "../lib/chat-unread-state"
@@ -52,6 +54,36 @@ test("increment dedupes by seq high-water mark per key", () => {
   const newer = incrementActivityUnread(older, ["task:all"], 11)
   assert.equal(newer["task:all"].count, 2)
   assert.equal(newer["task:all"].lastSeq, 11)
+})
+
+test("multi-key increment shares one high-water across sibling keys", () => {
+  // 同一实体的 id/name 双键：同一条消息（同一 messageSeq）不得计两次。
+  const keys = ["chat:channel:id:ch-1", "chat:channel:name:general"]
+  const first = incrementActivityUnread({}, keys, 5)
+  assert.equal(first[keys[0]].count, 1)
+  assert.equal(first[keys[1]].count, 1)
+
+  const replayed = incrementActivityUnread(first, keys, 5)
+  assert.equal(replayed[keys[0]].count, 1)
+  assert.equal(replayed[keys[1]].count, 1)
+
+  // 历史污染场景：name 键带着旧后端留下的更高 lastSeq，新事件
+  // 也不能只对 id 键计数 —— 兄弟键共享最大高水位。
+  const polluted = incrementActivityUnread(
+    {
+      "chat:channel:id:ch-1": { count: 1, lastSeq: 5 },
+      "chat:channel:name:general": { count: 3, lastSeq: 99 },
+    },
+    keys,
+    90,
+  )
+  assert.equal(polluted[keys[0]].count, 1)
+  assert.equal(polluted[keys[1]].count, 3)
+
+  const newer = incrementActivityUnread(polluted, keys, 100)
+  assert.equal(newer[keys[0]].count, 2)
+  assert.equal(newer[keys[1]].count, 4)
+  assert.equal(newer[keys[0]].lastSeq, 100)
 })
 
 test("clear only removes existing keys and keeps store identity when unchanged", () => {
@@ -154,6 +186,82 @@ test("message.created increments chat keys except own messages and the open rout
     activityUnreadKeysForEvent(event({ scope: { kind: "dm", id: "dm-1", name: "DM @zy" }, payload: {} }), options),
     ["chat:dm:id:dm-1", "chat:dm:name:DM @zy"],
   )
+})
+
+test("own messages are excluded by flat senderId/actorId payload (real backend shape)", () => {
+  // 真实后端事件载荷只有扁平 senderId，没有嵌套 message.sender ——
+  // 这是修复前「自己发的消息也计未读」的回归用例。
+  const own = event({
+    scope: { kind: "channel", id: "ch-1", name: "#general" },
+    payload: { senderId: "m-self", sender: "@Me" },
+  })
+  const other = event({
+    scope: { kind: "channel", id: "ch-1", name: "#general" },
+    payload: { senderId: "m-other" },
+  })
+  const options = {
+    pathname: "/tasks",
+    currentMemberIds: ["M-SELF"], // 大小写不敏感
+    currentMemberNames: ["me"],
+    chatScopeKeys: chatKeys,
+  }
+  assert.deepEqual(activityUnreadKeysForEvent(own, options), [])
+  assert.deepEqual(activityUnreadKeysForEvent(other, options), [
+    "chat:channel:id:ch-1",
+    "chat:channel:name:general",
+  ])
+
+  // actorId 回退（agent_api 事件用 actorId）。
+  const ownActor = event({
+    scope: { kind: "dm", id: "dm-1", name: "DM @me" },
+    payload: { actorId: "m-self" },
+  })
+  assert.deepEqual(activityUnreadKeysForEvent(ownActor, options), [])
+})
+
+test("unread seq for chat events uses per-channel messageSeq, not global event seq", () => {
+  const chatKeysForScope = ["chat:channel:id:ch-1", "chat:channel:name:general"]
+  const chatEvent = event({
+    scope: { kind: "channel", id: "ch-1", name: "#general" },
+    seq: 900, // 全局事件 seq —— 不得用于 per-key 去重
+    payload: { seq: 12, senderId: "m-other" }, // 频道内消息序号
+  })
+  assert.equal(activityUnreadSeqForEvent(chatEvent, chatKeysForScope), 12)
+
+  const messageSeqAlias = event({
+    scope: { kind: "dm", id: "dm-1" },
+    seq: 901,
+    payload: { messageSeq: 7 },
+  })
+  assert.equal(activityUnreadSeqForEvent(messageSeqAlias, ["chat:dm:id:dm-1"]), 7)
+
+  // 非聊天键继续用全局事件 seq。
+  assert.equal(activityUnreadSeqForEvent(chatEvent, [TASK_ACTIVITY_UNREAD_KEY]), 900)
+  // 聊天事件没有消息序号时退回 undefined（不做水位去重，只递增）。
+  const noSeq = event({ scope: { kind: "channel", id: "ch-1" }, payload: {} })
+  assert.equal(activityUnreadSeqForEvent(noSeq, chatKeysForScope), undefined)
+})
+
+test("resetActivityUnreadHighWater keeps counts and drops seq watermark", () => {
+  const store: ActivityUnreadStore = {
+    "chat:channel:id:ch-1": { count: 3, lastSeq: 42 },
+    "chat:channel:name:general": { count: 3, lastSeq: 42 },
+    "task:all": { count: 1, lastSeq: 9 },
+  }
+  const next = resetActivityUnreadHighWater(store, [
+    "chat:channel:id:ch-1",
+    "chat:channel:name:general",
+    "chat:dm:id:missing",
+  ])
+  assert.deepEqual(next["chat:channel:id:ch-1"], { count: 3 })
+  assert.deepEqual(next["chat:channel:name:general"], { count: 3 })
+  assert.deepEqual(next["task:all"], { count: 1, lastSeq: 9 })
+  // 无水位可清时保持 store 引用（调用方据此判断是否需要写回/广播）。
+  assert.equal(resetActivityUnreadHighWater(store, ["chat:dm:id:missing"]), store)
+
+  // 重置后重放事件重新参与计数（catch_up 兜底语义）。
+  const recounted = incrementActivityUnread(next, ["chat:channel:id:ch-1", "chat:channel:name:general"], 40)
+  assert.equal(recounted["chat:channel:id:ch-1"].count, 4)
 })
 
 test("task events increment task:all unless the user is on /tasks", () => {

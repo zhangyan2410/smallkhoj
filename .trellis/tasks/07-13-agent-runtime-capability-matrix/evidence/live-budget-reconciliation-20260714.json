@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "posthoc-shared-live-budget-reconciliation",
+  "reason": "The first live harness revision persisted budgets per run ID. Before enabling the shared campaign ledger, this file records every already-attempted model-bearing input so no Provider can receive an additional input by choosing a new run ID.",
+  "perProviderLimit": 2,
+  "accruals": [
+    {
+      "provider": "codex",
+      "count": 2,
+      "sourceEvidence": "codex-steer-20260714/codex-appserver-active-steer-interrupt/1"
+    },
+    {
+      "provider": "claude",
+      "count": 1,
+      "sourceEvidence": "claude-busy-20260714-v2/claude-stream-json-busy-input/1"
+    },
+    {
+      "provider": "kimi",
+      "count": 2,
+      "sourceEvidence": "kimi-acp-sequential-20260714/kimi-acp-sequential-session/1"
+    },
+    {
+      "provider": "opencode",
+      "count": 2,
+      "sourceEvidence": "opencode-acp-sequential-20260714/opencode-acp-sequential-session/1"
+    }
+  ]
+}

@@ -6,9 +6,7 @@ import { getTranslations } from "next-intl/server"
 import {
   AlertTriangle,
   Bot,
-  Clock,
   Cpu,
-  HardDrive,
   Monitor,
   Network,
   Play,
@@ -17,8 +15,6 @@ import {
   RotateCcw,
   Scan,
   Search,
-  Server,
-  Shield,
   Terminal,
   Trash2,
   XCircle,
@@ -33,6 +29,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Panel } from "@/components/ui/panel"
 import { ConnectComputerDialog } from "./connect-computer-form"
+import { BatchLifecycleButtons } from "./batch-lifecycle-buttons"
 import { buildComputerReconnectUrl, shouldShowConnectComputerForm } from "@/lib/computer-navigation"
 import {
   apiGet,
@@ -45,6 +42,7 @@ import {
   type Computer,
   type RuntimeInfo,
 } from "@/lib/control-plane"
+import { isPrimaryRuntime } from "@/lib/runtime-options"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
 
@@ -63,13 +61,27 @@ function makeComputersCopy(t: TranslationFn) {
     tasks: t("tasks"),
     allComputers: t("allComputers"),
     unknownOs: t("unknownOs"),
+    osLabel: t("osLabel"),
+    daemonVersionLabel: t("daemonVersionLabel"),
+    heartbeatLabel: t("heartbeatLabel"),
+    workspacesLabel: t("workspacesLabel"),
     unknown: t("unknown"),
     workspacesRunning: (total: number, running: number) => t("workspacesRunning", { total, running }),
     lifecycleControls: t("lifecycleControls"),
     reconnect: t("reconnect"),
+    reconnectDisabledOnline: t("reconnectDisabledOnline"),
     scanWorkspaces: t("scanWorkspaces"),
     stopAll: t("stopAll"),
     restartAll: t("restartAll"),
+    batchStopTitle: t("batchStopTitle"),
+    batchRestartTitle: t("batchRestartTitle"),
+    batchStopConfirm: (count: number) => t("batchStopConfirm", { count }),
+    batchRestartConfirm: (count: number) => t("batchRestartConfirm", { count }),
+    batchExecuting: t("batchExecuting"),
+    batchResultMixed: (success: number, failed: number) => t("batchResultMixed", { success, failed }),
+    batchConfirm: t("batchConfirm"),
+    batchCancel: t("batchCancel"),
+    batchClose: t("batchClose"),
     reconcile: t("reconcile"),
     lifecycleHelp: t("lifecycleHelp"),
     offlineHelp: t("offlineHelp"),
@@ -101,6 +113,8 @@ function makeComputersCopy(t: TranslationFn) {
     providerDefault: t("providerDefault"),
     runtimeDefault: t("runtimeDefault"),
     noCwd: t("noCwd"),
+    startedAt: t("startedAt"),
+    createdAt: t("createdAt"),
     computerCount: (count: number) => t("computerCount", { count }),
     selectForDetail: t("selectForDetail"),
     noComputers: t("noComputers"),
@@ -108,7 +122,7 @@ function makeComputersCopy(t: TranslationFn) {
   }
 }
 
-type ComputersCopy = ReturnType<typeof makeComputersCopy>
+export type ComputersCopy = ReturnType<typeof makeComputersCopy>
 
 async function getComputers(sessionToken?: string | null, activeServerId?: string | null) {
   return apiGet<{ computers: Computer[]; count?: number }>("/api/v1/computers", { computers: [], count: 0 }, sessionToken, activeServerId)
@@ -321,6 +335,21 @@ function runtimeStatusIcon(status?: string) {
   }
 }
 
+function runtimeBrandLabel(runtime: RuntimeInfo): string {
+  if (typeof runtime === "string") return runtime
+  // chip 区只展示 runtime 的品牌名；status 用 chip 的颜色 + 圆点表达，文字不必再带 / available
+  const labels: Record<string, string> = {
+    claude_code: "Claude Code",
+    codex: "Codex",
+    codex_cli: "Codex",
+    codex_acp: "Codex",
+    opencode: "OpenCode",
+    pi: "Built-in Pi",
+    custom: "Custom",
+  }
+  return labels[runtime.type ?? ""] ?? runtime.type ?? "runtime"
+}
+
 function RuntimeStatusChip({ runtime }: { runtime: RuntimeInfo }) {
   if (typeof runtime === "string") {
     return (
@@ -328,11 +357,17 @@ function RuntimeStatusChip({ runtime }: { runtime: RuntimeInfo }) {
     )
   }
   const status = runtime.status
-  const label = runtimeLabel(runtime)
+  const label = runtimeBrandLabel(runtime)
   const icon = runtimeStatusIcon(status)
+  const notInstalled = status === "not_installed" || status === "unavailable" || status === "missing"
 
+  // 已检测到（available）的 runtime 用 success 色 chip 突出显示；未安装的用浅灰中性 chip。
+  // chip 文字只显示品牌名，status 由 chip 颜色 + 左侧圆点表达，不再拼 / available。
   return (
-    <RuntimeChip tone="paper" className="gap-1">
+    <RuntimeChip
+      tone={notInstalled ? "neutral" : "success"}
+      className={notInstalled ? "gap-1 opacity-60" : "gap-1"}
+    >
       <span
         className={
           runtimeStatusKind(status) === "success"
@@ -355,11 +390,15 @@ function ComputerDetail({
   reconnectCredential,
   reconnectComputerId,
   copy,
+  sessionToken,
+  activeServerId,
 }: {
   computer: Computer
   reconnectCredential: ReturnType<typeof parseCredentialCookie>
   reconnectComputerId?: string | null
   copy: ComputersCopy
+  sessionToken?: string | null
+  activeServerId?: string | null
 }) {
   const runningWorkspaces = computer.agentWorkspaces.filter((w) => w.status === "running").length
   const deleteBlockingWorkspaces = computer.agentWorkspaces.filter((w) =>
@@ -369,6 +408,7 @@ function ComputerDetail({
     ? new Date(computer.daemonLeaseExpiresAt)
     : null
   const leaseExpired = leaseExpiry ? leaseExpiry < new Date() : true
+  const daemonOffline = computer.status === "offline" || leaseExpired
 
   return (
     <div data-inkframe-mobile-role="computer-detail" className="min-w-0 space-y-4 overflow-x-hidden">
@@ -382,19 +422,25 @@ function ComputerDetail({
         <CardHeader className="border-b">
           <ComputerInkstone status={computer.status}>
             <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-              <span className="min-w-0 flex-1 truncate">{computer.name}</span>
+              <span className="min-w-0 truncate">{computer.name}</span>
               <StatusPill status={computer.status} label={statusLabel(computer.status)} />
             </CardTitle>
-            <CardDescription className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span>{computer.os || copy.unknownOs}</span>
-              <span>daemon {computer.daemonVersion || copy.unknown}</span>
-              <span className="inline-flex items-center gap-1">
-                <Clock className="size-3" />
-                {formatTime(computer.lastHeartbeatAt)}
+            <CardDescription className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+              <span>
+                <span className="text-muted-foreground">{copy.osLabel}</span>{" "}
+                <span className="font-medium text-foreground">{computer.os || copy.unknownOs}</span>
               </span>
-              <span className="inline-flex items-center gap-1">
-                <HardDrive className="size-3" />
-                {copy.workspacesRunning(computer.agentWorkspaces.length, runningWorkspaces)}
+              <span>
+                <span className="text-muted-foreground">{copy.daemonVersionLabel}</span>{" "}
+                <span className="font-medium text-foreground">{computer.daemonVersion || copy.unknown}</span>
+              </span>
+              <span>
+                <span className="text-muted-foreground">{copy.heartbeatLabel}</span>{" "}
+                <span className="font-medium text-foreground">{formatTime(computer.lastHeartbeatAt)}</span>
+              </span>
+              <span>
+                <span className="text-muted-foreground">{copy.workspacesLabel}</span>{" "}
+                <span className="font-medium text-foreground">{copy.workspacesRunning(computer.agentWorkspaces.length, runningWorkspaces)}</span>
               </span>
             </CardDescription>
           </ComputerInkstone>
@@ -409,7 +455,13 @@ function ComputerDetail({
               <div className="flex flex-wrap gap-2">
                 <form action={createComputerReconnectCommandAction}>
                   <input type="hidden" name="computerId" value={computer.id} />
-                  <Button type="submit" size="sm" variant="outline">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="outline"
+                    disabled={!daemonOffline}
+                    title={daemonOffline ? copy.reconnect : copy.reconnectDisabledOnline}
+                  >
                     <RefreshCw className="size-4" />
                     {copy.reconnect}
                   </Button>
@@ -418,14 +470,15 @@ function ComputerDetail({
                   <Scan className="size-4" />
                   {copy.scanWorkspaces}
                 </Button>
-                <Button size="sm" variant="outline" disabled title="Use row actions to stop one runtime">
-                  <Power className="size-4" />
-                  {copy.stopAll}
-                </Button>
-                <Button size="sm" variant="outline" disabled title="Use row actions to restart one runtime">
-                  <RotateCcw className="size-4" />
-                  {copy.restartAll}
-                </Button>
+                <BatchLifecycleButtons
+                  workspaces={computer.agentWorkspaces}
+                  daemonOffline={daemonOffline}
+                  offlineHelp={copy.offlineHelp}
+                  stopAllLabel={copy.stopAll}
+                  restartAllLabel={copy.restartAll}
+                  sessionToken={sessionToken}
+                  activeServerId={activeServerId}
+                />
                 <Button size="sm" variant="outline" disabled title="Reconcile requires backend endpoint">
                   <Play className="size-4" />
                   {copy.reconcile}
@@ -464,29 +517,16 @@ function ComputerDetail({
             </InkframeObjectSurface>
           )}
 
-          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            <Field label="computerId" value={shortId(computer.id)} icon={<Monitor className="size-3" />} />
-            <Field label="machineId" value={shortId(computer.machineId)} icon={<Server className="size-3" />} />
-            <Field label="serverId" value={shortId(computer.serverId)} icon={<Server className="size-3" />} />
-            <Field label="apiKey" value={computer.apiKeyPrefix} icon={<Shield className="size-3" />} />
-            <Field label="daemon" value={computer.activeDaemonId ? shortId(computer.activeDaemonId) : copy.none} icon={<Terminal className="size-3" />} />
-            <Field
-              label="lease"
-              value={leaseExpiry ? (leaseExpired ? copy.expired : formatTime(computer.daemonLeaseExpiresAt)) : copy.none}
-              icon={<Clock className="size-3" />}
-            />
-          </div>
-
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Cpu className="size-3" />
               {copy.detectedRuntimes}
             </div>
             <div className="flex min-h-8 flex-wrap gap-1.5">
-              {(computer.detectedRuntimes.length ? computer.detectedRuntimes : []).map((runtime, i) => (
+              {(computer.detectedRuntimes.filter(isPrimaryRuntime)).map((runtime, i) => (
                 <RuntimeStatusChip key={`${runtimeLabel(runtime)}-${i}`} runtime={runtime} />
               ))}
-              {computer.detectedRuntimes.length === 0 && (
+              {computer.detectedRuntimes.filter(isPrimaryRuntime).length === 0 && (
                 <span className="text-xs text-muted-foreground">{copy.noRuntimes}</span>
               )}
             </div>
@@ -498,21 +538,20 @@ function ComputerDetail({
               {copy.agentWorkspaces}
             </div>
             <InkframeObjectSurface material="dry" data-inkframe-mobile-role="computer-workspace-list" className="min-w-0 overflow-x-hidden p-0">
-              <div className="hidden grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] gap-2 border-b-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-2 text-sm font-medium text-foreground md:grid">
+              <div className="hidden grid-cols-[1.1fr_0.8fr_0.6fr_0.5fr_1.1fr_1.5fr] gap-2 border-b-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground md:grid">
                 <span>{copy.agent}</span>
                 <span>{copy.runtime}</span>
                 <span>{copy.status}</span>
                 <span>{copy.pid}</span>
-                <span>{copy.session}</span>
                 <span>{copy.cwd}</span>
-                <span>{copy.actions}</span>
+                <span>{copy.createdAt}</span>
               </div>
               {computer.agentWorkspaces.map((workspace) => (
                 <WorkspaceRow
                   key={workspace.id}
                   workspace={workspace}
                   computerId={computer.id}
-                  daemonOffline={computer.status === "offline" || leaseExpired}
+                  daemonOffline={daemonOffline}
                   copy={copy}
                 />
               ))}
@@ -582,7 +621,7 @@ function WorkspaceRow({
   const runtimeError = workspace.runtimeLastError
 
   return (
-    <div data-inkframe-mobile-role="computer-workspace-row" className="grid min-w-0 gap-2 overflow-x-hidden border-b px-3 py-3 last:border-b-0 md:grid-cols-[1.1fr_0.8fr_0.65fr_0.55fr_0.6fr_0.9fr_1fr] md:items-center">
+    <div data-inkframe-mobile-role="computer-workspace-row" className="grid min-w-0 gap-2 overflow-x-hidden border-b px-3 py-3 last:border-b-0 md:grid-cols-[1.1fr_0.8fr_0.6fr_0.5fr_1.1fr_1.5fr] md:items-center">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <Bot className="size-4 text-muted-foreground" />
@@ -590,8 +629,8 @@ function WorkspaceRow({
             {workspace.agentHandle || `@${workspace.agentName ?? workspace.agentId}`}
           </span>
         </div>
-        <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
-          {shortId(workspace.workspaceId || workspace.id)} · {workspace.runtimeProvider || workspace.backend || copy.providerDefault}
+        <div className="mt-1 truncate text-xs text-muted-foreground">
+          {workspace.runtimeProvider || workspace.backend || copy.providerDefault}
         </div>
       </div>
       <div className="min-w-0">
@@ -599,17 +638,11 @@ function WorkspaceRow({
           <Terminal className="size-4 text-muted-foreground" />
           <span className="truncate">{workspace.runtime || copy.runtimeDefault}</span>
         </div>
-        <div className="mt-1 truncate text-xs text-muted-foreground">
-          {workspace.runtimeProvider || workspace.runtimeModel || workspace.runtimeCommand || copy.providerDefault}
-        </div>
       </div>
       <StatusPill status={workspace.status} label={statusLabel(workspace.status)} />
-      <div className="font-mono text-xs text-muted-foreground">{workspace.pid ?? copy.none}</div>
-      <div className="truncate font-mono text-xs text-muted-foreground" title={workspace.sessionId ?? ""}>
-        {workspace.sessionId ? shortId(workspace.sessionId) : copy.none}
-      </div>
+      <div className="font-mono text-xs text-foreground">{workspace.pid ?? copy.none}</div>
       <div className="min-w-0 text-xs text-muted-foreground">
-        <div className="truncate">{workspace.cwd || copy.noCwd}</div>
+        <div className="truncate" title={workspace.cwd ?? ""}>{workspace.cwd || copy.noCwd}</div>
         {runtimeError ? (
           <div className="mt-1 flex items-start gap-1 text-destructive" title={runtimeError}>
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
@@ -617,34 +650,37 @@ function WorkspaceRow({
           </div>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        <form action={controlWorkspaceLifecycleAction}>
-          <input type="hidden" name="workspaceId" value={workspace.id} />
-          <input type="hidden" name="computerId" value={computerId} />
-          <input type="hidden" name="action" value="start" />
-          <Button type="submit" size="sm" variant="outline" disabled={!canStart} title={disabledTitle || copy.start}>
-            <Play className="size-3.5" />
-            {copy.start}
-          </Button>
-        </form>
-        <form action={controlWorkspaceLifecycleAction}>
-          <input type="hidden" name="workspaceId" value={workspace.id} />
-          <input type="hidden" name="computerId" value={computerId} />
-          <input type="hidden" name="action" value="stop" />
-          <Button type="submit" size="sm" variant="outline" disabled={!canStop} title={disabledTitle || copy.stop}>
-            <Power className="size-3.5" />
-            {copy.stop}
-          </Button>
-        </form>
-        <form action={controlWorkspaceLifecycleAction}>
-          <input type="hidden" name="workspaceId" value={workspace.id} />
-          <input type="hidden" name="computerId" value={computerId} />
-          <input type="hidden" name="action" value="restart" />
-          <Button type="submit" size="sm" variant="outline" disabled={!canRestart} title={disabledTitle || copy.restart}>
-            <RotateCcw className="size-3.5" />
-            {copy.restart}
-          </Button>
-        </form>
+      <div className="min-w-0">
+        <div className="text-xs text-muted-foreground">{formatTime(workspace.startedAt) || copy.none}</div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <form action={controlWorkspaceLifecycleAction}>
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <input type="hidden" name="computerId" value={computerId} />
+            <input type="hidden" name="action" value="start" />
+            <Button type="submit" size="sm" variant="outline" disabled={!canStart} title={disabledTitle || copy.start}>
+              <Play className="size-3.5" />
+              {copy.start}
+            </Button>
+          </form>
+          <form action={controlWorkspaceLifecycleAction}>
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <input type="hidden" name="computerId" value={computerId} />
+            <input type="hidden" name="action" value="stop" />
+            <Button type="submit" size="sm" variant="outline" disabled={!canStop} title={disabledTitle || copy.stop}>
+              <Power className="size-3.5" />
+              {copy.stop}
+            </Button>
+          </form>
+          <form action={controlWorkspaceLifecycleAction}>
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <input type="hidden" name="computerId" value={computerId} />
+            <input type="hidden" name="action" value="restart" />
+            <Button type="submit" size="sm" variant="outline" disabled={!canRestart} title={disabledTitle || copy.restart}>
+              <RotateCcw className="size-3.5" />
+              {copy.restart}
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   )
@@ -792,6 +828,8 @@ export default async function ComputersPage({
             reconnectCredential={reconnectCredential}
             reconnectComputerId={reconnectComputerId}
             copy={copy}
+            sessionToken={sessionToken}
+            activeServerId={activeServerId}
           />
         ) : (
           <Card>

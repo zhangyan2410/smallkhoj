@@ -1,0 +1,67 @@
+{
+  "caseId": "kimi-version",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:47:10.008259Z",
+  "evidenceId": "static-20260714-v2/kimi-version/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "2455cfd497524af3f7ad2c40cce42df1d37b0fa0ac421194abd60c53d9f28019",
+    "beforeDigest": "2455cfd497524af3f7ad2c40cce42df1d37b0fa0ac421194abd60c53d9f28019",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714-v2/kimi/kimi-version"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "kimi",
+      "--version"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:47:10.007898Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "kimi",
+          "--version"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:47:10.008151Z",
+      "kind": "output",
+      "payload": {
+        "text": "0.21.1\n"
+      },
+      "source": "stdout"
+    }
+  ],
+  "provider": "kimi",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714-v2",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:47:09.545504Z",
+  "surface": "kimi-prompt",
+  "terminal": {
+    "adapterState": "passed",
+    "contradictorySignals": [],
+    "processExitCode": 0
+  },
+  "uncertainties": [],
+  "versions": {
+    "kimi": "0.21.1"
+  }
+}

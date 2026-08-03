@@ -1,0 +1,67 @@
+{
+  "caseId": "opencode-version",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:47:10.690068Z",
+  "evidenceId": "static-20260714-v2/opencode-version/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "e02becb89a30a0defb509d9c40d8a19953c61b0d5379c9a9748442e2df97e935",
+    "beforeDigest": "e02becb89a30a0defb509d9c40d8a19953c61b0d5379c9a9748442e2df97e935",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714-v2/opencode/opencode-version"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "opencode",
+      "--version"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:47:10.689827Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "opencode",
+          "--version"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:47:10.690014Z",
+      "kind": "output",
+      "payload": {
+        "text": "1.17.13\n"
+      },
+      "source": "stdout"
+    }
+  ],
+  "provider": "opencode",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714-v2",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:47:10.337876Z",
+  "surface": "opencode-serve",
+  "terminal": {
+    "adapterState": "passed",
+    "contradictorySignals": [],
+    "processExitCode": 0
+  },
+  "uncertainties": [],
+  "versions": {
+    "opencode": "1.17.13"
+  }
+}

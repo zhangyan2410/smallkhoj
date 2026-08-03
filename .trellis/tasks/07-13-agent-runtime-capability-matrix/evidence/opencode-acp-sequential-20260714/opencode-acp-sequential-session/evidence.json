@@ -1,0 +1,354 @@
+{
+  "agentCapabilities": {
+    "loadSession": true,
+    "mcpCapabilities": {
+      "http": true,
+      "sse": true
+    },
+    "promptCapabilities": {
+      "embeddedContext": true,
+      "image": true
+    },
+    "sessionCapabilities": {
+      "close": {},
+      "fork": {},
+      "list": {},
+      "resume": {}
+    }
+  },
+  "budget": {
+    "opencode": {
+      "limit": 2,
+      "remaining": 0,
+      "reservedOrConsumed": 2
+    }
+  },
+  "caseId": "opencode-acp-sequential-session",
+  "cleanup": {
+    "notes": [
+      "process state: terminated"
+    ],
+    "remainingOwnedPids": [],
+    "status": "complete"
+  },
+  "endedAt": "2026-07-14T03:42:40.519426Z",
+  "evidenceId": "opencode-acp-sequential-20260714/opencode-acp-sequential-session/1",
+  "executionStatus": "passed",
+  "firstPrompt": {
+    "_meta": {},
+    "stopReason": "end_turn",
+    "usage": {
+      "cachedReadTokens": 1024,
+      "inputTokens": 8014,
+      "outputTokens": 21,
+      "thoughtTokens": 220,
+      "totalTokens": 9279
+    }
+  },
+  "fixture": {
+    "afterDigest": "14fd7542316fc2d3c3a9ff379d70bf164e49f9748c064245b7068d2184a71502",
+    "beforeDigest": "14fd7542316fc2d3c3a9ff379d70bf164e49f9748c064245b7068d2184a71502",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/opencode-acp-sequential-20260714/opencode/acp-sequential"
+  },
+  "initialize": {
+    "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+        "http": true,
+        "sse": true
+      },
+      "promptCapabilities": {
+        "embeddedContext": true,
+        "image": true
+      },
+      "sessionCapabilities": {
+        "close": {},
+        "fork": {},
+        "list": {},
+        "resume": {}
+      }
+    },
+    "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.17.13"
+    },
+    "authMethods": [
+      {
+        "description": "Run `opencode auth login` in the terminal",
+        "id": "opencode-login",
+        "name": "Login with opencode"
+      }
+    ],
+    "protocolVersion": 1
+  },
+  "invocation": {
+    "commandRedacted": [
+      "opencode",
+      "--pure",
+      "acp",
+      "--cwd",
+      "/tmp/smallkhoj-agent-runtime-capability-matrix/opencode-acp-sequential-20260714/opencode/acp-sequential"
+    ],
+    "providerSessionIds": [
+      "id_3c1a43cd3603"
+    ],
+    "transport": "acp"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T03:42:28.009987Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "protocolVersion": 1,
+          "requestId": 1,
+          "resultKeys": [
+            "agentCapabilities",
+            "agentInfo",
+            "authMethods",
+            "protocolVersion"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:42:28.216837Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 2,
+          "resultKeys": [
+            "configOptions",
+            "sessionId"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:42:28.217858Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 3,
+          "resultKeys": [
+            "configOptions"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:42:28.217957Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "session/update",
+          "protocol": "jsonrpc",
+          "sessionUpdate": "available_commands_update"
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:42:35.734502Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "session/update",
+          "protocol": "jsonrpc",
+          "sessionUpdate": "usage_update"
+        },
+        "reservationId": "id_3b6aed5bcec5"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:42:35.734644Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 4,
+          "resultKeys": [
+            "_meta",
+            "stopReason",
+            "usage"
+          ],
+          "stopReason": "end_turn"
+        },
+        "reservationId": "id_3b6aed5bcec5"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:42:40.471182Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "session/update",
+          "protocol": "jsonrpc",
+          "sessionUpdate": "usage_update"
+        },
+        "reservationId": "id_f66f380c898b"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:42:40.471276Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 5,
+          "resultKeys": [
+            "_meta",
+            "stopReason",
+            "usage"
+          ],
+          "stopReason": "end_turn"
+        },
+        "reservationId": "id_f66f380c898b"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:42:40.371986Z",
+      "kind": "protocol-summary",
+      "payload": {
+        "frame": {
+          "chunksRedacted": 11,
+          "content": "redacted",
+          "kind": "aggregate",
+          "protocol": "jsonrpc",
+          "sessionUpdate": "agent_message_chunk"
+        }
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:42:39.067350Z",
+      "kind": "protocol-summary",
+      "payload": {
+        "frame": {
+          "chunksRedacted": 148,
+          "content": "redacted",
+          "kind": "aggregate",
+          "protocol": "jsonrpc",
+          "sessionUpdate": "agent_thought_chunk"
+        }
+      },
+      "source": "stdout"
+    }
+  ],
+  "planMode": {
+    "configOptions": [
+      {
+        "category": "model",
+        "currentValue": "opencode/big-pickle",
+        "id": "model",
+        "name": "Model",
+        "options": [
+          {
+            "name": "OpenCode Zen/Big Pickle",
+            "value": "opencode/big-pickle"
+          },
+          {
+            "name": "OpenCode Zen/DeepSeek V4 Flash Free",
+            "value": "opencode/deepseek-v4-flash-free"
+          },
+          {
+            "name": "OpenCode Zen/Hy3 Free",
+            "value": "opencode/hy3-free"
+          },
+          {
+            "name": "OpenCode Zen/MiMo V2.5 Free",
+            "value": "opencode/mimo-v2.5-free"
+          },
+          {
+            "name": "OpenCode Zen/Nemotron 3 Ultra Free",
+            "value": "opencode/nemotron-3-ultra-free"
+          },
+          {
+            "name": "OpenCode Zen/North Mini Code Free",
+            "value": "opencode/north-mini-code-free"
+          }
+        ],
+        "type": "select"
+      },
+      {
+        "category": "mode",
+        "currentValue": "plan",
+        "id": "mode",
+        "name": "Session Mode",
+        "options": [
+          {
+            "description": "The default agent. Executes tools based on configured permissions.",
+            "name": "build",
+            "value": "build"
+          },
+          {
+            "description": "Plan mode. Disallows all edit tools.",
+            "name": "plan",
+            "value": "plan"
+          }
+        ],
+        "type": "select"
+      }
+    ]
+  },
+  "postSecondPrompt": "unverified_cancel_reuse_and_suspend_continuation",
+  "provider": "opencode",
+  "redaction": {
+    "count": 167,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "opencode-acp-sequential-20260714",
+  "schemaVersion": 1,
+  "secondPrompt": {
+    "_meta": {},
+    "stopReason": "end_turn",
+    "usage": {
+      "cachedReadTokens": 8192,
+      "inputTokens": 1158,
+      "outputTokens": 21,
+      "thoughtTokens": 165,
+      "totalTokens": 9536
+    }
+  },
+  "sessionUpdateKinds": {
+    "agent_message_chunk": 11,
+    "agent_thought_chunk": 148,
+    "available_commands_update": 1,
+    "usage_update": 2
+  },
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T03:42:27.351932Z",
+  "surface": "opencode-acp",
+  "terminal": {
+    "adapterState": "two_sequential_prompt_responses_observed",
+    "contradictorySignals": []
+  },
+  "uncertainties": [],
+  "versions": {}
+}

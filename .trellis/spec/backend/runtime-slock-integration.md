@@ -1022,3 +1022,98 @@ const candidate = resolve(entrypoint, "..", "..", "slock-cli.js")
 
 Verify the candidate exists and fall back to a module-relative CLI path when
 the entrypoint is not realpath-able.
+
+## Scenario: Vendor Runtime Capability Boundary and Reliable Wakeup
+
+### 1. Scope / Trigger
+
+- Trigger: changing daemon/runtime delivery, adding a vendor CLI/ACP/app-server adapter, introducing durable queued work, claiming busy/idle semantics, or proposing `wait` / Agent RPC continuation.
+- This is a control-boundary rule: SmallKhoj owns a Business Work Item and Dispatch Attempt; it initiates/observes an Adapter Invocation. Provider Session, Provider Turn, tool loop, compaction, and model generation remain provider-owned unless a surface emits explicit evidence.
+- Evidence source: task `07-13-agent-runtime-capability-matrix` and its versioned `provider-capability-matrix.md`. Do not generalize one Provider/surface result to another surface.
+
+### 2. Signatures
+
+- Future durable work state vocabulary (not a claim that these tables already exist):
+  - `persisted` → `queued` → `submitted` → `adapter_terminal`
+  - `delivery_uncertain` is a terminal safety classification, not a retry state.
+- Runtime capability fields to preserve per **exact surface/version**:
+  - `surface`, `version`, `structuredEvents`, `observableCompletionBoundary`, `inputAcknowledgement`, `busyInputBehavior`, `cancelActiveInvocation`, `sessionUsableAfterCancel`, `steerActiveInvocation`, `providerTurnIds`, `toolCallEvents`, `compactionEvents`, `suspendContinuation`.
+- Evidence fields for a probe or future adapter diagnostic:
+  - `provider`, `surface`, `executionStatus`, `fixture.beforeDigest`, `fixture.afterDigest`, `providerSessionIds`, `providerTurnIds`, `terminal`, `sideEffectAssessment`, `cleanup`, `uncertainties`.
+- Existing daemon driver seam remains `sendUserMessage(text)` / provider-specific prompt operations. A `result`, process exit, or `runtime_idle` activity is an Adapter boundary, not a semantic `handled` acknowledgement.
+
+### 3. Contracts
+
+- **Portable reliable wakeup**: persist actionable work outside model context; queue it while an adapter is busy; at a later observable invocation boundary, submit a complete new/resumed prompt; store Adapter terminal evidence separately from business semantic evidence.
+- A durable queue/wakeup hint must be authoritative independently of model attention. `slock message check` is catch-up/context inspection, never the only correctness path for an explicit actionable Work Item.
+- `inputAcknowledgement` means only that a transport/protocol accepted an input. `stopReason:end_turn`, `turn.completed`, process exit, or UI idle does not mean the agent understood, replied, changed a task, or completed a side effect.
+- Provider session reuse / ACP `loadSession` capability / `--resume` can prove a later reference to context only after direct evidence. It must never be serialized as `suspendContinuation` unless an unfinished business/tool continuation was explicitly restored.
+- Active steer, interrupt, and cancellation are provider-specific enhancements. They must have same-surface dynamic evidence, an explicit safety policy, and a durable queue fallback. A successful protocol response cannot be borrowed by Codex exec/ACP, Claude stream-json, Kimi prompt, or OpenCode serve.
+- If a Provider process runs user-global hooks, plugin code, or any fixture-external action whose effects cannot be ruled out, classify the attempt as `delivery_uncertain`, stop that Provider case, and do not auto-retry. Do not inspect unrelated global configuration merely to explain the hook.
+- Streaming evidence must preserve method/update shape and correlation while redacting model thought/message chunks, prompt content, hook payloads, opaque identifiers, credentials, and home paths. Raw transcript remains under `/tmp` only and is deleted after sanitization.
+- Capability claims use these levels: `verified`, `conditional`, `unsupported`, `unverified`, `blocked`. `verified`/`conditional` require dynamic, same-surface evidence; absence from CLI help remains `unverified`. A reproducible explicit protocol rejection may support `unsupported` only for that surface/version.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| New work arrives while a vendor turn is active, but no dynamic active-steer evidence exists | Persist/queue it for a later invocation; do not write a second input based only on model attention. |
+| Provider returns prompt/result/end-turn | Record completion evidence, but leave Work Item semantic outcome pending until reply/task/artifact/explicit ack is correlated. |
+| Provider session id is available | It may be used as a candidate session reference; do not mark suspend/resume support. |
+| Same-turn steer/interrupt response is accepted | Record exact turn/session correlation and constraints; retain durable fallback. |
+| User/global hook or unknown external side effect occurs during probe/runtime experiment | Stop the case, classify `delivery_uncertain`, prohibit automatic retry. |
+| Static help/schema omits a method | Mark capability `unverified`, not `unsupported`. |
+| A model-bearing probe input write fails or times out | Consume the shared provider budget; no refund/retry by changing run id. |
+| Streaming protocol emits many thought/message chunks | Persist aggregate counts/update kinds only; never task-local raw text. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a persisted `@` Work Item waits in a server-owned queue until an adapter becomes available, then is submitted as a complete later prompt; terminal and semantic acknowledgement remain separate.
+- Good: a Kimi/OpenCode ACP adapter records `session/update` and `stopReason:end_turn` for serial prompts, but calls busy injection, cancel reuse, compaction, and continuation `unverified` until separately measured.
+- Base: an adapter currently has an in-memory pending message array. It can remain a latency optimization, but it is not durable work truth.
+- Bad: treating `runtime_idle` or a zero process exit as proof that a `@` was handled.
+- Bad: declaring generic active steering because a different provider's protocol exposes `turn/steer`.
+- Bad: retaining individual model reasoning chunks in backend logs, task evidence, or activity previews.
+
+### 6. Tests Required
+
+- Unit: capability assessment rejects `verified`/`conditional` claims without dynamic same-surface evidence.
+- Unit: busy-input attribution prioritizes adapter queue, provider acknowledgement, same-turn correlation, parallel invocation, then explicit rejection; otherwise returns `unknown`.
+- Unit: Adapter terminal and session resume do not produce semantic handled/suspend-continuation booleans.
+- Unit: `delivery_uncertain` and external/unknown side-effect risk prohibit automatic retry.
+- Unit: provider input ledger is shared across live run IDs and rejects a third model-bearing input.
+- Unit: evidence recorder removes `agent_thought_chunk`, `agent_message_chunk`, hook payloads, and credential/home data while retaining aggregate protocol shape.
+- Integration/spike: every provider-specific enhancement is run in a disposable fixture with owned-process cleanup and an evidence verifier before production adapter work is proposed.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+runtime_idle
+  → mark @ message handled
+  → delete pending work
+```
+
+#### Correct
+
+```text
+runtime terminal observed
+  → record Adapter Invocation outcome
+  → retain/resolve Work Item only with separate semantic evidence
+```
+
+#### Wrong
+
+```text
+Codex app-server accepted turn/steer
+  → enable mid-turn injection for every managed runtime
+```
+
+#### Correct
+
+```text
+Provider-specific steer evidence
+  → opt-in adapter experiment with hook/side-effect policy
+  → durable next-invocation queue remains the universal fallback
+```

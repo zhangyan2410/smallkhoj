@@ -1,0 +1,2 @@
+[     822ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://localhost:8791/favicon.ico:0
+[   65744ms] [WARNING] [.WebGL-0x104000eba00] GL_INVALID_OPERATION: glReadPixelsRobustANGLE: Invalid format and type combination. @ http://localhost:8791/ink-material-lab.html:0

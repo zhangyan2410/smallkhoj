@@ -11,6 +11,23 @@ export const EXPECTED_RUNTIME_PROVIDERS = [
 
 export type ProviderOption = { value: string; label: string }
 
+/**
+ * 4 种产品支持的 runtime —— Computers 详情页只展示这 4 条（已装亮、未装灰），
+ * ccswitch/manual/opencode-config 检测出的 provider 条目不在 chips 区平铺
+ * （它们仅供 Provider 下拉等高级用法使用）。
+ */
+export const PRIMARY_RUNTIMES = ["claude_code", "codex", "opencode", "pi"] as const
+
+/** 是否是 4 条主 runtime 之一（即不含 provider 附加条目）。
+ *  provider 附加条目虽然 type 也是 claude_code/codex/opencode，但带有
+ *  runtimeProvider/provider 字段，靠这个把它们排除掉。bundled Pi 带
+ *  source:'bundled' 但没有 runtimeProvider/provider，算主 runtime。 */
+export function isPrimaryRuntime(runtime: RuntimeInfo): boolean {
+  if (typeof runtime === "string") return false
+  if (runtime.runtimeProvider || runtime.provider) return false
+  return (PRIMARY_RUNTIMES as readonly string[]).includes(publicRuntimeValue(runtime))
+}
+
 export type ProviderOptionFilters = {
   computerId?: string
   runtime?: string
@@ -61,6 +78,9 @@ export function publicRuntimeValue(runtime: RuntimeInfo | string | undefined): s
     case "codex_acp":
     case "codex-acp":
       return "codex"
+    case "opencode":
+    case "open_code":
+      return "opencode"
     case "pi":
       return "pi"
     case "custom":
@@ -103,6 +123,7 @@ export type RuntimeOption = {
 const RUNTIME_LABELS: Record<string, string> = {
   claude_code: "Claude Code",
   codex: "Codex",
+  opencode: "OpenCode",
   custom: "Custom",
 }
 
@@ -127,6 +148,8 @@ export function runtimeOptionsFromDetected(
         detected.add(publicRuntimeValue(runtime))
         continue
       }
+      // not_installed 条目只表示「这台机器没装该 CLI」，不能算作可用 runtime。
+      if (runtime.status === "not_installed") continue
       const value = publicRuntimeValue(runtime)
       if (!value) continue
       detected.add(value)

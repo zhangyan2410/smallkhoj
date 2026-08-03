@@ -1,0 +1,62 @@
+{
+  "budget": {},
+  "busyInput": {
+    "assistantObservedBeforeFirstResult": false,
+    "resultEventsObserved": 0,
+    "secondInputSent": false
+  },
+  "caseId": "claude-stream-json-busy-input",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T03:08:15.336919Z",
+  "evidenceId": "claude-busy-20260714/claude-stream-json-busy-input/1",
+  "executionStatus": "failed",
+  "fixture": {
+    "afterDigest": "41fa38ce626dbc044b2fee58656413e85b54fb5dcbade47da6efd0540e4cf55d",
+    "beforeDigest": "41fa38ce626dbc044b2fee58656413e85b54fb5dcbade47da6efd0540e4cf55d",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/claude-busy-20260714/claude/stream-json-busy"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "claude",
+      "--print",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--replay-user-messages",
+      "--include-partial-messages",
+      "--no-chrome",
+      "--allowedTools",
+      ""
+    ],
+    "providerSessionIds": [],
+    "transport": "stdin_jsonl"
+  },
+  "observations": [],
+  "provider": "claude",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "claude-busy-20260714",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T03:08:15.336802Z",
+  "surface": "claude-stream-json",
+  "terminal": {
+    "adapterState": "stream_json_error",
+    "contradictorySignals": []
+  },
+  "uncertainties": [
+    "stream-json probe failed: ValueError: argv must be a non-empty list of non-empty strings"
+  ],
+  "versions": {}
+}

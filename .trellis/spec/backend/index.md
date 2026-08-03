@@ -19,6 +19,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
+| [Release Pipeline](./release-pipeline.md) | End-to-end verify -> squash merge -> registry-free cloud deploy -> schema-aware rollback overview | Active |
 | [Deployment Environment Contracts](./deployment-environment-contracts.md) | local-dev/local-prod/cloud-prod evidence, Caddy routes, direct image archive deployment | Active |
 | [Runtime Slock Integration](./runtime-slock-integration.md) | Claude runtime, slock CLI, local proxy, and MCP compatibility contracts | Active |
 | [Event Delivery Contracts](./event-delivery-contracts.md) | Activity/event filtering, daemon delivery, and runtime token-safety contracts | Active |

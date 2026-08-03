@@ -1,0 +1,80 @@
+{
+  "budget": {
+    "claude": {
+      "limit": 2,
+      "remaining": 1,
+      "reservedOrConsumed": 1
+    }
+  },
+  "busyInput": {
+    "assistantObservedBeforeFirstResult": false,
+    "resultEventsObserved": 0,
+    "secondInputSent": false
+  },
+  "caseId": "claude-stream-json-busy-input",
+  "cleanup": {
+    "notes": [
+      "process state: terminated"
+    ],
+    "remainingOwnedPids": [],
+    "status": "complete"
+  },
+  "endedAt": "2026-07-14T03:10:13.439873Z",
+  "evidenceId": "claude-busy-20260714-v2/claude-stream-json-busy-input/1",
+  "executionStatus": "timed_out",
+  "fixture": {
+    "afterDigest": "82d776f9dacdc7e39e2791c620c5baeb4f9ed55c1c11780a1cfbbe7a1447fce8",
+    "beforeDigest": "82d776f9dacdc7e39e2791c620c5baeb4f9ed55c1c11780a1cfbbe7a1447fce8",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/claude-busy-20260714-v2/claude/stream-json-busy"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "claude",
+      "--print",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--replay-user-messages",
+      "--include-partial-messages",
+      "--no-chrome",
+      "--allowedTools",
+      ""
+    ],
+    "providerSessionIds": [],
+    "transport": "stdin_jsonl"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T03:09:43.694731Z",
+      "kind": "stream-json-frame",
+      "payload": {
+        "reservationId": "0c37c6ebece5432398c59b939baa7d17",
+        "text": "Error: When using --print, --output-format=stream-json requires --verbose"
+      },
+      "source": "stderr"
+    }
+  ],
+  "provider": "claude",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "claude-busy-20260714-v2",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T03:09:43.417483Z",
+  "surface": "claude-stream-json",
+  "terminal": {
+    "adapterState": "stream_json_timeout_or_block",
+    "contradictorySignals": []
+  },
+  "uncertainties": [
+    "stream-json observation failed: StreamJsonError: timed out waiting for stream-json event"
+  ],
+  "versions": {}
+}

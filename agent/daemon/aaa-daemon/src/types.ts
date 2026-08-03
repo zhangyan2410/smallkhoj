@@ -44,7 +44,8 @@ export interface DetectedRuntime {
   type: RuntimeType;
   version?: string;
   executablePath?: string;
-  status: 'available' | 'running' | 'error';
+  // not_installed: 本机 CLI 检测未命中（无需 ccswitch 配置即可得出）。
+  status: 'available' | 'running' | 'error' | 'not_installed';
   provider?: string;
   runtimeProvider?: string;
   model?: string;

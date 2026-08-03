@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "fixtureRoot": "/tmp/smallkhoj-agent-runtime-capability-matrix",
+  "perProviderLimit": 2,
+  "checks": [
+    {
+      "id": "codex-version",
+      "provider": "codex",
+      "surface": "codex-exec",
+      "mode": "version",
+      "argv": ["codex", "--version"]
+    },
+    {
+      "id": "codex-exec-help",
+      "provider": "codex",
+      "surface": "codex-exec",
+      "mode": "help",
+      "argv": ["codex", "exec", "--help"]
+    },
+    {
+      "id": "codex-appserver-schema",
+      "provider": "codex",
+      "surface": "codex-appserver",
+      "mode": "schema",
+      "argv": [
+        "codex",
+        "app-server",
+        "generate-json-schema",
+        "--experimental",
+        "-o",
+        "{fixture}/schema"
+      ]
+    },
+    {
+      "id": "claude-version",
+      "provider": "claude",
+      "surface": "claude-stream-json",
+      "mode": "version",
+      "argv": ["claude", "--version"]
+    },
+    {
+      "id": "claude-help",
+      "provider": "claude",
+      "surface": "claude-stream-json",
+      "mode": "help",
+      "argv": ["claude", "--help"]
+    },
+    {
+      "id": "kimi-version",
+      "provider": "kimi",
+      "surface": "kimi-prompt",
+      "mode": "version",
+      "argv": ["kimi", "--version"]
+    },
+    {
+      "id": "kimi-help",
+      "provider": "kimi",
+      "surface": "kimi-prompt",
+      "mode": "help",
+      "argv": ["kimi", "--help"]
+    },
+    {
+      "id": "opencode-version",
+      "provider": "opencode",
+      "surface": "opencode-serve",
+      "mode": "version",
+      "argv": ["opencode", "--version"]
+    },
+    {
+      "id": "opencode-help",
+      "provider": "opencode",
+      "surface": "opencode-serve",
+      "mode": "help",
+      "argv": ["opencode", "--help"]
+    },
+    {
+      "id": "qoder-version",
+      "provider": "qoder",
+      "surface": "qoder-cli",
+      "mode": "version",
+      "argv": ["qoder", "--version"]
+    },
+    {
+      "id": "zcode-version",
+      "provider": "zcode",
+      "surface": "zcode-cli",
+      "mode": "version",
+      "argv": ["zcode", "--version"]
+    },
+    {
+      "id": "pi-version",
+      "provider": "pi",
+      "surface": "pi-owned-loop-candidate",
+      "mode": "version",
+      "argv": ["pi", "--version"]
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "agentCapabilities": {
+    "loadSession": true,
+    "mcpCapabilities": {
+      "http": true,
+      "sse": true
+    },
+    "promptCapabilities": {
+      "audio": false,
+      "embeddedContext": true,
+      "image": true
+    },
+    "sessionCapabilities": {
+      "list": {},
+      "resume": {}
+    }
+  },
+  "budget": {},
+  "caseId": "kimi-acp-handshake",
+  "cleanup": {
+    "notes": [
+      "process state: force_terminated"
+    ],
+    "remainingOwnedPids": [],
+    "status": "complete"
+  },
+  "endedAt": "2026-07-14T03:27:35.209686Z",
+  "evidenceId": "kimi-acp-handshake-20260714/kimi-acp-handshake/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "21ed7f27cfb886e964ea57fe9c2a4a1f96c8ee0745c1d3abec8568d2586db4c2",
+    "beforeDigest": "21ed7f27cfb886e964ea57fe9c2a4a1f96c8ee0745c1d3abec8568d2586db4c2",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/kimi-acp-handshake-20260714/kimi/acp-handshake"
+  },
+  "initialize": {
+    "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+        "http": true,
+        "sse": true
+      },
+      "promptCapabilities": {
+        "audio": false,
+        "embeddedContext": true,
+        "image": true
+      },
+      "sessionCapabilities": {
+        "list": {},
+        "resume": {}
+      }
+    },
+    "agentInfo": {
+      "name": "Kimi Code CLI",
+      "version": "0.21.1"
+    },
+    "authMethods": [
+      {
+        "_meta": {
+          "terminal-auth": {
+            "args": [
+              "login"
+            ],
+            "command": "kimi",
+            "env": {},
+            "label": "Login with Kimi account",
+            "type": "terminal"
+          }
+        },
+        "args": [
+          "--login"
+        ],
+        "description": "Open the device-code login flow in a terminal.",
+        "env": {},
+        "id": "login",
+        "name": "Login with Kimi account",
+        "type": "terminal"
+      }
+    ],
+    "protocolVersion": 1
+  },
+  "invocation": {
+    "commandRedacted": [
+      "kimi",
+      "--skills-dir",
+      "/tmp/smallkhoj-agent-runtime-capability-matrix/kimi-acp-handshake-20260714/kimi/acp-handshake/empty-skills",
+      "acp"
+    ],
+    "providerSessionIds": [
+      "id_7d523ce2e40a"
+    ],
+    "transport": "acp"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T03:27:31.057830Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "protocolVersion": 1,
+          "requestId": 1,
+          "resultKeys": [
+            "agentCapabilities",
+            "agentInfo",
+            "authMethods",
+            "protocolVersion"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:27:31.122558Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 2,
+          "resultKeys": [
+            "configOptions",
+            "sessionId"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    }
+  ],
+  "posthocEvidenceNormalization": {
+    "protocolFramesSummarized": 2,
+    "sessionUpdateChunksAggregated": 0
+  },
+  "provider": "kimi",
+  "redaction": {
+    "count": 4,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "kimi-acp-handshake-20260714",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T03:27:30.757978Z",
+  "surface": "kimi-acp",
+  "terminal": {
+    "adapterState": "acp_initialize_and_session_new_completed",
+    "contradictorySignals": []
+  },
+  "uncertainties": [],
+  "versions": {}
+}

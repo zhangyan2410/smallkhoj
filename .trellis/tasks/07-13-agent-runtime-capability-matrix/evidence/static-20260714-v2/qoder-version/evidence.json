@@ -1,0 +1,67 @@
+{
+  "caseId": "qoder-version",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:47:10.944837Z",
+  "evidenceId": "static-20260714-v2/qoder-version/1",
+  "executionStatus": "not_executed",
+  "fixture": {
+    "afterDigest": "b870d1193a8399b55179878a684147c92b4dc8a405ba7946f1e942dccf61a7a8",
+    "beforeDigest": "b870d1193a8399b55179878a684147c92b4dc8a405ba7946f1e942dccf61a7a8",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714-v2/qoder/qoder-version"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "qoder",
+      "--version"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:47:10.944704Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "qoder",
+          "--version"
+        ]
+      },
+      "source": "controller"
+    },
+    {
+      "at": "2026-07-14T02:47:10.944796Z",
+      "kind": "result-reason",
+      "payload": {
+        "reason": "qoder is not installed on PATH"
+      },
+      "source": "controller"
+    }
+  ],
+  "provider": "qoder",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714-v2",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:47:10.944580Z",
+  "surface": "qoder-cli",
+  "terminal": {
+    "adapterState": "not_executed",
+    "contradictorySignals": [],
+    "processExitCode": null
+  },
+  "uncertainties": [
+    "qoder is not installed on PATH"
+  ],
+  "versions": {}
+}

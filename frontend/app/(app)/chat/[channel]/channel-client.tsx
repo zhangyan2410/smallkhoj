@@ -57,7 +57,7 @@ import {
   mergeMessageById,
   shouldHandleRealtimeEvent,
 } from "@/lib/realtime-events"
-import { chatReadCursorRequestForThread } from "@/lib/chat-unread-state"
+import { chatLatestSeqDetailFromEvent, chatReadCursorRequestForThread, notifyChatLatestSeq } from "@/lib/chat-unread-state"
 import { channelMemberAddPayload } from "@/lib/channel-members"
 
 import type { ChannelMessage, ThreadData } from "./chat-types"
@@ -763,10 +763,19 @@ export function ChannelClient({
     }
     if (decision.action === "catch_up") {
       console.info("[realtime] catch-up triggered", decision.reason, event)
+      // 追补后最新消息序号未知，用载荷里的序号下限推进 read-cursor；
+      // refreshMessages 拉全量后若序号更高，下一条新消息事件会继续推进。
+      const catchUpDetail = event.type === "message.created" ? chatLatestSeqDetailFromEvent(event) : null
+      if (catchUpDetail) notifyChatLatestSeq(window, catchUpDetail)
       scheduleCatchUp()
       return
     }
     if (event.type === "message.created") {
+      // 推进侧栏 read-cursor 的 live 序号（该处理器已经 shouldHandleRealtimeEvent
+      // 过滤，事件必属于当前频道）：停留期间收到的消息要标记已读，
+      // 否则下次 SSR 时服务端 unreadCount 会把已看过的消息算回未读（回闪）。
+      const latestSeqDetail = chatLatestSeqDetailFromEvent(event)
+      if (latestSeqDetail) notifyChatLatestSeq(window, latestSeqDetail)
       const message = event.payload.message
       if (message && typeof message === "object" && "id" in message) {
         const channelMessage = message as ChannelMessage

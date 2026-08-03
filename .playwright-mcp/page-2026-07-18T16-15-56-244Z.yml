@@ -1,0 +1,32 @@
+- generic [ref=f1e1]:
+  - heading "ink-material-engine · 回归测试套件" [level=1] [ref=f1e2]
+  - paragraph [ref=f1e3]: 全数值断言，不靠视觉。每个测试：读初始值 → 操作 → 等帧 → 读终值 → 判定变化方向。 用来验证方案 A（lift + source 绑定 fixed + 彩色墨）每一步是否真的生效，改坏引擎立刻能看出。
+  - generic [ref=f1e6]:
+    - generic [ref=f1e11]: "TEST 1: pen() 写 mobile ink"
+    - generic [ref=f1e12]: ✓ ink max 增加
+    - generic [ref=f1e13]: ✓ ink nonZero 增加
+    - generic [ref=f1e14]: "TEST 2: brush() 写 wet 不写 ink"
+    - generic [ref=f1e15]: ✓ wet 增加
+    - generic [ref=f1e16]: ✓ brush 不写 ink（mobile 几乎不变）
+    - generic [ref=f1e17]: "TEST 3: fix() mobile → fixed"
+    - generic [ref=f1e18]: ✓ fix 后 fixed 增加
+    - generic [ref=f1e19]: "TEST 4: 水冲 fixed（lift 生效，需 live 模式）"
+    - generic [ref=f1e20]: "fixed region: before sum=20951 after sum=14481"
+    - generic [ref=f1e21]: ✓ 水让 fixed 区域浓度下降（lift 生效）
+    - generic [ref=f1e22]: "TEST 5: 墨笔 stroke 在 fluid 渲染路径可见"
+    - generic [ref=f1e23]: "paper={\"r\":246,\"g\":244,\"b\":238} stroke={\"r\":205,\"g\":203,\"b\":199}"
+    - generic [ref=f1e24]: ✓ 墨笔区域比纸面明显更暗
+    - generic [ref=f1e25]: "TEST 6: bakeSource 同时烤 ink+fixed（基线回归）"
+    - generic [ref=f1e26]: ✓ bake 后 ink 有内容
+    - generic [ref=f1e27]: ✓ bake 后 fixed 有内容
+    - generic [ref=f1e28]: "TEST 7: 方向正立（基线回归）"
+    - generic [ref=f1e29]: ✓ live 正立（up > flip）
+    - generic [ref=f1e30]: "TEST 8: 图片转换的近纸色边缘不烤成白框"
+    - generic [ref=f1e31]: near-paper avg=0.000 dark avg=0.800
+    - generic [ref=f1e32]: ✓ 近纸色低色度边缘 fixed density 接近 0
+    - generic [ref=f1e33]: ✓ 真正深色线条仍然烤进 fixed
+    - generic [ref=f1e34]: "━━━ 结果: 12 pass / 0 fail ━━━"
+  - paragraph [ref=f1e7]:
+    - button "run all" [active] [ref=f1e8] [cursor=pointer]
+    - button "load cat first" [ref=f1e9] [cursor=pointer]
+    - text: （部分测试需要先加载图）

@@ -1931,7 +1931,7 @@ test('smallkhoj-daemon packaged CLI connect starts daemon with one-time ticket',
     if (url.pathname === '/internal/agent-api/daemon/connect') {
       assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
       const payload = JSON.parse(body);
-      assert.equal(payload.daemonVersion, '0.2.1');
+      assert.equal(payload.daemonVersion, '0.2.2');
       res.end(JSON.stringify({
         connected: true,
         daemonId: 'daemon-cli-connect',
@@ -1985,7 +1985,7 @@ test('smallkhoj-daemon packaged CLI connect starts daemon with one-time ticket',
       assert.fail(`packaged CLI connect exited before daemon registration\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
     }
     const firstRegister = registerBodies[0];
-    assert.equal(firstRegister.daemonVersion, '0.2.1');
+    assert.equal(firstRegister.daemonVersion, '0.2.2');
     assert.equal(firstRegister.workspaces.length, 0);
     assert.equal(daemon.exitCode, null, `daemon exited early\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
@@ -2007,7 +2007,7 @@ test('smallkhoj-daemon supports Raft-style one-line npx onboarding arguments', a
     if (url.pathname === '/internal/agent-api/daemon/connect') {
       assert.equal(req.headers.authorization, `Bearer ${connectToken}`);
       const payload = JSON.parse(body);
-      assert.equal(payload.daemonVersion, '0.2.1');
+      assert.equal(payload.daemonVersion, '0.2.2');
       res.end(JSON.stringify({
         connected: true,
         daemonId: 'daemon-npx-style-connect',
@@ -2055,7 +2055,7 @@ test('smallkhoj-daemon supports Raft-style one-line npx onboarding arguments', a
     if (registerBodies.length === 0) {
       assert.fail(`one-line npx-style onboarding exited before daemon registration\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
     }
-    assert.equal(registerBodies[0].daemonVersion, '0.2.1');
+    assert.equal(registerBodies[0].daemonVersion, '0.2.2');
     assert.equal(daemon.exitCode, null, `daemon exited early\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
     daemon.kill('SIGTERM');
@@ -2309,4 +2309,61 @@ test('daemon start imports existing Slock runtime and Claude can call slock serv
       // Windows can briefly keep spawned script directories locked after process exit.
     }
   }
+});
+
+test('daemon detected runtimes always report the four supported runtimes from local CLI detection', () => {
+  // 无 ccswitch、无 provider：4 条 runtime 条目照常出现，可用性只由本机
+  // CLI 检测决定（claude/codex/opencode 命中与否 + bundled Pi）。
+  const detected = detectedRuntimesForInventory(
+    { runtime: 'claude_code' },
+    {
+      claudeCommand: '/usr/local/bin/claude',
+      codexCommand: undefined,
+      opencodeCommand: undefined,
+      providers: [],
+    },
+    undefined,
+  );
+
+  const byType = new Map(detected.map(item => [item.type, item]));
+  assert.equal(byType.get('claude_code')?.status, 'available');
+  assert.equal(byType.get('codex')?.status, 'not_installed');
+  assert.equal(byType.get('opencode')?.status, 'not_installed');
+  // Pi 是产品内置 runtime，检测层面恒 available，bundled layout 缺失不影响显示。
+  assert.equal(byType.get('pi')?.status, 'available');
+  assert.equal(byType.get('pi')?.source, 'bundled');
+  // config.runtime 不再额外产生一条「假 available」条目
+  assert.equal(detected.filter(item => item.type === 'claude_code').length, 1);
+});
+
+test('daemon detected runtimes keep provider entries alongside the four runtime entries', () => {
+  // 有 ccswitch provider 时：4 条 runtime 条目仍在最前，provider 条目作为附加
+  // 信息保留（Provider 下拉等高级用法依赖 runtimeProvider）。
+  const detected = detectedRuntimesForInventory(
+    { runtime: 'claude_code' },
+    {
+      claudeCommand: '/usr/local/bin/claude',
+      codexCommand: '/usr/local/bin/codex',
+      opencodeCommand: '/usr/local/bin/opencode',
+      providers: [{
+        id: 'codex-krill',
+        name: 'krill',
+        runtime: 'codex',
+        model: 'gpt-5.3-codex',
+        source: 'cc-switch',
+      }],
+    },
+    { version: '0.0.0-test' },
+  );
+
+  const runtimeEntries = detected.filter(item => !item.runtimeProvider);
+  assert.deepEqual(
+    runtimeEntries.map(item => item.type),
+    ['claude_code', 'codex', 'opencode', 'pi'],
+  );
+  assert.ok(runtimeEntries.every(item => item.status === 'available'));
+  assert.equal(runtimeEntries.find(item => item.type === 'pi')?.source, 'bundled');
+  const providerEntry = detected.find(item => item.runtimeProvider === 'codex-krill');
+  assert.equal(providerEntry?.provider, 'krill');
+  assert.equal(providerEntry?.source, 'cc-switch');
 });

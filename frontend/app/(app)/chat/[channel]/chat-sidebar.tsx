@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { Activity, Bot, Bookmark, Hash } from "lucide-react"
@@ -11,7 +11,14 @@ import { CreateChannelDialog } from "./create-channel-dialog"
 import { useChatData, type DmInfo } from "../chat-data-context"
 import { useActivityUnreadStore } from "@/hooks/use-activity-unread-store"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
-import { chatEntityKeys, chatReadCursorRequestForEntity, deriveChatUnreadView, type ChatUnreadEntity } from "@/lib/chat-unread-state"
+import {
+  CHAT_LATEST_SEQ_EVENT,
+  chatEntityKeys,
+  chatReadCursorRequestForEntity,
+  deriveChatUnreadView,
+  type ChatLatestSeqDetail,
+  type ChatUnreadEntity,
+} from "@/lib/chat-unread-state"
 import { apiPost } from "@/lib/control-plane"
 import { cn } from "@/lib/utils"
 
@@ -31,35 +38,117 @@ function dmAvatarMember(dm: DmInfo) {
   )
 }
 
+/** 事件里的频道标识是否对应该实体（id 精确匹配，或路由名匹配）。 */
+function latestSeqEventMatchesEntity(entity: ChatUnreadEntity, detail: ChatLatestSeqDetail): boolean {
+  if (detail.channelId && entity.id && detail.channelId === entity.id) return true
+  if (detail.channelName && entity.name) {
+    return entity.name.replace(/^#/, "") === detail.channelName
+  }
+  return false
+}
+
 export function ChatSidebar() {
   const { channels, dms, allMembers, currentChannelName } = useChatData()
   const { store: unreadStore, clearKeys: clearUnreadKeys } = useActivityUnreadStore()
   const [clearedServerReadSeq, setClearedServerReadSeq] = useState<Record<string, number>>({})
   const tChat = useTranslations("chat")
   const tNav = useTranslations("nav")
+  // 当前频道已由 SSE 推进到的最新消息序号（channel-client 在收到当前频道
+  // message.created 时广播）。回写 read-cursor 用它代替 SSR 时静态的
+  // entity.latestSeq —— 否则停留在频道里收到的消息不会被标记已读，
+  // 下次 SSR 时服务端 unreadCount 又把已看过的消息算成未读（回闪）。
+  const liveLatestSeqRef = useRef(0)
+  // 防回写风暴：已发出（in-flight 或已完成）回写的最高序号。
+  const lastCursorWriteSeqRef = useRef(0)
+  const cursorWriteInFlightRef = useRef(false)
+
+  const activeChannel = channels.find((ch) => ch.name.replace("#", "") === currentChannelName)
+  const activeDm = dms.find((dm) => dm.name === currentChannelName)
+  const activeEntity = activeChannel ?? activeDm
+  const activeEntityKey = activeEntity ? `${activeEntity.type ?? "channel"}:${activeEntity.id ?? activeEntity.name}` : ""
+
+  // 切换频道时重置 live 序号跟踪。
+  useEffect(() => {
+    liveLatestSeqRef.current = 0
+    lastCursorWriteSeqRef.current = 0
+    cursorWriteInFlightRef.current = false
+  }, [activeEntityKey])
+
+  // ref 持有最新 activeEntity，供异步回调使用（避免闭包过期）。
+  const activeEntityRef = useRef<ChatUnreadEntity | undefined>(undefined)
+  useEffect(() => {
+    activeEntityRef.current = activeEntity
+  }, [activeEntity])
 
   useEffect(() => {
-    const activeChannel = channels.find((ch) => ch.name.replace("#", "") === currentChannelName)
-    const activeDm = dms.find((dm) => dm.name === currentChannelName)
-    const activeEntity = activeChannel ?? activeDm
     if (!activeEntity) return
     clearUnreadKeys(chatEntityKeys(activeEntity))
+    const baseline = Math.max(0, activeEntity.latestSeq ?? 0)
+    liveLatestSeqRef.current = Math.max(liveLatestSeqRef.current, baseline)
     const cursorRequest = chatReadCursorRequestForEntity(activeEntity)
     if (!cursorRequest) return
+    lastCursorWriteSeqRef.current = Math.max(lastCursorWriteSeqRef.current, baseline)
+    cursorWriteInFlightRef.current = true
     void apiPost("/api/v1/chat/read-cursors", cursorRequest)
       .then(() => {
         const keys = chatEntityKeys(activeEntity)
-        const readSeq = Math.max(0, activeEntity.latestSeq ?? 0)
         setClearedServerReadSeq((previous) => {
           const next = { ...previous }
-          for (const key of keys) next[key] = Math.max(next[key] ?? 0, readSeq)
+          for (const key of keys) next[key] = Math.max(next[key] ?? 0, baseline)
           return next
         })
       })
       .catch((error) => {
         console.warn("[chat] read cursor write failed", error)
       })
-  }, [channels, dms, currentChannelName, clearUnreadKeys])
+      .finally(() => {
+        cursorWriteInFlightRef.current = false
+      })
+  }, [activeEntityKey, clearUnreadKeys]) // eslint-disable-line react-hooks/exhaustive-deps -- 以实体身份为粒度，channels/dms 引用变化不重复回写
+
+  // 当前频道有新消息（SSE）→ 推进 live 序号并回写 read-cursor。
+  useEffect(() => {
+    const writeLiveCursor = (entity: ChatUnreadEntity, readSeq: number) => {
+      if (!entity.id || readSeq <= 0) return
+      if (readSeq <= lastCursorWriteSeqRef.current || cursorWriteInFlightRef.current) return
+      const kind = entity.type === "dm" ? ("dm" as const) : ("channel" as const)
+      cursorWriteInFlightRef.current = true
+      lastCursorWriteSeqRef.current = readSeq
+      void apiPost("/api/v1/chat/read-cursors", {
+        scope: { kind, channelId: entity.id },
+        lastReadSeq: readSeq,
+      })
+        .then(() => {
+          const keys = chatEntityKeys(entity)
+          setClearedServerReadSeq((previous) => {
+            const next = { ...previous }
+            for (const key of keys) next[key] = Math.max(next[key] ?? 0, readSeq)
+            return next
+          })
+        })
+        .catch((error) => {
+          console.warn("[chat] read cursor write failed", error)
+        })
+        .finally(() => {
+          cursorWriteInFlightRef.current = false
+          // 回写期间序号又前进了：补一次最新回写（lastCursorWriteSeq 守卫防重复）。
+          const current = activeEntityRef.current
+          if (current && liveLatestSeqRef.current > lastCursorWriteSeqRef.current) {
+            writeLiveCursor(current, liveLatestSeqRef.current)
+          }
+        })
+    }
+    const onLatestSeq = (event: Event) => {
+      const detail = (event as CustomEvent<ChatLatestSeqDetail>).detail
+      const entity = activeEntityRef.current
+      if (!detail || !entity) return
+      if (!latestSeqEventMatchesEntity(entity, detail)) return
+      liveLatestSeqRef.current = Math.max(liveLatestSeqRef.current, detail.messageSeq)
+      writeLiveCursor(entity, liveLatestSeqRef.current)
+    }
+    window.addEventListener(CHAT_LATEST_SEQ_EVENT, onLatestSeq)
+    return () => window.removeEventListener(CHAT_LATEST_SEQ_EVENT, onLatestSeq)
+  }, [])
 
   const entityWithLocalClear = (entity: ChatUnreadEntity): ChatUnreadEntity => {
     const latestSeq = Math.max(0, entity.latestSeq ?? 0)

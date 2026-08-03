@@ -1,0 +1,339 @@
+{
+  "agentCapabilities": {
+    "loadSession": true,
+    "mcpCapabilities": {
+      "http": true,
+      "sse": true
+    },
+    "promptCapabilities": {
+      "audio": false,
+      "embeddedContext": true,
+      "image": true
+    },
+    "sessionCapabilities": {
+      "list": {},
+      "resume": {}
+    }
+  },
+  "budget": {
+    "kimi": {
+      "limit": 2,
+      "remaining": 0,
+      "reservedOrConsumed": 2
+    }
+  },
+  "caseId": "kimi-acp-sequential-session",
+  "cleanup": {
+    "notes": [
+      "process state: force_terminated"
+    ],
+    "remainingOwnedPids": [],
+    "status": "complete"
+  },
+  "endedAt": "2026-07-14T03:32:25.260611Z",
+  "evidenceId": "kimi-acp-sequential-20260714/kimi-acp-sequential-session/1",
+  "executionStatus": "passed",
+  "firstPrompt": {
+    "stopReason": "end_turn"
+  },
+  "fixture": {
+    "afterDigest": "4169adf5bf5d2102afb510f2525f98d4749cf2996bbbabc2579c3ded6fed33c2",
+    "beforeDigest": "4169adf5bf5d2102afb510f2525f98d4749cf2996bbbabc2579c3ded6fed33c2",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/kimi-acp-sequential-20260714/kimi/acp-sequential"
+  },
+  "initialize": {
+    "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+        "http": true,
+        "sse": true
+      },
+      "promptCapabilities": {
+        "audio": false,
+        "embeddedContext": true,
+        "image": true
+      },
+      "sessionCapabilities": {
+        "list": {},
+        "resume": {}
+      }
+    },
+    "agentInfo": {
+      "name": "Kimi Code CLI",
+      "version": "0.21.1"
+    },
+    "authMethods": [
+      {
+        "_meta": {
+          "terminal-auth": {
+            "args": [
+              "login"
+            ],
+            "command": "kimi",
+            "env": {},
+            "label": "Login with Kimi account",
+            "type": "terminal"
+          }
+        },
+        "args": [
+          "--login"
+        ],
+        "description": "Open the device-code login flow in a terminal.",
+        "env": {},
+        "id": "login",
+        "name": "Login with Kimi account",
+        "type": "terminal"
+      }
+    ],
+    "protocolVersion": 1
+  },
+  "invocation": {
+    "commandRedacted": [
+      "kimi",
+      "--skills-dir",
+      "/tmp/smallkhoj-agent-runtime-capability-matrix/kimi-acp-sequential-20260714/kimi/acp-sequential/empty-skills",
+      "acp"
+    ],
+    "providerSessionIds": [
+      "id_f23508cd2006"
+    ],
+    "transport": "acp"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T03:32:03.456305Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "protocolVersion": 1,
+          "requestId": 1,
+          "resultKeys": [
+            "agentCapabilities",
+            "agentInfo",
+            "authMethods",
+            "protocolVersion"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:32:03.524965Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 2,
+          "resultKeys": [
+            "configOptions",
+            "sessionId"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:32:03.528657Z",
+      "kind": "acp-frame",
+      "payload": {
+        "reservationId": null,
+        "text": {
+          "bytes": 3604,
+          "kind": "digest",
+          "sha256": "06c130f48500ddfc4d1e4fb3768fd373e14beb06cd0945edfdaca1f9ec25c702"
+        }
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:32:03.534439Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "notification",
+          "method": "session/update",
+          "protocol": "jsonrpc",
+          "sessionUpdate": "config_option_update"
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:32:03.537127Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 3,
+          "resultKeys": [
+            "configOptions"
+          ]
+        },
+        "reservationId": null
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:32:17.579908Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 4,
+          "resultKeys": [
+            "stopReason"
+          ],
+          "stopReason": "end_turn"
+        },
+        "reservationId": "id_af7ddf52a7c8"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:32:21.148829Z",
+      "kind": "acp-frame",
+      "payload": {
+        "frame": {
+          "kind": "response",
+          "protocol": "jsonrpc",
+          "requestId": 5,
+          "resultKeys": [
+            "stopReason"
+          ],
+          "stopReason": "end_turn"
+        },
+        "reservationId": "id_872104e35a94"
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:32:21.099350Z",
+      "kind": "protocol-summary",
+      "payload": {
+        "frame": {
+          "chunksRedacted": 34,
+          "content": "redacted",
+          "kind": "aggregate",
+          "protocol": "jsonrpc",
+          "sessionUpdate": "agent_message_chunk"
+        }
+      },
+      "source": "stdout"
+    },
+    {
+      "at": "2026-07-14T03:32:20.840318Z",
+      "kind": "protocol-summary",
+      "payload": {
+        "frame": {
+          "chunksRedacted": 268,
+          "content": "redacted",
+          "kind": "aggregate",
+          "protocol": "jsonrpc",
+          "sessionUpdate": "agent_thought_chunk"
+        }
+      },
+      "source": "stdout"
+    }
+  ],
+  "planMode": {
+    "configOptions": [
+      {
+        "category": "model",
+        "currentValue": "kimi-code/kimi-for-coding",
+        "id": "model",
+        "name": "Model",
+        "options": [
+          {
+            "name": "K2.7 Code",
+            "value": "kimi-code/kimi-for-coding"
+          }
+        ],
+        "type": "select"
+      },
+      {
+        "category": "thought_level",
+        "currentValue": "on",
+        "id": "thinking",
+        "name": "Thinking",
+        "options": [
+          {
+            "name": "Thinking On",
+            "value": "on"
+          }
+        ],
+        "type": "select"
+      },
+      {
+        "category": "mode",
+        "currentValue": "plan",
+        "id": "mode",
+        "name": "Mode",
+        "options": [
+          {
+            "description": "Manual approvals; tools execute normally.",
+            "name": "Default",
+            "value": "default"
+          },
+          {
+            "description": "Read-only planning; no tool execution.",
+            "name": "Plan",
+            "value": "plan"
+          },
+          {
+            "description": "Auto-approve safe operations.",
+            "name": "Auto",
+            "value": "auto"
+          },
+          {
+            "description": "Auto-approve everything.",
+            "name": "YOLO",
+            "value": "yolo"
+          }
+        ],
+        "type": "select"
+      }
+    ]
+  },
+  "postSecondPrompt": "unverified_cancel_reuse_and_suspend_continuation",
+  "posthocEvidenceNormalization": {
+    "protocolFramesSummarized": 308,
+    "sessionUpdateChunksAggregated": 304
+  },
+  "provider": "kimi",
+  "redaction": {
+    "count": 920,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "kimi-acp-sequential-20260714",
+  "schemaVersion": 1,
+  "secondPrompt": {
+    "stopReason": "end_turn"
+  },
+  "sessionUpdateKinds": {
+    "agent_message_chunk": 34,
+    "agent_thought_chunk": 268,
+    "available_commands_update": 1,
+    "config_option_update": 1
+  },
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T03:32:02.998117Z",
+  "surface": "kimi-acp",
+  "terminal": {
+    "adapterState": "two_sequential_prompt_responses_observed",
+    "contradictorySignals": []
+  },
+  "uncertainties": [],
+  "versions": {}
+}

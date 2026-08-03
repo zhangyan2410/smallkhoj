@@ -3,6 +3,7 @@ import test from "node:test"
 import { readFileSync } from "node:fs"
 
 import {
+  chatLatestSeqDetailFromEvent,
   chatReadCursorRequestForThread,
   chatReadCursorKey,
   chatReadCursorRequestForEntity,
@@ -248,4 +249,43 @@ test("thread markers can derive from backend projection or local realtime overla
   assert.equal(hasUnreadThreadActivity({ id: "root-local" }, localRoots), true)
   assert.equal(hasUnreadThreadActivity({ id: "root-3", threadId: "root-local" }, localRoots), true)
   assert.equal(hasUnreadThreadActivity({ id: "root-4", hasThreadUnread: false, threadUnreadCount: 0 }, localRoots), false)
+})
+
+test("chatLatestSeqDetailFromEvent extracts per-channel message seq for live cursor writes", () => {
+  assert.deepEqual(
+    chatLatestSeqDetailFromEvent({
+      scope: { kind: "channel", id: "ch-1", name: "#general" },
+      payload: { seq: 12, channel: "#general" },
+    }),
+    { channelId: "ch-1", channelName: "general", messageSeq: 12 },
+  )
+  // messageSeq 别名 + 字符串数字。
+  assert.deepEqual(
+    chatLatestSeqDetailFromEvent({
+      scope: { kind: "dm", id: "dm-1" },
+      payload: { messageSeq: "7" },
+    }),
+    { channelId: "dm-1", channelName: undefined, messageSeq: 7 },
+  )
+  // 无序号/无标识的事件不产生推进（不会误回写 read-cursor）。
+  assert.equal(
+    chatLatestSeqDetailFromEvent({ scope: { kind: "channel", id: "ch-1" }, payload: {} }),
+    null,
+  )
+  assert.equal(
+    chatLatestSeqDetailFromEvent({ scope: {} as { kind: string }, payload: { seq: 3 } }),
+    null,
+  )
+})
+
+test("sidebar advances live latestSeq from realtime events before writing read cursors", () => {
+  const sidebarSource = readFileSync(new URL("../app/(app)/chat/[channel]/chat-sidebar.tsx", import.meta.url), "utf8")
+  const channelSource = readFileSync(new URL("../app/(app)/chat/[channel]/channel-client.tsx", import.meta.url), "utf8")
+
+  // sidebar 监听当前频道序号推进事件，回写用 live 序号而非 SSR 静态 latestSeq。
+  assert.match(sidebarSource, /CHAT_LATEST_SEQ_EVENT/)
+  assert.match(sidebarSource, /liveLatestSeqRef/)
+  // channel-client 收到当前频道消息时广播序号推进。
+  assert.match(channelSource, /notifyChatLatestSeq/)
+  assert.match(channelSource, /chatLatestSeqDetailFromEvent/)
 })

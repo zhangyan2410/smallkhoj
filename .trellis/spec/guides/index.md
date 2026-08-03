@@ -77,6 +77,15 @@ These guides help you **ask the right questions before coding**.
 
 → Read `.trellis/spec/backend/deployment-environment-contracts.md` and `.trellis/spec/frontend/auth-onboarding-contracts.md`
 
+### When to Follow the Release Pipeline
+
+- [ ] You're asked "how do we verify / test / merge / deploy / release this project"
+- [ ] You're planning a release candidate, a squash merge, or a cloud deploy
+- [ ] You need the ordered phases (capacity gate -> squash merge -> tree equality -> image transfer -> app-only deploy -> smoke -> rollback)
+- [ ] You're deciding whether an image rollback is allowed after a failed deploy
+
+→ Read `.trellis/spec/backend/release-pipeline.md` (overview) then drill into `deployment-environment-contracts.md` for per-phase assertions
+
 ---
 
 ## Pre-Modification Rule (CRITICAL)

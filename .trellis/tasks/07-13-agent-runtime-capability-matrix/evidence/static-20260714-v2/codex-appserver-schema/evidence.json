@@ -1,0 +1,65 @@
+{
+  "caseId": "codex-appserver-schema",
+  "cleanup": {
+    "notes": [],
+    "remainingOwnedPids": [],
+    "status": "not_needed"
+  },
+  "endedAt": "2026-07-14T02:47:09.323354Z",
+  "evidenceId": "static-20260714-v2/codex-appserver-schema/1",
+  "executionStatus": "passed",
+  "fixture": {
+    "afterDigest": "4a10aab772e0d93594023f8d694578e1cbef72736836d41fd44ec28173d30448",
+    "beforeDigest": "969b154c0f42068df4a76d80bf3b8960f853cf5b8344c1d807a5e4620c85128c",
+    "root": "/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714-v2/codex/codex-appserver-schema"
+  },
+  "invocation": {
+    "commandRedacted": [
+      "codex",
+      "app-server",
+      "generate-json-schema",
+      "--experimental",
+      "-o",
+      "/private/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714-v2/codex/codex-appserver-schema/schema"
+    ],
+    "transport": "process"
+  },
+  "observations": [
+    {
+      "at": "2026-07-14T02:47:09.323202Z",
+      "kind": "preflight-command",
+      "payload": {
+        "argv": [
+          "codex",
+          "app-server",
+          "generate-json-schema",
+          "--experimental",
+          "-o",
+          "/private/tmp/smallkhoj-agent-runtime-capability-matrix/static-20260714-v2/codex/codex-appserver-schema/schema"
+        ]
+      },
+      "source": "controller"
+    }
+  ],
+  "provider": "codex",
+  "redaction": {
+    "count": 0,
+    "rawTranscript": "deleted_after_sanitization",
+    "version": 1
+  },
+  "runId": "static-20260714-v2",
+  "schemaVersion": 1,
+  "sideEffectAssessment": {
+    "observed": [],
+    "risk": "none"
+  },
+  "startedAt": "2026-07-14T02:47:09.039580Z",
+  "surface": "codex-appserver",
+  "terminal": {
+    "adapterState": "passed",
+    "contradictorySignals": [],
+    "processExitCode": 0
+  },
+  "uncertainties": [],
+  "versions": {}
+}
