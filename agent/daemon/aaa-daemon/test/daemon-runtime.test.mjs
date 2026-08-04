@@ -1453,6 +1453,7 @@ test('daemon does not mark Codex ACP ready when the child exits 127 before creat
   const failingAcp = join(root, 'failing-acp.mjs');
   const registerBodies = [];
   const agentHeartbeatBodies = [];
+  const activityBodies = [];
   const upstream = await startServer((req, res, body) => {
     const url = new URL(req.url, 'http://upstream.test');
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -1470,6 +1471,11 @@ test('daemon does not mark Codex ACP ready when the child exits 127 before creat
       res.end(JSON.stringify({ ok: true }));
       return;
     }
+    if (url.pathname === '/internal/agent-api/activity') {
+      activityBodies.push(JSON.parse(body));
+      res.end(JSON.stringify({ created: true }));
+      return;
+    }
     if (url.pathname === '/internal/agent-api/events') {
       res.end(JSON.stringify({ count: 0, events: [] }));
       return;
@@ -1477,7 +1483,10 @@ test('daemon does not mark Codex ACP ready when the child exits 127 before creat
     res.end(JSON.stringify({ events: [] }));
   });
 
-  writeFileSync(failingAcp, 'process.exit(127);\n');
+  writeFileSync(
+    failingAcp,
+    "process.stderr.write('sh: @zed-industries/codex-acp@0.16.0: No such file or directory\\n'); process.exit(127);\n",
+  );
 
   const daemon = spawn(process.execPath, [
     resolve('dist/cmd/main.js'),
@@ -1513,6 +1522,9 @@ test('daemon does not mark Codex ACP ready when the child exits 127 before creat
     await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => (
       workspace.agentId === 'agent-acp-exit-127' && workspace.status === 'exited'
     ))));
+    await waitFor(() => activityBodies.some(item => (
+      item.type === 'workspace_updated' && item.details?.status === 'exited'
+    )));
 
     daemon.kill('SIGTERM');
     await waitForExit(daemon);
@@ -1528,6 +1540,15 @@ test('daemon does not mark Codex ACP ready when the child exits 127 before creat
     assert.equal(agentHeartbeatBodies.some(item => item.workspaceStatus === 'running'), false);
     assert.doesNotMatch(stderr, /Runtime agent-acp-exit-127 ready/);
     assert.match(stderr, /runtime agent-acp-exit-127 exited: code=127/);
+    const failureActivity = activityBodies.find(item => (
+      item.type === 'workspace_updated' && item.details?.status === 'exited'
+    ));
+    assert.match(failureActivity.description, /codex runtime failed/i);
+    assert.match(failureActivity.description, /No such file or directory/);
+    assert.equal(failureActivity.details.status, 'exited');
+    assert.equal(failureActivity.details.exitCode, 127);
+    assert.equal(failureActivity.details.error, 'ACP connection closed');
+    assert.match(failureActivity.details.stderr, /@zed-industries\/codex-acp@0\.16\.0/);
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {

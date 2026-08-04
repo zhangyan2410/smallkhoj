@@ -191,6 +191,10 @@ interface RuntimeRecord {
   warmupTimer: ReturnType<typeof setTimeout> | null;
   /** Current activity state for the four-state timeline (Working/Thinking/Output/Idle) */
   activityTurnState: 'idle' | 'working' | 'thinking' | 'output';
+  /** Last runtime stderr line, retained so an unexpected exit can explain itself in Activity. */
+  lastStderrLine?: string;
+  /** Last runtime driver error, paired with stderr and exit metadata in Activity. */
+  lastErrorMessage?: string;
   /** tool_use ids already reported as Output activity this turn (dedup) */
   recordedToolUseIds: Set<string>;
   /** Ground-truth token usage from the last completed turn (session-jsonl or provider) */
@@ -977,6 +981,8 @@ export class DaemonCore extends EventEmitter {
       pendingWarmupResult: new Set(),
       warmupTimer: null,
       activityTurnState: 'idle',
+      lastStderrLine: undefined,
+      lastErrorMessage: undefined,
       recordedToolUseIds: new Set(),
     };
     this.runtimes.set(agentId, runtime);
@@ -986,6 +992,7 @@ export class DaemonCore extends EventEmitter {
       this.markRuntimeProgress(runtime);
       this.log(`${runtimeType} runtime ${agentId} ${event.stream}: ${event.line}`, 'debug');
       if (event.stream === 'stderr') {
+        runtime.lastStderrLine = event.line;
         console.error(`[Daemon] ${runtimeType} runtime ${agentId} stderr: ${event.line}`);
       }
       this.emit('runtime_line', { ...event, agentId });
@@ -1304,6 +1311,24 @@ export class DaemonCore extends EventEmitter {
         this.sessionManager.update(event.sessionId, { status: 'dead' });
       }
       runtime.status = event.intentional ? 'stopped' : 'exited';
+      if (!event.intentional) {
+        const fallbackReason = `exit code=${event.code ?? 'unknown'} signal=${event.signal ?? 'unknown'}`;
+        const visibleReason = runtime.lastStderrLine || runtime.lastErrorMessage || fallbackReason;
+        void this.reportRuntimeActivity(
+          runtime,
+          'workspace_updated',
+          `${runtime.runtime === 'codex' ? 'Codex' : runtime.runtime} runtime failed: ${visibleReason}`,
+          {
+            runtime: runtime.runtime,
+            status: 'exited',
+            phase: runtime.ready ? 'running' : 'starting',
+            error: runtime.lastErrorMessage,
+            stderr: runtime.lastStderrLine,
+            exitCode: event.code,
+            signal: event.signal,
+          },
+        );
+      }
       if (!event.intentional && runtime.activeTaskRunId) {
         void this.reportTaskRunLifecycle({
           agentId,
@@ -1338,8 +1363,9 @@ export class DaemonCore extends EventEmitter {
     });
     driver.on('error', (err) => {
       this.markRuntimeProgress(runtime);
-      this.log(`${runtime.runtime} runtime ${agentId} error: ${(err as Error).message}`, 'error');
-      console.error(`[Daemon] ${runtime.runtime} runtime ${agentId} error:`, (err as Error).message);
+      runtime.lastErrorMessage = (err as Error).message;
+      this.log(`${runtime.runtime} runtime ${agentId} error: ${runtime.lastErrorMessage}`, 'error');
+      console.error(`[Daemon] ${runtime.runtime} runtime ${agentId} error:`, runtime.lastErrorMessage);
       this.emit('runtime_error', err);
       this.emitRuntimeTrace({ type: 'error', agentId, message: (err as Error).message });
       if (runtime.activeTaskRunId) {
