@@ -179,10 +179,12 @@ def _activity(kind, *, agent_id=None, occurred_at=None, description=None):
     )
 
 
-def test_public_agent_runtime_normalizer_exposes_codex_without_acp_detail():
+def test_public_agent_runtime_normalizer_accepts_product_runtimes_and_aliases():
     assert public_api._normalize_runtime("codex") == "codex"
     assert public_api._normalize_runtime("codex_acp") == "codex"
     assert public_api._normalize_runtime("codex-acp") == "codex"
+    assert public_api._normalize_runtime("opencode") == "opencode"
+    assert public_api._normalize_runtime("open_code") == "opencode"
     with pytest.raises(HTTPException) as exc:
         public_api._normalize_runtime("codex_cli")
     assert exc.value.status_code == 400

@@ -5041,6 +5041,8 @@ def _normalize_runtime(value: str | None) -> str:
         "codex": "codex",
         "codex-acp": "codex",
         "codex_acp": "codex",
+        "opencode": "opencode",
+        "open_code": "opencode",
         "pi": "pi",
     }
     raw = (str(value).strip().lower() if value else "") or "claude_code"
