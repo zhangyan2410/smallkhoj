@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import type { ReactNode } from "react"
+import { getTranslations } from "next-intl/server"
 
 import { ProductShell } from "@/components/product-shell"
 import { ChatDataProvider } from "./chat-data-context"
@@ -22,11 +23,12 @@ export default async function ChatLayout({ children }: { children: ReactNode }) 
   // auth gate 由上层 app/(app)/layout.tsx 统一负责；这里不再单独 requireCurrentAccount()。
   // 4 个取数走 cache()-wrapped helpers（自带 session、无参）：
   // 同 pass 内若 [channel]/page 也调用 fetchChatMembers/fetchChatDms，会命中 cache、不再多发请求。
-  const [channelsRaw, dmsRaw, allMembers, cursorsRaw] = await Promise.all([
+  const [channelsRaw, dmsRaw, allMembers, cursorsRaw, t] = await Promise.all([
     fetchChatChannels(),
     fetchChatDms(),
     fetchChatMembers(),
     fetchChatReadCursors(),
+    getTranslations("chat"),
   ])
   const cursors = (cursorsRaw ?? []) as ChatReadCursor[]
   const channels = mergeChatReadCursorsIntoEntities(channelsRaw, cursors)
@@ -35,10 +37,10 @@ export default async function ChatLayout({ children }: { children: ReactNode }) 
   return (
     <ChatDataProvider channels={channels} dms={dms} allMembers={allMembers}>
       <ProductShell
-        title="Chat"
-        description="Conversations with the agent team"
+        title={t("landingTitle")}
+        description={t("landingDescription")}
         list={<ChatSidebar />}
-        listTitle="Chat"
+        listTitle={t("landingTitle")}
         listConfig={CHAT_LIST_WIDTH}
         className="p-0"
         mainScrollable={false}

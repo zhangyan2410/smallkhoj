@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import {
   AlertCircle,
   Bell,
@@ -127,6 +128,7 @@ function ActivityDetailRow({ label, value }: { label: string; value?: string | n
 }
 
 export function ActivityEventCard({ item }: { item: ActivityItem }) {
+  const t = useTranslations("chat")
   const [expanded, setExpanded] = useState(false)
   const hasDetails = Object.keys(item.details).length > 0
 
@@ -171,7 +173,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             {item.details.usageSource != null && <ActivityDetailRow label="usageSource" value={String(item.details.usageSource)} />}
             {item.details.thought != null && (
               <div className="mt-1">
-                <span className="text-[11px] text-muted-foreground">Thought</span>
+                <span className="text-[11px] text-muted-foreground">{t("thought")}</span>
                 <AttachmentSheet kind="proof" className="mt-0.5 p-1.5">
                   <pre className="max-h-32 overflow-auto text-[11px]">
                     {String(item.details.thought)}
@@ -181,7 +183,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             )}
             {item.details.commandPreview != null && (
               <div className="mt-1">
-                <span className="text-[11px] text-muted-foreground">Command</span>
+                <span className="text-[11px] text-muted-foreground">{t("command")}</span>
                 <AttachmentSheet kind="proof" className="mt-0.5 p-1.5">
                   <pre className="max-h-24 overflow-auto text-[11px]">
                     {String(item.details.commandPreview)}
@@ -191,7 +193,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
             )}
             {item.details.tokens != null && (
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">tokens</span>
+                <span className="text-muted-foreground">{t("tokens")}</span>
                 <span className="font-mono">
                   {[
                     (item.details.tokens as Record<string, unknown>).input,
@@ -204,7 +206,7 @@ export function ActivityEventCard({ item }: { item: ActivityItem }) {
               </div>
             )}
             <details className="mt-1">
-              <summary className="cursor-pointer text-[11px] text-muted-foreground">raw details</summary>
+              <summary className="cursor-pointer text-[11px] text-muted-foreground">{t("rawDetails")}</summary>
               <AttachmentSheet kind="proof" className="mt-1 p-2">
                 <pre className="max-h-40 overflow-auto text-[11px]">
                   {JSON.stringify(item.details, null, 2)}
@@ -243,6 +245,7 @@ export function AgentActivityList({
   showHeader = true,
   compact = false,
 }: AgentActivityListProps) {
+  const t = useTranslations("chat")
   const cacheKey = `${agentId}:${limit}:${runtimeOnly}`
   const [activity, setActivity] = useState<ActivityItem[]>(() => activityCache.get(cacheKey)?.items ?? [])
   const [loading, setLoading] = useState(() => !activityCache.has(cacheKey))
@@ -278,9 +281,9 @@ export function AgentActivityList({
       {showHeader && (
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">
-            Activity
+            {t("activity")}
             <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-              {Math.min(activity.length, maxDisplay)}{activity.length > maxDisplay ? `/${activity.length}` : ""} {runtimeOnly ? "state change" : "event"}{activity.length === 1 ? "" : "s"}
+              {Math.min(activity.length, maxDisplay)}{activity.length > maxDisplay ? `/${activity.length}` : ""} {runtimeOnly ? t("stateChange") : t("eventSingular")}
             </span>
           </h2>
           <Button
@@ -288,19 +291,19 @@ export function AgentActivityList({
             variant="outline"
             size="xs"
           >
-            Refresh
+            {t("refresh")}
           </Button>
         </div>
       )}
-      {loading && <p className="py-8 text-center text-sm text-muted-foreground">Loading activity...</p>}
+      {loading && <p className="py-8 text-center text-sm text-muted-foreground">{t("loadingActivity")}</p>}
       {!loading && activity.length === 0 && !compact && (
         <InkframeObjectSurface material="dry" className="py-10 text-center">
           <Cpu className="mx-auto size-7 text-muted-foreground/50" />
-          <p className="mt-2 text-sm text-muted-foreground">No activity yet.</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t("noActivityYet")}</p>
         </InkframeObjectSurface>
       )}
       {!loading && activity.length === 0 && compact && (
-        <p className="py-4 text-center text-xs text-muted-foreground">No activity</p>
+        <p className="py-4 text-center text-xs text-muted-foreground">{t("noActivity")}</p>
       )}
       {!loading && activity.length > 0 && (
         <div className="space-y-1.5">

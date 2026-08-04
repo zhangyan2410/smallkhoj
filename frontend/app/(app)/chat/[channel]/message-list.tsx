@@ -198,8 +198,8 @@ export const MessageItem = memo(function MessageItem({
           if (isDrawing) onMaterialModeChange(message.id, "static")
           else onActivateMaterial(message.id, "draw")
         }}
-        aria-label="Annotate message"
-        title="Annotate message"
+        aria-label={tChat("annotateMessage")}
+        title={tChat("annotateMessage")}
         className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
           isDrawing ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
         }`}
@@ -211,8 +211,8 @@ export const MessageItem = memo(function MessageItem({
         data-slot="message-material-water"
         data-active={isWatering ? "true" : "false"}
         onClick={() => onActivateMaterial(message.id, "water")}
-        aria-label="Water annotation"
-        title="Water annotation"
+        aria-label={tChat("waterAnnotation")}
+        title={tChat("waterAnnotation")}
         className={`inline-flex size-6 items-center justify-center rounded-none focus-visible:ring-2 focus-visible:ring-ring ${
           isWatering ? "text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
         }`}
@@ -224,8 +224,8 @@ export const MessageItem = memo(function MessageItem({
         data-slot="message-material-keep"
         disabled={!isMaterialActive}
         onClick={() => onRequestMaterialAction(message.id, "keeping")}
-        aria-label="Keep annotation"
-        title="Keep annotation"
+        aria-label={tChat("keepAnnotation")}
+        title={tChat("keepAnnotation")}
         className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35"
       >
         <Save className="size-3.5" />
@@ -235,8 +235,8 @@ export const MessageItem = memo(function MessageItem({
         data-slot="message-material-discard"
         disabled={!isMaterialActive && !hasMaterialResource}
         onClick={() => onRequestMaterialAction(message.id, "discarding")}
-        aria-label="Clear annotation"
-        title="Clear annotation"
+        aria-label={tChat("clearAnnotation")}
+        title={tChat("clearAnnotation")}
         className="inline-flex size-6 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35"
       >
         <RotateCcw className="size-3.5" />

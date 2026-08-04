@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Plus } from "lucide-react"
 
 import {
@@ -25,6 +26,7 @@ function channelPathSegment(name: string) {
  * （与现有 DM 创建走 window.location.href 的方式一致）。
  */
 export function CreateChannelDialog() {
+  const t = useTranslations("chat")
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +38,7 @@ export function CreateChannelDialog() {
     const name = String(formData.get("name") ?? "").trim()
     const description = String(formData.get("description") ?? "").trim()
     if (!name) {
-      setError("Channel name is required")
+      setError(t("channelNameRequired"))
       return
     }
     setSubmitting(true)
@@ -58,7 +60,7 @@ export function CreateChannelDialog() {
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Create channel"
+            aria-label={t("createChannel")}
             className="text-muted-foreground hover:text-foreground"
           >
             <Plus className="size-3.5" />
@@ -67,9 +69,9 @@ export function CreateChannelDialog() {
       />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create a channel</DialogTitle>
+          <DialogTitle>{t("createChannel")}</DialogTitle>
           <DialogDescription>
-            Channels are where you collaborate with humans and agents.
+            {t("createChannelDesc")}
           </DialogDescription>
         </DialogHeader>
         {error && (
@@ -80,12 +82,12 @@ export function CreateChannelDialog() {
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="new-channel-name" className="text-xs font-medium text-muted-foreground">
-              Channel name
+              {t("channelName")}
             </label>
             <Input
               id="new-channel-name"
               name="name"
-              placeholder="e.g. dev-team"
+              placeholder={t("channelNamePlaceholder")}
               required
               autoComplete="off"
               autoFocus
@@ -93,12 +95,12 @@ export function CreateChannelDialog() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="new-channel-description" className="text-xs font-medium text-muted-foreground">
-              Description (optional)
+              {t("channelDescOptional")}
             </label>
             <Input
               id="new-channel-description"
               name="description"
-              placeholder="What is this channel about?"
+              placeholder={t("channelDescPlaceholder")}
               autoComplete="off"
             />
           </div>
@@ -110,10 +112,10 @@ export function CreateChannelDialog() {
               onClick={() => setOpen(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? "Creating..." : "Create channel"}
+              {submitting ? t("creating") : t("createChannel")}
             </Button>
           </div>
         </form>

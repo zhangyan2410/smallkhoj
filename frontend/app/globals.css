@@ -167,12 +167,12 @@
    * 头像底色对（agent 身份调色板，单一真源）。
    * 色相全部落在水 + 暖沙带，无紫色。供 avatar.tsx 引用，避免内联 oklch。
    */
-  --avatar-tint-1-bg: oklch(0.95 0.025 215); --avatar-tint-1-fg: oklch(0.32 0.06 215);
-  --avatar-tint-2-bg: oklch(0.95 0.030 198); --avatar-tint-2-fg: oklch(0.32 0.06 198);
-  --avatar-tint-3-bg: oklch(0.96 0.020 230); --avatar-tint-3-fg: oklch(0.30 0.06 230);
-  --avatar-tint-4-bg: oklch(0.96 0.025 85);  --avatar-tint-4-fg: oklch(0.34 0.05 55);
-  --avatar-tint-5-bg: oklch(0.95 0.030 200); --avatar-tint-5-fg: oklch(0.32 0.06 200);
-  --avatar-tint-6-bg: oklch(0.96 0.025 150); --avatar-tint-6-fg: oklch(0.30 0.06 150);
+  --avatar-tint-1-bg: oklch(0.92 0.045 215); --avatar-tint-1-fg: oklch(0.32 0.08 215);
+  --avatar-tint-2-bg: oklch(0.92 0.05 198);  --avatar-tint-2-fg: oklch(0.32 0.08 198);
+  --avatar-tint-3-bg: oklch(0.93 0.04 230);  --avatar-tint-3-fg: oklch(0.30 0.08 230);
+  --avatar-tint-4-bg: oklch(0.93 0.045 85);  --avatar-tint-4-fg: oklch(0.34 0.07 55);
+  --avatar-tint-5-bg: oklch(0.92 0.05 200);  --avatar-tint-5-fg: oklch(0.32 0.08 200);
+  --avatar-tint-6-bg: oklch(0.93 0.045 150); --avatar-tint-6-fg: oklch(0.30 0.08 150);
 
   /*
    * 分类色 token（单一真源）—— 给 RuntimeChip/ActivityBadge 等「分类标签」用。
@@ -180,16 +180,16 @@
    * 手作风：浅底 + 深字 + 墨边（比 status 实色块安静，适合密集列表里的标签）。
    * 改分类色只改这里，RuntimeChip tone 自动跟随。
    */
-  --cat-info: oklch(0.93 0.05 210);       /* 中海蓝浅底 */
-  --cat-info-fg: oklch(0.40 0.10 215);    /* 深海蓝字 */
-  --cat-success: oklch(0.93 0.05 155);    /* 海绿浅底 */
-  --cat-success-fg: oklch(0.38 0.11 155); /* 深海绿字 */
-  --cat-warning: oklch(0.93 0.06 75);     /* 暖沙琥珀浅底 */
-  --cat-warning-fg: oklch(0.40 0.09 55);  /* 深棕字 */
-  --cat-danger: oklch(0.93 0.05 25);      /* 珊瑚浅底 */
-  --cat-danger-fg: oklch(0.42 0.13 25);   /* 深珊瑚字 */
-  --cat-neutral: oklch(0.94 0.01 220);    /* 暖沙灰浅底 */
-  --cat-neutral-fg: oklch(0.42 0.02 225); /* 深灰字 */
+  --cat-info: oklch(0.90 0.07 210);       /* 中海蓝浅底（提饱和） */
+  --cat-info-fg: oklch(0.38 0.12 215);    /* 深海蓝字 */
+  --cat-success: oklch(0.90 0.08 155);    /* 海绿浅底 */
+  --cat-success-fg: oklch(0.36 0.13 155); /* 深海绿字 */
+  --cat-warning: oklch(0.90 0.09 75);     /* 暖沙琥珀浅底 */
+  --cat-warning-fg: oklch(0.38 0.11 55);  /* 深棕字 */
+  --cat-danger: oklch(0.90 0.08 25);      /* 珊瑚浅底 */
+  --cat-danger-fg: oklch(0.40 0.15 25);   /* 深珊瑚字 */
+  --cat-neutral: oklch(0.92 0.02 220);    /* 暖沙灰浅底 */
+  --cat-neutral-fg: oklch(0.40 0.03 225); /* 深灰字 */
 
   /*
    * 功能色 token（B/C 双档）—— B(水彩马卡龙)做底色 + C(童书手绘)做强调。
@@ -197,30 +197,30 @@
    * 色值精确取自 color-options.html。允许手绘黄点缀；无琥珀金。
    * 改功能色只改这里，全站 sk-accent-* 自动跟随。
    */
-  --accent-blue: oklch(0.533 0.137 251);        /* C 强蓝 solid */
+  --accent-blue: oklch(0.52 0.15 251);        /* C 强蓝 solid（提鲜艳） */
   --accent-blue-fg: oklch(0.99 0.01 250);
-  --accent-blue-soft: oklch(0.665 0.095 241);   /* B 雾蓝 soft */
-  --accent-blue-soft-fg: oklch(0.28 0.06 245);
-  --accent-rose: oklch(0.582 0.195 26);         /* C 手绘红 solid */
+  --accent-blue-soft: oklch(0.78 0.11 241);   /* B 雾蓝 soft（提亮，底色更可见） */
+  --accent-blue-soft-fg: oklch(0.30 0.09 245);
+  --accent-rose: oklch(0.58 0.21 26);         /* C 手绘红 solid */
   --accent-rose-fg: oklch(0.99 0.01 25);
-  --accent-rose-soft: oklch(0.720 0.099 3);     /* B 玫瑰粉 soft */
-  --accent-rose-soft-fg: oklch(0.32 0.10 10);
-  --accent-mint: oklch(0.55 0.13 166);          /* 薄荷 solid(提饱和) */
+  --accent-rose-soft: oklch(0.80 0.11 3);     /* B 玫瑰粉 soft（提亮） */
+  --accent-rose-soft-fg: oklch(0.34 0.12 10);
+  --accent-mint: oklch(0.56 0.15 166);        /* 薄荷 solid */
   --accent-mint-fg: oklch(0.99 0.01 166);
-  --accent-mint-soft: oklch(0.726 0.086 166);   /* B 薄荷 soft */
-  --accent-mint-soft-fg: oklch(0.30 0.08 170);
-  --accent-green: oklch(0.646 0.166 148);       /* C 手绘绿 solid */
+  --accent-mint-soft: oklch(0.80 0.10 166);   /* B 薄荷 soft（提亮） */
+  --accent-mint-soft-fg: oklch(0.30 0.10 170);
+  --accent-green: oklch(0.62 0.18 148);       /* C 手绘绿 solid */
   --accent-green-fg: oklch(0.99 0.01 148);
-  --accent-green-soft: oklch(0.90 0.07 148);    /* 浅绿 soft */
-  --accent-green-soft-fg: oklch(0.32 0.11 150);
-  --accent-purple: oklch(0.488 0.133 299);      /* C 手绘紫 solid */
+  --accent-green-soft: oklch(0.86 0.10 148);  /* 浅绿 soft（提饱和） */
+  --accent-green-soft-fg: oklch(0.32 0.12 150);
+  --accent-purple: oklch(0.50 0.15 299);      /* C 手绘紫 solid */
   --accent-purple-fg: oklch(0.99 0.01 299);
-  --accent-purple-soft: oklch(0.693 0.071 269); /* B 雾紫蓝 soft */
-  --accent-purple-soft-fg: oklch(0.28 0.06 275);
-  --accent-yellow: oklch(0.832 0.159 89);       /* C 手绘黄 solid(点缀用，L 高用深字) */
+  --accent-purple-soft: oklch(0.78 0.09 269); /* B 雾紫蓝 soft（提亮） */
+  --accent-purple-soft-fg: oklch(0.30 0.08 275);
+  --accent-yellow: oklch(0.83 0.17 89);       /* C 手绘黄 solid(点缀用，L 高用深字) */
   --accent-yellow-fg: oklch(0.26 0.05 80);
-  --accent-yellow-soft: oklch(0.93 0.08 90);    /* 浅黄 soft */
-  --accent-yellow-soft-fg: oklch(0.34 0.08 85);
+  --accent-yellow-soft: oklch(0.90 0.10 90);  /* 浅黄 soft（提饱和） */
+  --accent-yellow-soft-fg: oklch(0.34 0.09 85);
 }
 
 .dark {
@@ -433,30 +433,33 @@
   --cinnabar: oklch(0.50 0.17 32);
   --moss: oklch(0.48 0.088 150);
   --amber: oklch(0.66 0.12 74);
-  --accent-rose: oklch(0.50 0.17 32);
+  --accent-rose: oklch(0.52 0.19 32);             /* 朱砂：印章专用强调（提鲜艳） */
   --accent-rose-fg: oklch(0.974 0.012 83);
-  --accent-rose-soft: color-mix(in oklch, var(--cinnabar) 9%, var(--paper));
-  --accent-rose-soft-fg: oklch(0.32 0.10 32);
-  --accent-yellow: oklch(0.66 0.12 74);
+  --accent-rose-soft: color-mix(in oklch, var(--cinnabar) 16%, var(--paper));
+  --accent-rose-soft-fg: oklch(0.32 0.12 32);
+  --accent-yellow: oklch(0.70 0.14 74);           /* 琥珀（提鲜艳） */
   --accent-yellow-fg: oklch(0.205 0.028 78);
-  --accent-yellow-soft: color-mix(in oklch, var(--amber) 18%, var(--paper));
-  --accent-yellow-soft-fg: oklch(0.28 0.05 78);
-  --accent-mint: oklch(0.48 0.088 150);
+  --accent-yellow-soft: color-mix(in oklch, var(--amber) 26%, var(--paper));
+  --accent-yellow-soft-fg: oklch(0.28 0.07 78);
+  --accent-mint: oklch(0.52 0.11 150);            /* 苔绿（提鲜艳） */
   --accent-mint-fg: oklch(0.974 0.012 83);
-  --accent-mint-soft: color-mix(in oklch, var(--moss) 14%, var(--paper));
-  --accent-mint-soft-fg: oklch(0.25 0.06 145);
-  --accent-blue: var(--ink);
-  --accent-blue-fg: var(--paper);
-  --accent-blue-soft: color-mix(in oklch, var(--wash) 12%, var(--paper));
-  --accent-blue-soft-fg: var(--ink);
+  --accent-mint-soft: color-mix(in oklch, var(--moss) 22%, var(--paper));
+  --accent-mint-soft-fg: oklch(0.25 0.08 145);
+  /* 水墨第三主题恢复功能色可读性：不再把 blue/purple 压成纯墨，
+   * 改用「墨里透色」—— 低饱和但可辨认的靛蓝/黛紫，宣纸底上清晰。
+   * green 与 moss 同族，保持。 */
+  --accent-blue: oklch(0.42 0.07 255);
+  --accent-blue-fg: oklch(0.974 0.012 83);
+  --accent-blue-soft: color-mix(in oklch, oklch(0.42 0.07 255) 18%, var(--paper));
+  --accent-blue-soft-fg: oklch(0.30 0.06 255);
   --accent-green: var(--moss);
   --accent-green-fg: var(--paper);
-  --accent-green-soft: color-mix(in oklch, var(--moss) 14%, var(--paper));
-  --accent-green-soft-fg: oklch(0.25 0.06 145);
-  --accent-purple: var(--ink-soft);
+  --accent-green-soft: color-mix(in oklch, var(--moss) 22%, var(--paper));
+  --accent-green-soft-fg: oklch(0.25 0.08 145);
+  --accent-purple: oklch(0.40 0.06 290);
   --accent-purple-fg: var(--paper);
-  --accent-purple-soft: color-mix(in oklch, var(--wash) 12%, var(--paper));
-  --accent-purple-soft-fg: var(--ink);
+  --accent-purple-soft: color-mix(in oklch, oklch(0.40 0.06 290) 18%, var(--paper));
+  --accent-purple-soft-fg: oklch(0.28 0.05 290);
   --sidebar: oklch(0.902 0.020 84);
   --sidebar-foreground: oklch(0.205 0.028 78);
   --sidebar-primary: oklch(0.205 0.028 78);
@@ -1793,11 +1796,17 @@
     height: 22px;
     border-radius: 999px;
   }
-  .sk-rail-active-blue::before,
-  .sk-rail-active-rose::before,
-  .sk-rail-active-mint::before,
-  .sk-rail-active-green::before,
-  .sk-rail-active-purple::before { background: var(--accent-rose); }
+  .sk-rail-active-blue::before { background: var(--accent-blue); }
+  .sk-rail-active-rose::before { background: var(--accent-rose); }
+  .sk-rail-active-mint::before { background: var(--accent-mint); }
+  .sk-rail-active-green::before { background: var(--accent-green); }
+  .sk-rail-active-purple::before { background: var(--accent-purple); }
+  .sk-rail-active::before { background: var(--accent-rose); }
+  .sk-rail-active-blue { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-blue) 76%, var(--ink)); }
+  .sk-rail-active-rose { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-rose) 76%, var(--ink)); }
+  .sk-rail-active-mint { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-mint) 76%, var(--ink)); }
+  .sk-rail-active-green { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-green) 76%, var(--ink)); }
+  .sk-rail-active-purple { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-purple) 76%, var(--ink)); }
 
   @media (prefers-reduced-motion: reduce) {
     .sk-object-card,
@@ -1923,11 +1932,17 @@
     height: 22px;
     border-radius: 0;
   }
-  .sk-rail-active-blue::before,
-  .sk-rail-active-rose::before,
-  .sk-rail-active-mint::before,
-  .sk-rail-active-green::before,
-  .sk-rail-active-purple::before { background: var(--accent-rose); }
+  .sk-rail-active-blue::before { background: var(--accent-blue); }
+  .sk-rail-active-rose::before { background: var(--accent-rose); }
+  .sk-rail-active-mint::before { background: var(--accent-mint); }
+  .sk-rail-active-green::before { background: var(--accent-green); }
+  .sk-rail-active-purple::before { background: var(--accent-purple); }
+  .sk-rail-active::before { background: var(--accent-rose); }
+  .sk-rail-active-blue { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-blue) 76%, var(--ink)); }
+  .sk-rail-active-rose { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-rose) 76%, var(--ink)); }
+  .sk-rail-active-mint { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-mint) 76%, var(--ink)); }
+  .sk-rail-active-green { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-green) 76%, var(--ink)); }
+  .sk-rail-active-purple { box-shadow: 2px 2px 0 color-mix(in oklch, var(--accent-purple) 76%, var(--ink)); }
 }
 
 @layer components {

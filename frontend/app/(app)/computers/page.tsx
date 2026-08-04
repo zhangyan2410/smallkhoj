@@ -748,7 +748,7 @@ export default async function ComputersPage({
     <ProductShell
       title={copy.title}
       description={copy.description}
-      listTitle="Computers"
+      listTitle={t("title")}
       list={
         <nav className="flex h-full min-h-0 flex-col">
           <div className="flex items-center justify-between border-b border-sand-border px-3 py-2.5 text-sm">

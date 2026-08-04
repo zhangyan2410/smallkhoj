@@ -167,9 +167,10 @@ function resultMeta(result: SearchResult) {
   return ""
 }
 
-function SearchResults({ query, results }: {
+function SearchResults({ query, results, t }: {
   query: string
   results: SearchResult[]
+  t: (key: string, values?: Record<string, string | number>) => string
 }) {
   if (!query) return null
 
@@ -177,7 +178,7 @@ function SearchResults({ query, results }: {
     return (
       <Card>
         <CardContent className="py-6">
-          <EmptyState title={`No results for "${query}"`} description="Try a different search term." />
+          <EmptyState title={t("noResultsFor", { query })} description={t("tryDifferentSearch")} />
         </CardContent>
       </Card>
     )
@@ -187,7 +188,7 @@ function SearchResults({ query, results }: {
     <Card>
       <CardHeader className="pb-2">
         <CardDescription className="flex items-center gap-1">
-          <Search className="size-3" /> Results ({results.length})
+          <Search className="size-3" /> {t("resultsCount", { count: results.length })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-1">
@@ -226,6 +227,7 @@ export default async function Home({
   const searchQuery = Array.isArray(resolvedSearchParams.q) ? resolvedSearchParams.q[0] : resolvedSearchParams.q
   const t = await getTranslations("home")
   const tCommon = await getTranslations("common")
+  const tNav = await getTranslations("nav")
 
   const [{ channels }, { members }, { tasks }, { computers }, { activity }, { saved }, { results: searchResults }] = await Promise.all([
     getChannels(sessionToken, activeServerId),
@@ -276,7 +278,7 @@ export default async function Home({
                 required
               />
             </div>
-            <Button type="submit" size="icon" aria-label="Create channel">
+            <Button type="submit" size="icon" aria-label={t("newChannel")}>
               <Plus className="size-4" />
             </Button>
           </form>
@@ -293,7 +295,7 @@ export default async function Home({
                 emptyLabel={t("selectMember")}
               />
             </div>
-            <Button type="submit" size="icon" aria-label="Start DM">
+            <Button type="submit" size="icon" aria-label={t("startDmWith")}>
               <MessageSquare className="size-4" />
             </Button>
           </form>
@@ -304,13 +306,13 @@ export default async function Home({
           <Link href="/chat">
             <Button size="sm">
               <MessageSquare className="size-4" />
-              Chat
+              {tNav("chat")}
             </Button>
           </Link>
           <Link href="/tasks">
             <Button variant="outline" size="sm">
               <CheckSquare className="size-4" />
-              Tasks
+              {tNav("tasks")}
             </Button>
           </Link>
         </>
@@ -323,7 +325,7 @@ export default async function Home({
           <Toolbar>
             <Search className="size-4 text-muted-foreground" />
             <Input
-              aria-label="Global search"
+              aria-label={tCommon("searchPlaceholder")}
               name="q"
               placeholder={tCommon("searchPlaceholder")}
               defaultValue={searchQuery}
@@ -334,7 +336,7 @@ export default async function Home({
         </form>
 
         {searchQuery ? (
-          <SearchResults query={searchQuery} results={searchResults} />
+          <SearchResults query={searchQuery} results={searchResults} t={t} />
         ) : (
           <>
             {/* Brand header + greeting */}

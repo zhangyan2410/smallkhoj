@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import {
   ClipboardList,
   Cpu,
@@ -23,19 +24,20 @@ function lifecycleTone(key: string, active: boolean): CategoryTone {
 }
 
 function RuntimeStateSummary({ member, workspace }: { member: Member; workspace?: AgentWorkspace }) {
+  const t = useTranslations("members")
   const lifecycleStates = [
-    { key: "pending_start", label: "Starting", active: workspace?.status === "pending_start" || (!workspace && member.kind === "agent") },
-    { key: "starting", label: "Initializing", active: workspace?.status === "starting" },
-    { key: "running", label: "Running", active: workspace?.status === "running" },
-    { key: "idle", label: "Idle", active: workspace?.status === "idle" },
-    { key: "busy", label: "Thinking", active: workspace?.status === "busy" },
-    { key: "stopped", label: "Stopped", active: workspace?.status === "stopped" },
-    { key: "failed", label: "Failed", active: workspace?.status === "failed" || member.status === "failed" },
+    { key: "pending_start", label: t("lifecycleStarting"), active: workspace?.status === "pending_start" || (!workspace && member.kind === "agent") },
+    { key: "starting", label: t("lifecycleInitializing"), active: workspace?.status === "starting" },
+    { key: "running", label: t("lifecycleRunning"), active: workspace?.status === "running" },
+    { key: "idle", label: t("lifecycleIdle"), active: workspace?.status === "idle" },
+    { key: "busy", label: t("lifecycleThinking"), active: workspace?.status === "busy" },
+    { key: "stopped", label: t("lifecycleStopped"), active: workspace?.status === "stopped" },
+    { key: "failed", label: t("lifecycleFailed"), active: workspace?.status === "failed" || member.status === "failed" },
   ]
 
   return (
     <div className="space-y-2">
-      <div className="text-xs font-medium uppercase text-muted-foreground">Runtime Lifecycle</div>
+      <div className="text-xs font-medium uppercase text-muted-foreground">{t("runtimeLifecycle")}</div>
       <div className="flex flex-wrap gap-1.5">
         {lifecycleStates.map(({ key, label, active }) => (
           <RuntimeChip
@@ -53,6 +55,7 @@ function RuntimeStateSummary({ member, workspace }: { member: Member; workspace?
 }
 
 export default function ActivityTab({ member, computers }: { member: Member; computers: Computer[] }) {
+  const t = useTranslations("members")
   const workspace = findMemberWorkspace(member, computers)
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -94,7 +97,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
       <div className="grid gap-3 sm:grid-cols-3">
         <Card size="sm">
           <CardHeader>
-            <CardDescription>Status</CardDescription>
+            <CardDescription>{t("fieldStatus")}</CardDescription>
             <CardTitle className="flex items-center gap-2 text-base">
               <span className={`size-2 rounded-full ${dotClass(member.status)}`} />
               {statusLabel(member.status)}
@@ -103,13 +106,13 @@ export default function ActivityTab({ member, computers }: { member: Member; com
         </Card>
         <Card size="sm">
           <CardHeader>
-            <CardDescription>Session</CardDescription>
-            <CardTitle className="font-mono text-base">{workspace?.sessionId ? shortId(workspace.sessionId) : "none"}</CardTitle>
+            <CardDescription>{t("fieldSession")}</CardDescription>
+            <CardTitle className="font-mono text-base">{workspace?.sessionId ? shortId(workspace.sessionId) : t("valueNone")}</CardTitle>
           </CardHeader>
         </Card>
         <Card size="sm">
           <CardHeader>
-            <CardDescription>Started</CardDescription>
+            <CardDescription>{t("fieldStarted")}</CardDescription>
             <CardTitle className="text-base">{formatTime(workspace?.startedAt)}</CardTitle>
           </CardHeader>
         </Card>
@@ -117,16 +120,16 @@ export default function ActivityTab({ member, computers }: { member: Member; com
 
       {member.kind === "agent" && workspace && (
         <div className="space-y-2">
-          <div className="text-xs font-medium uppercase text-muted-foreground">Session Timeline</div>
+          <div className="text-xs font-medium uppercase text-muted-foreground">{t("sessionTimeline")}</div>
           <InkframeObjectSurface material="dry" className="p-3">
             <div className="space-y-2">
-              <ObjectField label="Launched" value={formatTime(workspace.startedAt)} />
+              <ObjectField label={t("fieldLaunched")} value={formatTime(workspace.startedAt)} />
               {workspace.stoppedAt && (
-                <ObjectField label="Stopped" value={formatTime(workspace.stoppedAt)} />
+                <ObjectField label={t("fieldStopped")} value={formatTime(workspace.stoppedAt)} />
               )}
-              <ObjectField label="PID" value={workspace.pid?.toString() ?? "none"} />
-              <ObjectField label="Provider" value={workspace.runtimeProvider ?? "default"} />
-              <ObjectField label="Model" value={workspace.runtimeModel ?? "default"} />
+              <ObjectField label={t("fieldPid")} value={workspace.pid?.toString() ?? t("valueNone")} />
+              <ObjectField label={t("fieldProvider")} value={workspace.runtimeProvider ?? t("defaultValue")} />
+              <ObjectField label={t("fieldModel")} value={workspace.runtimeModel ?? t("defaultValue")} />
             </div>
           </InkframeObjectSurface>
         </div>
@@ -134,25 +137,25 @@ export default function ActivityTab({ member, computers }: { member: Member; com
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <div className="text-xs font-medium uppercase text-muted-foreground">Recent Activity</div>
+          <div className="text-xs font-medium uppercase text-muted-foreground">{t("recentActivity")}</div>
           <button
             onClick={refreshActivity}
             className="text-[11px] text-muted-foreground hover:text-foreground"
             disabled={loading}
           >
-            {loading ? "Loading..." : "Refresh"}
+            {loading ? t("loading") : t("refresh")}
           </button>
         </div>
 
         {loading ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">Loading activity...</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">{t("loadingActivity")}</div>
         ) : activity.length === 0 ? (
           <EmptyState
-            title="No activity recorded"
+            title={t("noActivityRecorded")}
             description={
               member.kind === "agent"
-                ? "Activity events will appear when the agent sends messages, claims tasks, or interacts with the system."
-                : "Activity events will appear when this member sends messages or interacts with tasks."
+                ? t("noActivityAgentDesc")
+                : t("noActivityHumanDesc")
             }
           />
         ) : (
@@ -161,7 +164,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-accent-blue">
                   <MessageSquare className="size-3" />
-                  Messages ({messageActivities.length})
+                  {t("messagesGroup", { count: messageActivities.length })}
                 </div>
                 {messageActivities.map((item) => (
                   <ActivityEventCard key={item.id} item={item} />
@@ -172,7 +175,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-accent-rose">
                   <ClipboardList className="size-3" />
-                  Tasks ({taskActivities.length})
+                  {t("tasksGroup", { count: taskActivities.length })}
                 </div>
                 {taskActivities.map((item) => (
                   <ActivityEventCard key={item.id} item={item} />
@@ -183,7 +186,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-accent-mint">
                   <Cpu className="size-3" />
-                  Runtime ({runtimeActivities.length})
+                  {t("runtimeGroup", { count: runtimeActivities.length })}
                 </div>
                 {runtimeActivities.map((item) => (
                   <ActivityEventCard key={item.id} item={item} />
@@ -194,7 +197,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Terminal className="size-3" />
-                  Other ({otherActivities.length})
+                  {t("otherGroup", { count: otherActivities.length })}
                 </div>
                 {otherActivities.map((item) => (
                   <ActivityEventCard key={item.id} item={item} />

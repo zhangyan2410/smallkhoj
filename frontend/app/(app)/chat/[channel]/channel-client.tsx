@@ -1123,8 +1123,8 @@ export function ChannelClient({
                     size="icon-sm"
                     variant={chatDeskMaterialMode === "active" && chatDeskPointerMode === "draw" ? "default" : "outline"}
                     onClick={() => requestChatDeskMaterialAction("draw")}
-                    aria-label="Draw on chat desk"
-                    title="Draw on chat desk"
+                    aria-label={tChat("drawChatDesk")}
+                    title={tChat("drawChatDesk")}
                   >
                     <Paintbrush className="size-3.5" />
                   </Button>
@@ -1133,8 +1133,8 @@ export function ChannelClient({
                     size="icon-sm"
                     variant={chatDeskMaterialMode === "active" && chatDeskPointerMode === "water" ? "default" : "outline"}
                     onClick={() => requestChatDeskMaterialAction("water")}
-                    aria-label="Wash chat desk"
-                    title="Wash chat desk"
+                    aria-label={tChat("washChatDesk")}
+                    title={tChat("washChatDesk")}
                   >
                     <Droplets className="size-3.5" />
                   </Button>
@@ -1144,8 +1144,8 @@ export function ChannelClient({
                     variant="outline"
                     disabled={chatDeskMaterialMode !== "active"}
                     onClick={() => requestChatDeskMaterialAction("keep")}
-                    aria-label="Keep chat desk"
-                    title="Keep chat desk"
+                    aria-label={tChat("keepChatDesk")}
+                    title={tChat("keepChatDesk")}
                   >
                     <Save className="size-3.5" />
                   </Button>
@@ -1155,8 +1155,8 @@ export function ChannelClient({
                     variant="outline"
                     disabled={chatDeskMaterialMode !== "active" && !chatDeskMaterialResource}
                     onClick={() => requestChatDeskMaterialAction("discard")}
-                    aria-label="Clear chat desk"
-                    title="Clear chat desk"
+                    aria-label={tChat("clearChatDesk")}
+                    title={tChat("clearChatDesk")}
                   >
                     <RotateCcw className="size-3.5" />
                   </Button>

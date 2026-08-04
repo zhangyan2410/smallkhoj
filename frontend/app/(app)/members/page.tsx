@@ -81,15 +81,25 @@ const MEMBERS_LIST_WIDTH = {
   max: 380,
 } as const
 
-const memberTabs: Array<{ key: TabKey; label: string; icon: typeof User }> = [
-  { key: "profile", label: "Profile", icon: User },
-  { key: "permissions", label: "Permissions", icon: Shield },
-  { key: "dms", label: "DMs", icon: MessageSquare },
-  { key: "reminders", label: "Reminders", icon: Bell },
-  { key: "workspace", label: "Workspace", icon: Cpu },
-  { key: "apps", label: "Apps", icon: Puzzle },
-  { key: "activity", label: "Activity", icon: Activity },
+const memberTabs: Array<{ key: TabKey; icon: typeof User }> = [
+  { key: "profile", icon: User },
+  { key: "permissions", icon: Shield },
+  { key: "dms", icon: MessageSquare },
+  { key: "reminders", icon: Bell },
+  { key: "workspace", icon: Cpu },
+  { key: "apps", icon: Puzzle },
+  { key: "activity", icon: Activity },
 ]
+
+const TAB_LABEL_KEYS = {
+  profile: "tabProfile",
+  permissions: "tabPermissions",
+  dms: "tabDms",
+  reminders: "tabReminders",
+  workspace: "tabWorkspace",
+  apps: "tabApps",
+  activity: "tabActivity",
+} as const
 
 function memberDetailHref(memberId: string, tab?: TabKey) {
   const params = new URLSearchParams()
@@ -118,10 +128,11 @@ async function updateHumanAvatarUrlAction(formData: FormData) {
   redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
 }
 
-function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }) {
+/** tab 栏统一走 members 命名空间的翻译 key（zh-CN 默认中文）。 */
+function TabBar({ activeTab, memberId, labels }: { activeTab: TabKey; memberId: string; labels: Record<TabKey, string> }) {
   return (
     <div data-inkframe-mobile-role="member-tab-bar" className="flex min-w-0 gap-1 overflow-x-auto border-b pb-px">
-      {memberTabs.map(({ key, label, icon: Icon }) => {
+      {memberTabs.map(({ key, icon: Icon }) => {
         const isActive = key === activeTab
         return (
           <Link
@@ -129,12 +140,12 @@ function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }
             href={memberDetailHref(memberId, key)}
             className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-none px-3 text-xs font-medium transition-colors ${
               isActive
-                ? "bg-sand-card text-foreground"
+                ? "sk-accent-mint-soft text-foreground"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Icon className="size-3.5" />
-            {label}
+            {labels[key]}
           </Link>
         )
       })}
@@ -142,7 +153,9 @@ function TabBar({ activeTab, memberId }: { activeTab: TabKey; memberId: string }
   )
 }
 
-function ProfileTab({ member, computers }: { member: Member; computers: Computer[] }) {
+type MembersT = (key: string, values?: Record<string, string | number>) => string
+
+function ProfileTab({ member, computers, t }: { member: Member; computers: Computer[]; t: MembersT }) {
   const description = profileDescription(member)
   const computer = computers.find((c) => c.id === member.computerId)
   const workspace = findMemberWorkspace(member, computers)
@@ -168,7 +181,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
               </RuntimeChip>
             )}
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">{description || "No profile description."}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{description || t("noProfileDescription")}</p>
         </div>
       </MemberNameTag>
 
@@ -177,7 +190,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
           <input type="hidden" name="memberId" value={member.id} />
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <UserRound className="size-3" />
-            Human Avatar
+            {t("humanAvatar")}
           </div>
           <div className="mt-2 flex gap-2">
             <Input
@@ -188,23 +201,23 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
               className="h-8"
             />
             <Button type="submit" size="sm" variant="outline">
-              Save
+              {t("save")}
             </Button>
           </div>
         </form>
       )}
 
       <div className="grid gap-2 sm:grid-cols-3">
-        <ObjectField label="memberId" value={shortId(member.id)} />
-        <ObjectField label="computerId" value={shortId(member.computerId)} />
-        <ObjectField label="workspaceId" value={shortId(member.workspaceId)} />
+        <ObjectField label={t("fieldMemberId")} value={shortId(member.id)} />
+        <ObjectField label={t("fieldComputerId")} value={shortId(member.computerId)} />
+        <ObjectField label={t("fieldWorkspaceId")} value={shortId(member.workspaceId)} />
       </div>
 
       {member.kind === "agent" && computer && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Cpu className="size-3" />
-            Runtime Binding
+            {t("runtimeBinding")}
           </div>
           <ComputerInkstone
             status={computer.status}
@@ -212,16 +225,16 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
             className="min-w-0 overflow-x-hidden"
           >
             <div className="grid gap-2 sm:grid-cols-2">
-              <ObjectField label="computer" value={computer.name} />
-              <ObjectField label="computer status" value={computer.status} />
-              <ObjectField label="runtime" value={workspace?.runtime ?? "unbound"} />
-              <ObjectField label="provider" value={workspace?.runtimeProvider ?? member.config?.provider ?? member.runtimeProvider ?? "default"} />
-              <ObjectField label="pid" value={workspace?.pid?.toString() ?? "none"} />
-              <ObjectField label="session" value={shortId(workspace?.sessionId)} />
+              <ObjectField label={t("fieldComputer")} value={computer.name} />
+              <ObjectField label={t("fieldComputerStatus")} value={computer.status} />
+              <ObjectField label={t("fieldRuntime")} value={workspace?.runtime ?? t("unbound")} />
+              <ObjectField label={t("fieldProvider")} value={workspace?.runtimeProvider ?? member.config?.provider ?? member.runtimeProvider ?? t("defaultValue")} />
+              <ObjectField label={t("fieldPid")} value={workspace?.pid?.toString() ?? t("valueNone")} />
+              <ObjectField label={t("fieldSession")} value={shortId(workspace?.sessionId)} />
             </div>
           </ComputerInkstone>
           {workspace?.cwd && (
-            <ObjectField label="cwd" value={workspace.cwd} />
+            <ObjectField label={t("fieldCwd")} value={workspace.cwd} />
           )}
         </div>
       )}
@@ -230,7 +243,7 @@ function ProfileTab({ member, computers }: { member: Member; computers: Computer
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Wrench className="size-3" />
-            Skills
+            {t("skills")}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {member.skills.map((skill) => (
@@ -277,7 +290,7 @@ async function deleteMemberAction(formData: FormData) {
   redirect("/members?kind=agent")
 }
 
-function PermissionsTab({ member }: { member: Member }) {
+function PermissionsTab({ member, t }: { member: Member; t: MembersT }) {
   const permissions = member.permissions ?? member.config?.permissions ?? {}
   const actions = member.actions ?? member.config?.actions ?? {}
   const isAgent = member.kind === "agent"
@@ -293,10 +306,10 @@ function PermissionsTab({ member }: { member: Member }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Shield className="size-3" />
-              Permissions
+              {t("tabPermissions")}
             </div>
             {isAgent && Object.keys(permissions).length > 0 && (
-              <Button type="submit" size="sm" variant="outline">Save permissions</Button>
+              <Button type="submit" size="sm" variant="outline">{t("savePermissions")}</Button>
             )}
           </div>
           {Object.keys(permissions).length > 0 ? (
@@ -306,12 +319,12 @@ function PermissionsTab({ member }: { member: Member }) {
                   key={key}
                   label={key}
                   mono={false}
-                  value={<RuntimeChip tone={enabled ? "success" : "neutral"}>{enabled ? "enabled" : "disabled"}</RuntimeChip>}
+                  value={<RuntimeChip tone={enabled ? "success" : "neutral"}>{enabled ? t("enabled") : t("disabled")}</RuntimeChip>}
                 />
               ))}
             </div>
           ) : (
-            <EmptyState title="No custom permissions" description={isAgent ? "Add a permission key below to configure this agent's policy." : "This member uses default permissions."} />
+            <EmptyState title={t("noCustomPermissions")} description={isAgent ? t("noCustomPermissionsAgentDesc") : t("noCustomPermissionsHumanDesc")} />
           )}
         </div>
 
@@ -319,10 +332,10 @@ function PermissionsTab({ member }: { member: Member }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Activity className="size-3" />
-              Actions
+              {t("actionsLabel")}
             </div>
             {isAgent && Object.keys(actions).length > 0 && (
-              <Button type="submit" size="sm" variant="outline">Save actions</Button>
+              <Button type="submit" size="sm" variant="outline">{t("saveActions")}</Button>
             )}
           </div>
           {Object.keys(actions).length > 0 ? (
@@ -332,32 +345,30 @@ function PermissionsTab({ member }: { member: Member }) {
                   key={key}
                   label={key}
                   mono={false}
-                  value={<RuntimeChip tone={enabled ? "success" : "neutral"}>{enabled ? "on" : "off"}</RuntimeChip>}
+                  value={<RuntimeChip tone={enabled ? "success" : "neutral"}>{enabled ? t("on") : t("off")}</RuntimeChip>}
                 />
               ))}
             </div>
           ) : (
-            <EmptyState title="No custom actions" description={isAgent ? "Add an action key below to configure this agent's allowed actions." : "This member uses default actions."} />
+            <EmptyState title={t("noCustomActions")} description={isAgent ? t("noCustomActionsAgentDesc") : t("noCustomActionsHumanDesc")} />
           )}
         </div>
       </form>
 
-      {isAgent && <AddPermissionForm memberId={member.id} permissions={permissions} actions={actions} />}
+      {isAgent && <AddPermissionForm memberId={member.id} permissions={permissions} actions={actions} t={t} />}
 
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Shield className="size-3" />
-          Enforcement status
+          {t("enforcementStatus")}
         </div>
         <InkframeObjectSurface material="drying" className="space-y-2 p-3">
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-warning" />
-            <span className="text-sm">Config persisted but not enforced at runtime</span>
+            <span className="text-sm">{t("enforcementPending")}</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Permission and action changes are saved to member config immediately. Server-side enforcement
-            (blocking unauthorized actions at the daemon/runtime level) is not yet implemented.
-            Changes will propagate on the next agent session refresh.
+            {t("enforcementDesc")}
           </p>
         </InkframeObjectSurface>
       </div>
@@ -418,17 +429,18 @@ async function togglePermissionEntryAction(formData: FormData) {
   revalidatePath("/members")
 }
 
-function AddPermissionForm({ memberId, permissions, actions }: {
+function AddPermissionForm({ memberId, permissions, actions, t }: {
   memberId: string
   permissions: Record<string, boolean>
   actions: Record<string, boolean>
+  t: MembersT
 }) {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Shield className="size-3" />
-          Permission entries
+          {t("permissionEntries")}
         </div>
         {Object.keys(permissions).length > 0 && (
           <div className="space-y-1">
@@ -442,10 +454,10 @@ function AddPermissionForm({ memberId, permissions, actions }: {
                 <span className="min-w-0 truncate text-sm font-mono">{key}</span>
                 <div className="flex items-center gap-2">
                   <Button type="submit" size="sm" variant={enabled ? "default" : "outline"}>
-                    {enabled ? "enabled" : "disabled"}
+                    {enabled ? t("enabled") : t("disabled")}
                   </Button>
-                  <Button type="submit" formAction={removePermissionEntryAction} size="xs" variant="destructive" title="Remove">
-                    remove
+                  <Button type="submit" formAction={removePermissionEntryAction} size="xs" variant="destructive" title={t("remove")}>
+                    {t("remove")}
                   </Button>
                 </div>
               </form>
@@ -456,16 +468,16 @@ function AddPermissionForm({ memberId, permissions, actions }: {
           <input type="hidden" name="memberId" value={memberId} />
           <input type="hidden" name="type" value="permissions" />
           <input type="hidden" name="existing" value={JSON.stringify(permissions)} />
-          <Input name="key" placeholder="permission key" className="min-w-0 max-w-[200px] flex-1" />
-          <Select id="permission-entry-value" name="value" items={["true|enabled", "false|disabled"]} splitValue className="h-9 w-auto min-w-28 shrink-0" />
-          <Button type="submit" size="sm" variant="outline">Add</Button>
+          <Input name="key" placeholder={t("permissionKeyPlaceholder")} className="min-w-0 max-w-[200px] flex-1" />
+          <Select id="permission-entry-value" name="value" items={[`true|${t("enabled")}`, `false|${t("disabled")}`]} splitValue className="h-9 w-auto min-w-28 shrink-0" />
+          <Button type="submit" size="sm" variant="outline">{t("add")}</Button>
         </form>
       </div>
 
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Activity className="size-3" />
-          Action entries
+          {t("actionEntries")}
         </div>
         {Object.keys(actions).length > 0 && (
           <div className="space-y-1">
@@ -479,10 +491,10 @@ function AddPermissionForm({ memberId, permissions, actions }: {
                 <span className="min-w-0 truncate text-sm font-mono">{key}</span>
                 <div className="flex items-center gap-2">
                   <Button type="submit" size="sm" variant={enabled ? "default" : "outline"}>
-                    {enabled ? "on" : "off"}
+                    {enabled ? t("on") : t("off")}
                   </Button>
-                  <Button type="submit" formAction={removePermissionEntryAction} size="xs" variant="destructive" title="Remove">
-                    remove
+                  <Button type="submit" formAction={removePermissionEntryAction} size="xs" variant="destructive" title={t("remove")}>
+                    {t("remove")}
                   </Button>
                 </div>
               </form>
@@ -493,32 +505,32 @@ function AddPermissionForm({ memberId, permissions, actions }: {
           <input type="hidden" name="memberId" value={memberId} />
           <input type="hidden" name="type" value="actions" />
           <input type="hidden" name="existing" value={JSON.stringify(actions)} />
-          <Input name="key" placeholder="action key" className="min-w-0 max-w-[200px] flex-1" />
-          <Select id="action-entry-value" name="value" items={["true|on", "false|off"]} splitValue className="h-9 w-auto min-w-28 shrink-0" />
-          <Button type="submit" size="sm" variant="outline">Add</Button>
+          <Input name="key" placeholder={t("actionKeyPlaceholder")} className="min-w-0 max-w-[200px] flex-1" />
+          <Select id="action-entry-value" name="value" items={[`true|${t("on")}`, `false|${t("off")}`]} splitValue className="h-9 w-auto min-w-28 shrink-0" />
+          <Button type="submit" size="sm" variant="outline">{t("add")}</Button>
         </form>
       </div>
     </div>
   )
 }
 
-function DmTab({ member }: { member: Member }) {
+function DmTab({ member, t }: { member: Member; t: MembersT }) {
   return (
     <div className="space-y-4">
       <EmptyState
-        title={`Direct messages with ${profileName(member)}`}
-        description="Agent DM history and conversation threads will appear here."
+        title={t("dmWith", { name: profileName(member) ?? "" })}
+        description={t("dmDesc")}
       />
       <InkframeObjectSurface material="dry" className="p-3">
         <p className="text-xs text-muted-foreground">
-          DM channel for this member is <code className="font-mono">dm:&lt;your-id&gt;-&lt;member-id&gt;</code>.
-          Use the Chat page to view conversation history.
+          {t("dmHintPrefix")} <code className="font-mono">dm:&lt;your-id&gt;-&lt;member-id&gt;</code>.{" "}
+          {t("dmHintSuffix")}
         </p>
         <div className="mt-2">
           <Link href="/chat">
             <Button variant="outline" size="sm">
               <MessageSquare className="size-4" />
-              Open Chat
+              {t("openChat")}
             </Button>
           </Link>
         </div>
@@ -527,33 +539,32 @@ function DmTab({ member }: { member: Member }) {
   )
 }
 
-function RemindersTab({ member }: { member: Member }) {
+function RemindersTab({ member, t }: { member: Member; t: MembersT }) {
   return (
     <div className="space-y-4">
       <EmptyState
-        title={`Reminders for ${profileName(member)}`}
-        description="Active and pending reminders assigned to this member."
+        title={t("remindersFor", { name: profileName(member) ?? "" })}
+        description={t("remindersDesc")}
       />
       <InkframeObjectSurface material="dry" className="p-3">
         <p className="text-xs text-muted-foreground">
-          Scheduled reminders for this {member.kind} are managed through the Control Plane dispatch.
-          Reminders fire based on the configured delay and channel.
+          {t("remindersHint")}
         </p>
       </InkframeObjectSurface>
     </div>
   )
 }
 
-function WorkspaceTab({ member, computers }: { member: Member; computers: Computer[] }) {
+function WorkspaceTab({ member, computers, t }: { member: Member; computers: Computer[]; t: MembersT }) {
   const computer = computers.find((c) => c.id === member.computerId)
 
   if (!computer) {
     return (
       <EmptyState
-        title="No computer binding"
+        title={t("noComputerBinding")}
         description={member.kind === "human"
-          ? "Humans are not bound to computers."
-          : "This agent is not bound to any computer. Use the Create Agent form to bind it."}
+          ? t("noComputerBindingHuman")
+          : t("noComputerBindingAgent")}
       />
     )
   }
@@ -563,7 +574,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
   return (
     <div className="space-y-4">
       <div data-inkframe-mobile-role="member-workspace-binding" className="min-w-0 space-y-2 overflow-x-hidden">
-        <div className="text-sm font-medium text-foreground">Bound Computer</div>
+        <div className="text-sm font-medium text-foreground">{t("boundComputer")}</div>
         <ComputerInkstone status={computer.status}>
           <div className="flex items-center gap-2">
             <HardDrive className="size-4 text-accent-green" />
@@ -571,27 +582,27 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
             <StatusPill status={computer.status} label={statusLabel(computer.status)} />
           </div>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
-            <ObjectField label="os" value={computer.os} />
-            <ObjectField label="daemon" value={computer.daemonVersion} />
-            <ObjectField label="heartbeat" value={formatTime(computer.lastHeartbeatAt)} />
+            <ObjectField label={t("fieldOs")} value={computer.os} />
+            <ObjectField label={t("fieldDaemon")} value={computer.daemonVersion} />
+            <ObjectField label={t("fieldHeartbeat")} value={formatTime(computer.lastHeartbeatAt)} />
           </div>
         </ComputerInkstone>
       </div>
 
       {workspace && (
         <div className="space-y-2">
-          <div className="text-sm font-medium text-foreground">Agent Workspace</div>
+          <div className="text-sm font-medium text-foreground">{t("agentWorkspace")}</div>
           <InkframeObjectSurface raised data-inkframe-mobile-role="member-workspace-binding" className="min-w-0 overflow-x-hidden p-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              <ObjectField label="status" value={workspace.status} />
-              <ObjectField label="pid" value={workspace.pid?.toString() ?? "none"} />
-              <ObjectField label="runtime" value={workspace.runtime ?? "default"} />
-              <ObjectField label="provider" value={workspace.runtimeProvider ?? "default"} />
-              <ObjectField label="model" value={workspace.runtimeModel ?? "default"} />
-              <ObjectField label="started" value={formatTime(workspace.startedAt)} />
-              <ObjectField label="stopped" value={formatTime(workspace.stoppedAt)} />
+              <ObjectField label={t("fieldStatus")} value={workspace.status} />
+              <ObjectField label={t("fieldPid")} value={workspace.pid?.toString() ?? t("valueNone")} />
+              <ObjectField label={t("fieldRuntime")} value={workspace.runtime ?? t("defaultValue")} />
+              <ObjectField label={t("fieldProvider")} value={workspace.runtimeProvider ?? t("defaultValue")} />
+              <ObjectField label={t("fieldModel")} value={workspace.runtimeModel ?? t("defaultValue")} />
+              <ObjectField label={t("fieldStarted")} value={formatTime(workspace.startedAt)} />
+              <ObjectField label={t("fieldStopped")} value={formatTime(workspace.stoppedAt)} />
             </div>
-            {workspace.cwd && <div className="mt-2"><ObjectField label="cwd" value={workspace.cwd} /></div>}
+            {workspace.cwd && <div className="mt-2"><ObjectField label={t("fieldCwd")} value={workspace.cwd} /></div>}
           </InkframeObjectSurface>
         </div>
       )}
@@ -599,8 +610,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
       {!workspace && member.kind === "agent" && (
         <InkframeObjectSurface material="drying" className="p-3">
           <p className="text-xs text-muted-foreground">
-            This agent is bound to <code className="font-mono">{computer.name}</code> but has no
-            active workspace. The workspace is created when the daemon launches a runtime session for this agent.
+            {t("workspacePendingPrefix")} <code className="font-mono">{computer.name}</code> {t("workspacePendingSuffix")}
           </p>
         </InkframeObjectSurface>
       )}
@@ -608,7 +618,7 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Cpu className="size-3" />
-          Detected Runtimes
+          {t("detectedRuntimes")}
         </div>
         <div className="flex flex-wrap gap-1.5">
           {(computer.detectedRuntimes.length ? computer.detectedRuntimes : ["none"]).map((runtime, i) => (
@@ -622,17 +632,16 @@ function WorkspaceTab({ member, computers }: { member: Member; computers: Comput
   )
 }
 
-function AppsTab({ member }: { member: Member }) {
+function AppsTab({ member, t }: { member: Member; t: MembersT }) {
   return (
     <div className="space-y-4">
       <EmptyState
-        title={`Apps for ${profileName(member)}`}
-        description="Integrations and connected apps will appear here."
+        title={t("appsFor", { name: profileName(member) ?? "" })}
+        description={t("appsDesc")}
       />
       <InkframeObjectSurface material="dry" className="p-3">
         <p className="text-xs text-muted-foreground">
-          App integrations are configured per agent through the runtime provider settings.
-          Available integrations depend on the agent&apos;s runtime capabilities.
+          {t("appsHint")}
         </p>
       </InkframeObjectSurface>
     </div>
@@ -643,23 +652,28 @@ function MemberDetail({
   member,
   computers,
   activeTab,
+  t,
 }: {
   member: Member
   computers: Computer[]
   activeTab: TabKey
+  t: MembersT
 }) {
+  const tabLabels = Object.fromEntries(
+    (Object.keys(TAB_LABEL_KEYS) as TabKey[]).map((key) => [key, t(TAB_LABEL_KEYS[key])]),
+  ) as Record<TabKey, string>
   return (
     <Card data-inkframe-mobile-role="member-detail" className="min-w-0 overflow-x-hidden">
       <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2 text-base">
           {member.kind === "agent" ? <Bot className="size-4" /> : <UserRound className="size-4" />}
-          Member Detail
+          {t("detailTitle")}
           {member.kind === "agent" && (
             <form action={deleteMemberAction} className="ml-auto">
               <input type="hidden" name="memberId" value={member.id} />
               <Button type="submit" size="sm" variant="outline">
                 <Trash2 className="size-3.5" />
-                Delete
+                {t("delete")}
               </Button>
             </form>
           )}
@@ -667,14 +681,14 @@ function MemberDetail({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
-        <TabBar activeTab={activeTab} memberId={member.id} />
+        <TabBar activeTab={activeTab} memberId={member.id} labels={tabLabels} />
         <div className="min-h-48">
-          {activeTab === "profile" && <ProfileTab member={member} computers={computers} />}
-          {activeTab === "permissions" && <PermissionsTab member={member} />}
-          {activeTab === "dms" && <DmTab member={member} />}
-          {activeTab === "reminders" && <RemindersTab member={member} />}
-          {activeTab === "workspace" && <WorkspaceTab member={member} computers={computers} />}
-          {activeTab === "apps" && <AppsTab member={member} />}
+          {activeTab === "profile" && <ProfileTab member={member} computers={computers} t={t} />}
+          {activeTab === "permissions" && <PermissionsTab member={member} t={t} />}
+          {activeTab === "dms" && <DmTab member={member} t={t} />}
+          {activeTab === "reminders" && <RemindersTab member={member} t={t} />}
+          {activeTab === "workspace" && <WorkspaceTab member={member} computers={computers} t={t} />}
+          {activeTab === "apps" && <AppsTab member={member} t={t} />}
           {activeTab === "activity" && <ActivityTab member={member} computers={computers} />}
         </div>
       </CardContent>
@@ -715,7 +729,7 @@ export default async function MembersPage({
       title={t("title")}
       description={t("description")}
       list={<MembersList members={members} computers={computers} selectedMemberId={selectedMemberId} />}
-      listTitle="Members"
+      listTitle={t("title")}
       listConfig={MEMBERS_LIST_WIDTH}
       sidebarTitle={t("memberGroups")}
       sidebarDescription={t("selectMember")}
@@ -754,12 +768,12 @@ export default async function MembersPage({
           <Link href="/computers">
             <Button variant="outline" size="sm">
               <HardDrive className="size-4" />
-              Computers
+              {t("goComputers")}
             </Button>
           </Link>
           <Link href="/tasks">
             <Button variant="outline" size="sm">
-              Tasks
+              {t("goTasks")}
             </Button>
           </Link>
         </>
@@ -772,7 +786,7 @@ export default async function MembersPage({
         </Suspense>
 
         {selectedMember && (
-          <MemberDetail member={selectedMember} computers={computers} activeTab={activeTab} />
+          <MemberDetail member={selectedMember} computers={computers} activeTab={activeTab} t={t} />
         )}
 
         {error && (

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import { Plus } from "lucide-react"
 
 import { CreateAgentForm } from "@/components/create-agent-form"
@@ -38,6 +39,7 @@ function channelPathSegment(name: string) {
  * 所以这里显式补一次 /api/v1/dm。
  */
 export function CreateAgentDialog() {
+  const t = useTranslations("chat")
   const [open, setOpen] = useState(false)
   const [computers, setComputers] = useState<Computer[]>([])
   const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([])
@@ -54,7 +56,7 @@ export function CreateAgentDialog() {
         setProviderOptions(detectedProviderOptions(list))
       })
       .catch(() => {
-        if (!cancelled) setError("Failed to load computers")
+        if (!cancelled) setError(t("loadComputersFailed"))
       })
     return () => {
       cancelled = true
@@ -72,7 +74,7 @@ export function CreateAgentDialog() {
       window.location.href = `/chat/${channelPathSegment(dmName)}`
     } else {
       // DM 创建失败时至少关掉弹窗、给出提示，agent 本身已创建成功。
-      setError("Agent created, but failed to open DM. Find it in the members page.")
+      setError(t("agentCreatedDmFailed"))
       setOpen(false)
     }
   }
@@ -86,7 +88,7 @@ export function CreateAgentDialog() {
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Create agent"
+            aria-label={t("createAgent")}
             className="text-muted-foreground hover:text-foreground"
           >
             <Plus className="size-3.5" />
@@ -95,9 +97,9 @@ export function CreateAgentDialog() {
       />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create a new agent</DialogTitle>
+          <DialogTitle>{t("createAgentTitle")}</DialogTitle>
           <DialogDescription>
-            Create an agent and start a direct message with it.
+            {t("createAgentStartDmDesc")}
           </DialogDescription>
         </DialogHeader>
         {error && (
@@ -110,7 +112,7 @@ export function CreateAgentDialog() {
           providerOptions={providerOptions}
           unavailableProviders={unavailableProviders}
           onSuccess={handleCreated}
-          submitLabel="Create agent & start DM"
+          submitLabel={t("createAgentAndStartDm")}
         />
       </DialogContent>
     </Dialog>

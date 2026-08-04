@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Bot } from "lucide-react"
 
 import { ProviderSelect } from "@/components/provider-select"
@@ -49,8 +50,9 @@ export function CreateAgentForm({
   providerOptions,
   unavailableProviders = [],
   onSuccess,
-  submitLabel = "Create Agent",
+  submitLabel,
 }: CreateAgentFormProps) {
+  const t = useTranslations("chat")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [computerId, setComputerId] = useState("")
@@ -84,7 +86,7 @@ export function CreateAgentForm({
     const runtimeProvider = String(formData.get("runtimeProvider") ?? "")
     const provider = String(formData.get("provider") ?? "")
     if (!name || !computerId) {
-      setError("Missing name or computer")
+      setError(t("missingNameOrComputer"))
       return
     }
     setSubmitting(true)
@@ -94,7 +96,7 @@ export function CreateAgentForm({
         { name, computerId, runtime, runtimeProvider, provider }
       )
       if (!data.member) {
-        throw new Error(data.detail || "Failed to create agent")
+        throw new Error(data.detail || t("createAgentFailed"))
       }
       form.reset()
       await onSuccess?.(data.member)
@@ -123,18 +125,18 @@ export function CreateAgentForm({
       </p>
       <div className="flex items-center gap-2 text-sm font-medium">
         <Bot className="size-4" />
-        Create a new agent
+        {t("createAgentTitle")}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="agent-name" className="text-xs font-medium text-muted-foreground">
-            Agent Name
+            {t("agentNameLabel")}
           </label>
-          <Input id="agent-name" name="name" placeholder="my-agent" required autoComplete="off" />
+          <Input id="agent-name" name="name" placeholder={t("agentNamePlaceholder")} required autoComplete="off" />
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="agent-computer" className="text-xs font-medium text-muted-foreground">
-            Computer
+            {t("computerLabel")}
           </label>
           <Select
             id="agent-computer"
@@ -143,13 +145,13 @@ export function CreateAgentForm({
             value={computerId}
             items={computers.map((computer) => `${computer.id}|${computer.name}`)}
             splitValue
-            emptyLabel="Select..."
+            emptyLabel={t("selectPlaceholder")}
             onChange={(event) => setComputerId(event.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="agent-runtime" className="text-xs font-medium text-muted-foreground">
-            Runtime
+            {t("runtimeLabel")}
           </label>
           <Select
             id="agent-runtime"
@@ -165,14 +167,14 @@ export function CreateAgentForm({
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="agent-provider" className="text-xs font-medium text-muted-foreground">
-            Provider
+            {t("providerLabel")}
           </label>
           <ProviderSelect options={scopedProviderOptions} unavailableOptions={scopedUnavailableProviders} />
         </div>
       </div>
       <div className="flex justify-end">
         <Button type="submit" size="sm" disabled={submitting}>
-          {submitting ? "Creating..." : submitLabel}
+          {submitting ? t("creating") : (submitLabel ?? t("createAgent"))}
         </Button>
       </div>
     </form>
