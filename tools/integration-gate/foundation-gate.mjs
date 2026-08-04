@@ -1,11 +1,44 @@
 const CONTEXT_THRESHOLD_PERCENT = 50;
 
+export const FOUNDATION_RUNTIME_TARGETS = ['claude_code', 'codex', 'opencode', 'pi'];
+
+const RUNTIME_PROFILES = {
+  claude_code: {
+    runtime: 'claude_code',
+    label: 'Claude Code',
+    contextControl: true,
+    inspectCommand: '/context',
+    compactCommand: '/compact',
+    missingCode: 'CLAUDE_CODE_RUNTIME_MISSING',
+  },
+  codex: {
+    runtime: 'codex',
+    label: 'Codex',
+    contextControl: true,
+    inspectCommand: '/status',
+    compactCommand: '/compact',
+    missingCode: 'CODEX_RUNTIME_MISSING',
+  },
+  opencode: {
+    runtime: 'opencode',
+    label: 'OpenCode',
+    contextControl: false,
+    missingCode: 'OPENCODE_RUNTIME_MISSING',
+  },
+  pi: {
+    runtime: 'pi',
+    label: 'Built-in Pi',
+    contextControl: false,
+    missingCode: 'PI_RUNTIME_MISSING',
+  },
+};
+
 const FOUNDATION_STEP_IDS = [
   'login-session',
   'frontend-ready',
   'backend-ready',
   'daemon-connect',
-  'minimax-runtime-ready',
+  'target-runtime-ready',
   'runtime-reuse-candidate',
   'limit-preflight',
   'context-preflight',
@@ -29,6 +62,18 @@ export function parseClaudeContextUsage(text) {
   };
 }
 
+export function parseRuntimeContextUsage(text) {
+  const claudeUsage = parseClaudeContextUsage(text);
+  if (claudeUsage) return claudeUsage;
+  if (typeof text !== 'string' || !text.trim()) return null;
+  const percent = text.match(/\bcontext(?:\s+(?:window|usage))?\b[^\n%]{0,120}?(\d+(?:\.\d+)?)%\s*(?:used|full)?/i)?.[1];
+  if (!percent) return null;
+  return {
+    source: 'runtime_status',
+    percent: Number(percent),
+  };
+}
+
 export function parseRuntimeControlEvidence(input) {
   if (!input || typeof input !== 'object') return {};
   const output = typeof input.output === 'string'
@@ -36,7 +81,7 @@ export function parseRuntimeControlEvidence(input) {
     : typeof input.text === 'string'
       ? input.text
       : '';
-  const parsedContext = parseClaudeContextUsage(output);
+  const parsedContext = parseRuntimeContextUsage(output);
   const contextUsage = parsedContext
     ? {
       ...parsedContext,
@@ -54,26 +99,70 @@ export function parseRuntimeControlEvidence(input) {
 
   return {
     action: typeof input.action === 'string' ? input.action : undefined,
+    agentId: typeof input.agentId === 'string' && input.agentId.trim() ? input.agentId.trim() : undefined,
     accepted: input.accepted === true,
     delivered: input.delivered === true,
+    runtime: normalizeRuntimeIdentifier(input.runtime) || undefined,
     slashCommand: typeof input.slashCommand === 'string' ? input.slashCommand : undefined,
     ...(contextUsage ? { contextUsage } : {}),
     ...(limitFailure ? { limitFailure } : {}),
   };
 }
 
-export function parseDaemonRuntimeHealth(input) {
+export function correlateRuntimeControlEvidence(evidence, target = {}) {
+  if (!evidence || typeof evidence !== 'object') return {};
+  const expectedRuntime = foundationRuntimeProfile(target.runtime).runtime;
+  const expectedAgentId = typeof target.agentId === 'string' && target.agentId.trim()
+    ? target.agentId.trim()
+    : null;
+  const observedRuntime = normalizeRuntimeIdentifier(evidence.runtime) || null;
+  const observedAgentId = typeof evidence.agentId === 'string' && evidence.agentId.trim()
+    ? evidence.agentId.trim()
+    : null;
+  if (observedRuntime === expectedRuntime && expectedAgentId && observedAgentId === expectedAgentId) {
+    return evidence;
+  }
+
+  const safeEvidence = Object.fromEntries(
+    Object.entries(evidence).filter(([key]) => key !== 'contextUsage' && key !== 'limitFailure'),
+  );
+  return {
+    ...safeEvidence,
+    identityFailure: {
+      category: 'runtime',
+      code: 'RUNTIME_CONTROL_TARGET_MISMATCH',
+    },
+    identity: {
+      expectedRuntime,
+      expectedAgentId,
+      observedRuntime,
+      observedAgentId,
+    },
+  };
+}
+
+export function parseDaemonRuntimeHealth(input, target = {}) {
   const entries = Array.isArray(input?.entries) ? input.entries : [];
+  const agentId = typeof target.agentId === 'string' && target.agentId.trim()
+    ? target.agentId.trim()
+    : null;
+  if (!agentId) return null;
+  const agentPattern = new RegExp(`(^|[^A-Za-z0-9_-])${escapeRegExp(agentId)}(?=$|[^A-Za-z0-9_-])`);
   const messages = entries
     .map((entry) => typeof entry?.message === 'string' ? entry.message : '')
-    .filter(Boolean);
+    .filter((message) => message && agentPattern.test(message));
   const joined = messages.join('\n');
   if (!joined) return null;
+
+  const runtime = normalizeRuntimeIdentifier(target.runtime) || undefined;
 
   const tokenBootstrapFailure = /MISSING_TOKEN|TOKEN_[A-Z_]+|proxy token is not injected/i.test(joined);
   const warmupTimeout = /warmup timed out|reason=warmup_timeout/i.test(joined);
   if (!tokenBootstrapFailure && !warmupTimeout) {
-    return { ok: true, evidence: { source: 'daemon.logs', entries: messages.length } };
+    return {
+      ok: true,
+      evidence: { source: 'daemon.logs', agentId, ...(runtime ? { runtime } : {}), entries: messages.length },
+    };
   }
 
   const code = tokenBootstrapFailure ? 'RUNTIME_WARMUP_TOKEN_MISSING' : 'RUNTIME_WARMUP_TIMEOUT';
@@ -82,6 +171,8 @@ export function parseDaemonRuntimeHealth(input) {
     failure: { category: 'runtime_bootstrap', code },
     evidence: {
       source: 'daemon.logs',
+      agentId,
+      ...(runtime ? { runtime } : {}),
       reason: tokenBootstrapFailure ? 'MISSING_TOKEN' : 'warmup_timeout',
       warmupTimeout,
       matched: messages
@@ -110,16 +201,18 @@ export function classifyLimitFailure(input) {
 }
 
 export function buildFoundationGateReport(input = {}) {
+  const profile = foundationRuntimeProfile(input.runtime ?? 'claude_code');
   const computers = Array.isArray(input.computers) ? input.computers : [];
   const onlineComputers = computers.filter((computer) => isOnline(computer.status));
-  const minimaxRuntimeComputers = computers.filter(hasMiniMaxClaudeRuntime);
-  const candidates = runtimeCandidates(computers);
+  const detectedRuntimeComputers = onlineComputers.filter((computer) => hasRuntime(computer, profile));
+  const candidates = runtimeCandidates(onlineComputers, profile);
   const runningCandidates = candidates.filter(({ workspace }) => workspace.status === 'running');
   const sessionCandidates = runningCandidates.filter(({ workspace }) => typeof workspace.sessionId === 'string' && workspace.sessionId);
   const contextUsage = input.contextUsage ?? null;
   const limitFailure = normalizeLimitFailure(input.limitFailure)
     ?? (input.limitError ? classifyLimitFailure(input.limitError) : null);
   const runtimeHealth = normalizeRuntimeHealth(input.runtimeHealth);
+  const runtimeControlFailure = normalizeLimitFailure(input.runtimeControlFailure);
 
   const steps = [
     step({
@@ -151,11 +244,15 @@ export function buildFoundationGateReport(input = {}) {
       evidence: { onlineComputers: onlineComputers.length, computers: computers.length },
     }),
     step({
-      id: 'minimax-runtime-ready',
-      label: 'MiniMax Claude Code runtime available',
-      ok: minimaxRuntimeComputers.length > 0 || candidates.some(({ workspace }) => isMiniMaxClaudeRuntime(workspaceRuntimeText(workspace))),
-      failure: { category: 'runtime', code: 'MINIMAX_CLAUDE_RUNTIME_MISSING' },
-      evidence: { minimaxRuntimeComputers: minimaxRuntimeComputers.length },
+      id: 'target-runtime-ready',
+      label: `${profile.label} runtime available`,
+      ok: detectedRuntimeComputers.length > 0 || candidates.length > 0,
+      failure: { category: 'runtime', code: profile.missingCode },
+      evidence: {
+        runtime: profile.runtime,
+        detectedRuntimeComputers: detectedRuntimeComputers.length,
+        workspaceCandidates: candidates.length,
+      },
     }),
     step({
       id: 'runtime-reuse-candidate',
@@ -174,19 +271,28 @@ export function buildFoundationGateReport(input = {}) {
     step({
       id: 'context-preflight',
       label: 'Context preflight',
-      ok: Boolean(contextUsage && Number.isFinite(contextUsage.percent)),
-      failure: { category: 'context_limit', code: 'CONTEXT_USAGE_MISSING' },
-      evidence: contextUsage ?? { source: 'missing runtime_control.inspect_context evidence' },
+      applicable: profile.contextControl,
+      ok: !runtimeControlFailure && Boolean(contextUsage && Number.isFinite(contextUsage.percent)),
+      failure: runtimeControlFailure ?? { category: 'context_limit', code: 'CONTEXT_USAGE_MISSING' },
+      evidence: runtimeControlFailure
+        ? { runtime: profile.runtime, identity: input.runtimeControlIdentity ?? null }
+        : profile.contextControl
+          ? contextUsage ?? { source: 'missing runtime_control.inspect_context evidence', runtime: profile.runtime }
+          : { runtime: profile.runtime, reason: 'runtime_context_control_unsupported' },
     }),
     step({
       id: 'compact-if-needed',
       label: 'Compact if needed',
-      ok: Boolean(contextUsage && contextUsage.percent <= CONTEXT_THRESHOLD_PERCENT),
-      failure: { category: 'context_limit', code: 'CONTEXT_COMPACT_REQUIRED' },
+      applicable: profile.contextControl,
+      ok: !runtimeControlFailure && Boolean(contextUsage && contextUsage.percent <= CONTEXT_THRESHOLD_PERCENT),
+      failure: runtimeControlFailure ?? { category: 'context_limit', code: 'CONTEXT_COMPACT_REQUIRED' },
       evidence: {
         thresholdPercent: CONTEXT_THRESHOLD_PERCENT,
         contextPercent: contextUsage?.percent,
         source: contextUsage?.source,
+        runtime: profile.runtime,
+        ...(runtimeControlFailure ? { identity: input.runtimeControlIdentity ?? null } : {}),
+        ...(profile.contextControl ? {} : { reason: 'runtime_compact_control_unsupported' }),
       },
     }),
     step({
@@ -218,6 +324,7 @@ export function buildFoundationGateReport(input = {}) {
   const failures = steps.filter((item) => item.status === 'fail');
   return {
     mode: 'foundation-only',
+    runtime: profile.runtime,
     ok: failures.length === 0,
     thresholdPercent: CONTEXT_THRESHOLD_PERCENT,
     steps,
@@ -226,17 +333,50 @@ export function buildFoundationGateReport(input = {}) {
       total: steps.length,
       passed: steps.filter((item) => item.status === 'pass').length,
       failed: failures.length,
+      skipped: steps.filter((item) => item.status === 'skip').length,
+    },
+  };
+}
+
+export function buildFoundationMatrixReport(runtimeReports) {
+  const reports = FOUNDATION_RUNTIME_TARGETS.map((runtime) => {
+    const report = runtimeReports.find((item) => item?.runtime === runtime);
+    if (!report) throw new Error(`Missing foundation runtime report: ${runtime}`);
+    return report;
+  });
+  const steps = reports.flatMap((report) => report.steps.map((item) => ({
+    ...item,
+    id: `${report.runtime}:${item.id}`,
+    stepId: item.id,
+    runtime: report.runtime,
+    label: `[${report.runtime}] ${item.label}`,
+  })));
+  const failures = steps.filter((item) => item.status === 'fail');
+  return {
+    mode: 'foundation-only',
+    runtime: 'all',
+    ok: failures.length === 0,
+    thresholdPercent: CONTEXT_THRESHOLD_PERCENT,
+    steps,
+    failures,
+    runtimeReports: reports,
+    summary: {
+      total: steps.length,
+      passed: steps.filter((item) => item.status === 'pass').length,
+      failed: failures.length,
+      skipped: steps.filter((item) => item.status === 'skip').length,
     },
   };
 }
 
 export function formatGateSummary(report) {
   const prefix = `${report.ok ? 'PASS' : 'FAIL'} ${report.mode} ${report.summary.passed}/${report.summary.total}`;
-  if (report.ok) return prefix;
+  const skipped = report.summary.skipped > 0 ? ` skipped=${report.summary.skipped}` : '';
+  if (report.ok) return `${prefix}${skipped}`;
   const failures = report.failures
     .map((item) => `${item.failure.category}:${item.id}`)
     .join(' ');
-  return `${prefix} ${failures}`;
+  return `${prefix}${skipped} ${failures}`;
 }
 
 function normalizeRuntimeHealth(value) {
@@ -268,6 +408,10 @@ function compactLogMessage(message) {
   return summary.length > 260 ? `${summary.slice(0, 257)}...` : summary;
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function normalizeLimitFailure(value) {
   if (!value || typeof value !== 'object') return null;
   const category = typeof value.category === 'string' && value.category.trim() ? value.category : null;
@@ -282,9 +426,18 @@ function normalizeLimitFailure(value) {
   };
 }
 
-function step({ id, label, ok, failure, evidence }) {
+function step({ id, label, applicable = true, ok, failure, evidence }) {
   if (!FOUNDATION_STEP_IDS.includes(id)) {
     throw new Error(`Unknown foundation gate step: ${id}`);
+  }
+  if (!applicable) {
+    return {
+      id,
+      label,
+      status: 'skip',
+      applicable: false,
+      evidence,
+    };
   }
   return {
     id,
@@ -299,34 +452,50 @@ function isOnline(status) {
   return status === 'online' || status === 'active' || status === 'running';
 }
 
-function runtimeText(runtime) {
-  if (!runtime) return '';
-  return typeof runtime === 'string' ? runtime : JSON.stringify(runtime);
+export function foundationRuntimeProfile(runtime) {
+  const normalized = normalizeRuntimeIdentifier(runtime);
+  const profile = RUNTIME_PROFILES[normalized];
+  if (!profile) throw new Error(`Unsupported foundation runtime: ${runtime}`);
+  return profile;
 }
 
-function isMiniMaxClaudeRuntime(runtime) {
-  const text = runtimeText(runtime).toLowerCase();
-  return text.includes('minimax') && (text.includes('claude') || text.includes('anthropic'));
+export function workspaceMatchesRuntime(workspace, runtime) {
+  return normalizeRuntimeIdentifier(workspace?.runtime) === foundationRuntimeProfile(runtime).runtime;
 }
 
-function hasMiniMaxClaudeRuntime(computer) {
-  return Array.isArray(computer.detectedRuntimes) && computer.detectedRuntimes.some(isMiniMaxClaudeRuntime);
+export function selectRuntimeAgentIdForTarget(computers, runtime, explicitAgentId) {
+  const profile = foundationRuntimeProfile(runtime);
+  const onlineComputers = (Array.isArray(computers) ? computers : []).filter((computer) => isOnline(computer.status));
+  const candidates = runtimeCandidates(onlineComputers, profile).map(({ workspace }) => workspace);
+  if (explicitAgentId) {
+    return candidates.find((workspace) => workspace.agentId === explicitAgentId)?.agentId;
+  }
+  const running = candidates.find((workspace) => workspace.status === 'running');
+  return running?.agentId ?? candidates[0]?.agentId;
 }
 
-function workspaceRuntimeText(workspace) {
-  return [
-    workspace.runtime,
-    workspace.runtimeProvider,
-    workspace.runtimeModel,
-    workspace.runtimeCommand,
-  ].filter(Boolean).join(' ');
+function normalizeRuntimeIdentifier(value) {
+  if (typeof value !== 'string') return '';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'claude' || normalized === 'claude_code') return 'claude_code';
+  if (normalized === 'codex' || normalized === 'codex_acp' || normalized === 'codex-acp') return 'codex';
+  if (normalized === 'opencode' || normalized === 'open_code') return 'opencode';
+  if (normalized === 'pi') return 'pi';
+  return '';
 }
 
-function runtimeCandidates(computers) {
+function hasRuntime(computer, profile) {
+  return Array.isArray(computer.detectedRuntimes) && computer.detectedRuntimes.some((runtime) => {
+    const identity = typeof runtime === 'string' ? runtime : runtime?.type ?? runtime?.runtime;
+    return normalizeRuntimeIdentifier(identity) === profile.runtime;
+  });
+}
+
+function runtimeCandidates(computers, profile) {
   return computers.flatMap((computer) => {
     const workspaces = Array.isArray(computer.agentWorkspaces) ? computer.agentWorkspaces : [];
     return workspaces
-      .filter((workspace) => /claude|minimax/i.test(workspaceRuntimeText(workspace)))
+      .filter((workspace) => normalizeRuntimeIdentifier(workspace.runtime) === profile.runtime)
       .map((workspace) => ({ computer, workspace }));
   });
 }

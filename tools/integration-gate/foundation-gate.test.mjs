@@ -3,11 +3,15 @@ import test from 'node:test';
 
 import {
   buildFoundationGateReport,
+  buildFoundationMatrixReport,
   classifyLimitFailure,
+  correlateRuntimeControlEvidence,
   formatGateSummary,
   parseClaudeContextUsage,
   parseDaemonRuntimeHealth,
+  parseRuntimeContextUsage,
   parseRuntimeControlEvidence,
+  selectRuntimeAgentIdForTarget,
 } from './foundation-gate.mjs';
 
 test('parseClaudeContextUsage extracts direct slash-command context evidence', () => {
@@ -32,8 +36,10 @@ test('parseClaudeContextUsage extracts direct slash-command context evidence', (
 test('parseRuntimeControlEvidence extracts context usage and limit failures from daemon control results', () => {
   const evidence = parseRuntimeControlEvidence({
     action: 'inspect_context',
+    agentId: 'agent-claude',
     accepted: true,
     delivered: true,
+    runtime: 'claude',
     slashCommand: '/context',
     output: [
       '## Context Usage',
@@ -43,6 +49,8 @@ test('parseRuntimeControlEvidence extracts context usage and limit failures from
   });
 
   assert.equal(evidence.action, 'inspect_context');
+  assert.equal(evidence.agentId, 'agent-claude');
+  assert.equal(evidence.runtime, 'claude_code');
   assert.equal(evidence.contextUsage.percent, 51);
   assert.equal(evidence.contextUsage.source, 'daemon_runtime_control.inspect_context');
 
@@ -53,6 +61,13 @@ test('parseRuntimeControlEvidence extracts context usage and limit failures from
     error: 'rate limit reached',
   });
   assert.equal(limit.limitFailure.category, 'rate_limit');
+});
+
+test('parseRuntimeContextUsage accepts Codex status percentage evidence', () => {
+  assert.deepEqual(parseRuntimeContextUsage('Context window: 41% used'), {
+    source: 'runtime_status',
+    percent: 41,
+  });
 });
 
 test('buildFoundationGateReport preserves structured runtime-control limit failure category', () => {
@@ -74,15 +89,66 @@ test('parseDaemonRuntimeHealth reports warmup token bootstrap failures', () => {
   const health = parseDaemonRuntimeHealth({
     entries: [
       { level: 'debug', message: 'Daemon heartbeat synced to http://127.0.0.1:8010' },
-      { level: 'debug', message: 'Startup check ran. `slock server info` failed with `MISSING_TOKEN`' },
+      { level: 'debug', message: 'claude_code runtime agent-1 stderr: `slock server info` failed with `MISSING_TOKEN`' },
       { level: 'warn', message: 'Runtime agent-1 warmup timed out after 60000ms; marking startup failed' },
     ],
-  });
+  }, { runtime: 'claude_code', agentId: 'agent-1' });
 
   assert.equal(health.ok, false);
   assert.equal(health.failure.category, 'runtime_bootstrap');
   assert.equal(health.failure.code, 'RUNTIME_WARMUP_TOKEN_MISSING');
   assert.equal(health.evidence.reason, 'MISSING_TOKEN');
+});
+
+test('daemon runtime health ignores failures owned by another runtime agent', () => {
+  const logs = {
+    entries: [
+      { level: 'error', message: 'opencode runtime agent-opencode stderr: MISSING_TOKEN' },
+      { level: 'warn', message: 'Runtime agent-opencode warmup timed out after 60000ms; degrading to ready' },
+      { level: 'info', message: 'codex runtime agent-codex stdout: ready' },
+    ],
+  };
+
+  const opencodeHealth = parseDaemonRuntimeHealth(logs, {
+    runtime: 'opencode',
+    agentId: 'agent-opencode',
+  });
+  assert.equal(opencodeHealth.ok, false);
+  assert.equal(opencodeHealth.failure.code, 'RUNTIME_WARMUP_TOKEN_MISSING');
+
+  const codexHealth = parseDaemonRuntimeHealth(logs, {
+    runtime: 'codex',
+    agentId: 'agent-codex',
+  });
+  assert.equal(codexHealth.ok, true);
+  assert.equal(codexHealth.evidence.agentId, 'agent-codex');
+});
+
+test('runtime-control context evidence fails closed when runtime or agent identity mismatches', () => {
+  const evidence = parseRuntimeControlEvidence({
+    action: 'inspect_context',
+    accepted: true,
+    delivered: true,
+    runtime: 'codex',
+    agentId: 'agent-codex',
+    output: 'Context window: 18% used',
+  });
+
+  const correlated = correlateRuntimeControlEvidence(evidence, {
+    runtime: 'claude_code',
+    agentId: 'agent-claude',
+  });
+  assert.equal(correlated.contextUsage, undefined);
+  assert.deepEqual(correlated.identityFailure, {
+    category: 'runtime',
+    code: 'RUNTIME_CONTROL_TARGET_MISMATCH',
+  });
+  assert.deepEqual(correlated.identity, {
+    expectedRuntime: 'claude_code',
+    expectedAgentId: 'agent-claude',
+    observedRuntime: 'codex',
+    observedAgentId: 'agent-codex',
+  });
 });
 
 test('buildFoundationGateReport fails warmup-ready when daemon logs show warmup failure', () => {
@@ -229,4 +295,121 @@ test('formatGateSummary stays compact on pass and explains failures on failure',
   assert.match(output, /^FAIL foundation-only/);
   assert.match(output, /auth:login-session/);
   assert.match(output, /rate_limit:limit-preflight/);
+});
+
+test('runtime profiles match canonical runtime identity instead of MiniMax/provider metadata', () => {
+  const computers = [{
+    id: 'computer-1',
+    status: 'online',
+    detectedRuntimes: [{ type: 'codex', provider: 'MiniMax Claude', model: 'MiniMax-M3' }],
+    agentWorkspaces: [{
+      id: 'workspace-codex',
+      agentId: 'agent-codex',
+      status: 'running',
+      runtime: 'codex',
+      runtimeProvider: 'MiniMax Claude',
+      runtimeModel: 'MiniMax-M3',
+      sessionId: 'session-codex',
+    }],
+  }];
+  const contextUsage = {
+    source: 'daemon_runtime_control.inspect_context',
+    percent: 18,
+  };
+
+  const claudeReport = buildFoundationGateReport({
+    runtime: 'claude_code',
+    authenticated: true,
+    backendOnline: true,
+    frontendOnline: true,
+    computers,
+    contextUsage,
+  });
+  assert.equal(claudeReport.ok, false);
+  assert.equal(claudeReport.steps.find((step) => step.id === 'target-runtime-ready')?.status, 'fail');
+
+  const codexReport = buildFoundationGateReport({
+    runtime: 'codex',
+    authenticated: true,
+    backendOnline: true,
+    frontendOnline: true,
+    computers,
+    contextUsage,
+  });
+  assert.equal(codexReport.ok, true);
+  assert.equal(codexReport.runtime, 'codex');
+  assert.deepEqual(
+    codexReport.steps.find((step) => step.id === 'target-runtime-ready')?.evidence,
+    { runtime: 'codex', detectedRuntimeComputers: 1, workspaceCandidates: 1 },
+  );
+});
+
+test('OpenCode and Pi keep strict runtime/session gates while context controls are explicit skips', () => {
+  for (const runtime of ['opencode', 'pi']) {
+    const report = buildFoundationGateReport({
+      runtime,
+      authenticated: true,
+      backendOnline: true,
+      frontendOnline: true,
+      computers: [{
+        id: `computer-${runtime}`,
+        status: 'online',
+        detectedRuntimes: [{ type: runtime, provider: 'MiniMax', model: 'MiniMax-M3' }],
+        agentWorkspaces: [{
+          id: `workspace-${runtime}`,
+          agentId: `agent-${runtime}`,
+          status: 'running',
+          runtime,
+          runtimeProvider: 'MiniMax',
+          runtimeModel: 'MiniMax-M3',
+          sessionId: `session-${runtime}`,
+        }],
+      }],
+    });
+
+    assert.equal(report.ok, true, runtime);
+    assert.equal(report.steps.find((step) => step.id === 'context-preflight')?.status, 'skip');
+    assert.equal(report.steps.find((step) => step.id === 'compact-if-needed')?.status, 'skip');
+    assert.equal(report.summary.skipped, 2);
+    assert.equal(report.summary.failed, 0);
+    assert.match(formatGateSummary(report), /skipped=2$/);
+  }
+});
+
+test('all-runtime matrix aggregates four isolated reports and runtime agent selection stays exact', () => {
+  const runtimes = ['claude_code', 'codex', 'opencode', 'pi'];
+  const computers = [{
+    id: 'computer-all',
+    status: 'online',
+    detectedRuntimes: runtimes.map((runtime) => ({ type: runtime, provider: 'MiniMax' })),
+    agentWorkspaces: runtimes.map((runtime) => ({
+      id: `workspace-${runtime}`,
+      agentId: `agent-${runtime}`,
+      status: 'running',
+      runtime,
+      runtimeProvider: 'MiniMax',
+      sessionId: `session-${runtime}`,
+    })),
+  }];
+  const reports = runtimes.map((runtime) => buildFoundationGateReport({
+    runtime,
+    authenticated: true,
+    backendOnline: true,
+    frontendOnline: true,
+    computers,
+    ...(['claude_code', 'codex'].includes(runtime)
+      ? { contextUsage: { source: 'daemon_runtime_control.inspect_context', percent: 17 } }
+      : {}),
+  }));
+
+  const matrix = buildFoundationMatrixReport(reports);
+  assert.equal(matrix.ok, true);
+  assert.equal(matrix.runtime, 'all');
+  assert.equal(matrix.runtimeReports.length, 4);
+  assert.equal(matrix.summary.total, 48);
+  assert.equal(matrix.summary.passed, 44);
+  assert.equal(matrix.summary.skipped, 4);
+  assert.equal(matrix.steps.some((step) => step.id === 'codex:target-runtime-ready'), true);
+  assert.equal(selectRuntimeAgentIdForTarget(computers, 'codex'), 'agent-codex');
+  assert.equal(selectRuntimeAgentIdForTarget(computers, 'opencode', 'agent-claude_code'), undefined);
 });

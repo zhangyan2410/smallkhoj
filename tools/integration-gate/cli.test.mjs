@@ -56,6 +56,19 @@ test('integration gate CLI fails closed before network access when Server id is 
   assert.doesNotMatch(result.stderr, /at .*run\.mjs/);
 });
 
+test('integration gate CLI rejects an unsupported runtime before network access', async () => {
+  const result = await runCli([
+    '--runtime', 'unsupported-runtime',
+    '--api-base', 'http://127.0.0.1:1',
+    '--frontend-base', 'http://127.0.0.1:1',
+  ]);
+
+  assert.equal(result.code, 2);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /^CONFIG_ERROR UNSUPPORTED_RUNTIME runtime="unsupported-runtime"\n$/);
+  assert.doesNotMatch(result.stderr, /ECONNREFUSED|fetch failed/);
+});
+
 test('integration gate CLI returns compact pass output for foundation-ready snapshot', async () => {
   const root = mkdtempSync(join(tmpdir(), 'smallkhoj-gate-cli-'));
   const contextFile = join(root, 'context.md');
@@ -67,8 +80,10 @@ test('integration gate CLI returns compact pass output for foundation-ready snap
   ].join('\n'));
   writeFileSync(runtimeControlFile, JSON.stringify({
     action: 'inspect_context',
+    agentId: 'agent-1',
     accepted: true,
     delivered: true,
+    runtime: 'claude_code',
     slashCommand: '/context',
     output: readFileSync(contextFile, 'utf-8'),
   }));
@@ -108,6 +123,7 @@ test('integration gate CLI returns compact pass output for foundation-ready snap
       '--api-base', server.url,
       '--frontend-base', server.url,
       '--account-token', 'test-session',
+      '--runtime', 'claude_code',
       '--runtime-control-result', runtimeControlFile,
     ]);
 
@@ -116,6 +132,67 @@ test('integration gate CLI returns compact pass output for foundation-ready snap
     assert.equal(result.stderr, '');
     assert.equal(server.requests.some((request) => request.url === '/api/v1/computers' && request.headers['x-account-token'] === 'test-session'), true);
     assert.equal(server.requests.every((request) => request.url === '/control/integration' || request.headers['x-server-id'] === 'server-1'), true);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('integration gate CLI rejects static runtime-control evidence from another runtime agent', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'smallkhoj-gate-runtime-control-mismatch-'));
+  const runtimeControlFile = join(root, 'runtime-control.json');
+  writeFileSync(runtimeControlFile, JSON.stringify({
+    action: 'inspect_context',
+    agentId: 'agent-codex',
+    accepted: true,
+    delivered: true,
+    runtime: 'codex',
+    slashCommand: '/status',
+    output: 'Context window: 18% used',
+  }));
+
+  const server = await startServer((req, res) => {
+    if (req.url === '/control/integration') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Foundation Gate</h1>');
+      return;
+    }
+    if (req.url === '/api/v1/computers') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        computers: [{
+          id: 'computer-1',
+          status: 'online',
+          detectedRuntimes: [{ type: 'claude_code' }],
+          agentWorkspaces: [{
+            agentId: 'agent-claude',
+            status: 'running',
+            runtime: 'claude_code',
+            sessionId: 'session-claude',
+          }],
+        }],
+      }));
+      return;
+    }
+    res.writeHead(404);
+    res.end('not found');
+  });
+
+  try {
+    const result = await runCli([
+      '--api-base', server.url,
+      '--frontend-base', server.url,
+      '--account-token', 'test-session',
+      '--runtime', 'claude_code',
+      '--runtime-control-result', runtimeControlFile,
+      '--json',
+    ]);
+
+    assert.equal(result.code, 1);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.runtimeControl.identityFailure.code, 'RUNTIME_CONTROL_TARGET_MISMATCH');
+    assert.equal(report.steps.find((step) => step.id === 'context-preflight')?.failure.code, 'RUNTIME_CONTROL_TARGET_MISMATCH');
+    assert.equal(report.steps.find((step) => step.id === 'compact-if-needed')?.failure.code, 'RUNTIME_CONTROL_TARGET_MISMATCH');
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });
@@ -187,6 +264,7 @@ test('integration gate CLI can collect context through daemon JSON-RPC runtime c
       '--api-base', server.url,
       '--frontend-base', server.url,
       '--account-token', 'test-session',
+      '--runtime', 'claude_code',
       '--daemon-rpc-base', server.url,
       '--runtime-agent-id', 'agent-1',
       '--result-out', resultFile,
@@ -280,7 +358,7 @@ test('integration gate CLI surfaces daemon warmup bootstrap failures from logs',
           id: message.id,
           result: {
             entries: [
-              { level: 'debug', message: 'Startup check ran. `slock server info` failed with `MISSING_TOKEN`' },
+              { level: 'debug', message: 'claude_code runtime agent-1 stderr: `slock server info` failed with `MISSING_TOKEN`' },
               { level: 'warn', message: 'Runtime agent-1 warmup timed out after 60000ms; marking startup failed' },
             ],
           },
@@ -297,6 +375,7 @@ test('integration gate CLI surfaces daemon warmup bootstrap failures from logs',
       '--api-base', server.url,
       '--frontend-base', server.url,
       '--account-token', 'test-session',
+      '--runtime', 'claude_code',
       '--daemon-rpc-base', server.url,
       '--runtime-agent-id', 'agent-1',
       '--result-out', resultFile,
@@ -310,6 +389,281 @@ test('integration gate CLI surfaces daemon warmup bootstrap failures from logs',
     const warmup = report.steps.find((step) => step.id === 'warmup-ready');
     assert.equal(report.ok, false);
     assert.equal(warmup.failure.code, 'RUNTIME_WARMUP_TOKEN_MISSING');
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('integration gate CLI selects the requested Codex runtime agent and parses status context', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'smallkhoj-gate-codex-'));
+  const resultFile = join(root, 'codex-foundation.json');
+  const rpcRequests = [];
+  const server = await startServer(async (req, res) => {
+    if (req.url === '/control/integration') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Foundation Gate</h1>');
+      return;
+    }
+    if (req.url === '/api/v1/computers') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        computers: [{
+          id: 'computer-1',
+          status: 'online',
+          detectedRuntimes: [
+            { type: 'claude_code', runtimeProvider: 'MiniMax' },
+            { type: 'codex', runtimeProvider: 'MiniMax' },
+          ],
+          agentWorkspaces: [
+            { agentId: 'agent-claude', status: 'running', runtime: 'claude_code', sessionId: 'session-claude' },
+            { agentId: 'agent-codex', status: 'running', runtime: 'codex', sessionId: 'session-codex' },
+          ],
+        }],
+      }));
+      return;
+    }
+    if (req.url === '/internal/daemon/jsonrpc') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const message = JSON.parse(body);
+      rpcRequests.push(message);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      if (message.method === 'daemon/runtime_control') {
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          id: message.id,
+          result: {
+            accepted: true,
+            delivered: true,
+            action: 'inspect_context',
+            agentId: message.params.agentId,
+            runtime: 'codex',
+            slashCommand: '/status',
+            output: 'Context window: 18% used',
+          },
+        }));
+        return;
+      }
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { entries: [] } }));
+      return;
+    }
+    res.writeHead(404);
+    res.end('not found');
+  });
+
+  try {
+    const result = await runCli([
+      '--api-base', server.url,
+      '--frontend-base', server.url,
+      '--account-token', 'test-session',
+      '--runtime', 'codex',
+      '--daemon-rpc-base', server.url,
+      '--result-out', resultFile,
+    ]);
+
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    const runtimeRequest = rpcRequests.find((request) => request.method === 'daemon/runtime_control');
+    assert.equal(runtimeRequest.params.agentId, 'agent-codex');
+    const report = JSON.parse(readFileSync(resultFile, 'utf-8'));
+    assert.equal(report.runtime, 'codex');
+    assert.equal(report.runtimeControl.slashCommand, '/status');
+    assert.equal(report.steps.find((step) => step.id === 'target-runtime-ready')?.status, 'pass');
+    assert.equal(report.steps.find((step) => step.id === 'context-preflight')?.status, 'pass');
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('integration gate CLI gives OpenCode strict runtime evidence with explicit context skips', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'smallkhoj-gate-opencode-'));
+  const resultFile = join(root, 'opencode-foundation.json');
+  const server = await startServer((req, res) => {
+    if (req.url === '/control/integration') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Foundation Gate</h1>');
+      return;
+    }
+    if (req.url === '/api/v1/computers') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        computers: [{
+          id: 'computer-1',
+          status: 'online',
+          detectedRuntimes: [{ type: 'opencode', runtimeProvider: 'MiniMax' }],
+          agentWorkspaces: [{
+            agentId: 'agent-opencode',
+            status: 'running',
+            runtime: 'opencode',
+            runtimeProvider: 'MiniMax Claude',
+            sessionId: 'session-opencode',
+          }],
+        }],
+      }));
+      return;
+    }
+    res.writeHead(404);
+    res.end('not found');
+  });
+
+  try {
+    const result = await runCli([
+      '--api-base', server.url,
+      '--frontend-base', server.url,
+      '--account-token', 'test-session',
+      '--runtime', 'opencode',
+      '--result-out', resultFile,
+    ]);
+
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    assert.match(result.stdout.trim(), /^PASS foundation-only 10\/12 skipped=2$/);
+    const report = JSON.parse(readFileSync(resultFile, 'utf-8'));
+    assert.equal(report.runtime, 'opencode');
+    assert.equal(report.steps.find((step) => step.id === 'context-preflight')?.status, 'skip');
+    assert.equal(report.steps.find((step) => step.id === 'compact-if-needed')?.applicable, false);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('integration gate CLI does not let provider metadata cross-match an OpenCode target', async () => {
+  const server = await startServer((req, res) => {
+    if (req.url === '/control/integration') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Foundation Gate</h1>');
+      return;
+    }
+    if (req.url === '/api/v1/computers') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        computers: [{
+          id: 'computer-1',
+          status: 'online',
+          detectedRuntimes: [{ type: 'claude_code', runtimeProvider: 'OpenCode MiniMax' }],
+          agentWorkspaces: [{
+            agentId: 'agent-claude',
+            status: 'running',
+            runtime: 'claude_code',
+            runtimeProvider: 'OpenCode MiniMax',
+            sessionId: 'session-claude',
+          }],
+        }],
+      }));
+      return;
+    }
+    res.writeHead(404);
+    res.end('not found');
+  });
+
+  try {
+    const result = await runCli([
+      '--api-base', server.url,
+      '--frontend-base', server.url,
+      '--account-token', 'test-session',
+      '--runtime', 'opencode',
+      '--json',
+    ]);
+
+    assert.equal(result.code, 1);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.runtime, 'opencode');
+    assert.equal(report.steps.find((step) => step.id === 'target-runtime-ready')?.status, 'fail');
+    assert.equal(report.steps.find((step) => step.id === 'session-resume')?.status, 'fail');
+  } finally {
+    await server.close();
+  }
+});
+
+test('integration gate CLI defaults Foundation to the four-runtime matrix', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'smallkhoj-gate-all-runtimes-'));
+  const resultFile = join(root, 'all-runtimes-foundation.json');
+  const rpcRequests = [];
+  const runtimes = ['claude_code', 'codex', 'opencode', 'pi'];
+  const server = await startServer(async (req, res) => {
+    if (req.url === '/control/integration') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Foundation Gate</h1>');
+      return;
+    }
+    if (req.url === '/api/v1/computers') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        computers: [{
+          id: 'computer-all',
+          status: 'online',
+          detectedRuntimes: runtimes.map((runtime) => ({ type: runtime, runtimeProvider: 'MiniMax' })),
+          agentWorkspaces: runtimes.map((runtime) => ({
+            agentId: `agent-${runtime}`,
+            status: 'running',
+            runtime,
+            runtimeProvider: 'MiniMax',
+            sessionId: `session-${runtime}`,
+          })),
+        }],
+      }));
+      return;
+    }
+    if (req.url === '/internal/daemon/jsonrpc') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const message = JSON.parse(body);
+      rpcRequests.push(message);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      if (message.method === 'daemon/logs') {
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          id: message.id,
+          result: {
+            entries: [
+              { level: 'error', message: 'opencode runtime unrelated-agent stderr: MISSING_TOKEN' },
+              { level: 'warn', message: 'Runtime unrelated-agent warmup timed out after 60000ms; degrading to ready' },
+            ],
+          },
+        }));
+        return;
+      }
+      const isCodex = message.params.agentId === 'agent-codex';
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {
+          accepted: true,
+          delivered: true,
+          action: 'inspect_context',
+          agentId: message.params.agentId,
+          runtime: isCodex ? 'codex' : 'claude_code',
+          slashCommand: isCodex ? '/status' : '/context',
+          output: 'Context window: 16% used',
+        },
+      }));
+      return;
+    }
+    res.writeHead(404);
+    res.end('not found');
+  });
+
+  try {
+    const result = await runCli([
+      '--api-base', server.url,
+      '--frontend-base', server.url,
+      '--account-token', 'test-session',
+      '--daemon-rpc-base', server.url,
+      '--result-out', resultFile,
+    ]);
+
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    assert.match(result.stdout.trim(), /^PASS foundation-only 44\/48 skipped=4$/);
+    const controlledAgents = rpcRequests
+      .filter((request) => request.method === 'daemon/runtime_control')
+      .map((request) => request.params.agentId)
+      .sort();
+    assert.deepEqual(controlledAgents, ['agent-claude_code', 'agent-codex']);
+    const report = JSON.parse(readFileSync(resultFile, 'utf-8'));
+    assert.equal(report.runtime, 'all');
+    assert.deepEqual(report.runtimeReports.map((item) => item.runtime), runtimes);
+    assert.equal(report.summary.skipped, 4);
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });

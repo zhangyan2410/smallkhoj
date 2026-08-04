@@ -5,10 +5,15 @@ import { resolve } from 'node:path';
 
 import {
   buildFoundationGateReport,
+  buildFoundationMatrixReport,
+  correlateRuntimeControlEvidence,
+  FOUNDATION_RUNTIME_TARGETS,
+  foundationRuntimeProfile,
   formatGateSummary,
-  parseClaudeContextUsage,
   parseDaemonRuntimeHealth,
+  parseRuntimeContextUsage,
   parseRuntimeControlEvidence,
+  selectRuntimeAgentIdForTarget,
 } from './foundation-gate.mjs';
 import {
   buildChatGateReport,
@@ -36,6 +41,7 @@ if (args.help) {
     '',
     'Options:',
     '  --mode <mode>            foundation-only (default), chat-reply-channel-base, chat-reply-channel-group, chat-reply-dm, collab-channel-v1, collab-channel-v2, collab-channel-v3',
+    '  --runtime <runtime>      all (default), claude_code, codex, opencode, pi; applies to foundation-only',
     '  --api-base <url>          Backend API base (default: http://localhost:8000)',
     '  --frontend-base <url>     Frontend base (default: http://127.0.0.1:3000)',
     '  --public-key <key>        Public API key header (default: NEXT_PUBLIC_API_KEY or sk_public_local)',
@@ -76,10 +82,20 @@ const frontendBase = args.frontendBase ?? process.env.FRONTEND_BASE ?? 'http://1
 const publicKey = args.publicKey ?? process.env.NEXT_PUBLIC_API_KEY ?? 'sk_public_local';
 const accountToken = args.accountToken ?? process.env.SMALLKHOJ_ACCOUNT_TOKEN;
 const mode = args.mode ?? 'foundation-only';
+const runtimeSelection = args.runtime ?? 'all';
 const serverId = args.serverId ?? process.env.SMALLKHOJ_SERVER_ID;
 const supportedModes = ['foundation-only', ...CHAT_GATE_SCENARIOS, ...COLLAB_GATE_SCENARIOS];
 if (!serverId) failConfiguration('SERVER_ID_REQUIRED');
 if (!supportedModes.includes(mode)) failConfiguration('UNSUPPORTED_MODE', new Error(mode));
+if (!['all', ...FOUNDATION_RUNTIME_TARGETS].includes(runtimeSelection)) {
+  failConfiguration('UNSUPPORTED_RUNTIME', new Error(runtimeSelection));
+}
+if (mode === 'foundation-only' && runtimeSelection === 'all' && args.runtimeAgentId) {
+  failConfiguration('RUNTIME_AGENT_ID_REQUIRES_SINGLE_RUNTIME');
+}
+if (mode === 'foundation-only' && runtimeSelection === 'all' && (args.contextOutput || args.runtimeControlResult)) {
+  failConfiguration('RUNTIME_EVIDENCE_REQUIRES_SINGLE_RUNTIME');
+}
 const resultDir = args.resultDir ?? process.env.SMALLKHOJ_GATE_RESULT_DIR ?? resolve('.runtime/integration-gate');
 const gateStartedAt = new Date().toISOString();
 
@@ -137,37 +153,62 @@ if (mode.startsWith('collab-channel-')) {
 }
 
 const contextUsage = args.contextOutput
-  ? parseClaudeContextUsage(readFileSync(args.contextOutput, 'utf-8'))
+  ? parseRuntimeContextUsage(readFileSync(args.contextOutput, 'utf-8'))
   : null;
-const runtimeControlEvidence = args.runtimeControlResult
+const providedRuntimeControlEvidence = args.runtimeControlResult
   ? parseRuntimeControlEvidence(JSON.parse(readFileSync(args.runtimeControlResult, 'utf-8')))
-  : args.daemonRpcBase
-    ? parseRuntimeControlEvidence(await fetchRuntimeControlEvidence({
-      daemonRpcBase: args.daemonRpcBase,
-      agentId: args.runtimeAgentId ?? selectRuntimeAgentId(computersSnapshot.computers),
-      timeoutMs: args.runtimeControlTimeoutMs ?? 30_000,
-    }))
-    : {};
-const runtimeHealth = args.daemonRpcBase
-  ? parseDaemonRuntimeHealth(await fetchDaemonLogs(args.daemonRpcBase))
+  : null;
+const daemonLogs = args.daemonRpcBase
+  ? await fetchDaemonLogs(args.daemonRpcBase)
   : null;
 
-const report = buildFoundationGateReport({
-  authenticated: Boolean(accountToken),
-  frontendOnline,
-  backendOnline: computersSnapshot.backendOnline,
-  computers: computersSnapshot.computers,
-  contextUsage: runtimeControlEvidence.contextUsage ?? contextUsage,
-  limitError: args.limitError,
-  limitFailure: runtimeControlEvidence.limitFailure,
-  runtimeHealth,
-});
-if (runtimeControlEvidence.action || runtimeControlEvidence.limitFailure || runtimeControlEvidence.contextUsage) {
-  report.runtimeControl = runtimeControlEvidence;
-}
-if (runtimeHealth) {
-  report.runtimeHealth = runtimeHealth;
-}
+const runtimeTargets = runtimeSelection === 'all' ? FOUNDATION_RUNTIME_TARGETS : [runtimeSelection];
+const runtimeReports = await Promise.all(runtimeTargets.map(async (runtime) => {
+  const profile = foundationRuntimeProfile(runtime);
+  const runtimeAgentId = selectRuntimeAgentIdForTarget(
+    computersSnapshot.computers,
+    runtime,
+    runtimeSelection === 'all' ? undefined : args.runtimeAgentId,
+  );
+  const rawRuntimeControlEvidence = !profile.contextControl
+    ? {}
+    : providedRuntimeControlEvidence
+      ?? (args.daemonRpcBase
+        ? parseRuntimeControlEvidence(await fetchRuntimeControlEvidence({
+          daemonRpcBase: args.daemonRpcBase,
+          agentId: runtimeAgentId,
+          timeoutMs: args.runtimeControlTimeoutMs ?? 30_000,
+        }))
+        : {});
+  const hasRuntimeControlEvidenceSource = Boolean(providedRuntimeControlEvidence || args.daemonRpcBase);
+  const runtimeControlEvidence = profile.contextControl && hasRuntimeControlEvidenceSource
+    ? correlateRuntimeControlEvidence(rawRuntimeControlEvidence, { runtime, agentId: runtimeAgentId })
+    : {};
+  const runtimeHealth = parseDaemonRuntimeHealth(daemonLogs, { runtime, agentId: runtimeAgentId });
+  const report = buildFoundationGateReport({
+    runtime,
+    authenticated: Boolean(accountToken),
+    frontendOnline,
+    backendOnline: computersSnapshot.backendOnline,
+    computers: computersSnapshot.computers,
+    contextUsage: runtimeControlEvidence.contextUsage ?? contextUsage,
+    limitError: args.limitError,
+    limitFailure: runtimeControlEvidence.limitFailure,
+    runtimeControlFailure: runtimeControlEvidence.identityFailure,
+    runtimeControlIdentity: runtimeControlEvidence.identity,
+    runtimeHealth,
+  });
+  if (runtimeControlEvidence.action || runtimeControlEvidence.limitFailure || runtimeControlEvidence.contextUsage || runtimeControlEvidence.identityFailure) {
+    report.runtimeControl = runtimeControlEvidence;
+  }
+  if (runtimeHealth) {
+    report.runtimeHealth = runtimeHealth;
+  }
+  return report;
+}));
+const report = runtimeSelection === 'all'
+  ? buildFoundationMatrixReport(runtimeReports)
+  : runtimeReports[0];
 
 const finalReport = finalizeReport(report);
 writeGateReport({ report: finalReport, resultDir, resultOut: args.resultOut });
@@ -190,6 +231,8 @@ function parseArgs(argv) {
       parsed.json = true;
     } else if (arg === '--mode') {
       parsed.mode = requiredValue(argv, index += 1, arg);
+    } else if (arg === '--runtime') {
+      parsed.runtime = requiredValue(argv, index += 1, arg);
     } else if (arg === '--api-base') {
       parsed.apiBase = requiredValue(argv, index += 1, arg);
     } else if (arg === '--frontend-base') {
@@ -1165,34 +1208,19 @@ function finalizeReport(report) {
       frontendBase,
       daemonRpcBase: args.daemonRpcBase ?? null,
       serverId,
+      ...(mode === 'foundation-only' ? { runtime: runtimeSelection } : {}),
     },
   });
 }
 
 function failConfiguration(code, error = null) {
-  const safeDetail = code === 'UNSUPPORTED_MODE' && error instanceof Error
+  const safeDetail = error instanceof Error && code === 'UNSUPPORTED_MODE'
     ? ` mode=${JSON.stringify(error.message)}`
-    : '';
+    : error instanceof Error && code === 'UNSUPPORTED_RUNTIME'
+      ? ` runtime=${JSON.stringify(error.message)}`
+      : '';
   process.stderr.write(`CONFIG_ERROR ${code}${safeDetail}\n`);
   process.exit(2);
-}
-
-function selectRuntimeAgentId(computers) {
-  const candidates = computers.flatMap((computer) => {
-    const workspaces = Array.isArray(computer.agentWorkspaces) ? computer.agentWorkspaces : [];
-    return workspaces.filter((workspace) => /claude|minimax/i.test(workspaceRuntimeText(workspace)));
-  });
-  const running = candidates.find((workspace) => workspace.status === 'running');
-  return running?.agentId ?? candidates[0]?.agentId;
-}
-
-function workspaceRuntimeText(workspace) {
-  return [
-    workspace.runtime,
-    workspace.runtimeProvider,
-    workspace.runtimeModel,
-    workspace.runtimeCommand,
-  ].filter(Boolean).join(' ');
 }
 
 async function fetchRuntimeControlEvidence({ daemonRpcBase, agentId, timeoutMs }) {
