@@ -31,6 +31,7 @@ Use this spec whenever code changes any of:
 ### 3. Contracts
 
 - **Activity is observability, not work.** Runtime state activities such as `runtime_working`, `runtime_thinking`, `runtime_output`, and `runtime_idle` are for UI/debug timelines. They must not become prompts delivered back into the same runtime.
+- **Runtime diagnostics are also observability, not work.** `runtime_warning` and `runtime_error` remain `ActivityLog` telemetry visible in the runtime activity group. They must not be added to `ACTIVITY_EVENT_TYPES`, converted to actionable `EventRecord` rows, or delivered back into a runtime.
 - **Only actionable events reach runtimes.** Runtime delivery is allowed for concrete inbound work: visible `message.created`, assigned `task.created`, targeted `thread.summary_requested`, and explicit control commands. New event types are non-runtime by default until this spec says otherwise.
 - **Self-authored message events are suppressed for runtime delivery.** A `message.created` where `actor_id == receiving_agent.id` must not be delivered back to that same runtime; otherwise the model can answer itself, waste tokens, or loop.
 - **Targeted events are exclusive.** When `payload.targetAgentId` exists, only that agent may receive the event. Do not also broadcast it by channel membership.
@@ -75,6 +76,7 @@ Use this spec whenever code changes any of:
   - unknown events are ignored or surfaced as non-runtime notifications, not prompts.
 - Activity regression:
   - runtime activity reports create/update activity surfaces without generating runtime work.
+  - `runtime_warning` / `runtime_error` remain visible in the runtime activity UI group and never become runtime-actionable events.
   - heartbeat/register updates do not create high-volume activity/event records.
 - Token regression:
   - a runtime that sends a message does not receive its own `message.created` event as a new turn.
@@ -161,6 +163,7 @@ If any answer is unclear, do not deliver the event to runtime yet.
 - Request: `DaemonRuntimeControlCommand { action, agentId, workspaceId?, waitForResult?, timeoutMs? }`.
 - Delivery: `ManagedRuntimeDriver.sendUserMessage(slashCommand, { control: true }): boolean`.
 - Result: `DaemonRuntimeControlResult { accepted, delivered, action, agentId, runtime?, slashCommand?, reason?, output?, outputTruncated?, error? }`.
+- Integration Gate consumer: `parseRuntimeControlEvidence(result)` followed by target correlation against the selected canonical `runtime` and `agentId`.
 - Output budget: at most 65,536 captured characters per control result.
 
 ### 3. Contracts
@@ -185,6 +188,7 @@ If any answer is unclear, do not deliver the event to runtime yet.
 - Provider stream events do not currently carry a cross-runtime control-turn
   identifier. Therefore queued delivery must fail closed; temporal proximity
   to the first later `assistant` or `result` event is not correlation proof.
+- Any external consumer that uses a runtime-control result as Gate evidence must require both `result.runtime` (canonicalized) and `result.agentId` to match the selected runtime profile and exact workspace Agent. Missing or mismatched identity invalidates its context/limit evidence with `RUNTIME_CONTROL_TARGET_MISMATCH`; a static result from another runtime must never satisfy the target Gate.
 
 ### 4. Validation & Error Matrix
 
@@ -197,6 +201,7 @@ If any answer is unclear, do not deliver the event to runtime yet.
 | Assistant output exceeds 65,536 characters | Output is capped at 65,536 characters and `outputTruncated=true`. |
 | Matching immediate control turn emits `result` | Collector returns bounded output and detaches. |
 | No result before bounded timeout | `reason=runtime_control_timeout`; partial bounded output may be returned and listener detaches. |
+| Gate evidence omits or mismatches `runtime` / `agentId` | Do not consume its context or limit fields; fail the applicable context steps with `RUNTIME_CONTROL_TARGET_MISMATCH`. |
 
 ### 5. Good/Base/Bad Cases
 
@@ -208,6 +213,7 @@ If any answer is unclear, do not deliver the event to runtime yet.
   first later `result` event as the status response.
 - Bad: leave a collector attached until timeout after stdin send throws.
 - Bad: append provider text without a control-plane size budget.
+- Bad: load a static `/status` result from Codex and use it as Claude `/context` evidence because both outputs contain a percentage.
 
 ### 6. Tests Required
 
@@ -221,6 +227,7 @@ If any answer is unclear, do not deliver the event to runtime yet.
   queue while busy but control messages do not.
 - The successful JSON-RPC control-result test must continue to prove that an
   immediately delivered command captures its actual provider output.
+- Integration Gate tests must prove matching `runtime + agentId` evidence passes and mismatched static/dynamic evidence fails closed without consuming its context usage.
 
 ### 7. Wrong vs Correct
 
@@ -244,6 +251,22 @@ if (!delivered) {
   return { accepted: true, delivered: false, reason: 'runtime_control_not_delivered' };
 }
 return collector.promise;
+```
+
+#### Wrong
+
+```javascript
+report.contextUsage = parseRuntimeControlEvidence(file).contextUsage;
+```
+
+#### Correct
+
+```javascript
+const evidence = correlateRuntimeControlEvidence(parseRuntimeControlEvidence(file), {
+  runtime: targetRuntime,
+  agentId: selectedAgentId,
+});
+report.contextUsage = evidence.contextUsage; // absent on identity mismatch
 ```
 
 ---

@@ -1,6 +1,6 @@
 # Runtime Slock Integration
 
-> This file covers Claude runtime, Slock CLI, local proxy, provider, and connect-token integration. Event visibility, activity/event separation, and runtime token-safety rules live in `event-delivery-contracts.md`; read that file before changing `ActivityLog`, `EventRecord`, daemon WS/SSE/polling, or runtime delivery classification.
+> This file covers managed Claude, Codex, OpenCode, and Pi runtime identity, Slock CLI, local proxy, provider, and connect-token integration. Event visibility, activity/event separation, and runtime token-safety rules live in `event-delivery-contracts.md`; read that file before changing `ActivityLog`, `EventRecord`, daemon WS/SSE/polling, or runtime delivery classification.
 
 ## Scenario: Claude Runtime Uses Slock CLI, Not MCP, For Chat
 
@@ -413,6 +413,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - The daemon may cache one ACP child per live Codex session, then evict idle sessions by TTL/count once product policy is defined.
 - `session/update` notifications are runtime telemetry. Translate at least:
   - `agent_message_chunk` -> message delta telemetry.
+  - `agent_thought_chunk` -> `thought_delta` -> a runtime `thinking` content block. Diagnostic warning/error text is not thought evidence and must be emitted as `runtime_warning` / `runtime_error` activity instead of being labeled Thinking.
   - `tool_call` -> tool-use telemetry.
   - `tool_call_update` terminal statuses -> tool-result telemetry.
   - `usage_update` -> token/context accounting; preserve `used` and `size` so TaskRun summaries can compute context occupancy when a window is available.
@@ -422,6 +423,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - `buildCodexRuntimeEnv` must remove lowercase and uppercase outer npm package selectors while preserving unrelated npm registry/proxy/cache/TLS settings. The ACP package is selected by explicit child argv, never by an inherited outer launcher option.
 - When `CodexAcpBridgeOptions.env` is provided, it is the complete caller-owned child environment. `CodexAcpBridge.start()` must not merge `process.env` back into it, because omission is how the caller revokes launcher-only keys. Only an omitted `options.env` falls back to `process.env` for standalone smoke usage.
 - Codex ACP warmup result readiness is explicit: only `type:"result", subtype:"success"` may complete the result gate. Error, cancelled, or structurally incomplete results do not become ready; the separate process-exit event owns the numeric exit code. Successful `session/new` / `session/load` remains an independent positive readiness signal.
+- An unexpected ACP process exit and a later ACP bridge/driver close are separate causal observations. The process-exit `runtime_error` owns `status:"exited"`, `phase`, `exitCode`, `signal`, and captured `stderr`; a later driver `runtime_error` owns `source:"driver"`, its own `phase`, and the bridge error such as `ACP connection closed`. Do not mutate the earlier row or require both causes to appear in one `ActivityLog`.
 
 ### 4. Validation & Error Matrix
 
@@ -435,6 +437,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - Daemon inherited `npm_config_package=<daemon.tgz>` -> remove it before nested `npx -y @zed-industries/codex-acp@...`; do not let the nested launcher select the Daemon tarball again.
 - Explicit bridge env omits a key that exists in `process.env` -> the key stays absent in the child; omission is not refilled from the parent.
 - ACP emits `result:error` without `exitCode`, followed by child exit `127` -> never report `running`; preserve the later exit code and report the workspace as `exited`.
+- Child exit `127`, then bridge emits `ACP connection closed` -> persist two `runtime_error` activities in event order; the process row keeps exit/stderr evidence and the driver row keeps the bridge error.
 
 ### 5. Good/Base/Bad Cases
 
@@ -446,6 +449,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - Bad: use ACP only for prompt but keep Slock/MCP session headers in global `.codex/config.toml`; concurrent sessions can leak identity or lose per-session auth.
 - Bad: kill only the `npx` wrapper and leave `codex-acp` running.
 - Bad: sanitize a copied env and then spawn with `{ ...process.env, ...sanitizedEnv }`; deleted keys are absent from the second object and therefore reappear from the first.
+- Bad: assert `exitCode`, `stderr`, and a later `ACP connection closed` description on the first activity row; those observations have different emitters and timing.
 
 ### 6. Tests Required
 
@@ -453,6 +457,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 - Unit: `buildCodexRuntimeEnv` removes both package-selector casings and preserves an unrelated npm registry setting.
 - Process integration: set an outer package selector, provide an explicit child env that omits it, and assert the ACP bridge child observes neither selector.
 - Daemon integration: an ACP child exiting `127` before session creation produces `starting -> exited`, never `running`, and emits no running agent heartbeat.
+- Daemon integration: the same exit-127 case separately asserts a process-exit `runtime_error` with `status:"exited"`, `phase:"starting"`, `exitCode:127`, and stderr, plus a later `source:"driver"` activity describing `ACP connection closed`.
 - Smoke: real `@zed-industries/codex-acp` starts via npx and completes one prompt locally.
 - Package smoke: build/extract the Daemon tgz, set that tgz as the outer selector, import the packaged runtime/bridge, and prove real ACP initialize succeeds through nested npx.
 - Future runtime integration: daemon heartbeat includes ACP `sessionId`, `pid`, `busy`, queued count, and last event time.
@@ -480,6 +485,19 @@ Keep ACP session identity scoped to one daemon-managed agent/workspace runtime, 
 ```typescript
 // Explicit env is authoritative; fallback only when no env was supplied.
 env: { ...(options.env ?? process.env) }
+```
+
+#### Wrong
+
+```text
+process exit 127 + later ACP close -> rewrite one ActivityLog with both causes
+```
+
+#### Correct
+
+```text
+process exit -> runtime_error(status=exited, exitCode=127, stderr=...)
+ACP bridge close -> runtime_error(source=driver, error="ACP connection closed")
 ```
 
 ## Scenario: Daemon-Local Runtime Provider Selection
@@ -515,6 +533,7 @@ env: { ...(options.env ?? process.env) }
 
 ### 3. Contracts
 
+- Canonical runtime identity is independent from provider and model identity. Public/runtime-family matching uses only `claude_code`, `codex`, `opencode`, or `pi` after explicit alias normalization; `runtimeProvider`, `provider`, `runtimeModel`, and `model` are selection/evidence metadata and must never infer or cross-match the runtime family.
 - `runtimeProvider` is a provider/profile name, not an API key, shell command, or serialized credential.
 - The backend may store and return `runtimeProvider`, but it must not store API keys, CC Switch provider config, generated Claude settings files, command args, or auth headers.
 - The daemon owns provider detection and launch resolution. If local CC Switch DB is unavailable, `detectedRuntimes` still includes whichever local runtime commands were detected, and default runtime launch uses those local commands.
@@ -540,6 +559,7 @@ env: { ...(options.env ?? process.env) }
 - Provider launch exits or crashes -> runtime follows normal runtime exit/crash reporting and restart policy.
 - Backend receives `backend` only -> keep it as legacy/display data; do not create `config.runtimeProvider` from it.
 - Daemon heartbeat contains provider runtime -> backend persists provider name only; command path/args must remain absent from public serialized workspace payloads.
+- A detected/runtime workspace says `runtime:"codex"`, `runtimeProvider:"MiniMax"` -> it is a Codex candidate only; provider/model text containing `Claude`, `OpenCode`, or another runtime name cannot change that family.
 
 ### 5. Good/Base/Bad Cases
 
@@ -554,14 +574,17 @@ env: { ...(options.env ?? process.env) }
 - Bad: shipping developer-specific paths such as `/Users/lee/...` in daemon discovery code.
 - Bad: auto-discovering `$HOME/.claude/cc-switch.ps1` or launching `ccs-claude <provider> <model>` as product behavior.
 - Bad: sending executable paths, generated settings paths, or provider DB paths through server APIs.
+- Bad: treating MiniMax/provider/model metadata as proof of a Claude, Codex, OpenCode, or Pi runtime. MiniMax is a test provider/model choice, not a runtime contract.
 
 ### 6. Tests Required
 
 - Backend unit tests:
+  - runtime normalizers preserve canonical family identity and do not use provider/model fields to infer it.
   - `runtime_start_command` includes explicit `runtimeProvider` and does not require `runtimeCommand`/`runtimeModel`.
   - `backend` alone does not become `runtimeProvider`.
   - missing expected-running workspaces are re-armed to `pending_start`, but `runtimeDesiredStatus:"stopped"` is not re-armed.
 - Daemon unit/integration tests:
+  - runtime workspace/provider metadata with misleading names cannot cross-match another canonical runtime family.
   - detect Claude and Codex commands through env/PATH/platform candidates without hardcoded personal paths.
   - prove `$HOME/.claude/cc-switch.ps1` is not an implicit provider detection or launch source.
   - parse CC Switch Claude and Codex provider rows into sanitized public providers.
@@ -599,6 +622,18 @@ env: { ...(options.env ?? process.env) }
 ```
 
 The daemon resolves `Kimi` to the local launcher and model from its own machine-local inventory.
+
+#### Wrong
+
+```javascript
+const isClaude = JSON.stringify(workspace).toLowerCase().includes('minimax');
+```
+
+#### Correct
+
+```javascript
+const isClaude = normalizeRuntimeIdentifier(workspace.runtime) === 'claude_code';
+```
 
 ### 4. Validation & Error Matrix
 
