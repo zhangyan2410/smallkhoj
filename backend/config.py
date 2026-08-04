@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     auth_bridge_secret: str = ""
     public_api_key: str = ""
     minimum_daemon_version: str = "0.2.0"
-    daemon_release_version: str = "0.2.3"
+    daemon_release_version: str = "0.2.4"
     daemon_download_base_url: str = ""
     daemon_npx_package: str = ""
 

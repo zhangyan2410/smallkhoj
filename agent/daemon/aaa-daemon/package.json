@@ -1,6 +1,6 @@
 {
   "name": "@smallkhoj/smallkhoj-daemon",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Minimal Slock Agent Daemon — architecture based on opencan-daemon",
   "main": "dist/cmd/main.js",
   "files": [
