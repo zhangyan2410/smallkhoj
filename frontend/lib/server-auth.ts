@@ -23,20 +23,48 @@ export async function currentAccount(): Promise<AccountSession | null> {
   const token = await getSessionToken()
   if (!token) return null
   const activeServerId = await getActiveServerId()
-  const response = await fetch(`${API_BASE}/api/v1/auth/me`, {
-    cache: "no-store",
-    headers: apiHeaders(token, false, activeServerId),
-  })
+  const response = await fetchAuthMe(token, activeServerId)
+  if (!response) return null
   if (response.status === 403 && activeServerId) {
-    const fallback = await fetch(`${API_BASE}/api/v1/auth/me`, {
-      cache: "no-store",
-      headers: apiHeaders(token),
-    })
-    if (!fallback.ok) return null
+    const fallback = await fetchAuthMe(token)
+    if (!fallback || !fallback.ok) return null
     return fallback.json()
   }
   if (!response.ok) return null
   return response.json()
+}
+
+/**
+ * 带 5s 超时 + 一次重试的 auth/me fetch。
+ *
+ * 后端偶尔瞬时不可达（重启、连接池冷启动）时，原生 fetch 会抛
+ * `TypeError: fetch failed`，让整个 server component 500。这里兜底返回
+ * null，让上层走未登录跳转 / 错误态，而不是炸掉页面。
+ */
+async function fetchAuthMe(
+  token: string,
+  activeServerId?: string | null,
+): Promise<Response | null> {
+  const doFetch = () => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
+    return fetch(`${API_BASE}/api/v1/auth/me`, {
+      cache: "no-store",
+      headers: apiHeaders(token, false, activeServerId),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer))
+  }
+  try {
+    return await doFetch()
+  } catch {
+    // 第一次失败（超时或连接拒绝），等 200ms 重试一次
+    await new Promise((r) => setTimeout(r, 200))
+    try {
+      return await doFetch()
+    } catch {
+      return null
+    }
+  }
 }
 
 export async function requireCurrentAccount() {
