@@ -79,6 +79,13 @@ test('codex acp bridge drives initialize, session, prompt and update lifecycle',
     assert.equal(translated.text, 'hello from fake acp');
     assert.equal(translated.raw.sessionUpdate, 'agent_message_chunk');
 
+    const thought = translateAcpUpdate({
+      sessionUpdate: 'agent_thought_chunk',
+      content: { type: 'text', text: 'checking the runtime state' },
+    });
+    assert.equal(thought.type, 'thought_delta');
+    assert.equal(thought.text, 'checking the runtime state');
+
     await bridge.loadSession('persisted-session-1');
     assert.equal(bridge.sessionIds.has('persisted-session-1'), true);
   } finally {

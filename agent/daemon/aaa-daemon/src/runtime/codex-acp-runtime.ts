@@ -43,12 +43,13 @@ function isNpxCommand(command: string): boolean {
   return /(^|[/\\])npx(\.cmd)?$/i.test(command);
 }
 
-export function buildCodexAcpSlockPrompt(options: Pick<CodexAcpRuntimeOptions, 'credential' | 'workspacePath'>): string {
+export function buildCodexAcpSlockPrompt(options: Pick<CodexAcpRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>): string {
   return [
     buildSlockSystemPrompt({
       credential: options.credential,
       workspacePath: options.workspacePath,
-    } satisfies Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath'>),
+      wrapperDir: options.wrapperDir,
+    } satisfies Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>),
     '',
     '## Codex ACP Runtime Notes',
     '',
@@ -56,6 +57,8 @@ export function buildCodexAcpSlockPrompt(options: Pick<CodexAcpRuntimeOptions, '
     '- Keep this runtime session scoped to this Slock agent workspace.',
     '- Complete the current Slock event end to end before returning `end_turn`.',
     '- All user-visible communication must be sent with the generated `slock` CLI wrapper.',
+    '- Codex ACP starts with a read-only, network-restricted sandbox. For every Slock wrapper call, request elevated execution immediately; do not attempt an unprivileged call first.',
+    '- Do not use shell heredocs for Slock message content under Codex ACP; pipe `printf` output into the exact wrapper path instead.',
     '- Assistant text streamed through ACP is daemon telemetry only; it is not delivered to Slock users.',
   ].join('\n');
 }
@@ -66,6 +69,7 @@ export function writeCodexAcpPromptFile(options: Pick<CodexAcpRuntimeOptions, 'c
   writeFileSync(promptFile, buildCodexAcpSlockPrompt({
     credential: options.credential,
     workspacePath: options.workspacePath,
+    wrapperDir: options.wrapperDir,
   }), 'utf-8');
   return promptFile;
 }
@@ -102,8 +106,9 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
     this.systemPrompt = buildCodexAcpSlockPrompt({
       credential: this.options.credential,
       workspacePath: this.options.workspacePath,
+      wrapperDir: this.options.wrapperDir,
     });
-    this.emit('line', { stream: 'stderr', line: `Codex ACP Slock prompt written to ${promptFile}` } satisfies CodexAcpRuntimeEvent);
+    this.emit('line', { stream: 'stdout', line: `Codex ACP Slock prompt written to ${promptFile}` } satisfies CodexAcpRuntimeEvent);
     void this.flushQueuedMessages();
   }
 
@@ -285,13 +290,16 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
       this.emit('session', { sessionId });
     }
 
-    if (translated.type === 'message_delta' && translated.text) {
+    if ((translated.type === 'message_delta' || translated.type === 'thought_delta') && translated.text) {
+      const content = translated.type === 'thought_delta'
+        ? { type: 'thinking', thinking: translated.text }
+        : { type: 'text', text: translated.text };
       this.emit('stream_event', {
         type: 'assistant',
         runtime: 'codex_acp',
         session_id: sessionId,
         sessionId,
-        message: { content: [{ type: 'text', text: translated.text }] },
+        message: { content: [content] },
         acpUpdate: update.sessionUpdate,
       } satisfies CodexAcpStreamEvent);
       return;

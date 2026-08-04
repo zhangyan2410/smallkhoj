@@ -606,7 +606,10 @@ export class DaemonCore extends EventEmitter {
         if (isRecord(event.message)) {
           this.proxy.recordIncomingMessage(event.message, false);
         }
-        this.deliverRuntimeMessage(event.message, 'websocket');
+        const delivered = this.deliverRuntimeMessage(event.message, 'websocket');
+        if (delivered) {
+          this.proxy.markReadUpTo(this.proxy.getLastSeenSeq());
+        }
       }
       if (event.type === 'control') {
         void this.handleControlCommand(event.command);
@@ -994,6 +997,21 @@ export class DaemonCore extends EventEmitter {
       if (event.stream === 'stderr') {
         runtime.lastStderrLine = event.line;
         console.error(`[Daemon] ${runtimeType} runtime ${agentId} stderr: ${event.line}`);
+        const severity = classifyRuntimeDiagnostic(event.line);
+        if (severity) {
+          void this.reportRuntimeActivity(
+            runtime,
+            severity === 'error' ? 'runtime_error' : 'runtime_warning',
+            runtimeDiagnosticDescription(severity, event.line),
+            {
+              runtime: runtime.runtime,
+              severity,
+              source: 'stderr',
+              message: event.line,
+              sessionId: driver.sessionId,
+            },
+          );
+        }
       }
       this.emit('runtime_line', { ...event, agentId });
     });
@@ -1140,26 +1158,44 @@ export class DaemonCore extends EventEmitter {
             });
           }
         }
-        if (eventType === 'assistant' && runtime.activityTurnState !== 'thinking') {
-          runtime.activityTurnState = 'thinking';
-          // Extract a short prefix of the model's thinking/reasoning text so
-          // the Activity timeline shows what the runtime is reasoning about,
-          // not just a bare "thinking" label.
+        if (eventType === 'assistant') {
+          // ACP exposes real reasoning as `agent_thought_chunk`, normalized to
+          // a `thinking` block. Plain assistant text remains a compatibility
+          // fallback, except explicit runtime diagnostics, which get their own
+          // Warning/Error activity instead of masquerading as Thinking.
           let thoughtPreview: string | undefined;
           for (const block of getContentBlocks(event)) {
             if (block.type === 'thinking' && typeof block.thinking === 'string') {
-              thoughtPreview = block.thinking.slice(0, 200);
-              break;
+              thoughtPreview ??= block.thinking.slice(0, 200);
+              continue;
             }
-            // Some providers expose reasoning as a text block before tool_use.
-            if (block.type === 'text' && typeof block.text === 'string' && !thoughtPreview) {
-              thoughtPreview = block.text.slice(0, 200);
+            if (block.type === 'text' && typeof block.text === 'string') {
+              const severity = classifyRuntimeDiagnostic(block.text);
+              if (severity) {
+                void this.reportRuntimeActivity(
+                  runtime,
+                  severity === 'error' ? 'runtime_error' : 'runtime_warning',
+                  runtimeDiagnosticDescription(severity, block.text),
+                  {
+                    runtime: runtime.runtime,
+                    severity,
+                    source: 'assistant',
+                    message: block.text,
+                    sessionId: driver.sessionId,
+                  },
+                );
+                continue;
+              }
+              thoughtPreview ??= block.text.slice(0, 200);
             }
           }
-          void this.reportRuntimeActivity(runtime, 'runtime_thinking', 'Thinking', {
-            sessionId: driver.sessionId ?? undefined,
-            thought: thoughtPreview,
-          });
+          if (thoughtPreview && runtime.activityTurnState !== 'thinking') {
+            runtime.activityTurnState = 'thinking';
+            void this.reportRuntimeActivity(runtime, 'runtime_thinking', 'Thinking', {
+              sessionId: driver.sessionId ?? undefined,
+              thought: thoughtPreview,
+            });
+          }
         }
         if (eventType === 'assistant') {
           let toolUseRecorded = false;
@@ -1316,7 +1352,7 @@ export class DaemonCore extends EventEmitter {
         const visibleReason = runtime.lastStderrLine || runtime.lastErrorMessage || fallbackReason;
         void this.reportRuntimeActivity(
           runtime,
-          'workspace_updated',
+          'runtime_error',
           `${runtime.runtime === 'codex' ? 'Codex' : runtime.runtime} runtime failed: ${visibleReason}`,
           {
             runtime: runtime.runtime,
@@ -1366,6 +1402,20 @@ export class DaemonCore extends EventEmitter {
       runtime.lastErrorMessage = (err as Error).message;
       this.log(`${runtime.runtime} runtime ${agentId} error: ${runtime.lastErrorMessage}`, 'error');
       console.error(`[Daemon] ${runtime.runtime} runtime ${agentId} error:`, runtime.lastErrorMessage);
+      void this.reportRuntimeActivity(
+        runtime,
+        'runtime_error',
+        runtimeDiagnosticDescription('error', runtime.lastErrorMessage),
+        {
+          runtime: runtime.runtime,
+          severity: 'error',
+          source: 'driver',
+          error: runtime.lastErrorMessage,
+          stderr: runtime.lastStderrLine,
+          phase: runtime.ready ? 'running' : 'starting',
+          sessionId: driver.sessionId,
+        },
+      );
       this.emit('runtime_error', err);
       this.emitRuntimeTrace({ type: 'error', agentId, message: (err as Error).message });
       if (runtime.activeTaskRunId) {
@@ -2596,6 +2646,46 @@ function assignDefined<T extends object, K extends keyof T>(
   if (value !== undefined) {
     target[key] = value;
   }
+}
+
+type RuntimeDiagnosticSeverity = 'warning' | 'error';
+
+function classifyRuntimeDiagnostic(text: string): RuntimeDiagnosticSeverity | undefined {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) return undefined;
+
+  // These are daemon-authored informational lines, not child diagnostics.
+  if (/^Codex(?: ACP)? Slock prompt written to\b/i.test(normalized)) return undefined;
+  if (/^Codex turn exited: code=0\b/i.test(normalized)) return undefined;
+
+  const errorPatterns = [
+    /^(?:error|fatal)(?:\b|\s*:)/i,
+    /\bACP connection closed\b/i,
+    /\bNo such file or directory\b/i,
+    /\bMISSING_TOKEN\b/i,
+    /\bpermission denied\b/i,
+    /\bcommand not found\b/i,
+    /\b(?:fetch|request|connection|spawn) failed\b/i,
+  ];
+  if (errorPatterns.some((pattern) => pattern.test(normalized))) return 'error';
+
+  const warningPatterns = [
+    /^(?:warning|warn)(?:\b|\s*:)/i,
+    /\bModel metadata for .+ not found\. Defaulting to fallback metadata\b/i,
+    /\bdefaulting to fallback metadata\b/i,
+  ];
+  if (warningPatterns.some((pattern) => pattern.test(normalized))) return 'warning';
+
+  // Unclassified stderr remains available in daemon logs and is attached to
+  // an unexpected-exit Error activity. Do not turn arbitrary stderr chatter
+  // into a high-volume Activity feed.
+  return undefined;
+}
+
+function runtimeDiagnosticDescription(severity: RuntimeDiagnosticSeverity, text: string): string {
+  const prefix = severity === 'error' ? 'Runtime error: ' : 'Runtime warning: ';
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return `${prefix}${normalized}`.slice(0, 240);
 }
 
 /**

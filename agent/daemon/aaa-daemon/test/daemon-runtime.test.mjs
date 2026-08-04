@@ -362,6 +362,15 @@ process.stdin.on('data', chunk => {
         sessionId: msg.params.sessionId,
       };
       writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
+      if (!warmup) {
+        notify(msg.params.sessionId, {
+          sessionUpdate: 'agent_message_chunk',
+          content: {
+            type: 'text',
+            text: 'Model metadata for gpt-test not found. Defaulting to fallback metadata; this can degrade performance and cause issues.'
+          }
+        });
+      }
       notify(msg.params.sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'fake acp warmup ok' } });
       notify(msg.params.sessionId, { sessionUpdate: 'usage_update', used: 123, size: 258400 });
       send({
@@ -1386,6 +1395,9 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     assert.equal(runtime.currentWorkspacePath, root);
     assert.equal(runtime.sessionId, 'fake-acp-daemon-session');
     assert.match(runtime.prompt, /Codex ACP Runtime Notes/);
+    assert.match(runtime.prompt, /Use the Slock CLI wrapper at/);
+    assert.ok(runtime.prompt.includes(join(root, '.slock', 'slock')));
+    assert.match(runtime.prompt, /request elevated execution immediately/);
     assert.match(runtime.prompt, new RegExp(`Run \`${join(root, '.slock', 'slock').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} server info\` once`));
 
     await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-acp' && workspace.runtime === 'codex' && workspace.status === 'running')));
@@ -1433,6 +1445,13 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     assert.equal(working.description, 'Working on message');
     assert.equal(working.details.target, '#general');
     await waitFor(() => activityBodies.filter(item => item.type === 'runtime_idle').length >= 2);
+    const warning = activityBodies.find(item => item.type === 'runtime_warning');
+    assert.ok(warning, `runtime warning activity missing: ${JSON.stringify(activityBodies)}`);
+    assert.match(warning.description, /Model metadata/);
+    const thinking = activityBodies.find(item => item.type === 'runtime_thinking');
+    assert.ok(thinking, `runtime thinking activity missing: ${JSON.stringify(activityBodies)}`);
+    assert.equal(thinking.details.thought, 'fake acp warmup ok');
+    assert.doesNotMatch(thinking.details.thought, /Model metadata/);
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
@@ -1523,7 +1542,12 @@ test('daemon does not mark Codex ACP ready when the child exits 127 before creat
       workspace.agentId === 'agent-acp-exit-127' && workspace.status === 'exited'
     ))));
     await waitFor(() => activityBodies.some(item => (
-      item.type === 'workspace_updated' && item.details?.status === 'exited'
+      item.type === 'runtime_error' && item.details?.status === 'exited'
+    )));
+    await waitFor(() => activityBodies.some(item => (
+      item.type === 'runtime_error'
+      && item.details?.source === 'driver'
+      && item.details?.error === 'ACP connection closed'
     )));
 
     daemon.kill('SIGTERM');
@@ -1541,14 +1565,21 @@ test('daemon does not mark Codex ACP ready when the child exits 127 before creat
     assert.doesNotMatch(stderr, /Runtime agent-acp-exit-127 ready/);
     assert.match(stderr, /runtime agent-acp-exit-127 exited: code=127/);
     const failureActivity = activityBodies.find(item => (
-      item.type === 'workspace_updated' && item.details?.status === 'exited'
+      item.type === 'runtime_error' && item.details?.status === 'exited'
     ));
     assert.match(failureActivity.description, /codex runtime failed/i);
     assert.match(failureActivity.description, /No such file or directory/);
     assert.equal(failureActivity.details.status, 'exited');
     assert.equal(failureActivity.details.exitCode, 127);
-    assert.equal(failureActivity.details.error, 'ACP connection closed');
     assert.match(failureActivity.details.stderr, /@zed-industries\/codex-acp@0\.16\.0/);
+    const driverErrorActivity = activityBodies.find(item => (
+      item.type === 'runtime_error'
+      && item.details?.source === 'driver'
+      && item.details?.error === 'ACP connection closed'
+    ));
+    assert.ok(driverErrorActivity, `driver error activity missing: ${JSON.stringify(activityBodies)}`);
+    assert.match(driverErrorActivity.description, /ACP connection closed/);
+    assert.equal(driverErrorActivity.details.phase, 'starting');
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {

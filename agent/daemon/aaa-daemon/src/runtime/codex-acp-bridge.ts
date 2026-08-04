@@ -34,7 +34,7 @@ export interface CodexAcpBridgeOptions {
 }
 
 export interface CodexAcpTranslatedUpdate {
-  type: 'message_delta' | 'tool_call' | 'tool_result' | 'usage' | 'unknown';
+  type: 'message_delta' | 'thought_delta' | 'tool_call' | 'tool_result' | 'usage' | 'unknown';
   text?: string;
   toolName?: string;
   status?: string;
@@ -71,6 +71,13 @@ export function translateAcpUpdate(update: SessionUpdate): CodexAcpTranslatedUpd
       const content = update.content;
       if (content?.type === 'text') {
         return { type: 'message_delta', text: content.text, raw: update };
+      }
+      return { type: 'unknown', raw: update };
+    }
+    case 'agent_thought_chunk': {
+      const content = update.content;
+      if (content?.type === 'text') {
+        return { type: 'thought_delta', text: content.text, raw: update };
       }
       return { type: 'unknown', raw: update };
     }
