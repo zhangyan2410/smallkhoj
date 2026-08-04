@@ -84,7 +84,7 @@ export default function ActivityTab({ member, computers }: { member: Member; com
     ["task_created", "task_claimed", "task_unclaimed", "task_status_changed", "task_updated", "supervisor_task_created", "supervisor_task_updated"].includes(a.type)
   )
   const runtimeActivities = activity.filter((a) =>
-    ["workspace_registered", "workspace_updated", "workspace_heartbeat", "runtime_working", "runtime_thinking", "runtime_output", "runtime_idle"].includes(a.type)
+    ["workspace_registered", "workspace_updated", "workspace_heartbeat", "runtime_working", "runtime_thinking", "runtime_output", "runtime_idle", "runtime_warning", "runtime_error"].includes(a.type)
   )
   const otherActivities = activity.filter((a) =>
     ![...messageActivities, ...taskActivities, ...runtimeActivities].some((x) => x.id === a.id)

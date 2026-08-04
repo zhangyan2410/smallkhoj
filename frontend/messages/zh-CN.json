@@ -651,6 +651,7 @@
     "listDescription": "每项展示最近一次持久化结果；页面只读，不会触发测试，也不会读取任意文件路径。",
     "stepsPassed": "{passed}/{total} 步通过",
     "warningCount": "{count} 个警告",
+    "skippedCount": "{count} 个跳过",
     "serverTarget": "Server · {serverId}",
     "viewEvidence": "查看步骤证据",
     "startedAt": "开始于 {time}",
@@ -678,6 +679,7 @@
       "passed": "通过",
       "failed": "失败",
       "warning": "警告",
+      "skipped": "已跳过",
       "running": "运行中",
       "unknown": "未知"
     },

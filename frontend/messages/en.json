@@ -651,6 +651,7 @@
     "listDescription": "Each row shows the latest persisted result. This page is read-only: it neither starts tests nor accepts arbitrary file paths.",
     "stepsPassed": "{passed}/{total} steps passed",
     "warningCount": "{count} warnings",
+    "skippedCount": "{count} skipped",
     "serverTarget": "Server · {serverId}",
     "viewEvidence": "View step evidence",
     "startedAt": "Started {time}",
@@ -678,6 +679,7 @@
       "passed": "Passed",
       "failed": "Failed",
       "warning": "Warning",
+      "skipped": "Skipped",
       "running": "Running",
       "unknown": "Unknown"
     },

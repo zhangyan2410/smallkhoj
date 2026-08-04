@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import {
   AlertCircle,
+  AlertTriangle,
   Bell,
   Brain,
   CheckCircle2,
@@ -57,6 +58,8 @@ const activityIcons: Record<string, React.ComponentType<{ className?: string }>>
   runtime_thinking: Brain,
   runtime_output: Terminal,
   runtime_idle: CirclePause,
+  runtime_warning: AlertTriangle,
+  runtime_error: AlertCircle,
   message_reaction_added: Smile,
   message_reaction_removed: Smile,
   channel_joined: Hash,
@@ -87,6 +90,8 @@ const activityTypeLabel: Record<string, string> = {
   runtime_thinking: "Thinking",
   runtime_output: "Output",
   runtime_idle: "Idle",
+  runtime_warning: "Warning",
+  runtime_error: "Error",
   message_reaction_added: "Reaction",
   message_reaction_removed: "Reaction",
   channel_joined: "Channel",
@@ -261,7 +266,7 @@ export function AgentActivityList({
     let items = data.activity
     if (runtimeOnly) {
       items = items.filter((a) =>
-        ["runtime_working", "runtime_thinking", "runtime_output", "runtime_idle"].includes(a.type)
+        ["runtime_working", "runtime_thinking", "runtime_output", "runtime_idle", "runtime_warning", "runtime_error"].includes(a.type)
       )
     }
     activityCache.set(cacheKey, { items, at: Date.now() })

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import test from "node:test"
 
 import { detectedProviderOptions, publicRuntimeValue, runtimeOptionsFromDetected, unavailableProviderOptions } from "../lib/runtime-options"
@@ -140,4 +141,11 @@ test("runtimeOptionsFromDetected ignores not_installed entries (no ccswitch env)
 test("publicRuntimeValue normalizes opencode family", () => {
   assert.equal(publicRuntimeValue({ type: "opencode", status: "available" }), "opencode")
   assert.equal(publicRuntimeValue("open_code"), "opencode")
+})
+
+test("agent creation presents Built-in Pi without a keyless product promise", () => {
+  const source = readFileSync(new URL("../components/create-agent-form.tsx", import.meta.url), "utf8")
+  assert.match(source, /Built-in Pi/)
+  assert.doesNotMatch(source, /无需.{0,8}key/i)
+  assert.match(source, /if \(opt\.bundled\) return opt\.label/)
 })

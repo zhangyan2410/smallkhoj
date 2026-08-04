@@ -93,6 +93,26 @@ test("valid latest report is projected into a bounded display model", () => {
   })
 })
 
+test("non-applicable runtime steps remain explicit skipped evidence", () => {
+  withResultRoot((root) => {
+    writeReport(root, "foundation-only", report({
+      summary: { passed: 1, total: 2, failed: 0, skipped: 1 },
+      steps: [
+        { id: "runtime", label: "Runtime ready", status: "pass" },
+        { id: "context", label: "Context preflight", status: "skip", applicable: false },
+      ],
+    }))
+    const result = readIntegrationGateResult("foundation-only", {
+      root,
+      now: new Date("2026-07-29T01:01:00.000Z"),
+    })
+
+    assert.equal(result.state, "passed")
+    assert.equal(result.summary?.skipped, 1)
+    assert.equal(result.steps[1]?.status, "skipped")
+  })
+})
+
 test("an unfinished persisted report is labeled running", () => {
   withResultRoot((root) => {
     writeReport(root, "foundation-only", report({

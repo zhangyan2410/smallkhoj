@@ -106,6 +106,7 @@ function GateModeRow({
               {t("stepsPassed", { passed: summary.passed, total: summary.total })}
             </RuntimeChip>
             {summary.warning > 0 && <RuntimeChip tone="warning">{t("warningCount", { count: summary.warning })}</RuntimeChip>}
+            {summary.skipped > 0 && <RuntimeChip tone="paper">{t("skippedCount", { count: summary.skipped })}</RuntimeChip>}
             {result.target?.serverId && <RuntimeChip tone="paper">{t("serverTarget", { serverId: result.target.serverId })}</RuntimeChip>}
           </div>
         ) : (
@@ -205,6 +206,7 @@ function stepStatusLabel(status: string, t: Translate) {
   if (status === "passed") return t("stepStates.passed")
   if (status === "failed") return t("stepStates.failed")
   if (status === "warning") return t("stepStates.warning")
+  if (status === "skipped") return t("stepStates.skipped")
   if (status === "running") return t("stepStates.running")
   return t("stepStates.unknown")
 }

@@ -18,7 +18,7 @@ export type IntegrationGateOutcome = "running" | "passed" | "failed"
 export type IntegrationGateStep = {
   id: string
   label: string
-  status: "running" | "passed" | "failed" | "warning" | "unknown"
+  status: "running" | "passed" | "failed" | "warning" | "skipped" | "unknown"
   evidence?: string
   failure?: {
     category?: string
@@ -42,6 +42,7 @@ export type IntegrationGateResult = {
     total: number
     failed: number
     warning: number
+    skipped: number
   }
   target?: {
     serverId: string
@@ -186,6 +187,7 @@ function normalizeSummary(value: unknown): IntegrationGateResult["summary"] | nu
     total,
     failed: nonNegativeInteger(summary?.failed) ?? Math.max(0, total - passed),
     warning: nonNegativeInteger(summary?.warning) ?? 0,
+    skipped: nonNegativeInteger(summary?.skipped) ?? 0,
   }
 }
 
@@ -203,6 +205,8 @@ function normalizeStep(value: unknown): IntegrationGateStep | null {
         ? "running"
         : rawStatus === "warning" || rawStatus === "warn"
           ? "warning"
+          : rawStatus === "skip" || rawStatus === "skipped"
+            ? "skipped"
           : "unknown"
 
   return {

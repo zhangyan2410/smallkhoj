@@ -496,6 +496,7 @@ export function activityCategoryKind(label: string): "info" | "success" | "warni
     case "Reminder":
     case "Working":
     case "Thinking":
+    case "Warning":
       return "warning"
     case "Runtime":
     case "Heartbeat":

@@ -109,7 +109,7 @@ export function CreateAgentForm({
   }
 
   function runtimeOptionLabel(opt: RuntimeOption): string {
-    if (opt.bundled) return `${opt.label} (自带，无需配 key)`
+    if (opt.bundled) return opt.label
     return opt.available ? opt.label : `${opt.label} (本机未检测到)`
   }
 
@@ -121,7 +121,7 @@ export function CreateAgentForm({
         </InkframeObjectSurface>
       )}
       <p className="text-xs text-muted-foreground">
-        以下是这台电脑能用的 runtime，选一个就能建 agent。本机没装别的也没关系，有自带的 Built-in Pi（无需配 key）。
+        以下是这台电脑能用的 runtime，选一个就能建 agent。本机没装别的也没关系，可以使用 Built-in Pi。
       </p>
       <div className="flex items-center gap-2 text-sm font-medium">
         <Bot className="size-4" />
