@@ -844,7 +844,7 @@ test("task board mobile filters, board, cards, list, and overlay are contained",
   assert.match(sortableOuterMatch[1], /(?:^|\s)min-w-0(?:\s|$)/)
 
   const sortableButtonMatch = taskBoardSource.match(
-    /aria-label=\{`Drag or open task \$\{task\.title\}`\}[\s\S]*?className=\{`([^`]*)`\}/,
+    /aria-label=\{t\("openTaskAria"[\s\S]*?className=\{`([^`]*)`\}/,
   )
   assert.ok(sortableButtonMatch, "Sortable task card interactive surface should be contained")
   assert.match(sortableButtonMatch[1], /(?:^|\s)min-w-0(?:\s|$)/)

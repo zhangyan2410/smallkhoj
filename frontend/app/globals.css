@@ -299,91 +299,13 @@
 }
 
 /*
- * 水墨主题（Shui-mo，第三主题）—— 纯新增，零回归 water/dark。
- * 见 .trellis/tasks/06-30-ink-wash-theme-exploration/prd.md。
+ * Shui-mo (水墨) 主题：当前生效版本（Inkframe 桌面方向）。
+ * 早期灰调松烟墨实验稿（hue 260 墨阶压色）已于本次清理移除——它被本块完全覆盖，
+ * 是历史死代码。保留单一 .shuimo 块，避免维护两份。
  *
- * 水墨骨架 = 松烟墨（中性灰黑、几乎无色相，hue 260 + 低 chroma）+ 朱砂印章。
- * 背景生宣白（偏白微黄，hue 90），靠明度分层（rail 深 → 主区 → 卡片 → 气泡）。
- * nav/tab 选中态走浓墨 + 朱砂，故 --accent-* 在此压成墨阶（唯独 -rose 留朱砂）。
- * 点缀色（status/category/avatar）不在此重定义，继承 :root（water 色系）。
- */
-.shuimo {
-  /* —— 纸面 / 表面：生宣白系，明度分层（rail 最深 → 气泡最白）—— */
-  --sand-deep: oklch(0.90 0.008 90);        /* rail/列表栏底（生宣里偏暗一层）*/
-  --sand: oklch(0.93 0.008 90);             /* 主区底 */
-  --sand-card: oklch(0.96 0.006 90);        /* 卡片/侧栏面板 */
-  --paper: oklch(0.985 0.005 90);           /* 气泡：生宣白（偏白微黄）*/
-  --background: oklch(0.96 0.006 90);
-  --foreground: oklch(0.24 0.012 260);      /* 松烟墨正文 */
-  --card: oklch(0.97 0.006 90);
-  --card-foreground: oklch(0.24 0.012 260);
-  --popover: oklch(0.985 0.005 90);
-  --popover-foreground: oklch(0.24 0.012 260);
-  --primary: oklch(0.28 0.015 260);         /* 浓墨（主按钮/强调）*/
-  --primary-foreground: oklch(0.97 0.006 90);
-  --secondary: oklch(0.92 0.008 90);
-  --secondary-foreground: oklch(0.28 0.015 260);
-  --muted: oklch(0.92 0.008 90);
-  --muted-foreground: oklch(0.48 0.012 260); /* 次要文字：中墨 */
-  --accent: oklch(0.28 0.015 260);          /* 深墨强调 */
-  --accent-foreground: oklch(0.97 0.006 90);
-  --border: oklch(0.86 0.010 90);
-  --input: oklch(0.86 0.010 90);
-  --ring: oklch(0.50 0.15 25);              /* 朱砂聚焦环 */
-
-  /* —— 墨色签名：松烟墨中性灰黑（区别于 water/dark 的蓝灰墨）—— */
-  --ink: oklch(0.20 0.015 260);             /* 松烟墨：几乎无色相的灰黑 */
-  --paper-ink: oklch(0.24 0.012 260);       /* 生宣上的墨字 */
-  --sand-ink: oklch(0.26 0.014 260);        /* 生宣底上的墨字 */
-  --sand-muted: oklch(0.48 0.012 260);      /* 暖底次要文字 */
-  --sand-border: oklch(0.78 0.010 90);      /* 淡墨分隔线 */
-
-  /* —— 功能色 --accent-*：压成墨阶变体（nav/tab 选中统一浓墨 + 白字）——
-   * solid = 浓墨（配白字，active/选中），soft = 淡墨（配深字，底/未激活）。
-   * 唯独 --accent-rose 保留朱砂，作为「选中印章」专用强调色。
-   * 分类色(cat)、头像(avatar-tint)、状态(success/warning/info/danger)
-   * 不在此重定义，继承 :root（water 色系）做点缀（R9）。 */
-  --accent-blue: oklch(0.28 0.015 260);
-  --accent-blue-fg: oklch(0.97 0.006 90);
-  --accent-blue-soft: oklch(0.90 0.008 90);
-  --accent-blue-soft-fg: oklch(0.28 0.015 260);
-  --accent-rose: oklch(0.50 0.15 25);             /* 朱砂：唯一保留色相，做印章 */
-  --accent-rose-fg: oklch(0.98 0.005 25);
-  --accent-rose-soft: oklch(0.92 0.04 25);        /* 极淡朱砂底 */
-  --accent-rose-soft-fg: oklch(0.40 0.10 25);
-  --accent-mint: oklch(0.28 0.015 260);
-  --accent-mint-fg: oklch(0.97 0.006 90);
-  --accent-mint-soft: oklch(0.90 0.008 90);
-  --accent-mint-soft-fg: oklch(0.28 0.015 260);
-  --accent-green: oklch(0.28 0.015 260);
-  --accent-green-fg: oklch(0.97 0.006 90);
-  --accent-green-soft: oklch(0.90 0.008 90);
-  --accent-green-soft-fg: oklch(0.28 0.015 260);
-  --accent-purple: oklch(0.28 0.015 260);
-  --accent-purple-fg: oklch(0.97 0.006 90);
-  --accent-purple-soft: oklch(0.90 0.008 90);
-  --accent-purple-soft-fg: oklch(0.28 0.015 260);
-  --accent-yellow: oklch(0.28 0.015 260);
-  --accent-yellow-fg: oklch(0.97 0.006 90);
-  --accent-yellow-soft: oklch(0.90 0.008 90);
-  --accent-yellow-soft-fg: oklch(0.28 0.015 260);
-
-  /* —— 侧栏：跟主区同生宣底，靠明度区分 —— */
-  --sidebar: oklch(0.93 0.008 90);
-  --sidebar-foreground: oklch(0.24 0.012 260);
-  --sidebar-primary: oklch(0.28 0.015 260);
-  --sidebar-primary-foreground: oklch(0.97 0.006 90);
-  --sidebar-accent: oklch(0.88 0.010 90);
-  --sidebar-accent-foreground: oklch(0.24 0.012 260);
-  --sidebar-border: oklch(0.78 0.010 90);
-  --sidebar-ring: oklch(0.50 0.15 25);
-}
-
-/*
- * Branch override: the active visual direction is Inkframe object desk, not the
- * earlier grayscale shuimo token experiment. Keep the class mechanically
- * compatible while making it render like the demo: bright xuan paper, warm soot
- * ink, restrained cinnabar seal accents.
+ * 视觉方向：明生宣底 + 暖松烟墨 + 朱砂印章；功能色 (--accent-*) 保留可读色相
+ * （blue=靛蓝 / purple=黛紫 / rose=朱砂 / mint=苔绿 / green=moss / yellow=琥珀），
+ * 不再压成纯墨，让 nav/tab 功能色可辨认。
  */
 .shuimo {
   --background: #f6f1e2;

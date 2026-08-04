@@ -2,9 +2,12 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { readFileSync } from "node:fs"
 
+import { NextIntlClientProvider } from "next-intl"
 import { renderToStaticMarkup } from "react-dom/server"
+import { type ReactNode } from "react"
 
 import { TaskBoard, type Task } from "../components/task-board"
+import zhMessages from "../messages/zh-CN.json"
 
 const tasks = [
   {
@@ -20,13 +23,29 @@ const tasks = [
   },
 ] satisfies Task[]
 
+function withIntl(node: ReactNode) {
+  return (
+    <NextIntlClientProvider
+      locale="zh-CN"
+      messages={zhMessages}
+      onError={(error) => {
+        if (error.code !== "ENVIRONMENT_FALLBACK") throw error
+      }}
+    >
+      {node}
+    </NextIntlClientProvider>
+  )
+}
+
 test("TaskBoard sortable cards use a stable DnD described-by id for hydration", () => {
   const markup = renderToStaticMarkup(
-    <TaskBoard
-      tasks={tasks}
-      showViewToggle={false}
-      showDetail={false}
-    />
+    withIntl(
+      <TaskBoard
+        tasks={tasks}
+        showViewToggle={false}
+        showDetail={false}
+      />
+    )
   )
 
   assert.match(markup, /aria-describedby="smallkhoj-task-board"/)
@@ -37,12 +56,14 @@ test("TaskBoard sortable cards use a stable DnD described-by id for hydration", 
 
 test("TaskBoard embedded detail includes the task memory reminder action", () => {
   const markup = renderToStaticMarkup(
-    <TaskBoard
-      tasks={tasks}
-      showViewToggle={false}
-      showDetail
-      initialSelectedTaskId="task-1"
-    />
+    withIntl(
+      <TaskBoard
+        tasks={tasks}
+        showViewToggle={false}
+        showDetail
+        initialSelectedTaskId="task-1"
+      />
+    )
   )
 
   assert.match(markup, /提醒产出记忆/)

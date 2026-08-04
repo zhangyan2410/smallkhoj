@@ -1,6 +1,7 @@
 "use client"
 
 import { type DragEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
+import { useTranslations } from "next-intl"
 import {
   DndContext,
   DragOverlay,
@@ -96,6 +97,7 @@ function SortableTaskCard({
   onAssignAgent?: (task: Task, agent: AgentDragPayload) => void
   dragDisabled?: boolean
 }) {
+  const t = useTranslations("tasks")
   const [isAgentOver, setIsAgentOver] = useState(false)
   const {
     attributes,
@@ -157,8 +159,8 @@ function SortableTaskCard({
             onSelect(task)
           }
         }}
-        aria-label={`Drag or open task ${task.title}`}
-        title="Drag to move status, click to inspect"
+        aria-label={t("openTaskAria", { title: task.title })}
+        title={t("dragTaskHint")}
         className={`group block min-w-0 w-full text-left outline-none ${
           dragDisabled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
         }`}
@@ -342,6 +344,7 @@ function ListRow({
 }
 
 function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
+  const t = useTranslations("tasks")
   const icon = (() => {
     switch (entry.type) {
       case "screenshot": return <Camera className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
@@ -351,14 +354,16 @@ function EvidenceEntryRow({ entry }: { entry: EvidenceEntry }) {
       default: return <MessageSquare className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
     }
   })()
+  // evidence 类型标签复用 tasks.evidenceType*（与 task-route-projection 同源），
+  // 不再重复硬编码英文。
   const label = (() => {
     switch (entry.type) {
-      case "screenshot": return "Screenshot"
-      case "trace": return "Trace"
-      case "api_proof": return "API/DB proof"
-      case "reviewer_decision": return "Review decision"
-      case "review_note": return "Review note"
-      default: return "Note"
+      case "screenshot": return t("evidenceTypeScreenshot")
+      case "trace": return t("evidenceTypeTrace")
+      case "api_proof": return t("evidenceTypeApiProof")
+      case "reviewer_decision": return t("evidenceTypeReviewDecision")
+      case "review_note": return t("evidenceTypeReviewNote")
+      default: return t("evidenceTypeNote")
     }
   })()
   return (
@@ -482,6 +487,7 @@ function TaskMemoryRequestInline({ task, sessionToken }: { task: Task; sessionTo
 }
 
 function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionToken?: string | null }) {
+  const t = useTranslations("tasks")
   const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -523,7 +529,7 @@ function TaskMemoryInline({ taskId, sessionToken }: { taskId: string; sessionTok
     return (
       <InkframeObjectSurface material="drying" className="p-2.5">
         <h4 className="text-xs font-medium">任务记忆</h4>
-        <p className="mt-1.5 text-xs text-muted-foreground">Loading memory...</p>
+        <p className="mt-1.5 text-xs text-muted-foreground">{t("loadingMemory")}</p>
       </InkframeObjectSurface>
     )
   }
@@ -651,6 +657,7 @@ export function TaskBoard({
   onSelectTask,
   taskFilters,
 }: TaskBoardProps) {
+  const t = useTranslations("tasks")
   const controlled = preloadedTasks !== undefined
   const [localView, setLocalView] = useState<"board" | "list">(initialView)
   const [localTasks, setLocalTasks] = useState<Task[]>(preloadedTasks ?? [])
@@ -794,7 +801,7 @@ export function TaskBoard({
     } catch (error) {
       updateLocalTask(taskId, (current) => ({ ...current, status: oldStatus }))
       onTaskMoved?.(taskId, oldStatus)
-      const message = error instanceof Error ? error.message : "Update failed"
+      const message = error instanceof Error ? error.message : t("updateFailed")
       setDragError(message)
       window.setTimeout(() => setDragError(null), 4000)
     }
@@ -827,7 +834,7 @@ export function TaskBoard({
       flashTask(task.id)
     } catch (error) {
       updateLocalTask(task.id, () => previousTask)
-      const message = error instanceof Error ? error.message : "Assign failed"
+      const message = error instanceof Error ? error.message : t("assignFailed")
       setDragError(message)
       window.setTimeout(() => setDragError(null), 4000)
     }
@@ -846,7 +853,7 @@ export function TaskBoard({
   )
 
   if (loading) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">Loading tasks...</p>
+    return <p className="py-8 text-center text-sm text-muted-foreground">{t("loadingTasks")}</p>
   }
 
   if (tasks.length === 0) {

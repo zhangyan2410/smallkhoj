@@ -408,7 +408,8 @@
     "loadingTasks": "Loading tasks...",
     "updateFailed": "Update failed",
     "assignFailed": "Assign failed",
-    "defaultAssignee": "Default"
+    "defaultAssignee": "Default",
+    "openTaskAria": "Drag or open task {title}"
   },
   "members": {
     "title": "Members",

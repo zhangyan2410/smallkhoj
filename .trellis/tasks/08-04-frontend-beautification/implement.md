@@ -55,3 +55,31 @@
 - `control/integration`、`control/taskrun-templates` 中文硬编码（en locale 破版）。
 - 共享原件提取：SectionHeader / TabStrip / MetricCardGrid / 共享 ListPanel（盘点报告已列出全部重复点）。
 - `components/product-create-panel.tsx` 无任何页面引用（疑似死代码）。
+
+## 批次三：死代码清理 + task-board i18n（已实施）
+
+**死代码清理**：
+- 删除 `components/product-create-panel.tsx`（无任何页面引用，仅一个测试断言引用其源码）。
+  测试断言转移到 `lib/control-plane.ts` 的 `BROWSER_API_BASE = resolvePublicApiBase(PUBLIC_RUNTIME_ENV`。
+- 删除 `.shuimo` 第一块（globals.css 早期灰调松烟墨实验稿）——已被第二块（Inkframe 桌面方向）完全覆盖，是历史死代码。保留单一 `.shuimo` 块并补注释说明视觉方向。
+
+**task-board.tsx i18n**（chat 页 tasks tab 用的旧看板）：
+- `EvidenceEntryRow` evidence 类型标签复用 `tasks.evidenceType*` key（与 task-route-projection 同源），不再硬编码英文。
+- `SortableTaskCard` 的 `aria-label`/`title` 用 `t("openTaskAria")`/`t("dragTaskHint")`。
+- `TaskBoard` 的 `Update failed`/`Assign failed`/`Loading tasks...` 改 `t("updateFailed")`/`t("assignFailed")`/`t("loadingTasks")`。
+- `TaskMemoryInline` 的 `Loading memory...` 改 `t("loadingMemory")`。
+- 测试 `task-board-hydration.test.tsx` 改用 `NextIntlClientProvider` 包裹（renderToStaticMarkup 需要 messages）。
+- 测试 `material-surface.test.tsx` 的 sortable card 源码正则同步到新 `aria-label={t("openTaskAria"...)}` 写法。
+- 新增 `tasks.openTaskAria` key（zh-CN「拖拽或打开任务「{title}」」/ en）。
+
+**验证**：typecheck 0 error；254 tests pass / 0 fail。
+
+## 用户决策：daemon / control 三页面（不做 i18n 与布局重构）
+
+以下三个页面是**测试管理用途**，**默认隐藏、不出现在 rail 图标导航上**，普通用户访问不到：
+- `app/(app)/daemon/page.tsx`（904 行，Slock Control Plane / Marker Debug Workbench / Dispatch / Agent Control / API Surface）
+- `app/(app)/control/integration/page.tsx`（826 行）
+- `app/(app)/control/taskrun-templates/page.tsx`（359 行）
+
+**决策**：暂不做 i18n 化与 ProductShell 布局重构。它们的中英混杂/硬编码中文不影响正式产品路径（rail 不暴露入口）。如未来转为正式功能页，再按本任务批次二的模式接入 `useTranslations` + ProductShell。
+

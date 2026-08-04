@@ -408,7 +408,8 @@
     "loadingTasks": "任务加载中...",
     "updateFailed": "更新失败",
     "assignFailed": "指派失败",
-    "defaultAssignee": "默认"
+    "defaultAssignee": "默认",
+    "openTaskAria": "拖拽或打开任务「{title}」"
   },
   "members": {
     "title": "成员",
