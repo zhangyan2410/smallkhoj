@@ -152,6 +152,51 @@ MiniMax is a model/provider chosen for test execution, not a runtime contract.
   cleanup identity is certain.
 - Do not push, publish, open a PR or merge without separate user authorization.
 
+### R6 — Codex/OpenCode Activity semantics
+
+- Preserve the established Claude Code Activity product semantics across
+  providers: an accepted inbound message is Working; runtime analysis,
+  narration, and assistant transcript previews are Thinking with readable
+  `details.thought`; real tool execution is Output described as `Ran <tool>`
+  with a sanitized `details.commandPreview`; the provider completion boundary
+  is Idle.
+- Provider adapters must filter user-authored input parts, delivered
+  `[event=...]` envelopes, and generic connection/session events before they
+  can become Thinking or Output. OpenCode must retain message id to role
+  evidence and normalize reasoning/thinking parts explicitly.
+- Do not synthesize `Generated output` for Codex `agent_message_chunk` or
+  OpenCode assistant text. Do not add a separate `Tool completed` Activity for
+  a terminal tool update when the Claude baseline records only the original
+  `Ran <tool>` row.
+- Preserve the existing shared frontend Activity kinds and diagnostic
+  Warning/Error behavior; do not create new actionable runtime events. Activity
+  persistence must preserve provider order so the turn's Idle row is last.
+
+### R7 — One short Aura collaboration command across runtimes
+
+- Claude, Codex, OpenCode and Pi must all execute the runtime-local
+  collaboration CLI as bare `aura ...`; no runtime should be taught a generated
+  absolute `.slock/slock`, `.slock/raft` or `.slock/aura` wrapper path.
+- The daemon must prepend each runtime workspace's generated `.slock` directory
+  to the child PATH. This is especially required for OpenCode, which previously
+  omitted the injection and therefore depended on an absolute prompt path.
+- The runtime-local `aura` wrapper targets the agent collaboration CLI and must
+  win over the package/global `aura` daemon command. Existing `slock`/`raft`
+  wrappers stay as compatibility aliases but are not advertised to new turns.
+- Prompt changes are limited to the CLI command name and PATH contract; existing
+  routing, safety, credential, task and communication language remains intact.
+- Activity keeps proxy-secret redaction but must not disguise a long wrapper
+  path as a short command. The short preview must be truthful because the
+  provider actually executed `aura ...`.
+- First-start correctness must not depend on a host/global `aura`, `slock` or
+  `raft` installation, an existing runtime workspace, or user-home CLI state.
+  The daemon-generated workspace wrapper is the only collaboration CLI a
+  managed runtime needs after the daemon package itself has started.
+- Automated verification must simulate a clean temporary HOME and a hostile
+  host PATH entry named `aura`; every managed runtime child environment must
+  still resolve bare `aura ...` to its own newly generated `.slock/aura`
+  wrapper before the host command.
+
 ## Acceptance Criteria
 
 - [x] `_normalize_runtime("opencode")` and `_normalize_runtime("open_code")`
@@ -183,8 +228,19 @@ MiniMax is a model/provider chosen for test execution, not a runtime contract.
       tests pass without SmallKhoj services.
 - [x] Focused backend and daemon verification passes; any unrelated blocker is
       reported with exact failing test and ownership.
-- [x] No user-owned unrelated changes are reverted, no protected SmallKhoj
-      database rows are created, and no commit is pushed.
+- [x] Codex ACP and OpenCode SSE tests prove assistant analysis/narration is
+      readable Thinking, user/session envelopes are filtered, real tools emit
+      one `Ran <tool>` Output with a command preview, no `Generated output` or
+      invented terminal-tool row appears, and Idle persists last without
+      changing the shared frontend Activity vocabulary.
+- [x] No user-owned unrelated changes are reverted, no test Agent/workspace or
+      provider-configuration rows are created, and no commit is pushed. The
+      authorized live acceptance reuses an existing Agent and writes only its
+      marker message/reply and Activity telemetry.
+- [x] Claude, Codex, OpenCode and Pi prompts/warmup advertise only bare
+      `aura ...`; all runtime child environments resolve the workspace-local
+      wrapper first on both existing and clean first-start environments;
+      Activity no longer rewrites absolute wrapper paths.
 
 ## Out of Scope
 

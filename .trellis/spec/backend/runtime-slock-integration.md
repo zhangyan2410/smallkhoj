@@ -2,6 +2,82 @@
 
 > This file covers managed Claude, Codex, OpenCode, and Pi runtime identity, Slock CLI, local proxy, provider, and connect-token integration. Event visibility, activity/event separation, and runtime token-safety rules live in `event-delivery-contracts.md`; read that file before changing `ActivityLog`, `EventRecord`, daemon WS/SSE/polling, or runtime delivery classification.
 
+## Scenario: Runtime Agents Use Short Aura Commands From PATH
+
+### 1. Scope / Trigger
+
+- Trigger: any managed runtime prompt, warmup, environment, wrapper, or
+  Activity preview that names the agent-facing collaboration CLI.
+- This scenario is authoritative for the command name. Older `slock`/`raft`
+  wording elsewhere in this file describes internal names or compatibility
+  history; it must not be copied into new runtime prompts.
+
+### 2. Signatures
+
+- Agent-facing command: `aura <domain> <action> ...`.
+- Runtime-local executable aliases: `.slock/aura`, `.slock/aura.cmd`, and
+  `.slock/aura.ps1`.
+- Compatibility-only aliases: `.slock/slock*` and `.slock/raft*`.
+- Internal implementation names remain `.slock`, `SLOCK_*`, and
+  `dist/slock-cli.js`; renaming those storage/env/API seams is out of scope.
+
+### 3. Contracts
+
+- Every managed runtime prepends its generated workspace `.slock` directory
+  to the child `PATH`. That runtime-local path must win over any host/global
+  executable named `aura`; the package-level global `aura` entry is the daemon
+  command and is not the agent collaboration CLI.
+- Managed runtime first start must not depend on a preinstalled global
+  `aura`, `slock`, or `raft`, an existing workspace, or collaboration CLI
+  state under the user's HOME. Once the daemon package is running, it creates
+  the workspace wrapper and injects the complete runtime-local identity.
+- Claude, Codex, Codex ACP, OpenCode, and Pi prompts use only bare
+  `aura ...` collaboration commands. Prompts must not expose, recommend, or
+  fall back to generated absolute `.slock/{slock,raft,aura}` paths.
+- Startup warmup calls `aura server info` for runtimes that perform a provider
+  warmup. This intentionally proves the PATH contract instead of bypassing it
+  with an absolute wrapper path. Pi remains lazy and does not spend a synthetic
+  provider turn at daemon startup; its first-start PATH contract is verified at
+  the child-environment boundary before the first real turn.
+- `slock` and `raft` wrappers remain for compatibility with old sessions and
+  imports, but new runtime behavior and tests do not advertise them.
+- Activity command previews reflect the actual provider tool input. They keep
+  proxy-secret redaction, but they must not rewrite a long wrapper path into a
+  different-looking short command. Correct short previews come from executing
+  bare `aura`, not from display-layer substitution.
+- Prompt changes in this migration are mechanical: command tokens and the PATH
+  explanation change; task, safety, credential, routing, and communication
+  semantics remain unchanged.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| Runtime-local `.slock/aura` exists and PATH is injected | Bare `aura server info` resolves to the workspace wrapper. |
+| Host/global `aura` also exists | Runtime-local wrapper wins because `.slock` is first in PATH. |
+| OpenCode child starts | It receives the same PATH/SLOCK_HOME identity boundary as the other managed runtimes. |
+| Provider reports `aura message send ...` tool input | Activity shows that exact semantic command after secret redaction. |
+| Provider reports a legacy absolute wrapper path | Activity does not pretend it executed a different command; tests/runtime prompt must expose the upstream regression. |
+
+### 5. Tests Required
+
+- Wrapper: generated POSIX/cmd/PowerShell `aura` aliases target the agent CLI,
+  and the runtime-local wrapper directory is the first PATH component.
+- Clean first start: create a temporary HOME and empty workspace, place a
+  deliberately wrong host `aura` later on PATH, and prove the Claude,
+  Codex/Codex ACP, OpenCode, and Pi child environments all execute the newly
+  generated workspace wrapper instead of the host command.
+- Prompt: every managed runtime advertises `aura` only and contains no
+  generated absolute wrapper path or `slock`/`raft` command example.
+- OpenCode: child environment sets `SLOCK_HOME`, runtime identity fields, and
+  PATH consistently while removing proxy-secret environment variables.
+- Warmup: daemon integration proves each non-lazy warmup prompt asks for
+  `aura server info` and never interpolates `runtime.wrapper.bashWrapper`;
+  Pi coverage preserves its lazy-start exception and verifies the same PATH
+  resolution through `buildPiRuntimeEnv`.
+- Activity: proxy internals remain redacted and a short `aura` command remains
+  unchanged; there is no wrapper-path collapsing assertion.
+
 ## Scenario: Claude Runtime Uses Slock CLI, Not MCP, For Chat
 
 ### Environment Notes
@@ -498,6 +574,114 @@ process exit 127 + later ACP close -> rewrite one ActivityLog with both causes
 ```text
 process exit -> runtime_error(status=exited, exitCode=127, stderr=...)
 ACP bridge close -> runtime_error(source=driver, error="ACP connection closed")
+```
+
+## Scenario: Runtime-Specific Stream Events Use A Shared Activity Contract
+
+### 1. Scope / Trigger
+
+- Trigger: changing Claude stream-json, Codex ACP, OpenCode Server/SSE, or Pi
+  stream-event normalization that feeds the Agent Activity timeline.
+- Activity remains observability telemetry. This translation must not create an
+  `EventRecord` or deliver a runtime's own state back as work.
+
+### 2. Signatures
+
+- Translator:
+  `translateRuntimeStreamActivity(runtime, event) -> RuntimeStreamActivitySignal[]`.
+- Codex source marker: `stream_event.acpUpdate`, for example
+  `agent_thought_chunk`, `agent_message_chunk`, `tool_call`, or
+  `tool_call_update`.
+- OpenCode source marker: `stream_event.opencodeEvent`, for example
+  `message.part.delta` or `message.part.updated`.
+- Shared Activity kinds stay `runtime_working`, `runtime_thinking`,
+  `runtime_output`, `runtime_idle`, `runtime_warning`, and `runtime_error`.
+
+### 3. Contracts
+
+- All providers preserve the established Claude Code observable product
+  semantics: accepted inbound work becomes Working; assistant analysis,
+  narration, and transcript previews become Thinking; real tool execution
+  becomes Output described as `Ran <tool>`; provider completion becomes Idle.
+- Every Thinking row includes a bounded, readable `details.thought`. Every
+  `Ran <tool>` Output includes a sanitized `details.commandPreview`. Activity
+  details remain bounded summaries, never full provider transcripts.
+- Codex ACP `agent_thought_chunk` and `agent_message_chunk` are provider wire
+  variants of assistant analysis/narration and therefore normalize to the same
+  Thinking product state. Neither may synthesize `Generated output`.
+- OpenCode records message role by message id. User-authored text parts and
+  delivered `[event=...]` envelopes are filtered; assistant text and explicit
+  reasoning/thinking parts normalize to Thinking. Generic connection/session
+  SSE events are not Activity rows.
+- Tool start is deduplicated by tool-call id and becomes the one visible
+  `Ran <tool>` Output row. Terminal tool updates remain available for TaskRun
+  accounting and provider completion, but do not add `Tool completed` or
+  `Tool failed` rows when the Claude baseline does not show them.
+- Warning/error diagnostics keep their diagnostic Activity kinds before any
+  normal text classification. They must not be mislabeled as Thinking/Output.
+- Activity POSTs are serialized per runtime without blocking provider stream
+  processing. Working, Thinking, Output, and Idle persist in observed order,
+  and the result boundary's Idle row is last for the turn.
+
+### 4. Validation & Error Matrix
+
+| Input | Expected Activity behavior |
+| --- | --- |
+| Codex thought/message narration | Thinking with bounded `details.thought`; no `Generated output`. |
+| OpenCode assistant reasoning/text | Thinking with bounded `details.thought`. |
+| OpenCode user text or `[event=...]` envelope | Ignored; never Thinking/Output. |
+| Generic OpenCode connect/session event | Ignored; no Activity row. |
+| Real tool start, including duplicate start id | One `Ran <tool>` row with sanitized `details.commandPreview`. |
+| Terminal tool update | TaskRun/provider telemetry only; no invented second Activity row. |
+| Diagnostic-shaped assistant text | Warning/Error; no Thinking/Output row for that text. |
+| Provider `result` after a delayed Output POST | Idle persists after the Output and clears per-turn tool dedup state. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a Codex turn shows Working -> Thinking -> Ran Bash -> Thinking -> Idle,
+  matching Claude Code semantics while retaining ACP protocol/source metadata.
+- Good: an OpenCode user message part is filtered, assistant reasoning is
+  Thinking, a bash part is `Ran bash` with its command, and Idle persists last.
+- Base: multiple consecutive narration deltas coalesce into the current
+  Thinking state; a later post-tool narration transition may create a new
+  Thinking row.
+- Bad: map provider assistant text to a generic `Generated output` row with no
+  readable preview.
+- Bad: expose user input/session events as model activity, persist every text
+  delta as a separate row, retain a full transcript, or add a tool-completion
+  row absent from the baseline.
+
+### 6. Tests Required
+
+- Unit: assert Codex thought/message chunks both translate to Thinking with
+  their exact `acpUpdate` source and no `Generated output` signal.
+- Unit: assert OpenCode message-role filtering, reasoning/text normalization,
+  real tool start command preview, ignored terminal result, and ignored generic
+  SSE events using exact `opencodeEvent` sources.
+- Regression: assert Claude plain-text compatibility remains Thinking and user
+  transcript text never becomes Activity.
+- Daemon integration: fake ACP emits message, thought, tool start/result, and
+  result while the fake backend delays Output persistence; assert one readable
+  Thinking row, one `Ran <tool>` row with command preview, no generated/terminal
+  rows, and Idle last.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+Codex/OpenCode assistant text -> Generated output
+terminal tool update -> Tool completed
+```
+
+#### Correct
+
+```text
+accepted inbound message -> Working on message
+assistant reasoning/narration -> Thinking + details.thought
+real tool execution -> Ran <tool> + details.commandPreview
+terminal tool update -> no separate baseline Activity
+provider result -> Idle persisted last
 ```
 
 ## Scenario: Daemon-Local Runtime Provider Selection

@@ -90,4 +90,61 @@
       PASS/failure evidence.
 - [x] Update task acceptance status without committing, pushing, publishing,
       restarting shared services or writing protected DB data.
-- [x] Report any live-test limitation separately from in-repo completion.
+- [x] Record the initial live-test limitation separately from in-repo
+      completion, then replace it with identity-proven live evidence once a
+      current-build daemon candidate is available.
+
+## 10. Runtime-specific Activity repair
+
+- [x] Confirm frontend already renders all six shared runtime Activity kinds.
+- [x] Add contract tests that reject the former translation and assert the
+      Claude-compatible observable sequence across Codex and OpenCode,
+      including user/session filtering and Idle-last persistence.
+- [x] Add a pure runtime-specific translator and keep daemon Activity/TaskRun
+      side effects in the existing orchestrator.
+- [x] Report Codex/OpenCode assistant analysis/narration as Thinking with
+      `details.thought`; report only real tool execution as `Ran <tool>` Output
+      with `details.commandPreview`; do not emit `Generated output` or an
+      invented terminal-tool Activity.
+- [x] Preserve Activity POST order per runtime so the turn's Idle row persists
+      after every preceding Thinking/Output row.
+- [x] Extend fake ACP/OpenCode integrations to assert roles, reasoning, command
+      previews, filtered user envelopes, and the final Activity sequence.
+- [x] Run the focused translator, Codex ACP, OpenCode SSE and daemon targets.
+
+## 11. Live OpenCode Activity acceptance
+
+- [x] Reconnect a daemon loaded from the current repository build without
+      stopping or restarting the shared frontend/backend stack.
+- [x] Reuse an existing OpenCode Agent and send a unique real marker through
+      the normal conversation path.
+- [x] Verify the UI shows chronological Working, real-tool Output, readable
+      Thinking and Idle-last semantics with no new `Generated output` or
+      terminal-tool Activity.
+- [x] Capture and visually inspect the final Activity screenshot; record
+      candidate/session identity and the exact safety boundary.
+
+## 12. Aura command unification follow-up
+
+- [x] Add RED prompt/env/warmup/Activity tests for bare `aura` and the absence
+      of generated absolute wrapper instructions.
+- [x] Inject the workspace wrapper directory and Slock identity boundary into
+      the OpenCode child environment, matching the other runtimes.
+- [x] Mechanically change runtime CLI command examples to `aura` without
+      changing task, safety, routing or credential semantics.
+- [x] Change daemon warmup to `aura server info` so it validates PATH rather
+      than bypassing it with `runtime.wrapper.bashWrapper`.
+- [x] Remove Activity-only wrapper-path collapsing while retaining proxy secret
+      and token-file redaction.
+- [x] Add a clean-first-start runtime environment matrix using a temporary HOME
+      and a poisoned host `aura`, and prove all four runtime families resolve
+      the newly generated workspace wrapper first.
+- [x] Replace backend-generated memory read-more, thread-summary, and task-memory
+      follow-up instructions with bare `aura` so later turns cannot reintroduce
+      compatibility command names after the initial runtime prompt.
+- [x] Prove generated `aura`, `slock`, and `raft` compatibility aliases share
+      the same platform wrapper content and execute the same agent CLI; keep
+      only `aura` advertised to new runtimes.
+- [x] Run focused wrapper/prompt/OpenCode/daemon/Activity tests, build, full
+      daemon regression, focused backend prompt-generation tests, distribution
+      checks, and final diff/status review.

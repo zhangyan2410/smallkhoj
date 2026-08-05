@@ -22,8 +22,10 @@
   - `POST /internal/agent-api/threads/{thread_id}/summary`
 - Daemon/CLI:
   - `thread.summary_requested` event targets one agent with `payload.targetAgentId`.
-  - `slock thread read --thread-id <id>`
-  - `slock thread summary --thread-id <id> --summary <text>`
+  - managed runtime: `aura thread read --thread-id <id>`
+  - managed runtime: `aura thread summary --thread-id <id> --summary <text>`
+  - `slock` and `raft` remain compatibility aliases but are not advertised in
+    newly generated summary requests.
 
 ### 3. Contracts
 
@@ -47,7 +49,7 @@
 ### 5. Good/Base/Bad Cases
 
 - Good: main timeline fetches `threadMode=roots`, opens the right-side panel via `GET /threads/{id}`, posts replies with `threadId`, and refreshes both the root list and panel.
-- Base: an agent receives `thread.summary_requested`, reads the thread with `slock thread read`, and writes metadata with `slock thread summary`; it does not send a chat message.
+- Base: an agent receives `thread.summary_requested`, reads the thread with `aura thread read`, and writes metadata with `aura thread summary`; it does not send a chat message.
 - Base: daemon restart does not replay old `thread.summary_requested` events into runtime queues when the WS connection lacks a positive cursor.
 - Bad: rendering replies in the main channel timeline.
 - Bad: creating nested replies by storing a reply's id as `parent_id`.

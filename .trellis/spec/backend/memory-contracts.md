@@ -8,7 +8,7 @@
 
 ### 1. Scope / Trigger
 
-- Trigger: adding or changing shared memory, task handoff, proposal review, runtime memory context, or `slock memory ...` commands.
+- Trigger: adding or changing shared memory, task handoff, proposal review, runtime memory context, or Agent-facing `aura memory ...` commands.
 - This is a cross-layer contract: database rows -> backend services -> public/agent API -> daemon local proxy -> runtime prompt context -> frontend Channel Memory / Task Recovery UI.
 - Channel and task memory are control-plane product primitives. Agent private files and future local projections are not the canonical source for shared channel/task facts.
 
@@ -35,9 +35,10 @@
   - `POST /internal/agent-api/tasks/{taskId}/memory/summary`
   - `POST /internal/agent-api/tasks/{taskId}/memory/promote`
 - Agent CLI:
-  - `slock memory read|search|context|write|propose|proposals|accept-proposal|reject-proposal|delete`
-  - `slock task summary`
-  - `slock task promote`
+  - managed runtime command: `aura memory read|search|context|write|propose|proposals|accept-proposal|reject-proposal|delete`
+  - managed runtime task memory commands: `aura task summary|promote`
+  - `slock` and `raft` parse the same commands only as compatibility aliases;
+    new prompts, manifests, and runtime events must not advertise them
 - Daemon JSON-RPC forwarding:
   - `daemon/memory.read`
   - `daemon/memory.search`
@@ -67,6 +68,8 @@
   - do not include every entry in the scope
   - do not insert raw full `contentText` into prompts
   - skip DM scope by default unless a later spec explicitly changes this
+  - emit Agent-facing read-more hints with bare `aura memory ...`; `slock` and
+    `raft` remain compatibility aliases and must not be taught in new manifests
 - `memory.*` browser/public events are cache/UI wakeups. They are not runtime-actionable unless explicitly added to the runtime delivery allowlist in `event-delivery-contracts.md`.
 - FUSE/macFUSE/WinFsp local projection is a later read/write projection over these APIs, not the source of truth.
 
@@ -90,8 +93,8 @@
 - Good: a task writes `brief.md`, `plan.md`, `progress.md`, `evidence.md`, and `final-summary.md`; durable conclusions are promoted to channel memory or proposed for review.
 - Good: Channel Memory UI groups durable channel knowledge, task outputs, promotions, and open proposals.
 - Good: Task Recovery UI shows recovery signals, task breakdown, outputs/evidence, artifact previews, and provenance/hash/version.
-- Base: `slock memory write --scope task --id <taskId> --path progress.md` writes through the daemon proxy with write gates enabled.
-- Base: `slock memory context --scope channel --id <channelId> --query "runtime session"` returns selective snippets plus read-more commands.
+- Base: `aura memory write --scope task --id <taskId> --path progress.md` writes through the daemon proxy with write gates enabled.
+- Base: `aura memory context --scope channel --id <channelId> --query "runtime session"` returns selective snippets plus read-more commands.
 - Bad: reading private channel memory while resolving a task manifest only because the task is visible to the viewer.
 - Bad: injecting an entire channel `MEMORY.md` into every runtime prompt.
 - Bad: treating `memory.created`, `memory.updated`, or `memory.proposal.*` as runtime work.
@@ -150,12 +153,12 @@ prompt = formatRuntimeIncomingMessageWithMemoryContext(message, manifest)
 
 ```bash
 # Raw full channel memory in every runtime turn.
-slock memory read --scope channel --id "$CHANNEL_ID" --path MEMORY.md >> prompt.txt
+aura memory read --scope channel --id "$CHANNEL_ID" --path MEMORY.md >> prompt.txt
 ```
 
 #### Correct
 
 ```bash
 # Selective snippets plus read-more instructions.
-slock memory context --scope channel --id "$CHANNEL_ID" --query "$CURRENT_TASK"
+aura memory context --scope channel --id "$CHANNEL_ID" --query "$CURRENT_TASK"
 ```

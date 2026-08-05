@@ -40,7 +40,7 @@ Use this spec whenever code changes any of:
 - **Dotted and legacy event names must normalize before classification.** `message.created` and `message_received` are equivalent for message delivery; `task.created` and `task_created` are equivalent for assigned task delivery.
 - **Non-message events must not poison message freshness.** Task/thread/control events can be delivered to runtime when actionable, but they must not block later sends as pending unread messages.
 - **Runtime prompt payloads must stay small and reply-safe.** A delivered message event must include `target` for replies and enough context to act, but not full activity feeds or unrelated event payloads.
-- **Runtime activity command previews are summaries, not transcripts.** `runtime_output.details.commandPreview` must be optional and token-safe. It must redact/remove Slock proxy internals such as `SLOCK_AGENT_PROXY_URL`, `SLOCK_AGENT_PROXY_TOKEN`, `SLOCK_AGENT_PROXY_TOKEN_FILE`, `SLOCK_AGENT_ACTIVE_CAPABILITIES`, and any `agent-proxy-tokens` filesystem path before the backend stores it or the UI renders it. Generated `.slock/slock`, `.cmd`, and `.ps1` wrapper paths must be normalized to the semantic `slock` command before the generic 200-character activity limit is applied; otherwise a long isolated-workspace path can consume the entire preview and make an actual `slock message send` indistinguishable from an unrelated command. The UI must not depend on full command text for product behavior.
+- **Runtime activity command previews are summaries, not transcripts.** `runtime_output.details.commandPreview` must be optional and token-safe. It must redact/remove Slock proxy internals such as `SLOCK_AGENT_PROXY_URL`, `SLOCK_AGENT_PROXY_TOKEN`, `SLOCK_AGENT_PROXY_TOKEN_FILE`, `SLOCK_AGENT_ACTIVE_CAPABILITIES`, and any `agent-proxy-tokens` filesystem path before the backend stores it or the UI renders it. It must not rewrite an absolute wrapper path into a different-looking semantic command. Managed runtimes instead execute the PATH-injected short `aura ...` command, so Activity can faithfully show the actual tool input before the generic 200-character limit is applied. The UI must not depend on full command text for product behavior.
 
 ### 4. Validation & Error Matrix
 
@@ -81,9 +81,9 @@ Use this spec whenever code changes any of:
 - Token regression:
   - a runtime that sends a message does not receive its own `message.created` event as a new turn.
   - a runtime tool command or wrapper snippet containing Slock proxy env assignments does not persist those env names or `agent-proxy-tokens` paths in `runtime_output.details.commandPreview`.
-  - a real-length isolated `.slock-runtimes/.../.slock/slock message send`
-    command is normalized before truncation and retains the `slock message send`
-    semantic prefix without its absolute workspace path.
+  - a PATH-injected `aura message send` tool command remains unchanged after
+    proxy-secret redaction; no Activity-only wrapper-path rewrite manufactures
+    the short command.
 
 ### Adding a new EventRecord type — required checklist
 

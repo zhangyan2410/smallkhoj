@@ -169,3 +169,81 @@ that bounded residue instead of risking existing state.
 - A test-provider rollback is identity-scoped: it may remove only the exact
   test-owned row and must re-prove that all pre-existing rows and current/
   default selectors are unchanged.
+
+## 10. Runtime-specific Activity translation
+
+Add one pure daemon translation seam between driver `stream_event` payloads and
+the existing shared Activity kinds. The seam branches explicitly by public
+runtime family:
+
+```text
+Claude stream-json -> Claude compatibility translator
+Codex ACP          -> acpUpdate translator
+OpenCode SSE       -> opencodeEvent translator
+Pi stream          -> current Pi compatibility translator
+                         ↓
+Working / Thinking / Output / Idle / Warning / Error
+```
+
+The translator returns protocol/source metadata plus semantic signals; daemon
+state owns per-turn deduplication, ordered Activity POSTs, TaskRun counters and
+the common result-to-Idle boundary. The observable contract is the existing
+Claude Code behavior, independent of provider wire names:
+
+```text
+accepted inbound work                    -> Working on message
+assistant analysis / narration preview   -> Thinking + details.thought
+real tool execution                      -> Ran <tool> + details.commandPreview
+provider completion boundary             -> Idle (persisted after prior rows)
+```
+
+OpenCode records `messageID -> role` and filters user text parts before the
+translator; reasoning/thinking parts and assistant text are normalized into
+assistant narration. Codex thought and message chunks use the same readable
+Thinking product state. Generic connection/session events produce no Activity.
+Terminal tool updates still contribute runtime/TaskRun completion telemetry,
+but do not invent a second visible `Tool completed` row absent from the Claude
+baseline. The daemon serializes Activity POSTs per runtime so a slow Output POST
+cannot be persisted after Idle. No provider text path emits `Generated output`.
+
+## 11. Aura command resolution
+
+Wrapper generation remains per workspace and continues writing compatible
+`slock`, `raft` and `aura` launcher files that all target `dist/slock-cli.js`.
+The product command for managed runtimes is now only `aura`:
+
+```text
+runtime child PATH
+  = <workspace>/.slock : <host PATH>
+
+agent tool input
+  = aura message send ...
+  -> <workspace>/.slock/aura
+  -> dist/slock-cli.js
+  -> daemon-local proxy
+```
+
+This ordering matters because the package-level/global `aura` bin currently
+names the daemon control entrypoint. Runtime-local PATH precedence makes the
+collaboration meaning unambiguous without renaming internal `.slock`,
+`SLOCK_*`, package or compatibility seams.
+
+Claude, Codex/Codex ACP and Pi already use the shared PATH builder. OpenCode
+must adopt the same environment builder, including proxy-secret removal.
+Runtime prompts and daemon warmup use bare `aura`; they never interpolate an
+absolute wrapper path or tell a model to inspect/fallback to that path.
+
+Activity command preview sanitization remains responsible for removing proxy
+environment lines and token-file paths. It no longer rewrites wrapper paths;
+this makes an absolute path visible as an upstream regression instead of
+making it look as though the provider executed a short command.
+
+Clean-machine correctness is an installation-independent runtime invariant,
+not a property of the developer shell. A first-start test creates a new
+temporary HOME, workspace and wrapper, places a deliberately wrong host
+`aura` later on PATH, and builds each runtime child environment from that
+minimal base. Claude, Codex/Codex ACP, OpenCode and Pi must all put the new
+workspace `.slock` directory first and execute the generated wrapper. The
+wrapper invokes the daemon package's resolved `dist/slock-cli.js` with an
+absolute Node executable, so no global collaboration CLI or user-home config
+is needed.
