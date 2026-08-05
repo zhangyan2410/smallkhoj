@@ -1,7 +1,7 @@
 # Completion audit — stable member Names and Channel identity
 
 Audit date: 2026-08-06  
-Candidate: `main` at `a7dc867fb367` plus the task-local test/evidence changes
+Candidate: `main` at `7dd800649bb2` plus the task-local evidence changes
 listed below.
 
 ## Status vocabulary
@@ -32,7 +32,7 @@ listed below.
 | 2 | PASS | Shared home namespace, Agent tombstone release, and new-ID reuse are covered by `backend/tests/test_member_identity_postgres.py` and `backend/tests/test_agent_tombstone_identity_postgres.py`. |
 | 3 | PASS | Atomic one-home-Server bootstrap, joined Servers, and the `POST /api/v1/servers` 410 contract are covered by `backend/tests/test_server_account_membership.py` and `backend/tests/test_better_auth_bridge.py`. |
 | 4 | PASS | Invite identity reuse and foreign-Agent rejection are covered by `backend/tests/test_server_invites.py`, `backend/tests/test_server_account_membership.py`, and Channel membership tests. |
-| 5 | PARTIAL | Bare/qualified cross-origin projections pass deterministic PostgreSQL/service tests; the two-origin same-Name scenario has not yet been repeated in the real browser/runtime. |
+| 5 | PASS | Deterministic projection tests plus the real two-origin `张翰` signup/invite/Channel flow prove `@张翰-s8db6` and `@张翰-st6e4` remain unambiguous. See `evidence/REAL_completion_supplement_20260806.md`. |
 | 6 | PASS | Reserved `-s<code>` rejection and ordinary hyphenated Names are covered by the shared identity fixtures and `backend/tests/test_member_identity.py`. |
 | 7 | PASS | Shared live validation/preview/availability and authoritative concurrent insert behavior are covered by backend/frontend identity tests and the real Create Agent UI check. |
 | 8 | PASS | NFC presentation and NFKC/case-folded uniqueness are covered by the shared fixtures and PostgreSQL tests. |
@@ -43,7 +43,7 @@ listed below.
 | 13 | PASS | Human/serverHandle reservation and Agent tombstone reuse are covered by schema/migration and tombstone tests. |
 | 14 | PASS | Re-registration creates a new Member ID with cleared configuration, credentials, Description, membership, and state in tombstone tests. |
 | 15 | PASS | Signup and Agent creation require an explicit Name; foreign Server membership keeps the same Human Member identity. |
-| 16 | PARTIAL | Signup/Sign In/setup/return-to contracts and translations are green, but a deliberately failed bootstrap retry plus a complete real invitation return has not been exercised end to end. |
+| 16 | PASS | A deliberately wrong bridge secret produced a Better Auth user with zero SmallKhoj Accounts, then the same session completed Name-only setup into exactly one Account/home Server. The separate same-Name signup resumed its real invitation and joined the target Server. |
 | 17 | PASS | Chinese/English product copy says `名字` / `Name`, not Handle, and presents no competing displayName field. |
 | 18 | PASS | Human displayName is isolated from identity/mention/attribution and omitted from Agent-facing contracts. |
 | 19 | PASS | Human handle fallback is covered by serializers/UI contracts; no joined-Server or Channel behavior requires displayName. |
@@ -59,14 +59,14 @@ listed below.
 | 29 | PASS | Human Description is rejected server-side and omitted from serializers/UI; supplemental assertion is in `backend/tests/test_daemon_control.py`. |
 | 30 | PASS | Trimmed optional plain text, 200-code-point validation, bilingual counter, and 201/200 visible error are covered by tests and real UI evidence. |
 | 31 | PASS | The shared Agent form keeps Computer/Runtime/Provider behavior while mapping Agent Name to immutable handle and adding optional Description. |
-| 32 | PARTIAL | Shared entry points, focus/error/loading contracts, and desktop behavior are covered; a persistent real narrow/touch viewport has not yet been accepted. |
-| 33 | PARTIAL | Desktop Name + Computer / full-width Description / Runtime + Provider is real-tested; narrow semantic stacking is source/unit-covered but not yet proven in a persistent real narrow viewport. |
+| 32 | PASS | Shared entry points and focus/error/loading contracts are automated; a persistent 390x844, mobile, coarse-pointer, five-touch-point run proved the real narrow/touch interaction. |
+| 33 | PASS | Desktop layout remains real-tested; the persistent 390x844 run measured the narrow Name/Computer/Description/Runtime/Provider semantic stacking with no horizontal overflow. |
 | 34 | PASS | Real UI starts in `zh-CN`, switches completely to English, and accepts Chinese canonical Names independently of locale. |
 | 35 | PASS | Real `@` suggestions list only current Channel members, insert contextual references atomically, and bind the selection to Member ID in tests. |
-| 36 | PARTIAL | Collision row/origin-secondary semantics are deterministic-test covered; a real two-origin collision suggestion has not yet been observed. |
+| 36 | PASS | The real two-origin `张翰` Channel showed both qualified suggestion rows and inserted `@张翰-st6e4`; deterministic tests cover optional origin-presentation secondary copy. |
 | 37 | PASS | Manual unique/ambiguous/unknown Unicode mention behavior is covered by `backend/tests/test_unicode_mentions.py`. |
 | 38 | PASS | Real `#` suggestions listed only visible current-Server `#identity-test`; backend/frontend scope tests cover public/private/non-DM rules. |
-| 39 | PARTIAL | Keyboard and Chinese IME behavior are real-tested; pointer contracts are automated, while real touch/narrow/scroll-clipping acceptance remains pending. |
+| 39 | PASS | Keyboard and Chinese IME behavior were real-tested; a real `Input.dispatchTouchEvent` in the persistent narrow/coarse-pointer context inserted `@open2 ` and retained composer focus. Automated contracts cover pointer, scrolling, clipping, empty, loading, and error states. |
 | 40 | PARTIAL | Authorization, visible bilingual confirmation, compact final notice, dedupe, and delivery cutoff are covered by UI/backend/daemon tests. The exact current-build `open2` removal still awaits the user's click/observation, and continued operation in a second Channel has not yet been real-tested. |
 | 41 | PASS | Fresh migration/bootstrap creates one home Server and no API/UI path can create another owned Server. |
 | 42 | BLOCKED | Local clean-reset rollout is complete. Cloud target discovery is complete, but cloud database reset/deploy/smoke has not run because destructive rollout still needs explicit final approval. |
@@ -78,15 +78,19 @@ listed below.
 - `evidence/REAL_channel_member_remove_reply_20260806.png`
 - `evidence/REAL_channel_final.snapshot.txt`
 - `evidence/REAL_local_ui_supplement_20260806.md`
+- `evidence/REAL_completion_supplement_20260806.md`
+- `evidence/REAL_narrow_create_agent_390x844_20260806.png`
+- `evidence/REAL_collision_suggestions_20260806.png`
+- `evidence/REAL_bootstrap_retry_setup_20260806.png`
+- `evidence/REAL_bootstrap_retry_success_20260806.png`
 
 ## Remaining release decisions/actions
 
 1. User clicks **移除 open2** in `#identity-test` and observes no acknowledgement
-   reply plus no later delivery for that Channel.
-2. If required for release, run a true narrow/touch check, a second-Channel
-   continuity check, a real two-origin same-Name collision, and a failed
-   bootstrap/invite-return flow.
-3. Obtain explicit confirmation for destructive reset and rollout of Tencent
+   reply plus no later delivery for that Channel, then run the prepared fresh
+   marker in `#remove-continuity-20260806` to prove the same Agent still works
+   there.
+2. Obtain explicit confirmation for destructive reset and rollout of Tencent
    Lighthouse `124.222.40.40`, then deploy the accepted commit and run the
    minimal cloud smoke.
 
