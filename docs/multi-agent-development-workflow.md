@@ -19,16 +19,16 @@ merge = reviewed PR + squash
 
 Do not use `main` as a shared scratchpad. Direct edits on `main` are allowed only for tiny docs/config cleanup where the user explicitly asks for an inline change.
 
-## How Clowder Enforces This
+## Relationship to Clowder
 
-Clowder makes the workflow visible to agents through:
+Clowder is a reference project for this workflow, but its project-specific
+skill bundle is not installed or loaded by SmallKhoj. In particular,
+SmallKhoj must not import Clowder's Cat Cafe lifecycle, worktree, review, or
+merge skills.
 
-- `AGENTS.md` / `CLAUDE.md`: short always-loaded rules.
-- `docs/multi-agent-development-workflow.md`: human-readable workflow.
-- Skills such as `worktree`, `quality-gate`, `request-review`, `receive-review`, and `merge-gate`.
-- PR review and squash-merge gates.
-
-SmallKhoj uses the same shape, but the required minimum is simpler: worktree isolation, branch-local verification, real-test evidence when product behavior changes, review, PR, squash merge.
+SmallKhoj's active rules come from `AGENTS.md`, `.trellis/workflow.md`, and
+this document. The local fast path stays inline; sibling worktrees, review,
+PRs, and squash merge apply only to the integration cases described here.
 
 ## Standard Flow
 

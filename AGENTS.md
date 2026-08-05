@@ -20,6 +20,15 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 
 <!-- TRELLIS:END -->
 
+## Codex 工作方式
+
+Codex 默认直接完成当前工作，不主动初始化、读取或执行 Trellis 工作流，不创建、
+激活或归档 Trellis task，不调用 `trellis-*` skills，也不运行 `.trellis/scripts/`
+中的流程命令。只有用户明确要求“使用 Trellis”时，Codex 才进入 Trellis 流程。
+
+如果用户给出 `.trellis/` 下的具体文件，Codex 可以把它当作普通需求、设计或交接
+文档直接读取和编辑；这不代表需要激活任务或进入 Trellis 生命周期。
+
 ## Project Index
 
 SmallKhoj keeps project rules short in this file; detailed workflows live in indexed docs and skills.
