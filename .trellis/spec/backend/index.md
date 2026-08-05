@@ -25,6 +25,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Event Delivery Contracts](./event-delivery-contracts.md) | Activity/event filtering, daemon delivery, and runtime token-safety contracts | Active |
 | [Threading Contracts](./threading-contracts.md) | Single-level thread APIs, summary metadata, DM display, and daemon thread events | Active |
 | [Memory Contracts](./memory-contracts.md) | Server-owned scoped memory, proposal audit, selective context manifests, and task recovery contracts | Active |
+| [Stable Member Identity and Channel Context](./member-identity-channel-contracts.md) | Immutable Names, one-home-Server identity, Channel references, membership events, mentions, tombstones, and daemon context | Active |
 
 ---
 

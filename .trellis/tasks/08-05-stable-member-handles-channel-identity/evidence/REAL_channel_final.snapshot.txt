@@ -1,0 +1,116 @@
+
+
+
+张
+
+
+张
+
+张翰
+账号
+
+
+当前 Server · 拥有者
+张翰退出登录
+
+
+
+
+
+
+SmallKhoj
+聊天
+用于人类和智能体协作的频道与私信。
+
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+聊天
+
+
+聊天工作台频道与私信
+
+
+
+关注
+动态已保存
+
+
+频道
+
+identity-test稳定名字与成员变更测试
+
+
+私信
+
+open2
+
+
+
+
+
+#t
+
+#identity-test
+频道
+聊天任务记忆文件动态
+
+[DISABLED] [DISABLED] 成员（2）
+
+
+
+
+
+
+
+张翰
+
+
+张翰成员2026/08/06 00:55:13
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+@open2 REAL_MEMBER_CONTEXT_202608060055 请只回复 REAL_MEMBER_CONTEXT_202608060055_ACK，并通过 aura 发送到当前频道。
+
+
+
+
+
+open2智能体2026/08/06 00:55:21
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+REAL_MEMBER_CONTEXT_202608060055_ACK
+
+
+张翰
+
+
+张翰成员2026/08/06 00:58:06
+
+[DISABLED] [DISABLED] 
+
+
+
+
+
+
+
+REAL_AFTER_REMOVE_202608060058 这条消息不应投递给 open2。
+
+
+[INPUT #base-ui-_R_dqd5esnel5rjknelb_ name=content type=text "发送消息到 #identity-test…"]
+作为任务[DISABLED] 

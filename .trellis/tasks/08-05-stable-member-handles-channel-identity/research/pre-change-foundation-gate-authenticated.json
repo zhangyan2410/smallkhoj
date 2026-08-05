@@ -1,0 +1,1346 @@
+{
+  "mode": "foundation-only",
+  "runtime": "all",
+  "ok": false,
+  "thresholdPercent": 50,
+  "steps": [
+    {
+      "id": "claude_code:login-session",
+      "label": "[claude_code] Login/session ready",
+      "status": "pass",
+      "evidence": {
+        "authenticated": true
+      },
+      "stepId": "login-session",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:frontend-ready",
+      "label": "[claude_code] Frontend ready",
+      "status": "pass",
+      "evidence": {
+        "frontendOnline": true
+      },
+      "stepId": "frontend-ready",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:backend-ready",
+      "label": "[claude_code] Backend ready",
+      "status": "pass",
+      "evidence": {
+        "backendOnline": true
+      },
+      "stepId": "backend-ready",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:daemon-connect",
+      "label": "[claude_code] Daemon connected",
+      "status": "pass",
+      "evidence": {
+        "onlineComputers": 1,
+        "computers": 1
+      },
+      "stepId": "daemon-connect",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:target-runtime-ready",
+      "label": "[claude_code] Claude Code runtime available",
+      "status": "pass",
+      "evidence": {
+        "runtime": "claude_code",
+        "detectedRuntimeComputers": 1,
+        "workspaceCandidates": 4
+      },
+      "stepId": "target-runtime-ready",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:runtime-reuse-candidate",
+      "label": "[claude_code] Runtime reuse candidate found",
+      "status": "pass",
+      "evidence": {
+        "candidates": 4
+      },
+      "stepId": "runtime-reuse-candidate",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:limit-preflight",
+      "label": "[claude_code] Limit preflight",
+      "status": "pass",
+      "evidence": {
+        "source": "no limit error observed"
+      },
+      "stepId": "limit-preflight",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:context-preflight",
+      "label": "[claude_code] Context preflight",
+      "status": "fail",
+      "evidence": {
+        "source": "missing runtime_control.inspect_context evidence",
+        "runtime": "claude_code"
+      },
+      "failure": {
+        "category": "context_limit",
+        "code": "CONTEXT_USAGE_MISSING"
+      },
+      "stepId": "context-preflight",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:compact-if-needed",
+      "label": "[claude_code] Compact if needed",
+      "status": "fail",
+      "evidence": {
+        "thresholdPercent": 50,
+        "contextPercent": "",
+        "source": "",
+        "runtime": "claude_code"
+      },
+      "failure": {
+        "category": "context_limit",
+        "code": "CONTEXT_COMPACT_REQUIRED"
+      },
+      "stepId": "compact-if-needed",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:warmup-ready",
+      "label": "[claude_code] Runtime warmup ready",
+      "status": "pass",
+      "evidence": {
+        "runningCandidates": 3
+      },
+      "stepId": "warmup-ready",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:session-resume",
+      "label": "[claude_code] Session/resume ready",
+      "status": "pass",
+      "evidence": {
+        "sessionCandidates": 3
+      },
+      "stepId": "session-resume",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:control-plane-sync",
+      "label": "[claude_code] Control plane sync",
+      "status": "pass",
+      "evidence": {
+        "computers": 1
+      },
+      "stepId": "control-plane-sync",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "codex:login-session",
+      "label": "[codex] Login/session ready",
+      "status": "pass",
+      "evidence": {
+        "authenticated": true
+      },
+      "stepId": "login-session",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:frontend-ready",
+      "label": "[codex] Frontend ready",
+      "status": "pass",
+      "evidence": {
+        "frontendOnline": true
+      },
+      "stepId": "frontend-ready",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:backend-ready",
+      "label": "[codex] Backend ready",
+      "status": "pass",
+      "evidence": {
+        "backendOnline": true
+      },
+      "stepId": "backend-ready",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:daemon-connect",
+      "label": "[codex] Daemon connected",
+      "status": "pass",
+      "evidence": {
+        "onlineComputers": 1,
+        "computers": 1
+      },
+      "stepId": "daemon-connect",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:target-runtime-ready",
+      "label": "[codex] Codex runtime available",
+      "status": "pass",
+      "evidence": {
+        "runtime": "codex",
+        "detectedRuntimeComputers": 1,
+        "workspaceCandidates": 2
+      },
+      "stepId": "target-runtime-ready",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:runtime-reuse-candidate",
+      "label": "[codex] Runtime reuse candidate found",
+      "status": "pass",
+      "evidence": {
+        "candidates": 2
+      },
+      "stepId": "runtime-reuse-candidate",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:limit-preflight",
+      "label": "[codex] Limit preflight",
+      "status": "pass",
+      "evidence": {
+        "source": "no limit error observed"
+      },
+      "stepId": "limit-preflight",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:context-preflight",
+      "label": "[codex] Context preflight",
+      "status": "fail",
+      "evidence": {
+        "source": "missing runtime_control.inspect_context evidence",
+        "runtime": "codex"
+      },
+      "failure": {
+        "category": "context_limit",
+        "code": "CONTEXT_USAGE_MISSING"
+      },
+      "stepId": "context-preflight",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:compact-if-needed",
+      "label": "[codex] Compact if needed",
+      "status": "fail",
+      "evidence": {
+        "thresholdPercent": 50,
+        "contextPercent": "",
+        "source": "",
+        "runtime": "codex"
+      },
+      "failure": {
+        "category": "context_limit",
+        "code": "CONTEXT_COMPACT_REQUIRED"
+      },
+      "stepId": "compact-if-needed",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:warmup-ready",
+      "label": "[codex] Runtime warmup ready",
+      "status": "fail",
+      "evidence": {
+        "runningCandidates": 0
+      },
+      "failure": {
+        "category": "runtime",
+        "code": "RUNTIME_WARMUP_NOT_READY"
+      },
+      "stepId": "warmup-ready",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:session-resume",
+      "label": "[codex] Session/resume ready",
+      "status": "fail",
+      "evidence": {
+        "sessionCandidates": 0
+      },
+      "failure": {
+        "category": "session",
+        "code": "SESSION_RESUME_EVIDENCE_MISSING"
+      },
+      "stepId": "session-resume",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:control-plane-sync",
+      "label": "[codex] Control plane sync",
+      "status": "pass",
+      "evidence": {
+        "computers": 1
+      },
+      "stepId": "control-plane-sync",
+      "runtime": "codex"
+    },
+    {
+      "id": "opencode:login-session",
+      "label": "[opencode] Login/session ready",
+      "status": "pass",
+      "evidence": {
+        "authenticated": true
+      },
+      "stepId": "login-session",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:frontend-ready",
+      "label": "[opencode] Frontend ready",
+      "status": "pass",
+      "evidence": {
+        "frontendOnline": true
+      },
+      "stepId": "frontend-ready",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:backend-ready",
+      "label": "[opencode] Backend ready",
+      "status": "pass",
+      "evidence": {
+        "backendOnline": true
+      },
+      "stepId": "backend-ready",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:daemon-connect",
+      "label": "[opencode] Daemon connected",
+      "status": "pass",
+      "evidence": {
+        "onlineComputers": 1,
+        "computers": 1
+      },
+      "stepId": "daemon-connect",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:target-runtime-ready",
+      "label": "[opencode] OpenCode runtime available",
+      "status": "pass",
+      "evidence": {
+        "runtime": "opencode",
+        "detectedRuntimeComputers": 1,
+        "workspaceCandidates": 3
+      },
+      "stepId": "target-runtime-ready",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:runtime-reuse-candidate",
+      "label": "[opencode] Runtime reuse candidate found",
+      "status": "pass",
+      "evidence": {
+        "candidates": 3
+      },
+      "stepId": "runtime-reuse-candidate",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:limit-preflight",
+      "label": "[opencode] Limit preflight",
+      "status": "pass",
+      "evidence": {
+        "source": "no limit error observed"
+      },
+      "stepId": "limit-preflight",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:context-preflight",
+      "label": "[opencode] Context preflight",
+      "status": "skip",
+      "applicable": false,
+      "evidence": {
+        "runtime": "opencode",
+        "reason": "runtime_context_control_unsupported"
+      },
+      "stepId": "context-preflight",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:compact-if-needed",
+      "label": "[opencode] Compact if needed",
+      "status": "skip",
+      "applicable": false,
+      "evidence": {
+        "thresholdPercent": 50,
+        "contextPercent": "",
+        "source": "",
+        "runtime": "opencode",
+        "reason": "runtime_compact_control_unsupported"
+      },
+      "stepId": "compact-if-needed",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:warmup-ready",
+      "label": "[opencode] Runtime warmup ready",
+      "status": "pass",
+      "evidence": {
+        "runningCandidates": 2
+      },
+      "stepId": "warmup-ready",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:session-resume",
+      "label": "[opencode] Session/resume ready",
+      "status": "pass",
+      "evidence": {
+        "sessionCandidates": 2
+      },
+      "stepId": "session-resume",
+      "runtime": "opencode"
+    },
+    {
+      "id": "opencode:control-plane-sync",
+      "label": "[opencode] Control plane sync",
+      "status": "pass",
+      "evidence": {
+        "computers": 1
+      },
+      "stepId": "control-plane-sync",
+      "runtime": "opencode"
+    },
+    {
+      "id": "pi:login-session",
+      "label": "[pi] Login/session ready",
+      "status": "pass",
+      "evidence": {
+        "authenticated": true
+      },
+      "stepId": "login-session",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:frontend-ready",
+      "label": "[pi] Frontend ready",
+      "status": "pass",
+      "evidence": {
+        "frontendOnline": true
+      },
+      "stepId": "frontend-ready",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:backend-ready",
+      "label": "[pi] Backend ready",
+      "status": "pass",
+      "evidence": {
+        "backendOnline": true
+      },
+      "stepId": "backend-ready",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:daemon-connect",
+      "label": "[pi] Daemon connected",
+      "status": "pass",
+      "evidence": {
+        "onlineComputers": 1,
+        "computers": 1
+      },
+      "stepId": "daemon-connect",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:target-runtime-ready",
+      "label": "[pi] Built-in Pi runtime available",
+      "status": "pass",
+      "evidence": {
+        "runtime": "pi",
+        "detectedRuntimeComputers": 1,
+        "workspaceCandidates": 0
+      },
+      "stepId": "target-runtime-ready",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:runtime-reuse-candidate",
+      "label": "[pi] Runtime reuse candidate found",
+      "status": "fail",
+      "evidence": {
+        "candidates": 0
+      },
+      "failure": {
+        "category": "runtime",
+        "code": "RUNTIME_REUSE_CANDIDATE_MISSING"
+      },
+      "stepId": "runtime-reuse-candidate",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:limit-preflight",
+      "label": "[pi] Limit preflight",
+      "status": "pass",
+      "evidence": {
+        "source": "no limit error observed"
+      },
+      "stepId": "limit-preflight",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:context-preflight",
+      "label": "[pi] Context preflight",
+      "status": "skip",
+      "applicable": false,
+      "evidence": {
+        "runtime": "pi",
+        "reason": "runtime_context_control_unsupported"
+      },
+      "stepId": "context-preflight",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:compact-if-needed",
+      "label": "[pi] Compact if needed",
+      "status": "skip",
+      "applicable": false,
+      "evidence": {
+        "thresholdPercent": 50,
+        "contextPercent": "",
+        "source": "",
+        "runtime": "pi",
+        "reason": "runtime_compact_control_unsupported"
+      },
+      "stepId": "compact-if-needed",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:warmup-ready",
+      "label": "[pi] Runtime warmup ready",
+      "status": "fail",
+      "evidence": {
+        "runningCandidates": 0
+      },
+      "failure": {
+        "category": "runtime",
+        "code": "RUNTIME_WARMUP_NOT_READY"
+      },
+      "stepId": "warmup-ready",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:session-resume",
+      "label": "[pi] Session/resume ready",
+      "status": "fail",
+      "evidence": {
+        "sessionCandidates": 0
+      },
+      "failure": {
+        "category": "session",
+        "code": "SESSION_RESUME_EVIDENCE_MISSING"
+      },
+      "stepId": "session-resume",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:control-plane-sync",
+      "label": "[pi] Control plane sync",
+      "status": "pass",
+      "evidence": {
+        "computers": 1
+      },
+      "stepId": "control-plane-sync",
+      "runtime": "pi"
+    }
+  ],
+  "failures": [
+    {
+      "id": "claude_code:context-preflight",
+      "label": "[claude_code] Context preflight",
+      "status": "fail",
+      "evidence": {
+        "source": "missing runtime_control.inspect_context evidence",
+        "runtime": "claude_code"
+      },
+      "failure": {
+        "category": "context_limit",
+        "code": "CONTEXT_USAGE_MISSING"
+      },
+      "stepId": "context-preflight",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "claude_code:compact-if-needed",
+      "label": "[claude_code] Compact if needed",
+      "status": "fail",
+      "evidence": {
+        "thresholdPercent": 50,
+        "contextPercent": "",
+        "source": "",
+        "runtime": "claude_code"
+      },
+      "failure": {
+        "category": "context_limit",
+        "code": "CONTEXT_COMPACT_REQUIRED"
+      },
+      "stepId": "compact-if-needed",
+      "runtime": "claude_code"
+    },
+    {
+      "id": "codex:context-preflight",
+      "label": "[codex] Context preflight",
+      "status": "fail",
+      "evidence": {
+        "source": "missing runtime_control.inspect_context evidence",
+        "runtime": "codex"
+      },
+      "failure": {
+        "category": "context_limit",
+        "code": "CONTEXT_USAGE_MISSING"
+      },
+      "stepId": "context-preflight",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:compact-if-needed",
+      "label": "[codex] Compact if needed",
+      "status": "fail",
+      "evidence": {
+        "thresholdPercent": 50,
+        "contextPercent": "",
+        "source": "",
+        "runtime": "codex"
+      },
+      "failure": {
+        "category": "context_limit",
+        "code": "CONTEXT_COMPACT_REQUIRED"
+      },
+      "stepId": "compact-if-needed",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:warmup-ready",
+      "label": "[codex] Runtime warmup ready",
+      "status": "fail",
+      "evidence": {
+        "runningCandidates": 0
+      },
+      "failure": {
+        "category": "runtime",
+        "code": "RUNTIME_WARMUP_NOT_READY"
+      },
+      "stepId": "warmup-ready",
+      "runtime": "codex"
+    },
+    {
+      "id": "codex:session-resume",
+      "label": "[codex] Session/resume ready",
+      "status": "fail",
+      "evidence": {
+        "sessionCandidates": 0
+      },
+      "failure": {
+        "category": "session",
+        "code": "SESSION_RESUME_EVIDENCE_MISSING"
+      },
+      "stepId": "session-resume",
+      "runtime": "codex"
+    },
+    {
+      "id": "pi:runtime-reuse-candidate",
+      "label": "[pi] Runtime reuse candidate found",
+      "status": "fail",
+      "evidence": {
+        "candidates": 0
+      },
+      "failure": {
+        "category": "runtime",
+        "code": "RUNTIME_REUSE_CANDIDATE_MISSING"
+      },
+      "stepId": "runtime-reuse-candidate",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:warmup-ready",
+      "label": "[pi] Runtime warmup ready",
+      "status": "fail",
+      "evidence": {
+        "runningCandidates": 0
+      },
+      "failure": {
+        "category": "runtime",
+        "code": "RUNTIME_WARMUP_NOT_READY"
+      },
+      "stepId": "warmup-ready",
+      "runtime": "pi"
+    },
+    {
+      "id": "pi:session-resume",
+      "label": "[pi] Session/resume ready",
+      "status": "fail",
+      "evidence": {
+        "sessionCandidates": 0
+      },
+      "failure": {
+        "category": "session",
+        "code": "SESSION_RESUME_EVIDENCE_MISSING"
+      },
+      "stepId": "session-resume",
+      "runtime": "pi"
+    }
+  ],
+  "runtimeReports": [
+    {
+      "mode": "foundation-only",
+      "runtime": "claude_code",
+      "ok": false,
+      "thresholdPercent": 50,
+      "steps": [
+        {
+          "id": "login-session",
+          "label": "Login/session ready",
+          "status": "pass",
+          "evidence": {
+            "authenticated": true
+          }
+        },
+        {
+          "id": "frontend-ready",
+          "label": "Frontend ready",
+          "status": "pass",
+          "evidence": {
+            "frontendOnline": true
+          }
+        },
+        {
+          "id": "backend-ready",
+          "label": "Backend ready",
+          "status": "pass",
+          "evidence": {
+            "backendOnline": true
+          }
+        },
+        {
+          "id": "daemon-connect",
+          "label": "Daemon connected",
+          "status": "pass",
+          "evidence": {
+            "onlineComputers": 1,
+            "computers": 1
+          }
+        },
+        {
+          "id": "target-runtime-ready",
+          "label": "Claude Code runtime available",
+          "status": "pass",
+          "evidence": {
+            "runtime": "claude_code",
+            "detectedRuntimeComputers": 1,
+            "workspaceCandidates": 4
+          }
+        },
+        {
+          "id": "runtime-reuse-candidate",
+          "label": "Runtime reuse candidate found",
+          "status": "pass",
+          "evidence": {
+            "candidates": 4
+          }
+        },
+        {
+          "id": "limit-preflight",
+          "label": "Limit preflight",
+          "status": "pass",
+          "evidence": {
+            "source": "no limit error observed"
+          }
+        },
+        {
+          "id": "context-preflight",
+          "label": "Context preflight",
+          "status": "fail",
+          "evidence": {
+            "source": "missing runtime_control.inspect_context evidence",
+            "runtime": "claude_code"
+          },
+          "failure": {
+            "category": "context_limit",
+            "code": "CONTEXT_USAGE_MISSING"
+          }
+        },
+        {
+          "id": "compact-if-needed",
+          "label": "Compact if needed",
+          "status": "fail",
+          "evidence": {
+            "thresholdPercent": 50,
+            "contextPercent": "",
+            "source": "",
+            "runtime": "claude_code"
+          },
+          "failure": {
+            "category": "context_limit",
+            "code": "CONTEXT_COMPACT_REQUIRED"
+          }
+        },
+        {
+          "id": "warmup-ready",
+          "label": "Runtime warmup ready",
+          "status": "pass",
+          "evidence": {
+            "runningCandidates": 3
+          }
+        },
+        {
+          "id": "session-resume",
+          "label": "Session/resume ready",
+          "status": "pass",
+          "evidence": {
+            "sessionCandidates": 3
+          }
+        },
+        {
+          "id": "control-plane-sync",
+          "label": "Control plane sync",
+          "status": "pass",
+          "evidence": {
+            "computers": 1
+          }
+        }
+      ],
+      "failures": [
+        {
+          "id": "context-preflight",
+          "label": "Context preflight",
+          "status": "fail",
+          "evidence": {
+            "source": "missing runtime_control.inspect_context evidence",
+            "runtime": "claude_code"
+          },
+          "failure": {
+            "category": "context_limit",
+            "code": "CONTEXT_USAGE_MISSING"
+          }
+        },
+        {
+          "id": "compact-if-needed",
+          "label": "Compact if needed",
+          "status": "fail",
+          "evidence": {
+            "thresholdPercent": 50,
+            "contextPercent": "",
+            "source": "",
+            "runtime": "claude_code"
+          },
+          "failure": {
+            "category": "context_limit",
+            "code": "CONTEXT_COMPACT_REQUIRED"
+          }
+        }
+      ],
+      "summary": {
+        "total": 12,
+        "passed": 10,
+        "failed": 2,
+        "skipped": 0
+      }
+    },
+    {
+      "mode": "foundation-only",
+      "runtime": "codex",
+      "ok": false,
+      "thresholdPercent": 50,
+      "steps": [
+        {
+          "id": "login-session",
+          "label": "Login/session ready",
+          "status": "pass",
+          "evidence": {
+            "authenticated": true
+          }
+        },
+        {
+          "id": "frontend-ready",
+          "label": "Frontend ready",
+          "status": "pass",
+          "evidence": {
+            "frontendOnline": true
+          }
+        },
+        {
+          "id": "backend-ready",
+          "label": "Backend ready",
+          "status": "pass",
+          "evidence": {
+            "backendOnline": true
+          }
+        },
+        {
+          "id": "daemon-connect",
+          "label": "Daemon connected",
+          "status": "pass",
+          "evidence": {
+            "onlineComputers": 1,
+            "computers": 1
+          }
+        },
+        {
+          "id": "target-runtime-ready",
+          "label": "Codex runtime available",
+          "status": "pass",
+          "evidence": {
+            "runtime": "codex",
+            "detectedRuntimeComputers": 1,
+            "workspaceCandidates": 2
+          }
+        },
+        {
+          "id": "runtime-reuse-candidate",
+          "label": "Runtime reuse candidate found",
+          "status": "pass",
+          "evidence": {
+            "candidates": 2
+          }
+        },
+        {
+          "id": "limit-preflight",
+          "label": "Limit preflight",
+          "status": "pass",
+          "evidence": {
+            "source": "no limit error observed"
+          }
+        },
+        {
+          "id": "context-preflight",
+          "label": "Context preflight",
+          "status": "fail",
+          "evidence": {
+            "source": "missing runtime_control.inspect_context evidence",
+            "runtime": "codex"
+          },
+          "failure": {
+            "category": "context_limit",
+            "code": "CONTEXT_USAGE_MISSING"
+          }
+        },
+        {
+          "id": "compact-if-needed",
+          "label": "Compact if needed",
+          "status": "fail",
+          "evidence": {
+            "thresholdPercent": 50,
+            "contextPercent": "",
+            "source": "",
+            "runtime": "codex"
+          },
+          "failure": {
+            "category": "context_limit",
+            "code": "CONTEXT_COMPACT_REQUIRED"
+          }
+        },
+        {
+          "id": "warmup-ready",
+          "label": "Runtime warmup ready",
+          "status": "fail",
+          "evidence": {
+            "runningCandidates": 0
+          },
+          "failure": {
+            "category": "runtime",
+            "code": "RUNTIME_WARMUP_NOT_READY"
+          }
+        },
+        {
+          "id": "session-resume",
+          "label": "Session/resume ready",
+          "status": "fail",
+          "evidence": {
+            "sessionCandidates": 0
+          },
+          "failure": {
+            "category": "session",
+            "code": "SESSION_RESUME_EVIDENCE_MISSING"
+          }
+        },
+        {
+          "id": "control-plane-sync",
+          "label": "Control plane sync",
+          "status": "pass",
+          "evidence": {
+            "computers": 1
+          }
+        }
+      ],
+      "failures": [
+        {
+          "id": "context-preflight",
+          "label": "Context preflight",
+          "status": "fail",
+          "evidence": {
+            "source": "missing runtime_control.inspect_context evidence",
+            "runtime": "codex"
+          },
+          "failure": {
+            "category": "context_limit",
+            "code": "CONTEXT_USAGE_MISSING"
+          }
+        },
+        {
+          "id": "compact-if-needed",
+          "label": "Compact if needed",
+          "status": "fail",
+          "evidence": {
+            "thresholdPercent": 50,
+            "contextPercent": "",
+            "source": "",
+            "runtime": "codex"
+          },
+          "failure": {
+            "category": "context_limit",
+            "code": "CONTEXT_COMPACT_REQUIRED"
+          }
+        },
+        {
+          "id": "warmup-ready",
+          "label": "Runtime warmup ready",
+          "status": "fail",
+          "evidence": {
+            "runningCandidates": 0
+          },
+          "failure": {
+            "category": "runtime",
+            "code": "RUNTIME_WARMUP_NOT_READY"
+          }
+        },
+        {
+          "id": "session-resume",
+          "label": "Session/resume ready",
+          "status": "fail",
+          "evidence": {
+            "sessionCandidates": 0
+          },
+          "failure": {
+            "category": "session",
+            "code": "SESSION_RESUME_EVIDENCE_MISSING"
+          }
+        }
+      ],
+      "summary": {
+        "total": 12,
+        "passed": 8,
+        "failed": 4,
+        "skipped": 0
+      }
+    },
+    {
+      "mode": "foundation-only",
+      "runtime": "opencode",
+      "ok": true,
+      "thresholdPercent": 50,
+      "steps": [
+        {
+          "id": "login-session",
+          "label": "Login/session ready",
+          "status": "pass",
+          "evidence": {
+            "authenticated": true
+          }
+        },
+        {
+          "id": "frontend-ready",
+          "label": "Frontend ready",
+          "status": "pass",
+          "evidence": {
+            "frontendOnline": true
+          }
+        },
+        {
+          "id": "backend-ready",
+          "label": "Backend ready",
+          "status": "pass",
+          "evidence": {
+            "backendOnline": true
+          }
+        },
+        {
+          "id": "daemon-connect",
+          "label": "Daemon connected",
+          "status": "pass",
+          "evidence": {
+            "onlineComputers": 1,
+            "computers": 1
+          }
+        },
+        {
+          "id": "target-runtime-ready",
+          "label": "OpenCode runtime available",
+          "status": "pass",
+          "evidence": {
+            "runtime": "opencode",
+            "detectedRuntimeComputers": 1,
+            "workspaceCandidates": 3
+          }
+        },
+        {
+          "id": "runtime-reuse-candidate",
+          "label": "Runtime reuse candidate found",
+          "status": "pass",
+          "evidence": {
+            "candidates": 3
+          }
+        },
+        {
+          "id": "limit-preflight",
+          "label": "Limit preflight",
+          "status": "pass",
+          "evidence": {
+            "source": "no limit error observed"
+          }
+        },
+        {
+          "id": "context-preflight",
+          "label": "Context preflight",
+          "status": "skip",
+          "applicable": false,
+          "evidence": {
+            "runtime": "opencode",
+            "reason": "runtime_context_control_unsupported"
+          }
+        },
+        {
+          "id": "compact-if-needed",
+          "label": "Compact if needed",
+          "status": "skip",
+          "applicable": false,
+          "evidence": {
+            "thresholdPercent": 50,
+            "contextPercent": "",
+            "source": "",
+            "runtime": "opencode",
+            "reason": "runtime_compact_control_unsupported"
+          }
+        },
+        {
+          "id": "warmup-ready",
+          "label": "Runtime warmup ready",
+          "status": "pass",
+          "evidence": {
+            "runningCandidates": 2
+          }
+        },
+        {
+          "id": "session-resume",
+          "label": "Session/resume ready",
+          "status": "pass",
+          "evidence": {
+            "sessionCandidates": 2
+          }
+        },
+        {
+          "id": "control-plane-sync",
+          "label": "Control plane sync",
+          "status": "pass",
+          "evidence": {
+            "computers": 1
+          }
+        }
+      ],
+      "failures": [],
+      "summary": {
+        "total": 12,
+        "passed": 10,
+        "failed": 0,
+        "skipped": 2
+      }
+    },
+    {
+      "mode": "foundation-only",
+      "runtime": "pi",
+      "ok": false,
+      "thresholdPercent": 50,
+      "steps": [
+        {
+          "id": "login-session",
+          "label": "Login/session ready",
+          "status": "pass",
+          "evidence": {
+            "authenticated": true
+          }
+        },
+        {
+          "id": "frontend-ready",
+          "label": "Frontend ready",
+          "status": "pass",
+          "evidence": {
+            "frontendOnline": true
+          }
+        },
+        {
+          "id": "backend-ready",
+          "label": "Backend ready",
+          "status": "pass",
+          "evidence": {
+            "backendOnline": true
+          }
+        },
+        {
+          "id": "daemon-connect",
+          "label": "Daemon connected",
+          "status": "pass",
+          "evidence": {
+            "onlineComputers": 1,
+            "computers": 1
+          }
+        },
+        {
+          "id": "target-runtime-ready",
+          "label": "Built-in Pi runtime available",
+          "status": "pass",
+          "evidence": {
+            "runtime": "pi",
+            "detectedRuntimeComputers": 1,
+            "workspaceCandidates": 0
+          }
+        },
+        {
+          "id": "runtime-reuse-candidate",
+          "label": "Runtime reuse candidate found",
+          "status": "fail",
+          "evidence": {
+            "candidates": 0
+          },
+          "failure": {
+            "category": "runtime",
+            "code": "RUNTIME_REUSE_CANDIDATE_MISSING"
+          }
+        },
+        {
+          "id": "limit-preflight",
+          "label": "Limit preflight",
+          "status": "pass",
+          "evidence": {
+            "source": "no limit error observed"
+          }
+        },
+        {
+          "id": "context-preflight",
+          "label": "Context preflight",
+          "status": "skip",
+          "applicable": false,
+          "evidence": {
+            "runtime": "pi",
+            "reason": "runtime_context_control_unsupported"
+          }
+        },
+        {
+          "id": "compact-if-needed",
+          "label": "Compact if needed",
+          "status": "skip",
+          "applicable": false,
+          "evidence": {
+            "thresholdPercent": 50,
+            "contextPercent": "",
+            "source": "",
+            "runtime": "pi",
+            "reason": "runtime_compact_control_unsupported"
+          }
+        },
+        {
+          "id": "warmup-ready",
+          "label": "Runtime warmup ready",
+          "status": "fail",
+          "evidence": {
+            "runningCandidates": 0
+          },
+          "failure": {
+            "category": "runtime",
+            "code": "RUNTIME_WARMUP_NOT_READY"
+          }
+        },
+        {
+          "id": "session-resume",
+          "label": "Session/resume ready",
+          "status": "fail",
+          "evidence": {
+            "sessionCandidates": 0
+          },
+          "failure": {
+            "category": "session",
+            "code": "SESSION_RESUME_EVIDENCE_MISSING"
+          }
+        },
+        {
+          "id": "control-plane-sync",
+          "label": "Control plane sync",
+          "status": "pass",
+          "evidence": {
+            "computers": 1
+          }
+        }
+      ],
+      "failures": [
+        {
+          "id": "runtime-reuse-candidate",
+          "label": "Runtime reuse candidate found",
+          "status": "fail",
+          "evidence": {
+            "candidates": 0
+          },
+          "failure": {
+            "category": "runtime",
+            "code": "RUNTIME_REUSE_CANDIDATE_MISSING"
+          }
+        },
+        {
+          "id": "warmup-ready",
+          "label": "Runtime warmup ready",
+          "status": "fail",
+          "evidence": {
+            "runningCandidates": 0
+          },
+          "failure": {
+            "category": "runtime",
+            "code": "RUNTIME_WARMUP_NOT_READY"
+          }
+        },
+        {
+          "id": "session-resume",
+          "label": "Session/resume ready",
+          "status": "fail",
+          "evidence": {
+            "sessionCandidates": 0
+          },
+          "failure": {
+            "category": "session",
+            "code": "SESSION_RESUME_EVIDENCE_MISSING"
+          }
+        }
+      ],
+      "summary": {
+        "total": 12,
+        "passed": 7,
+        "failed": 3,
+        "skipped": 2
+      }
+    }
+  ],
+  "summary": {
+    "total": 48,
+    "passed": 35,
+    "failed": 9,
+    "skipped": 4
+  },
+  "schemaVersion": 1,
+  "runId": "foundation-only-msg79mit",
+  "startedAt": "2026-08-05T14:46:20.626Z",
+  "completedAt": "2026-08-05T14:46:20.741Z",
+  "target": {
+    "apiBase": "http://127.0.0.1:8000",
+    "frontendBase": "http://127.0.0.1:3000",
+    "daemonRpcBase": null,
+    "serverId": "736fb948-759f-42b5-a049-f6c42752acc6",
+    "runtime": "all"
+  }
+}
