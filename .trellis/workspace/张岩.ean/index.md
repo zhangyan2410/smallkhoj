@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
-- **Last Active**: 2026-08-03
+- **Total Sessions**: 16
+- **Last Active**: 2026-08-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~527 | Active |
+| `journal-1.md` | ~562 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-08-05 | Finish Codex/OpenCode runtime gates: Activity + Aura unified | `49948bd`, `8bf2d1f`, `b48acd5` | `main` |
 | 15 | 2026-08-03 | Fix Codex ACP nested npx exit 127 | `0d26ab9` | `feat/fix-codex-acp-exit-127` |
 | 14 | 2026-08-02 | 前端三连任务：聊天性能优化、实时活动指示、后台通知 | `96cbcc2`, `d27f077`, `d56fe57`, `5bc2fc4` | `main` |
 | 13 | 2026-08-02 | 完成开发与真实验证最小入口 | `70adad1` | `main` |

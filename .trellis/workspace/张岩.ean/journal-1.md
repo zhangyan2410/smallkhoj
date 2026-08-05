@@ -525,3 +525,38 @@ Removed outer npx package selectors at the Codex child boundary, made explicit A
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: Finish Codex/OpenCode runtime gates: Activity + Aura unified
+
+**Date**: 2026-08-05
+**Task**: Finish Codex/OpenCode runtime gates: Activity + Aura unified
+**Branch**: `main`
+
+### Summary
+
+Closed 08-04-repair-codex-opencode-runtime-gates. Activity semantics aligned to Claude baseline (thinking/Ran tool/Idle) via new runtime-activity translator across Codex/Codex-ACP/OpenCode/Pi; all five runtimes now execute bare 'aura' from PATH (workspace .slock prepended), Activity preview only redacts proxy secrets without disguising wrapper paths; clean first-start matrix proves workspace-local aura wins over a poisoned host aura. PRD AC R1-R7 all met. Existing slock/raft wrappers retained as compat aliases per R7 scope. Aggregate gate remains 295/296 with the known independent Pi real-bundled blocker.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `49948bd` | (see git log) |
+| `8bf2d1f` | (see git log) |
+| `b48acd5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
