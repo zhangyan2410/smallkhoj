@@ -9,6 +9,14 @@ import pytest
 from services import reminder_scheduler, thread_summary
 
 
+def test_thread_summary_request_instruction_uses_bare_aura():
+    instruction = thread_summary.build_thread_summary_request_content("abc123ef")
+
+    assert "aura thread summary --thread-id abc123ef" in instruction
+    assert "slock thread" not in instruction.lower()
+    assert "raft thread" not in instruction.lower()
+
+
 def _fake_session_factory():
     @asynccontextmanager
     async def fake_session():

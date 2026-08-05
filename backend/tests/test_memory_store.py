@@ -131,4 +131,10 @@ def test_context_manifest_never_injects_full_channel_memory():
     assert len(manifest["channelMemories"]) == 2
     assert len(manifest["taskMemories"]) == 2
     assert all(len(item["snippet"]) <= 280 for item in manifest["channelMemories"])
+    assert manifest["readMore"] == {
+        "channel": "aura memory search --scope channel --query <terms>",
+        "task": "aura memory read --scope task --path <path>",
+    }
+    assert "slock memory" not in str(manifest).lower()
+    assert "raft memory" not in str(manifest).lower()
     assert "full channel memory" not in str(manifest).lower()

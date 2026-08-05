@@ -7,6 +7,7 @@ import test from 'node:test';
 import { writeSlockWrapper } from '../dist/runtime/slock-wrapper.js';
 import {
   OpenCodeServerRuntimeDriver,
+  buildOpenCodeRuntimeEnv,
   buildOpenCodeSlockPrompt,
   parseOpenCodeModel,
   resolveOpenCodeServeLaunchCommand,
@@ -93,8 +94,15 @@ const server = http.createServer((req, res) => {
       const sessionID = decodeURIComponent(messageMatch[1]);
       const input = body ? JSON.parse(body) : {};
       record({ messages: [{ sessionID, input }] });
-      sendEvent('message.part.updated', { sessionID, part: { type: 'text', text: 'hello from fake opencode' } });
-      sendEvent('message.part.updated', { sessionID, part: { type: 'tool', id: 'tool_1', callID: 'tool_1', tool: 'bash', state: { status: 'pending', input: { command: input.parts?.[0]?.text || '' } } } });
+      const userMessageID = 'msg_user_1';
+      const assistantMessageID = 'msg_assistant_1';
+      sendEvent('message.part.updated', { sessionID, part: { id: 'part_user_1', messageID: userMessageID, type: 'text', text: input.parts?.[0]?.text || '' } });
+      sendEvent('message.updated', { sessionID, info: { id: userMessageID, sessionID, role: 'user' } });
+      sendEvent('message.part.updated', { sessionID, part: { id: 'part_reasoning_1', messageID: assistantMessageID, type: 'reasoning', text: 'checking the repository' } });
+      sendEvent('message.updated', { sessionID, info: { id: assistantMessageID, sessionID, role: 'assistant' } });
+      sendEvent('message.part.delta', { sessionID, messageID: assistantMessageID, partID: 'part_text_1', field: 'text', delta: 'hello from fake opencode' });
+      sendEvent('message.part.updated', { sessionID, part: { type: 'tool', id: 'tool_1', messageID: assistantMessageID, callID: 'tool_1', tool: 'bash', state: { status: 'pending' } } });
+      sendEvent('message.part.updated', { sessionID, part: { type: 'tool', id: 'tool_1', messageID: assistantMessageID, callID: 'tool_1', tool: 'bash', state: { status: 'running', input: { command: input.parts?.[0]?.text || '' } } } });
       sendEvent('permission.asked', {
         id: 'per_fake_1',
         sessionID,
@@ -103,12 +111,15 @@ const server = http.createServer((req, res) => {
         metadata: { command: input.parts?.[0]?.text || '' },
         always: [],
       });
-      sendEvent('message.part.updated', { sessionID, part: { type: 'tool', id: 'tool_1', callID: 'tool_1', tool: 'bash', state: { status: 'completed', output: 'ok' } } });
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({
-        info: { role: 'assistant', tokens: { input: 10, output: 3, total: 13 }, cost: 0.01 },
+        info: { id: assistantMessageID, role: 'assistant', tokens: { input: 10, output: 3, total: 13 }, cost: 0.01 },
         parts: [{ type: 'text', text: 'done' }]
       }));
+      setTimeout(() => {
+        sendEvent('message.part.updated', { sessionID, part: { type: 'tool', id: 'tool_1', messageID: assistantMessageID, callID: 'tool_1', tool: 'bash', state: { status: 'completed', output: 'ok' } } });
+        sendEvent('message.part.delta', { sessionID, messageID: assistantMessageID, partID: 'part_text_2', field: 'text', delta: 'after the tool' });
+      }, 20);
       return;
     }
     const permissionMatch = req.url.match(/^\\/permission\\/([^/]+)\\/reply$/);
@@ -193,12 +204,43 @@ test('opencode prompt includes final Phase 2 prompt-gate constraints', () => {
   assert.match(prompt, /Claude Code runtime/i);
   assert.match(prompt, /WRITES_NOT_ALLOWED/);
   assert.match(prompt, /WRITE_TARGET_NOT_ALLOWED/);
+  assert.match(prompt, /Aura CLI Only/);
+  assert.match(prompt, /aura message check/);
+  assert.doesNotMatch(prompt, /\/tmp\/wrapper/);
+  assert.doesNotMatch(prompt, /`(?:slock|raft)\s+(?:message|task|server|channel|thread)\b/i);
+});
+
+test('opencode runtime env resolves the workspace aura wrapper first and strips proxy secrets', () => {
+  const env = buildOpenCodeRuntimeEnv({
+    credential: { serverUrl: 'http://127.0.0.1:9', token: 'fake_machine_test', agentId: 'agent-opencode' },
+    workspacePath: '/tmp/workspace',
+    wrapperDir: '/tmp/workspace/.slock',
+    slockHome: '/tmp/workspace/.slock',
+    launchId: 'launch-opencode',
+  }, {
+    PATH: 'HOST_PATH',
+    SLOCK_AGENT_TOKEN: 'secret',
+    SLOCK_AGENT_PROXY_URL: 'http://127.0.0.1:1',
+    SLOCK_AGENT_PROXY_TOKEN: 'sap_secret',
+    SLOCK_AGENT_PROXY_TOKEN_FILE: 'token-file',
+    SLOCK_AGENT_ACTIVE_CAPABILITIES: 'send',
+  });
+
+  assert.equal(env.PATH, `/tmp/workspace/.slock${process.platform === 'win32' ? ';' : ':'}HOST_PATH`);
+  assert.equal(env.SLOCK_HOME, '/tmp/workspace/.slock');
+  assert.equal(env.SLOCK_AGENT_ID, 'agent-opencode');
+  assert.equal(env.SLOCK_AGENT_LAUNCH_ID, 'launch-opencode');
+  assert.equal(env.SLOCK_AGENT_PROXY_URL, undefined);
+  assert.equal(env.SLOCK_AGENT_PROXY_TOKEN, undefined);
+  assert.equal(env.SLOCK_AGENT_PROXY_TOKEN_FILE, undefined);
+  assert.equal(env.SLOCK_AGENT_ACTIVE_CAPABILITIES, undefined);
 });
 
 test('opencode serve runtime creates session, sends prompt, maps SSE, and approves permissions with Claude parity', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-opencode-runtime-'));
   const marker = join(root, 'marker.json');
   const { driver } = makeDriver(root, marker);
+  const auraCommand = "aura message send --target '#test' <<'AURAMSG'\nhello\nAURAMSG";
   const sessions = [];
   const sent = [];
   const events = [];
@@ -210,7 +252,7 @@ test('opencode serve runtime creates session, sends prompt, maps SSE, and approv
 
   try {
     driver.start();
-    driver.sendUserMessage('not-wrapper-command');
+    driver.sendUserMessage(auraCommand);
 
     await waitFor(() => events.some(event => event.type === 'result'));
     await waitFor(() => {
@@ -227,9 +269,25 @@ test('opencode serve runtime creates session, sends prompt, maps SSE, and approv
     assert.equal(sent[0].providerID, 'kimi-for-coding');
     assert.equal(sent[0].modelID, 'k2p5');
 
-    assert.ok(events.some(event => event.type === 'assistant' && event.runtime === 'opencode'));
+    const assistantEvents = events.filter(event => event.type === 'assistant' && event.runtime === 'opencode');
+    assert.ok(assistantEvents.some(event => event.message.content.some(block => block.type === 'thinking' && block.thinking === 'checking the repository')));
+    assert.ok(assistantEvents.some(event => event.message.content.some(block => block.type === 'text' && block.text === 'hello from fake opencode')));
+    assert.ok(assistantEvents.some(event => event.message.content.some(block => block.type === 'text' && block.text === 'after the tool')));
+    assert.equal(
+      assistantEvents.some(event => event.message.content.some(block => block.type === 'text' && block.text === auraCommand)),
+      false,
+      'user-authored text parts must not be re-emitted as assistant Activity telemetry',
+    );
+    const toolUseEvent = assistantEvents.find(event => event.message.content.some(block => block.type === 'tool_use'));
+    assert.ok(toolUseEvent);
+    assert.equal(toolUseEvent.message.content[0].input.command, auraCommand);
     assert.ok(events.some(event => event.type === 'user' && event.runtime === 'opencode'));
     const result = events.find(event => event.type === 'result');
+    const finalAssistantIndex = events.findIndex(event => event.type === 'assistant' && event.message.content.some(block => block.text === 'after the tool'));
+    const toolResultIndex = events.findIndex(event => event.type === 'user' && event.message.content.some(block => block.type === 'tool_result'));
+    const resultIndex = events.indexOf(result);
+    assert.ok(finalAssistantIndex >= 0 && finalAssistantIndex < resultIndex, JSON.stringify(events));
+    assert.ok(toolResultIndex >= 0 && toolResultIndex < resultIndex, JSON.stringify(events));
     assert.equal(result.runtime, 'opencode');
     assert.equal(result.subtype, 'success');
     assert.equal(result.usage.input_tokens, 10);
@@ -245,7 +303,7 @@ test('opencode serve runtime creates session, sends prompt, maps SSE, and approv
     assert.match(record.messages[0].input.system, /oh-my-openagent/);
     assert.deepEqual(record.permissionReplies[0].input, {
       reply: 'once',
-      message: 'Approved once to match Claude Code runtime permission parity; Raft CLI writes remain gated by wrapper policy.',
+      message: 'Approved exact daemon-owned Aura command once.',
     });
   } finally {
     driver.stop();

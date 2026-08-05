@@ -92,7 +92,7 @@ test('claude runtime env prepends wrapper path and strips proxy secrets', () => 
   assert.equal(env.SLOCK_AGENT_PROXY_TOKEN_FILE, undefined);
 });
 
-test('claude args and prompt force slock CLI communication', () => {
+test('claude args and prompt force short aura CLI communication', () => {
   const args = buildClaudeArgs({
     model: 'sonnet',
     resumeSessionId: 'session-resume-1',
@@ -108,27 +108,30 @@ test('claude args and prompt force slock CLI communication', () => {
   assert.equal(args.includes('--system-prompt'), false);
 
   const prompt = buildSlockSystemPrompt({ credential, workspacePath: 'D:/workspace', wrapperDir: 'D:/workspace/.slock' });
-  assert.match(prompt, /slock CLI ONLY/);
-  assert.ok(prompt.includes(`\`${join('D:/workspace/.slock', 'slock')}\``));
-  assert.match(prompt, /slock message check/);
+  assert.match(prompt, /aura CLI ONLY/);
+  assert.equal(prompt.includes(join('D:/workspace/.slock', 'slock')), false);
+  assert.equal(prompt.includes(join('D:/workspace/.slock', 'raft')), false);
+  assert.equal(prompt.includes(join('D:/workspace/.slock', 'aura')), false);
+  assert.match(prompt, /aura message check/);
   assert.match(prompt, /Use freely during work/);
-  assert.match(prompt, /slock message resolve/);
-  assert.match(prompt, /slock server info/);
-  assert.match(prompt, /slock task list/);
-  assert.match(prompt, /slock task create/);
-  assert.match(prompt, /slock task claim/);
-  assert.match(prompt, /slock task unclaim/);
-  assert.match(prompt, /slock task update/);
-  assert.match(prompt, /slock memory context/);
-  assert.match(prompt, /slock memory proposals/);
-  assert.match(prompt, /slock memory accept-proposal/);
-  assert.match(prompt, /slock memory reject-proposal/);
-  assert.match(prompt, /slock memory delete/);
-  assert.match(prompt, /slock reminder snooze/);
-  assert.match(prompt, /slock reminder log/);
-  assert.match(prompt, /slock attachment upload/);
-  assert.match(prompt, /slock attachment view/);
-  assert.doesNotMatch(prompt, /slock action prepare/);
+  assert.match(prompt, /aura message resolve/);
+  assert.match(prompt, /aura server info/);
+  assert.match(prompt, /aura task list/);
+  assert.match(prompt, /aura task create/);
+  assert.match(prompt, /aura task claim/);
+  assert.match(prompt, /aura task unclaim/);
+  assert.match(prompt, /aura task update/);
+  assert.match(prompt, /aura memory context/);
+  assert.match(prompt, /aura memory proposals/);
+  assert.match(prompt, /aura memory accept-proposal/);
+  assert.match(prompt, /aura memory reject-proposal/);
+  assert.match(prompt, /aura memory delete/);
+  assert.match(prompt, /aura reminder snooze/);
+  assert.match(prompt, /aura reminder log/);
+  assert.match(prompt, /aura attachment upload/);
+  assert.match(prompt, /aura attachment view/);
+  assert.doesNotMatch(prompt, /aura action prepare/);
+  assert.doesNotMatch(prompt, /`(?:slock|raft)\s+(?:message|task|memory|reminder|attachment|server|channel|thread|profile|inbox|manual|auth)\b/i);
   assert.match(prompt, /WRITES_NOT_ALLOWED/);
   assert.doesNotMatch(prompt, /not yet implemented/);
   assert.match(prompt, /## Messaging/);
@@ -142,30 +145,23 @@ test('runtime activity command preview redacts Slock proxy internals', () => {
     "export SLOCK_AGENT_PROXY_URL='http://127.0.0.1:64165'",
     "export SLOCK_AGENT_PROXY_TOKEN_FILE='/Users/lee/.slock/agent-proxy-tokens/agent-1/pid-1.token'",
     "export SLOCK_AGENT_ACTIVE_CAPABILITIES='send,read'",
-    "slock message send --target '#all' hello",
+    "aura message send --target '#all' hello",
   ].join('\n'));
 
   assert.doesNotMatch(preview, /SLOCK_AGENT_PROXY_URL/);
   assert.doesNotMatch(preview, /SLOCK_AGENT_PROXY_TOKEN_FILE/);
   assert.doesNotMatch(preview, /agent-proxy-tokens/);
-  assert.match(preview, /slock message send --target '#all' hello/);
+  assert.match(preview, /aura message send --target '#all' hello/);
 });
 
-test('runtime activity command preview collapses generated Slock wrapper paths before truncation', () => {
-  const preview = sanitizeRuntimeCommandPreview(
-    "/Users/code/project/smallkhoj-repair-twd-evidence-runtime-loop/.slock-runtimes/"
-      + "cd849e71-a112-4616-a22c-47e69f217d0e/"
-      + "10bd4b45-ad8c-4e0b-a877-81e9163b1134/"
-      + "ef7f0b04-2282-49bf-925b-13841ecba687/.slock/slock "
-      + "message send --target '#twd-loop-142749' ACK_TWD_GATE",
+test('runtime activity command preview preserves the actual aura command and does not disguise legacy paths', () => {
+  assert.equal(
+    sanitizeRuntimeCommandPreview('aura message send --target dm:@zy-ean hello'),
+    'aura message send --target dm:@zy-ean hello',
   );
 
-  assert.equal(
-    preview,
-    "slock message send --target '#twd-loop-142749' ACK_TWD_GATE",
-  );
-  assert.doesNotMatch(preview, /\.slock-runtimes|smallkhoj-repair-twd/);
-  assert.ok(preview.length < 200);
+  const legacyAbsoluteCommand = '/workspace/.slock/raft message send --target dm:@zy-ean hello';
+  assert.equal(sanitizeRuntimeCommandPreview(legacyAbsoluteCommand), legacyAbsoluteCommand);
 });
 
 test('claude system prompt is written under slock home', () => {
@@ -180,7 +176,7 @@ test('claude system prompt is written under slock home', () => {
 
     assert.equal(promptFile, join(wrapperDir, 'claude-system-prompt.md'));
     const prompt = readFileSync(promptFile, 'utf-8');
-    assert.match(prompt, /slock CLI ONLY/);
+    assert.match(prompt, /aura CLI ONLY/);
     assert.match(prompt, /Agent ID: agent-123/);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -266,8 +262,8 @@ test('daemon injects a selective memory context manifest into runtime prompts', 
       },
     ],
     readMore: {
-      task: 'slock memory read --scope task --id task-1 --path brief.md',
-      channel: 'slock memory search --scope channel --id channel-1 --query "scoped memory"',
+      task: 'aura memory read --scope task --id task-1 --path brief.md',
+      channel: 'aura memory search --scope channel --id channel-1 --query "scoped memory"',
     },
   };
 
@@ -280,7 +276,8 @@ test('daemon injects a selective memory context manifest into runtime prompts', 
   assert.match(formatted, /brief\.md - Task brief: Implement scoped memory context injection\./);
   assert.match(formatted, /Channel memory/);
   assert.match(formatted, /MEMORY\.md - Channel memory: Use selective manifests, not full channel memory\./);
-  assert.match(formatted, /slock memory read --scope task --id task-1 --path brief\.md/);
+  assert.match(formatted, /aura memory read --scope task --id task-1 --path brief\.md/);
+  assert.doesNotMatch(formatted, /\b(?:slock|raft)\s+memory\s+(?:read|search)\b/i);
   assert.match(formatted, /\[event=message\.created/);
   assert.doesNotMatch(formatted, /FULL TASK MEMORY SHOULD NOT BE INSERTED/);
   assert.doesNotMatch(formatted, /FULL CHANNEL MEMORY SHOULD NOT BE INSERTED/);
@@ -449,8 +446,8 @@ test('daemon formats non-message Slock events for Claude runtime delivery', () =
     formatRuntimeIncomingMessage(message),
     [
       '[event=task_created eventSeq=7 target=#general task=#3 status=todo actor=supervisor assignee=@aaa type=task_created] You have been assigned this Slock task. Treat this event as an actionable work request, not as a passive system notification.',
-      'Use `slock task claim` for this task if it is still todo, do the requested work, then use `slock task update --status in_review` when ready for human review.',
-      'Post progress and the final result back to #general with `slock message send --target "#general"`.',
+      'Use `aura task claim` for this task if it is still todo, do the requested work, then use `aura task update --status in_review` when ready for human review.',
+      'Post progress and the final result back to #general with `aura message send --target "#general"`.',
       '',
       'title=Implement delegated slice',
       'status=todo',
@@ -498,8 +495,8 @@ test('daemon formats dotted assigned task creation as actionable runtime work', 
     formatRuntimeIncomingMessage(message),
     [
       '[event=task.created eventSeq=52 target=dm:@zy-ean task=#9 status=todo actor=agent-123 assignee=@glm1 type=task.created] You have been assigned this Slock task. Treat this event as an actionable work request, not as a passive system notification.',
-      'Use `slock task claim` for this task if it is still todo, do the requested work, then use `slock task update --status in_review` when ready for human review.',
-      'Post progress and the final result back to dm:@zy-ean with `slock message send --target "dm:@zy-ean"`.',
+      'Use `aura task claim` for this task if it is still todo, do the requested work, then use `aura task update --status in_review` when ready for human review.',
+      'Post progress and the final result back to dm:@zy-ean with `aura message send --target "dm:@zy-ean"`.',
       '',
       'title=Write a short update',
       'status=todo',

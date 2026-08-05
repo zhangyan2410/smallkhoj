@@ -27,6 +27,7 @@ import { CodexAcpRuntimeDriver } from '../runtime/codex-acp-runtime.js';
 import { OpenCodeServerRuntimeDriver } from '../runtime/opencode-server-runtime.js';
 import { PiRuntimeDriver, resolveBundledPiLayout } from '../runtime/pi-runtime.js';
 import type { ManagedRuntimeDriver } from '../runtime/runtime-driver.js';
+import { translateRuntimeStreamActivity } from '../runtime/runtime-activity.js';
 import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
 import {
   chooseRuntimeSessionScope,
@@ -181,11 +182,11 @@ interface RuntimeRecord {
   restartTimer: ReturnType<typeof setTimeout> | null;
   stallTimer: ReturnType<typeof setInterval> | null;
   lastProgressAt: number;
-  /** Startup warmup gate: true once a slock tool call has completed successfully */
+  /** Startup warmup gate: true once an aura tool call has completed successfully */
   ready: boolean;
   /** Timestamp the warmup probe was injected, for timeout / duration reporting */
   warmupStartedAt?: number;
-  /** slock tool_use ids emitted during warmup, awaiting their tool_result */
+  /** aura tool_use ids emitted during warmup, awaiting their tool_result */
   pendingWarmupResult: Set<string>;
   /** Timer that degrades the runtime to ready if warmup never completes */
   warmupTimer: ReturnType<typeof setTimeout> | null;
@@ -197,6 +198,10 @@ interface RuntimeRecord {
   lastErrorMessage?: string;
   /** tool_use ids already reported as Output activity this turn (dedup) */
   recordedToolUseIds: Set<string>;
+  /** Serializes Activity POSTs for this runtime without blocking stream handling. */
+  activityReportChain: Promise<void>;
+  /** Inbound turns accepted into a busy driver, awaiting its message_sent boundary. */
+  pendingActivityTurns: RuntimeIncomingMessage[];
   /** Ground-truth token usage from the last completed turn (session-jsonl or provider) */
   lastTurnUsage?: {
     source: 'session-jsonl' | 'provider-stream-json';
@@ -415,39 +420,43 @@ export class DaemonCore extends EventEmitter {
         sessionScope: sessionScope?.key,
       });
     }
-    // Working state: a message reached the runtime, reset per-turn dedup sets
-    // and report the start of a new turn to the Activity timeline.
     if (delivered) {
-      if (message.taskRunId) {
-        runtime.activeTaskRunId = message.taskRunId;
-        runtime.activeTaskRunContextSessionId = message.contextSessionId;
-        runtime.activeTaskRunOutputMessageId = undefined;
-        runtime.activeTaskRunToolUseCount = 0;
-        runtime.activeTaskRunToolResultCount = 0;
-        runtime.lastTurnContextUsage = undefined;
-        void this.reportTaskRunLifecycle({
-          agentId: runtime.agentId,
-          taskRunId: message.taskRunId,
-          status: 'running',
-          workspaceId: runtime.workspaceId,
-          runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
-          contextSessionId: message.contextSessionId,
-        });
-      }
-      runtime.activityTurnState = 'working';
-      runtime.recordedToolUseIds.clear();
-      void this.reportRuntimeActivity(runtime, 'runtime_working', 'Working on message', {
-        messageId: message.messageId ?? undefined,
-        taskRunId: message.taskRunId ?? undefined,
-        sourceChannel: message.channelId ?? undefined,
-        target: message.target ?? undefined,
-      });
+      this.beginRuntimeActivityTurn(runtime, message);
+    } else {
+      runtime.pendingActivityTurns.push(message);
     }
     this.log(
       `Runtime message ${delivered ? 'delivered' : 'queued'} from ${source}: agent=${runtime.agentId} target=${message.target ?? 'unknown'} scope=${sessionScope?.key ?? 'default'}`,
       delivered ? 'info' : 'debug',
     );
     this.emit('runtime_delivery', { source, delivered, agentId: runtime.agentId, message, sessionScope: sessionScope?.key });
+  }
+
+  private beginRuntimeActivityTurn(runtime: RuntimeRecord, message: RuntimeIncomingMessage): void {
+    if (message.taskRunId) {
+      runtime.activeTaskRunId = message.taskRunId;
+      runtime.activeTaskRunContextSessionId = message.contextSessionId;
+      runtime.activeTaskRunOutputMessageId = undefined;
+      runtime.activeTaskRunToolUseCount = 0;
+      runtime.activeTaskRunToolResultCount = 0;
+      runtime.lastTurnContextUsage = undefined;
+      void this.reportTaskRunLifecycle({
+        agentId: runtime.agentId,
+        taskRunId: message.taskRunId,
+        status: 'running',
+        workspaceId: runtime.workspaceId,
+        runtimeSessionId: runtime.driver.sessionId ?? runtime.sessionId ?? undefined,
+        contextSessionId: message.contextSessionId,
+      });
+    }
+    runtime.activityTurnState = 'working';
+    runtime.recordedToolUseIds.clear();
+    void this.reportRuntimeActivity(runtime, 'runtime_working', 'Working on message', {
+      messageId: message.messageId ?? undefined,
+      taskRunId: message.taskRunId ?? undefined,
+      sourceChannel: message.channelId ?? undefined,
+      target: message.target ?? undefined,
+    });
   }
 
   private async loadRuntimeMemoryContextManifest(
@@ -987,6 +996,8 @@ export class DaemonCore extends EventEmitter {
       lastStderrLine: undefined,
       lastErrorMessage: undefined,
       recordedToolUseIds: new Set(),
+      activityReportChain: Promise.resolve(),
+      pendingActivityTurns: [],
     };
     this.runtimes.set(agentId, runtime);
     this.startRuntimeStallWatchdog(runtime);
@@ -1019,10 +1030,10 @@ export class DaemonCore extends EventEmitter {
       this.markRuntimeProgress(runtime);
       const eventType = typeof event.type === 'string' ? event.type : undefined;
 
-      // ── Warmup gate: detect a successful slock tool call ──
+      // ── Warmup gate: detect a successful aura tool call ──
       // The runtime is seeded with a warmup probe at startup. It must call a
-      // `slock` tool (via Bash with a `slock` command, or an MCP tool whose
-      // name mentions slock) and the tool_result must not be an error. Until
+      // `aura` tool (via Bash with an `aura` command, or an MCP tool whose
+      // name mentions aura) and the tool_result must not be an error. Until
       // that happens the runtime stays in 'starting' status and is not
       // advertised as ready/online.
       if (!runtime.ready) {
@@ -1038,7 +1049,7 @@ export class DaemonCore extends EventEmitter {
             const name = typeof block.name === 'string' ? block.name : '';
             const input = isRecord(block.input) ? block.input : {};
             const cmd = typeof input.command === 'string' ? input.command : '';
-            if ((name === 'Bash' && /\bslock\b/.test(cmd)) || /slock/i.test(name)) {
+            if ((name === 'Bash' && /\baura\b/.test(cmd)) || /aura/i.test(name)) {
               runtime.pendingWarmupResult.add(block.id);
             }
           }
@@ -1053,7 +1064,7 @@ export class DaemonCore extends EventEmitter {
               || /"ok"\s*:\s*false/i.test(content)
               || /\berror\b/i.test(content) && !/"ok"\s*:\s*true/i.test(content);
             if (!isError) {
-              this.markRuntimeReady(runtime, 'warmup_slock_ok');
+              this.markRuntimeReady(runtime, 'warmup_aura_ok');
             }
           }
         }
@@ -1158,62 +1169,57 @@ export class DaemonCore extends EventEmitter {
             });
           }
         }
-        if (eventType === 'assistant') {
-          // ACP exposes real reasoning as `agent_thought_chunk`, normalized to
-          // a `thinking` block. Plain assistant text remains a compatibility
-          // fallback, except explicit runtime diagnostics, which get their own
-          // Warning/Error activity instead of masquerading as Thinking.
-          let thoughtPreview: string | undefined;
-          for (const block of getContentBlocks(event)) {
-            if (block.type === 'thinking' && typeof block.thinking === 'string') {
-              thoughtPreview ??= block.thinking.slice(0, 200);
-              continue;
-            }
-            if (block.type === 'text' && typeof block.text === 'string') {
-              const severity = classifyRuntimeDiagnostic(block.text);
-              if (severity) {
-                void this.reportRuntimeActivity(
-                  runtime,
-                  severity === 'error' ? 'runtime_error' : 'runtime_warning',
-                  runtimeDiagnosticDescription(severity, block.text),
-                  {
-                    runtime: runtime.runtime,
-                    severity,
-                    source: 'assistant',
-                    message: block.text,
-                    sessionId: driver.sessionId,
-                  },
-                );
-                continue;
-              }
-              thoughtPreview ??= block.text.slice(0, 200);
-            }
+        const activitySignals = translateRuntimeStreamActivity(runtimeType, event);
+        for (const signal of activitySignals) {
+          if (signal.type !== 'thinking') continue;
+          const severity = classifyRuntimeDiagnostic(signal.text);
+          if (severity) {
+            void this.reportRuntimeActivity(
+              runtime,
+              severity === 'error' ? 'runtime_error' : 'runtime_warning',
+              runtimeDiagnosticDescription(severity, signal.text),
+              {
+                runtime: runtime.runtime,
+                protocol: signal.protocol,
+                sourceEvent: signal.sourceEvent,
+                severity,
+                source: 'assistant',
+                message: signal.text,
+                sessionId: driver.sessionId,
+              },
+            );
+            continue;
           }
-          if (thoughtPreview && runtime.activityTurnState !== 'thinking') {
+          // Startup warmup/session traffic can arrive after the runtime has
+          // technically become ready. Only user-delivery turns enter Working,
+          // so do not surface provider warmup narration as product Activity.
+          if (runtime.activityTurnState === 'idle') continue;
+          if (runtime.activityTurnState !== 'thinking') {
             runtime.activityTurnState = 'thinking';
             void this.reportRuntimeActivity(runtime, 'runtime_thinking', 'Thinking', {
+              protocol: signal.protocol,
+              sourceEvent: signal.sourceEvent,
               sessionId: driver.sessionId ?? undefined,
-              thought: thoughtPreview,
+              thought: signal.text.slice(0, 200),
             });
           }
         }
-        if (eventType === 'assistant') {
+        if (eventType === 'assistant' && runtime.activityTurnState !== 'idle') {
           let toolUseRecorded = false;
-          for (const block of getContentBlocks(event)) {
-            if (block.type !== 'tool_use' || typeof block.id !== 'string') continue;
-            if (runtime.recordedToolUseIds.has(block.id)) continue;
-            runtime.recordedToolUseIds.add(block.id);
+          for (const signal of activitySignals) {
+            if (signal.type !== 'tool_use') continue;
+            if (runtime.recordedToolUseIds.has(signal.toolUseId)) continue;
+            runtime.recordedToolUseIds.add(signal.toolUseId);
             if (runtime.activeTaskRunId) {
               runtime.activeTaskRunToolUseCount += 1;
               toolUseRecorded = true;
             }
             runtime.activityTurnState = 'output';
-            const name = typeof block.name === 'string' ? block.name : 'tool';
-            const input = isRecord(block.input) ? block.input : {};
-            const cmd = typeof input.command === 'string' ? input.command : '';
-            void this.reportRuntimeActivity(runtime, 'runtime_output', `Ran ${name}`, {
-              toolName: name,
-              commandPreview: cmd ? sanitizeRuntimeCommandPreview(cmd) : undefined,
+            void this.reportRuntimeActivity(runtime, 'runtime_output', `Ran ${signal.toolName}`, {
+              protocol: signal.protocol,
+              sourceEvent: signal.sourceEvent,
+              toolName: signal.toolName,
+              commandPreview: sanitizeRuntimeCommandPreview(signal.commandPreview),
             });
           }
           if (toolUseRecorded && runtime.activeTaskRunId) {
@@ -1317,6 +1323,11 @@ export class DaemonCore extends EventEmitter {
     });
     driver.on('message_sent', (payload) => {
       this.markRuntimeProgress(runtime);
+      const control = isRecord(payload) && payload.control === true;
+      if (!control) {
+        const queuedActivityTurn = runtime.pendingActivityTurns.shift();
+        if (queuedActivityTurn) this.beginRuntimeActivityTurn(runtime, queuedActivityTurn);
+      }
       const sessionScopeKey = isRecord(payload) && typeof payload.sessionScopeKey === 'string'
         ? payload.sessionScopeKey
         : undefined;
@@ -1461,13 +1472,13 @@ export class DaemonCore extends EventEmitter {
     } else {
       // Inject a startup warmup probe. The message is queued inside the driver
       // (pendingUserMessages) and self-drains once the child is writable.
-      // The runtime must call a `slock` tool successfully for the daemon to flip
+      // The runtime must call the PATH-injected `aura` tool successfully for the daemon to flip
       // the status to 'running'; otherwise the warmup timer degrades it to ready.
       const warmupText = [
       '[event=system.warmup type=system]',
       'This is a startup readiness check, not a user message.',
-      `Run \`${runtime.wrapper.bashWrapper} server info\` once to confirm Slock connectivity and your agent identity,`,
-      'Use this exact wrapper path; do not use any globally installed `slock` command for this check.',
+      'Run `aura server info` once to confirm Slock connectivity and your agent identity.',
+      'Use the bare `aura` command from PATH. Do not inspect or invoke generated absolute wrapper paths.',
       'then stop and wait for real messages. Do not send any chat message during this check.',
     ].join('\n');
     runtime.driver.sendUserMessage(warmupText);
@@ -1830,7 +1841,7 @@ export class DaemonCore extends EventEmitter {
   }
 
   /**
-   * Flip a runtime from 'starting' to 'running' once the warmup slock tool call
+   * Flip a runtime from 'starting' to 'running' once the warmup aura tool call
    * has completed (or the warmup timer degraded it). Idempotent.
    */
   private markRuntimeReady(runtime: RuntimeRecord, reason: string): void {
@@ -1914,8 +1925,9 @@ export class DaemonCore extends EventEmitter {
   /**
    * Report a runtime-state activity (Working/Thinking/Output/Idle) to the
    * backend so it shows up in the Activity tab timeline. Truncates all string
-   * values to keep network payload small. Fire-and-forget with a short timeout;
-   * failures are logged at debug level and never block the stream loop.
+   * values to keep network payload small. Calls enqueue onto a per-runtime
+   * promise chain so the backend persists Working/Thinking/Output/Idle in the
+   * observed provider order while the stream loop itself remains non-blocking.
    */
   private async reportRuntimeActivity(
     runtime: RuntimeRecord,
@@ -1923,23 +1935,27 @@ export class DaemonCore extends EventEmitter {
     description: string,
     details: Record<string, unknown>,
   ): Promise<void> {
-    if (!this.credential || this.stopping) return;
     const truncated = truncateDetails(details, 200);
-    const serverUrl = this.credential.serverUrl || this.config.serverUrl;
-    try {
-      await fetch(new URL('/internal/agent-api/activity', serverUrl), {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.credential.token}`,
-          'X-Agent-Id': runtime.agentId,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: kind, description, details: truncated }),
-        signal: AbortSignal.timeout(3000),
-      });
-    } catch (err) {
-      this.log(`Activity report failed (${kind}): ${(err as Error).message}`, 'debug');
-    }
+    runtime.activityReportChain = runtime.activityReportChain.then(async () => {
+      if (!this.credential || this.stopping) return;
+      const serverUrl = this.credential.serverUrl || this.config.serverUrl;
+      try {
+        const response = await fetch(new URL('/internal/agent-api/activity', serverUrl), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.credential.token}`,
+            'X-Agent-Id': runtime.agentId,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ type: kind, description, details: truncated }),
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      } catch (err) {
+        this.log(`Activity report failed (${kind}): ${(err as Error).message}`, 'debug');
+      }
+    });
+    return runtime.activityReportChain;
   }
 
   async reportTaskRunLifecycle(report: TaskRunLifecycleReport): Promise<void> {
@@ -2217,7 +2233,7 @@ function formatMemoryContextBlock(manifest?: RuntimeMemoryContextManifest | null
   const lines = [
     '## Slock Memory Context',
     `policy=${manifest.policy === 'selective' ? 'selective' : 'selective'} scope=${scopeKey}`,
-    'Use these snippets as orientation only. For full details, call `slock memory read` or `slock memory search`.',
+    'Use these snippets as orientation only. For full details, call `aura memory read` or `aura memory search`.',
   ];
 
   if (taskMemories.length > 0) {
@@ -2288,7 +2304,7 @@ function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
 
   const lines = [
     'You have been assigned this Slock task. Treat this event as an actionable work request, not as a passive system notification.',
-    'Use `slock task claim` for this task if it is still todo, do the requested work, then use `slock task update --status in_review` when ready for human review.',
+    'Use `aura task claim` for this task if it is still todo, do the requested work, then use `aura task update --status in_review` when ready for human review.',
   ];
 
   if (message.taskRunId || message.promptProfile || message.contextSessionId) {
@@ -2305,7 +2321,7 @@ function formatRuntimeIncomingContent(message: RuntimeIncomingMessage): string {
   }
 
   if (message.target) {
-    lines.push(`Post progress and the final result back to ${message.target} with \`slock message send --target "${message.target}"\`.`);
+    lines.push(`Post progress and the final result back to ${message.target} with \`aura message send --target "${message.target}"\`.`);
   } else {
     lines.push('Post progress and the final result back to the source task thread or visible source conversation.');
   }
@@ -2723,9 +2739,6 @@ export function sanitizeRuntimeCommandPreview(command: string): string {
       .replace(new RegExp(`^\\s*\\$env:${name}=.*(?:\\r?\\n|$)`, 'gmi'), '')
       .replace(new RegExp(`\\b${name}=(?:'((?:'\\\\''|[^'])*)'|"[^"]*"|\\S+)\\s*`, 'g'), '');
   }
-  preview = preview
-    .replace(/(["'`])[^"'`\r\n]*[\\/]\.slock[\\/]slock(?:\.(?:cmd|ps1))?\1/gi, 'slock')
-    .replace(/(^|\s)(?:[^\s"'`]*[\\/])?\.slock[\\/]slock(?:\.(?:cmd|ps1))?(?=$|\s)/gim, '$1slock');
   preview = preview.replace(/[^\s'"]*agent-proxy-tokens[^\s'"]*/g, '[slock-proxy-token-file]');
   return preview
     .split(/\r?\n/)

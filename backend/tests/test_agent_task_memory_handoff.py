@@ -54,8 +54,10 @@ async def test_task_memory_request_event_targets_assigned_agent_with_output_dire
     assert event.payload["targetAgentId"] == str(assignee.id)
     assert event.payload["target"] == "#slock:abc123ef"
     assert event.payload["outputDirections"] == ["final_summary", "evidence", "channel_memory"]
-    assert "slock task summary" in event.payload["content"]
-    assert "slock task promote" in event.payload["content"]
+    assert "aura task summary" in event.payload["content"]
+    assert "aura task promote" in event.payload["content"]
+    assert "slock task" not in event.payload["content"].lower()
+    assert "raft task" not in event.payload["content"].lower()
     assert "include browser evidence" in event.payload["content"]
 
 

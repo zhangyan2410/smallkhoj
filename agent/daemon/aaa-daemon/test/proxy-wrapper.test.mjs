@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import test from 'node:test';
 
 import { rewriteAgentPath } from '../dist/proxy/agent-proxy.js';
+import { buildClaudeRuntimeEnv } from '../dist/runtime/claude-runtime.js';
+import { buildCodexRuntimeEnv } from '../dist/runtime/codex-runtime.js';
+import { buildOpenCodeRuntimeEnv } from '../dist/runtime/opencode-server-runtime.js';
+import { buildPiRuntimeEnv } from '../dist/runtime/pi-runtime.js';
 import { defaultSlockCliPath, prependPathEnv, writeSlockWrapper } from '../dist/runtime/slock-wrapper.js';
 
 test('rewriteAgentPath preserves query strings and normalizes receive', () => {
@@ -103,13 +108,157 @@ test('writeSlockWrapper writes wrappers and proxy token', () => {
     assert.match(bashWrapper, /SLOCK_AGENT_PROXY_URL='http:\/\/127\.0\.0\.1:3456'/);
     assert.match(bashWrapper, /SLOCK_AGENT_PROXY_TOKEN_FILE='[^']+' \\/);
     assert.match(bashWrapper, /exec '.*node(\.exe)?' 'D:\/repo\/dist\/slock-cli\.js' "\$@"/);
-    assert.match(readFileSync(result.cmdWrapper, 'utf-8'), /set "SLOCK_AGENT_ID=agent-123"/);
-    assert.match(readFileSync(result.psWrapper, 'utf-8'), /\$env:SLOCK_SERVER_URL='https:\/\/api\.slock\.ai'/);
-    assert.match(readFileSync(join(result.wrapperDir, 'aura'), 'utf-8'), /SLOCK_AGENT_PROXY_URL='http:\/\/127\.0\.0\.1:3456'/);
-    assert.match(readFileSync(join(result.wrapperDir, 'aura.cmd'), 'utf-8'), /set "SLOCK_AGENT_ID=agent-123"/);
-    assert.match(readFileSync(join(result.wrapperDir, 'aura.ps1'), 'utf-8'), /\$env:SLOCK_SERVER_URL='https:\/\/api\.slock\.ai'/);
-    assert.match(readFileSync(join(workspace, 'MEMORY.md'), 'utf-8'), /New daemon-managed Slock\/Raft runtime workspace/);
+    const cmdWrapper = readFileSync(result.cmdWrapper, 'utf-8');
+    const psWrapper = readFileSync(result.psWrapper, 'utf-8');
+    assert.match(cmdWrapper, /set "SLOCK_AGENT_ID=agent-123"/);
+    assert.match(psWrapper, /\$env:SLOCK_SERVER_URL='https:\/\/api\.slock\.ai'/);
+    for (const alias of ['slock', 'raft', 'aura']) {
+      assert.equal(readFileSync(join(result.wrapperDir, alias), 'utf-8'), bashWrapper);
+      assert.equal(readFileSync(join(result.wrapperDir, `${alias}.cmd`), 'utf-8'), cmdWrapper);
+      assert.equal(readFileSync(join(result.wrapperDir, `${alias}.ps1`), 'utf-8'), psWrapper);
+    }
+    assert.match(readFileSync(join(workspace, 'MEMORY.md'), 'utf-8'), /Use `aura` from PATH/);
+    assert.doesNotMatch(readFileSync(join(workspace, 'MEMORY.md'), 'utf-8'), /`(?:slock|raft)\s/);
     assert.equal(prependPathEnv(result.wrapperDir, 'BASE'), `${result.wrapperDir}${process.platform === 'win32' ? ';' : ':'}BASE`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('PATH-injected collaboration aliases resolve the same workspace agent CLI', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-aura-path-'));
+  try {
+    const cliPath = join(root, 'fake-slock-cli.mjs');
+    writeFileSync(cliPath, [
+      "process.stdout.write(JSON.stringify({ args: process.argv.slice(2), agentId: process.env.SLOCK_AGENT_ID }));",
+      '',
+    ].join('\n'));
+    const result = writeSlockWrapper({
+      workspacePath: join(root, 'workspace'),
+      tokenHome: join(root, 'tokens'),
+      launchId: 'aura-path-test',
+      proxyUrl: 'http://127.0.0.1:3456',
+      proxyToken: 'sap_test_token',
+      activeCapabilities: 'send,read',
+      cliPath,
+      credential: {
+        agentId: 'agent-aura',
+        serverId: 'server-aura',
+        token: 'fake_machine_secret',
+        serverUrl: 'https://api.slock.ai',
+      },
+    });
+
+    for (const alias of ['aura', 'slock', 'raft']) {
+      const command = process.platform === 'win32' ? `${alias}.cmd` : alias;
+      const run = spawnSync(command, ['server', 'info'], {
+        encoding: 'utf-8',
+        env: { ...process.env, PATH: prependPathEnv(result.wrapperDir, process.env.PATH ?? '') },
+        shell: process.platform === 'win32',
+      });
+      assert.equal(run.status, 0, `${alias}: ${run.stderr}`);
+      assert.deepEqual(JSON.parse(run.stdout), {
+        args: ['server', 'info'],
+        agentId: 'agent-aura',
+      });
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('clean first-start envs resolve workspace aura before a poisoned host command', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-aura-clean-start-'));
+  try {
+    const workspacePath = join(root, 'workspace');
+    const cleanHome = join(root, 'home');
+    const hostBin = join(root, 'host-bin');
+    const cliPath = join(root, 'fake-slock-cli.mjs');
+    mkdirSync(cleanHome, { recursive: true });
+    mkdirSync(hostBin, { recursive: true });
+    writeFileSync(cliPath, [
+      "process.stdout.write(JSON.stringify({ args: process.argv.slice(2), agentId: process.env.SLOCK_AGENT_ID, home: process.env.HOME || process.env.USERPROFILE }));",
+      '',
+    ].join('\n'));
+
+    if (process.platform === 'win32') {
+      writeFileSync(join(hostBin, 'aura.cmd'), '@echo HOST_AURA_SHOULD_NOT_RUN\r\n');
+    } else {
+      const hostAura = join(hostBin, 'aura');
+      writeFileSync(hostAura, '#!/usr/bin/env bash\nprintf HOST_AURA_SHOULD_NOT_RUN\n');
+      chmodSync(hostAura, 0o755);
+    }
+
+    const credential = {
+      agentId: 'agent-clean-start',
+      serverId: 'server-clean-start',
+      token: 'fake_machine_secret',
+      serverUrl: 'https://api.slock.ai',
+    };
+    const wrapper = writeSlockWrapper({
+      workspacePath,
+      tokenHome: join(root, 'tokens'),
+      launchId: 'clean-start',
+      proxyUrl: 'http://127.0.0.1:3456',
+      proxyToken: 'sap_clean_start',
+      activeCapabilities: 'send,read',
+      cliPath,
+      credential,
+    });
+    const baseEnv = {
+      HOME: cleanHome,
+      USERPROFILE: cleanHome,
+      // The poisoned host command is first in the untrusted base PATH. The
+      // generated workspace wrapper must still be prepended ahead of it.
+      PATH: `${hostBin}${delimiter}${process.env.PATH ?? ''}`,
+      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+      ...(process.env.ComSpec ? { ComSpec: process.env.ComSpec } : {}),
+      ...(process.env.PATHEXT ? { PATHEXT: process.env.PATHEXT } : {}),
+      SLOCK_AGENT_PROXY_URL: 'http://should-not-leak.invalid',
+      SLOCK_AGENT_PROXY_TOKEN: 'should-not-leak',
+      SLOCK_AGENT_PROXY_TOKEN_FILE: join(root, 'should-not-leak.token'),
+      SLOCK_AGENT_ACTIVE_CAPABILITIES: 'should-not-leak',
+    };
+    const commonOptions = {
+      credential,
+      workspacePath,
+      wrapperDir: wrapper.wrapperDir,
+      slockHome: wrapper.slockHome,
+      launchId: wrapper.launchId,
+    };
+    const runtimeEnvs = new Map([
+      ['claude_code', buildClaudeRuntimeEnv(commonOptions, baseEnv)],
+      ['codex', buildCodexRuntimeEnv(commonOptions, baseEnv)],
+      ['opencode', buildOpenCodeRuntimeEnv(commonOptions, baseEnv)],
+      ['pi', buildPiRuntimeEnv({
+        ...commonOptions,
+        proxyUrl: 'http://127.0.0.1:3456',
+        proxyToken: 'sap_clean_start',
+        configHome: join(workspacePath, '.smallkhoj', 'pi'),
+      }, baseEnv)],
+    ]);
+
+    for (const [runtime, env] of runtimeEnvs) {
+      assert.equal(env.PATH?.split(delimiter)[0], wrapper.wrapperDir, `${runtime} must put its workspace wrapper first`);
+      assert.equal(env.HOME, cleanHome, `${runtime} must not require an existing user HOME`);
+      assert.equal(env.SLOCK_HOME, wrapper.wrapperDir);
+      assert.equal(env.SLOCK_AGENT_PROXY_URL, undefined);
+      assert.equal(env.SLOCK_AGENT_PROXY_TOKEN, undefined);
+      assert.equal(env.SLOCK_AGENT_PROXY_TOKEN_FILE, undefined);
+      assert.equal(env.SLOCK_AGENT_ACTIVE_CAPABILITIES, undefined);
+
+      const run = spawnSync(process.platform === 'win32' ? 'aura.cmd' : 'aura', ['server', 'info'], {
+        encoding: 'utf-8',
+        env,
+        shell: process.platform === 'win32',
+      });
+      assert.equal(run.status, 0, `${runtime}: ${run.stderr || run.stdout}`);
+      assert.deepEqual(JSON.parse(run.stdout), {
+        args: ['server', 'info'],
+        agentId: 'agent-clean-start',
+        home: cleanHome,
+      });
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

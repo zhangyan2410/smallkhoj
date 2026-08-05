@@ -56,9 +56,9 @@ export function buildCodexAcpSlockPrompt(options: Pick<CodexAcpRuntimeOptions, '
     '- You are running under `codex-acp` as a daemon-managed ACP resident runtime.',
     '- Keep this runtime session scoped to this Slock agent workspace.',
     '- Complete the current Slock event end to end before returning `end_turn`.',
-    '- All user-visible communication must be sent with the generated `slock` CLI wrapper.',
-    '- Codex ACP starts with a read-only, network-restricted sandbox. For every Slock wrapper call, request elevated execution immediately; do not attempt an unprivileged call first.',
-    '- Do not use shell heredocs for Slock message content under Codex ACP; pipe `printf` output into the exact wrapper path instead.',
+    '- All user-visible communication must be sent with the PATH-injected `aura` CLI.',
+    '- Codex ACP starts with a read-only, network-restricted sandbox. For every `aura` call, request elevated execution immediately; do not attempt an unprivileged call first.',
+    '- Do not use shell heredocs for Slock message content under Codex ACP; pipe `printf` output into bare `aura message send` instead.',
     '- Assistant text streamed through ACP is daemon telemetry only; it is not delivered to Slock users.',
   ].join('\n');
 }
@@ -317,7 +317,11 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
             type: 'tool_use',
             id: toolId,
             name: translated.toolName ?? 'tool',
-            input: { status: translated.status, raw: update },
+            input: {
+              status: translated.status,
+              command: codexToolCommandPreview(update),
+              raw: update,
+            },
           }],
         },
         acpUpdate: update.sessionUpdate,
@@ -413,6 +417,18 @@ function numberField(value: unknown, key: string): number | undefined {
   if (!isRecord(value)) return undefined;
   const field = value[key];
   return typeof field === 'number' ? field : undefined;
+}
+
+function codexToolCommandPreview(update: SessionUpdate): string | undefined {
+  const rawUpdate = update as unknown as Record<string, unknown>;
+  const rawInputValue = rawUpdate.rawInput;
+  const rawInput = isRecord(rawInputValue) ? rawInputValue : undefined;
+  if (!rawInput) return typeof rawInputValue === 'string' ? rawInputValue : undefined;
+  for (const key of ['command', 'cmd', 'script']) {
+    const value = stringField(rawInput, key);
+    if (value) return value;
+  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

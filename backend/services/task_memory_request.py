@@ -35,11 +35,11 @@ def build_task_memory_request_content(
     directions = output_directions or []
     lines = [
         "This task is now in review. Before waiting for human review, write a recoverable task result memory.",
-        f"Run `slock task summary --id {task.id} --summary \"...\"` and include evidence/artifact/next-step options when available.",
+        f"Run `aura task summary --id {task.id} --summary \"...\"` and include evidence/artifact/next-step options when available.",
     ]
     if "channel_memory" in directions:
         lines.append(
-            f"If the result contains durable channel knowledge, run `slock task promote --id {task.id} --source-path final-summary.md --proposal`."
+            f"If the result contains durable channel knowledge, run `aura task promote --id {task.id} --source-path final-summary.md --proposal`."
         )
     if directions:
         readable = ", ".join(OUTPUT_DIRECTION_LABELS[item] for item in directions)

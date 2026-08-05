@@ -49,6 +49,14 @@ export interface PiRuntimeOptions {
   leaseHeartbeatMs?: number;
 }
 
+export interface PiRuntimeEnvOptions extends Pick<
+  PiRuntimeOptions,
+  'credential' | 'workspacePath' | 'proxyUrl' | 'proxyToken' | 'wrapperDir' | 'slockHome' | 'launchId'
+> {
+  configHome: string;
+  runId?: string;
+}
+
 export interface PiLaunchOptions {
   nodePath: string;
   piEntry: string;
@@ -103,6 +111,37 @@ export function resolvePiLaunch(options: PiLaunchOptions): { command: string; ar
   if (options.provider) args.push('--provider', options.provider);
   if (options.model) args.push('--model', options.model);
   return { command: options.nodePath, args };
+}
+
+export function buildPiRuntimeEnv(
+  options: PiRuntimeEnvOptions,
+  baseEnv: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...baseEnv,
+    PI_CODING_AGENT_DIR: options.configHome,
+    SMALLKHOJ_LLM_PROXY_URL: options.proxyUrl,
+    SMALLKHOJ_LLM_PROXY_TOKEN: options.proxyToken,
+    ...(options.runId ? { SMALLKHOJ_LLM_RUN_ID: options.runId } : {}),
+    FORCE_COLOR: '0',
+    SLOCK_HOME: options.slockHome ?? options.wrapperDir,
+    SLOCK_AGENT_ID: options.credential.agentId,
+    SLOCK_AGENT_LAUNCH_ID: options.launchId ?? `pid-${process.pid}`,
+    SLOCK_SERVER_URL: options.credential.serverUrl,
+    SLOCK_CURRENT_WORKSPACE_PATH: options.workspacePath,
+    PATH: options.wrapperDir
+      ? prependPathEnv(options.wrapperDir, baseEnv.PATH ?? process.env.PATH ?? '')
+      : baseEnv.PATH ?? process.env.PATH ?? '',
+  };
+  delete env.SLOCK_AGENT_TOKEN;
+  delete env.SLOCK_AGENT_PROXY_URL;
+  delete env.SLOCK_AGENT_PROXY_TOKEN;
+  delete env.SLOCK_AGENT_PROXY_TOKEN_FILE;
+  delete env.SLOCK_AGENT_ACTIVE_CAPABILITIES;
+  delete env.SMALLKHOJ_MACHINE_TOKEN;
+  delete env.LLM_API_KEY;
+  delete env.PI_LLM_API_KEY;
+  return env;
 }
 
 function writeProviderExtension(
@@ -258,24 +297,17 @@ export class PiRuntimeDriver extends EventEmitter implements ManagedRuntimeDrive
       provider: this.options.provider || SMALLKHOJ_PI_PROVIDER,
       model: this.options.model || (this.options.apiFormat === 'openai' ? 'MiniMax-M2.1' : 'MiniMax-M3'),
     });
-    const env: NodeJS.ProcessEnv = {
-      ...this.options.baseEnv,
-      PI_CODING_AGENT_DIR: this.configHome,
-      SMALLKHOJ_LLM_PROXY_URL: this.options.proxyUrl,
-      SMALLKHOJ_LLM_PROXY_TOKEN: this.options.proxyToken,
-      ...(runId ? { SMALLKHOJ_LLM_RUN_ID: runId } : {}),
-      FORCE_COLOR: '0',
-      SLOCK_HOME: this.options.slockHome ?? this.options.wrapperDir,
-      SLOCK_AGENT_ID: this.options.credential.agentId,
-      SLOCK_AGENT_LAUNCH_ID: this.options.launchId ?? `pid-${process.pid}`,
-      SLOCK_SERVER_URL: this.options.credential.serverUrl,
-      SLOCK_CURRENT_WORKSPACE_PATH: this.options.workspacePath,
-      PATH: prependPathEnv(this.options.wrapperDir ?? '', this.options.baseEnv?.PATH ?? process.env.PATH ?? ''),
-    };
-    delete env.SLOCK_AGENT_TOKEN;
-    delete env.SMALLKHOJ_MACHINE_TOKEN;
-    delete env.LLM_API_KEY;
-    delete env.PI_LLM_API_KEY;
+    const env = buildPiRuntimeEnv({
+      credential: this.options.credential,
+      workspacePath: this.options.workspacePath,
+      proxyUrl: this.options.proxyUrl,
+      proxyToken: this.options.proxyToken,
+      wrapperDir: this.options.wrapperDir,
+      slockHome: this.options.slockHome,
+      launchId: this.options.launchId,
+      configHome: this.configHome,
+      runId,
+    }, this.options.baseEnv);
 
     const child = spawn(launch.command, launch.args, runtimeProcessSpawnOptions({
       cwd: this.options.workspacePath,

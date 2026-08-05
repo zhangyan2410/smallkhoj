@@ -84,14 +84,14 @@ export function translateAcpUpdate(update: SessionUpdate): CodexAcpTranslatedUpd
     case 'tool_call':
       return {
         type: 'tool_call',
-        toolName: update.kind ?? update.title ?? undefined,
+        toolName: update.title ?? update.kind ?? undefined,
         status: update.status ?? undefined,
         raw: update,
       };
     case 'tool_call_update':
       return {
         type: update.status === 'completed' || update.status === 'failed' ? 'tool_result' : 'tool_call',
-        toolName: update.kind ?? update.title ?? undefined,
+        toolName: update.title ?? update.kind ?? undefined,
         status: update.status ?? undefined,
         raw: update,
       };

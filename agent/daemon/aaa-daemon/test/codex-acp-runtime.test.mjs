@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { writeSlockWrapper } from '../dist/runtime/slock-wrapper.js';
-import { CodexAcpRuntimeDriver, resolveCodexAcpLaunchCommand } from '../dist/runtime/codex-acp-runtime.js';
-import { buildCodexRuntimeEnv } from '../dist/runtime/codex-runtime.js';
+import { CodexAcpRuntimeDriver, buildCodexAcpSlockPrompt, resolveCodexAcpLaunchCommand } from '../dist/runtime/codex-acp-runtime.js';
+import { buildCodexRuntimeEnv, buildCodexSlockPrompt } from '../dist/runtime/codex-runtime.js';
 
 function waitFor(predicate, timeoutMs = 5_000) {
   const started = Date.now();
@@ -185,6 +185,24 @@ test('codex acp runtime keeps package args when daemon config supplies empty run
   const launch = resolveCodexAcpLaunchCommand({ commandArgs: [] });
   assert.match(launch.command, /^npx(\.cmd)?$/);
   assert.deepEqual(launch.args, ['-y', '@zed-industries/codex-acp@0.16.0']);
+});
+
+test('codex prompts use only the PATH-injected aura collaboration command', () => {
+  const options = {
+    credential: { serverUrl: 'http://127.0.0.1:9', token: 'fake_machine_test', agentId: 'agent-acp' },
+    workspacePath: '/tmp/workspace',
+    wrapperDir: '/tmp/workspace/.slock',
+  };
+  const execPrompt = buildCodexSlockPrompt(options);
+  const acpPrompt = buildCodexAcpSlockPrompt(options);
+
+  for (const prompt of [execPrompt, acpPrompt]) {
+    assert.match(prompt, /aura CLI ONLY/);
+    assert.match(prompt, /aura message send/);
+    assert.doesNotMatch(prompt, /\/tmp\/workspace\/\.slock\/(?:slock|raft|aura)/);
+    assert.doesNotMatch(prompt, /`(?:slock|raft)\s+(?:message|task|server|channel|thread)\b/i);
+  }
+  assert.match(acpPrompt, /pipe `printf` output into bare `aura message send`/);
 });
 
 test('codex acp runtime resolves npx.cmd on Windows PATH', () => {

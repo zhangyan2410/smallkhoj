@@ -35,7 +35,7 @@ const DEFAULT_MEMORY_MD = [
   '',
   '## Key Knowledge',
   '- No long-lived memory has been recorded yet.',
-  '- Use the generated local Slock/Raft wrapper in `.slock/` for server info, message, task, channel, attachment, and profile operations.',
+  '- Use `aura` from PATH for server info, message, task, channel, attachment, and profile operations. The daemon-managed `.slock/` directory is an implementation detail; do not call its absolute wrapper paths.',
   '',
   '## Active Context',
   '- First startup. Follow the current Slock event or warmup instruction.',

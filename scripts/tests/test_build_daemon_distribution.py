@@ -34,6 +34,9 @@ def make_daemon_tree(root: Path, *, version: str = "0.2.0") -> None:
     write(daemon_dir / "dist" / "cmd" / "main.js", """
         console.log("smallkhoj daemon")
     """)
+    write(daemon_dir / "dist" / "slock-cli.js", """
+        console.log("smallkhoj agent cli")
+    """)
     write(daemon_dir / "README.md", "# daemon")
 
 
@@ -78,6 +81,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertIn(f"{prefix}/smallkhoj-daemon", names)
             self.assertIn(f"{prefix}/aura", names)
             self.assertIn(f"{prefix}/dist/cmd/main.js", names)
+            self.assertIn(f"{prefix}/dist/slock-cli.js", names)
             self.assertIn(f"{prefix}/manifest.json", names)
             self.assertNotIn("agent/daemon/aaa-daemon", "\n".join(names))
             manifest = json.loads(result.manifest.read_text(encoding="utf-8"))

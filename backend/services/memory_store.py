@@ -244,7 +244,7 @@ def build_memory_context_manifest(
         "channelMemories": [_manifest_item(entry) for entry in channel_matches[:top_k]],
         "taskMemories": [_manifest_item(entry) for entry in task_matches[:top_k]],
         "readMore": {
-            "channel": "slock memory search --scope channel --query <terms>",
-            "task": "slock memory read --scope task --path <path>",
+            "channel": "aura memory search --scope channel --query <terms>",
+            "task": "aura memory read --scope task --path <path>",
         },
     }

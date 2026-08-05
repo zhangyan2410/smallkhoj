@@ -32,6 +32,15 @@ SUMMARY_SCHEDULER_INTERVAL_SECONDS = 60
 SUMMARY_REQUEST_BATCH_LIMIT = 5
 
 
+def build_thread_summary_request_content(thread_short_id: str) -> str:
+    return (
+        "Summarize this thread in 1-2 short, precise sentences. "
+        f"Keep it under {SUMMARY_MAX_CHARS} characters. "
+        f"Read the thread, then write the result with `aura thread summary --thread-id {thread_short_id} --summary \"...\"`. "
+        "Do not send the summary as a normal chat message."
+    )
+
+
 def _utcnow() -> datetime:
     return datetime.utcnow()
 
@@ -238,12 +247,7 @@ async def request_thread_summary(
     summary.last_requested_at = now
 
     target = await display_target_for_agent(db, channel, agent, root)
-    instruction = (
-        "Summarize this thread in 1-2 short, precise sentences. "
-        f"Keep it under {SUMMARY_MAX_CHARS} characters. "
-        f"Read the thread, then write the result with `slock thread summary --thread-id {root.short_id} --summary \"...\"`. "
-        "Do not send the summary as a normal chat message."
-    )
+    instruction = build_thread_summary_request_content(root.short_id)
     db.add(EventRecord(
         server_id=channel.server_id,
         event_type="thread.summary_requested",

@@ -6,6 +6,7 @@ import { join } from 'path';
 import type { Credential } from '../types.js';
 import { runtimeCommandSpawnSpec, runtimeProcessSpawnOptions, signalRuntimeProcessTree } from './process-tree.js';
 import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
+import { prependPathEnv } from './slock-wrapper.js';
 
 export interface OpenCodeServerRuntimeOptions {
   credential: Credential;
@@ -46,6 +47,16 @@ interface OpenCodeModelSelection {
   modelID?: string;
 }
 
+type PendingOpenCodeMessageEvent =
+  | { kind: 'delta'; event: OpenCodeEvent }
+  | {
+      kind: 'part';
+      sessionId: string | undefined;
+      properties: Record<string, unknown>;
+      part: Record<string, unknown>;
+      opencodeEvent: string;
+    };
+
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_AGENT = 'default';
 
@@ -76,7 +87,6 @@ export function parseOpenCodeModel(model?: string): OpenCodeModelSelection {
 
 export function buildOpenCodeSlockPrompt(options: Pick<OpenCodeServerRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir' | 'model' | 'agent'>): string {
   const model = parseOpenCodeModel(options.model);
-  const raftWrapper = join(options.wrapperDir, 'raft');
   return [
     'You are an AI agent in Raft (formerly Slock), a collaborative platform for human-AI collaboration. Raft is a shared message and task service for humans and agents that may be running on different computers.',
     '',
@@ -93,18 +103,18 @@ export function buildOpenCodeSlockPrompt(options: Pick<OpenCodeServerRuntimeOpti
     `- Workspace: ${options.workspacePath}`,
     '- Runtime: opencode serve',
     '- Runtime route: daemon-managed HTTP/SSE resident server',
-    `- Raft CLI wrapper: ${raftWrapper}`,
+    '- Collaboration CLI: aura (workspace-local PATH)',
     `- OpenCode provider: ${model.providerID ?? '<provider-id>'}`,
     `- OpenCode model: ${model.modelID ?? '<model-id>'}`,
     `- OpenCode agent: ${options.agent ?? DEFAULT_AGENT}`,
     '',
-    '## Communication: Raft CLI Only',
+    '## Communication: Aura CLI Only',
     '',
-    `Use the daemon-provided Raft CLI wrapper at \`${raftWrapper}\` for all chat, task, attachment, reminder, profile, and integration operations. The primary CLI name is \`raft\`; \`slock\` may exist as a legacy alias only. If bare \`raft\` is not available or reports a local auth/profile error, retry with the exact wrapper path before reporting a blocker.`,
+    'Use the PATH-injected `aura` CLI for all chat, task, attachment, reminder, profile, and integration operations. The daemon places the workspace-local Aura wrapper first in PATH. Use bare `aura`; do not inspect, invoke, or fall back to generated absolute wrapper paths.',
     '',
-    '- Always communicate through `raft message send` when a visible reply is required. Text produced only in the runtime transcript is not delivered to anyone.',
+    '- Always communicate through `aura message send` when a visible reply is required. Text produced only in the runtime transcript is not delivered to anyone.',
     '- Reuse the exact `target=` from the message you are replying to. If a message came from a thread target such as `#channel:msgid`, reply to that same thread target.',
-    '- Use one Raft CLI command per shell/tool call. Do not chain multiple Raft commands with shell separators.',
+    '- Use one Aura CLI command per shell/tool call. Do not chain multiple Aura commands with shell separators.',
     '- Use heredocs for message bodies so quotes, backticks, variables, and multiline content are not interpreted by the shell.',
     '- Do not send idle narration. Send updates when they are actionable: ownership, blockers, material progress, review-ready output, or completion.',
     '',
@@ -112,15 +122,15 @@ export function buildOpenCodeSlockPrompt(options: Pick<OpenCodeServerRuntimeOpti
     '',
     '1. If the current turn includes a concrete incoming message and it needs an acknowledgment, blocker question, or ownership signal, send that early in the same target before deep work.',
     '2. Read MEMORY.md, then only the additional notes/files needed for the task.',
-    '3. If the turn only includes an inbox notice, remember that message bodies are withheld, not absent. Use `raft message check` when you choose to inspect them; never conclude there is no work from a content-free notice.',
+    '3. If the turn only includes an inbox notice, remember that message bodies are withheld, not absent. Use `aura message check` when you choose to inspect them; never conclude there is no work from a content-free notice.',
     '4. Process the message in its original target. For thread messages, reply in the same thread.',
     '5. Finish all feasible work before stopping. For multi-step work, carry it through implementation/research, verification, and a concise report unless blocked.',
-    '6. At natural breakpoints, especially before side-effecting actions, run `raft message check` to review fresh messages that may have arrived while you were working.',
+    '6. At natural breakpoints, especially before side-effecting actions, run `aura message check` to review fresh messages that may have arrived while you were working.',
     '',
     '## Task Ownership: Claim First',
     '',
     '- Claim-first is mandatory. If fulfilling a message requires action beyond answering in chat, claim the task/message before starting.',
-    '- If the message already has a task number, use `raft task claim --target <channel> --number <n>`.',
+    '- If the message already has a task number, use `aura task claim --target <channel> --number <n>`.',
     '- If the work exists as a regular top-level message, claim it by message id instead of creating a duplicate task.',
     '- If the claim fails, do not work on that task unless an owner/admin explicitly redirects it to you.',
     '- Thread replies are discussion context; keep claims and task metadata on the top-level task/message.',
@@ -191,8 +201,8 @@ export function buildOpenCodeSlockPrompt(options: Pick<OpenCodeServerRuntimeOpti
     '## OpenCode Serve Runtime Notes',
     '',
     '- The daemon injects durable collaboration rules through the `system` field and volatile task/message context through user messages.',
-    '- Assistant text streamed through OpenCode is runtime telemetry unless you explicitly send it through the Raft CLI.',
-    '- The daemon aligns OpenCode coding-runtime permission semantics with the existing Claude Code runtime, which runs with model-level permissions bypassed and relies on Raft CLI write gates, workspace/task discipline, and traceability for collaboration safety.',
+    '- Assistant text streamed through OpenCode is runtime telemetry unless you explicitly send it through the Aura CLI.',
+    '- The daemon aligns OpenCode coding-runtime permission semantics with the existing Claude Code runtime, which runs with model-level permissions bypassed and relies on Aura CLI write gates, workspace/task discipline, and traceability for collaboration safety.',
     '- Do not assume OpenCode default agents, plugins, model routing, MCP servers, or project AGENTS.md have higher priority than this system prompt.',
     '- If OpenCode, oh-my-openagent, MCP, plugin, model routing, or project configuration conflicts with Raft collaboration rules, follow the Raft rules and report the conflict.',
     '- The project/plugin name is `oh-my-openagent`; schema filenames may still contain `oh-my-opencode` as a historical artifact.',
@@ -200,10 +210,10 @@ export function buildOpenCodeSlockPrompt(options: Pick<OpenCodeServerRuntimeOpti
     '## Permission and Tool Policy for OpenCode Serve',
     '',
     '- Prefer read-only inspection until the task clearly requires writes, but normal coding-runtime bash/edit/web/MCP capabilities may be available when needed, matching the Claude Code runtime model.',
-    '- Raft write protection lives in the daemon-provided wrapper CLI. Write-capable Raft commands require daemon/operator opt-in and may fail with `WRITES_NOT_ALLOWED` or `WRITE_TARGET_NOT_ALLOWED`; report those exact blockers and do not bypass them.',
+    '- Aura write protection lives in the daemon-provided runtime-local CLI. Write-capable Aura commands require daemon/operator opt-in and may fail with `WRITES_NOT_ALLOWED` or `WRITE_TARGET_NOT_ALLOWED`; report those exact blockers and do not bypass them.',
     '- Do not bypass daemon policy with alternate Raft credentials, browser sessions, host-global config, or direct MCP calls outside the OpenCode session.',
-    '- The daemon may specially recognize exact-command approve once daemon-owned Raft wrapper round-trips for auditing. Do not broaden this into a template allowlist, and do not treat it as the only command shape that can run.',
-    '- If a Raft wrapper permission or write gate is rejected, report the rejection as a blocker or task outcome; do not retry through another path.',
+    '- The daemon may specially recognize exact-command approve once daemon-owned Aura round-trips for auditing. Do not broaden this into a template allowlist, and do not treat it as the only command shape that can run.',
+    '- If an Aura permission or write gate is rejected, report the rejection as a blocker or task outcome; do not retry through another path.',
     '- MCP servers, when injected by the daemon or an OpenCode plugin, are part of the same tool and permission policy. Treat their network access and side effects with the same scrutiny as built-in tools such as bash, edit, and web.',
     '',
     '## Comparison Readiness: OpenCode vs Claude Code',
@@ -227,6 +237,28 @@ export function writeOpenCodePromptFile(options: Pick<OpenCodeServerRuntimeOptio
   return promptFile;
 }
 
+export function buildOpenCodeRuntimeEnv(
+  options: Pick<OpenCodeServerRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir' | 'slockHome' | 'launchId'>,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...baseEnv };
+  env.FORCE_COLOR = '0';
+  env.SLOCK_HOME = options.slockHome ?? options.wrapperDir;
+  env.SLOCK_AGENT_ID = options.credential.agentId;
+  env.SLOCK_AGENT_LAUNCH_ID = options.launchId ?? `pid-${process.pid}`;
+  env.SLOCK_SERVER_URL = options.credential.serverUrl;
+  env.SLOCK_CURRENT_WORKSPACE_PATH = options.workspacePath;
+  env.PATH = prependPathEnv(options.wrapperDir, baseEnv.PATH ?? '');
+
+  delete env.SLOCK_AGENT_TOKEN;
+  delete env.SLOCK_AGENT_PROXY_URL;
+  delete env.SLOCK_AGENT_PROXY_TOKEN;
+  delete env.SLOCK_AGENT_PROXY_TOKEN_FILE;
+  delete env.SLOCK_AGENT_ACTIVE_CAPABILITIES;
+
+  return env;
+}
+
 export class OpenCodeServerRuntimeDriver extends EventEmitter implements ManagedRuntimeDriver {
   private readonly options: OpenCodeServerRuntimeOptions;
   private readonly pendingUserMessages: PendingUserMessage[] = [];
@@ -242,6 +274,12 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
   private exitEmitted = false;
   private sseAbort: AbortController | null = null;
   private approvedWrapperCommands = new Set<string>();
+  private readonly messageRoles = new Map<string, 'user' | 'assistant'>();
+  private readonly partTypes = new Map<string, string>();
+  private readonly pendingMessageEvents = new Map<string, PendingOpenCodeMessageEvent[]>();
+  private readonly emittedToolUseIds = new Set<string>();
+  private readonly toolCommandPreviews = new Map<string, string>();
+  private sseEventVersion = 0;
 
   constructor(options: OpenCodeServerRuntimeOptions) {
     super();
@@ -254,6 +292,12 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
     this.started = true;
     this.stopping = false;
     this.exitEmitted = false;
+    this.messageRoles.clear();
+    this.partTypes.clear();
+    this.pendingMessageEvents.clear();
+    this.emittedToolUseIds.clear();
+    this.toolCommandPreviews.clear();
+    this.sseEventVersion = 0;
     const promptFile = writeOpenCodePromptFile(this.options);
     this.systemPrompt = buildOpenCodeSlockPrompt(this.options);
     this.emit('line', { stream: 'stderr', line: `OpenCode Slock prompt written to ${promptFile}` } satisfies OpenCodeServerRuntimeEvent);
@@ -315,10 +359,14 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
     if (this.child) return;
     const { command, args } = resolveOpenCodeServeLaunchCommand(this.options);
     const spawnSpec = runtimeCommandSpawnSpec(command, args);
+    const runtimeEnv = buildOpenCodeRuntimeEnv(
+      this.options,
+      this.options.baseEnv ?? process.env,
+    );
     const child = spawn(spawnSpec.command, spawnSpec.args, runtimeProcessSpawnOptions({
       cwd: this.options.workspacePath,
       env: {
-        ...(this.options.baseEnv ?? process.env),
+        ...runtimeEnv,
         OPENCODE_DISABLE_AUTOUPDATE: '1',
         OPENCODE_SERVER_PASSWORD: this.serverPassword,
       },
@@ -451,6 +499,8 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
         agent: this.options.agent ?? DEFAULT_AGENT,
       });
       const response = await this.request(`/session/${encodeURIComponent(activeSessionId)}/message`, { method: 'POST', body }) as OpenCodeMessageResponse;
+      if (isRecord(response.info)) this.rememberMessageInfo(response.info);
+      await this.waitForEventStreamDrain();
       this.emit('stream_event', this.buildResultEvent(response));
     })();
 
@@ -514,18 +564,41 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
   }
 
   private consumeOpenCodeEvent(event: OpenCodeEvent): void {
+    this.sseEventVersion += 1;
     const eventType = event.type;
     const properties = event.properties ?? {};
     const sessionId = stringField(properties, 'sessionID') ?? this.currentSessionId;
+    if (eventType === 'message.updated') {
+      const info = isRecord(properties.info)
+        ? properties.info
+        : isRecord(properties.message)
+          ? properties.message
+          : properties;
+      this.rememberMessageInfo(info);
+    }
     if (eventType === 'message.part.delta') {
       const delta = stringField(properties, 'delta');
-      if (delta) {
+      const messageId = openCodeMessageId(properties);
+      const role = openCodeMessageRole(properties) ?? (messageId ? this.messageRoles.get(messageId) : undefined);
+      if (messageId && !role) {
+        this.queuePendingMessageEvent(messageId, { kind: 'delta', event });
+        return;
+      }
+      const partId = openCodePartId(properties);
+      const partType = stringField(properties, 'partType')
+        ?? (partId ? this.partTypes.get(partId) : undefined)
+        ?? stringField(properties, 'field');
+      const textDelta = !partType || partType === 'text' || partType === 'reasoning' || partType === 'thinking';
+      if (delta && textDelta && role !== 'user' && (!messageId || role === 'assistant')) {
+        const content = partType === 'reasoning' || partType === 'thinking'
+          ? { type: 'thinking', thinking: delta }
+          : { type: 'text', text: delta };
         this.emit('stream_event', {
           type: 'assistant',
           runtime: 'opencode',
           session_id: sessionId,
           sessionId,
-          message: { content: [{ type: 'text', text: delta }] },
+          message: { content: [content] },
           opencodeEvent: eventType,
         } satisfies OpenCodeServerStreamEvent);
       }
@@ -533,7 +606,7 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
     }
     if (eventType === 'message.part.updated') {
       const part = isRecord(properties.part) ? properties.part : {};
-      this.consumePartUpdate(sessionId, part, eventType);
+      this.consumePartUpdate(sessionId, properties, part, eventType);
       return;
     }
     if (eventType === 'permission.asked') {
@@ -549,27 +622,55 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
     } satisfies OpenCodeServerStreamEvent);
   }
 
-  private consumePartUpdate(sessionId: string | undefined, part: Record<string, unknown>, opencodeEvent: string): void {
+  private consumePartUpdate(
+    sessionId: string | undefined,
+    properties: Record<string, unknown>,
+    part: Record<string, unknown>,
+    opencodeEvent: string,
+  ): void {
     const partType = stringField(part, 'type');
-    if (partType === 'text') {
+    const partId = openCodePartId(part) ?? openCodePartId(properties);
+    if (partId && partType) this.partTypes.set(partId, partType);
+    const messageId = openCodeMessageId(part) ?? openCodeMessageId(properties);
+    const role = openCodeMessageRole(part)
+      ?? openCodeMessageRole(properties)
+      ?? (messageId ? this.messageRoles.get(messageId) : undefined);
+    if (messageId && !role) {
+      this.queuePendingMessageEvent(messageId, {
+        kind: 'part',
+        sessionId,
+        properties,
+        part,
+        opencodeEvent,
+      });
+      return;
+    }
+    if (partType === 'text' || partType === 'reasoning' || partType === 'thinking') {
       const text = stringField(part, 'text');
-      if (!text) return;
+      if (!text || role === 'user' || (messageId && role !== 'assistant')) return;
+      const content = partType === 'reasoning' || partType === 'thinking'
+        ? { type: 'thinking', thinking: text }
+        : { type: 'text', text };
       this.emit('stream_event', {
         type: 'assistant',
         runtime: 'opencode',
         session_id: sessionId,
         sessionId,
-        message: { content: [{ type: 'text', text }] },
+        message: { content: [content] },
         opencodeEvent,
       } satisfies OpenCodeServerStreamEvent);
       return;
     }
     if (partType === 'tool') {
+      if (role === 'user') return;
       const tool = stringField(part, 'tool') ?? 'tool';
       const callId = stringField(part, 'callID') ?? stringField(part, 'id') ?? `${sessionId ?? 'opencode'}-tool`;
       const state = isRecord(part.state) ? part.state : {};
       const status = stringField(state, 'status');
+      const commandPreview = toolCommandPreview(state) ?? this.toolCommandPreviews.get(callId);
+      if (commandPreview) this.toolCommandPreviews.set(callId, commandPreview);
       if (status === 'completed' || status === 'error') {
+        this.emitToolUseOnce(sessionId, opencodeEvent, callId, tool, status, commandPreview, part);
         this.emit('stream_event', {
           type: 'user',
           runtime: 'opencode',
@@ -585,9 +686,29 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
           },
           opencodeEvent,
         } satisfies OpenCodeServerStreamEvent);
+        this.toolCommandPreviews.delete(callId);
         return;
       }
-      this.emit('stream_event', {
+      // OpenCode can emit an initial pending shell part before attaching its
+      // input. Wait for a later running/terminal update so the visible Output
+      // carries the real command instead of the unhelpful fallback "bash".
+      if (!commandPreview && /^(bash|shell|terminal)$/i.test(tool)) return;
+      this.emitToolUseOnce(sessionId, opencodeEvent, callId, tool, status, commandPreview, part);
+    }
+  }
+
+  private emitToolUseOnce(
+    sessionId: string | undefined,
+    opencodeEvent: string,
+    callId: string,
+    tool: string,
+    status: string | undefined,
+    commandPreview: string | undefined,
+    part: Record<string, unknown>,
+  ): void {
+    if (this.emittedToolUseIds.has(callId)) return;
+    this.emittedToolUseIds.add(callId);
+    this.emit('stream_event', {
         type: 'assistant',
         runtime: 'opencode',
         session_id: sessionId,
@@ -597,11 +718,53 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
             type: 'tool_use',
             id: callId,
             name: tool,
-            input: { status, command: toolCommandPreview(state), raw: part },
+            input: { status, command: commandPreview, raw: part },
           }],
         },
         opencodeEvent,
       } satisfies OpenCodeServerStreamEvent);
+  }
+
+  private rememberMessageInfo(info: Record<string, unknown>): void {
+    const messageId = openCodeMessageId(info) ?? stringField(info, 'id');
+    const role = openCodeMessageRole(info);
+    if (!messageId || !role) return;
+    this.messageRoles.set(messageId, role);
+    const pending = this.pendingMessageEvents.get(messageId) ?? [];
+    this.pendingMessageEvents.delete(messageId);
+    if (role === 'user') return;
+    for (const queued of pending) {
+      if (queued.kind === 'delta') {
+        this.consumeOpenCodeEvent(queued.event);
+      } else {
+        this.consumePartUpdate(
+          queued.sessionId,
+          queued.properties,
+          queued.part,
+          queued.opencodeEvent,
+        );
+      }
+    }
+  }
+
+  private queuePendingMessageEvent(messageId: string, event: PendingOpenCodeMessageEvent): void {
+    const pending = this.pendingMessageEvents.get(messageId) ?? [];
+    if (pending.length < 100) pending.push(event);
+    this.pendingMessageEvents.set(messageId, pending);
+    while (this.pendingMessageEvents.size > 256) {
+      const oldest = this.pendingMessageEvents.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.pendingMessageEvents.delete(oldest);
+    }
+  }
+
+  private async waitForEventStreamDrain(timeoutMs = 250, quietMs = 40): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    let observedVersion = this.sseEventVersion;
+    while (Date.now() < deadline) {
+      await delay(quietMs);
+      if (this.sseEventVersion === observedVersion) return;
+      observedVersion = this.sseEventVersion;
     }
   }
 
@@ -619,8 +782,8 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
       body: {
         reply: 'once',
         message: wrapperRoundTrip
-          ? 'Approved exact daemon-owned Raft wrapper command once.'
-          : 'Approved once to match Claude Code runtime permission parity; Raft CLI writes remain gated by wrapper policy.',
+          ? 'Approved exact daemon-owned Aura command once.'
+          : 'Approved once to match Claude Code runtime permission parity; Aura CLI writes remain gated by wrapper policy.',
       },
     }).catch((err) => {
       this.emit('error', err);
@@ -629,9 +792,9 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
 
   private isExactWrapperCommand(command: string): boolean {
     if (!command || this.approvedWrapperCommands.has(command)) return false;
-    const wrapperPath = join(this.options.wrapperDir, 'raft');
-    const legacyWrapperPath = join(this.options.wrapperDir, 'slock');
-    const invokesWrapper = command.includes(wrapperPath) || command.includes(legacyWrapperPath);
+    const wrapperPaths = ['aura', 'raft', 'slock'].map((name) => join(this.options.wrapperDir, name));
+    const invokesBareAura = /(?:^|[\s'"`;&|()])aura(?:\.(?:cmd|ps1))?(?=\s)/i.test(command);
+    const invokesWrapper = invokesBareAura || wrapperPaths.some((wrapperPath) => command.includes(wrapperPath));
     return invokesWrapper && /\bmessage\s+send\b/.test(command) && /<<['"]?[A-Z0-9_]+['"]?/.test(command);
   }
 
@@ -747,7 +910,28 @@ function mapOpenCodeEventType(eventType?: string): string {
 
 function toolCommandPreview(state: Record<string, unknown>): string | undefined {
   const input = isRecord(state.input) ? state.input : undefined;
-  return input ? stringField(input, 'command') : undefined;
+  if (!input) return undefined;
+  for (const key of ['command', 'cmd', 'script']) {
+    const value = stringField(input, key);
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function openCodeMessageId(value: unknown): string | undefined {
+  return stringField(value, 'messageID')
+    ?? stringField(value, 'messageId');
+}
+
+function openCodePartId(value: unknown): string | undefined {
+  return stringField(value, 'partID')
+    ?? stringField(value, 'partId')
+    ?? stringField(value, 'id');
+}
+
+function openCodeMessageRole(value: unknown): 'user' | 'assistant' | undefined {
+  const role = stringField(value, 'role');
+  return role === 'user' || role === 'assistant' ? role : undefined;
 }
 
 function sanitizeOpenCodeLine(line: string): string {

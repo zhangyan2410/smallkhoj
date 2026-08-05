@@ -148,19 +148,19 @@ if (process.argv.includes('--version')) {
   process.stdout.write('claude-code 0.0.0-fake\\n');
   process.exit(0);
 }
-const slockCommand = process.platform === 'win32' ? 'slock.cmd' : 'slock';
-const serverInfo = spawnSync(slockCommand, ['server', 'info'], {
+const auraCommand = process.platform === 'win32' ? 'aura.cmd' : 'aura';
+const serverInfo = spawnSync(auraCommand, ['server', 'info'], {
   encoding: 'utf-8',
   env: process.env,
   shell: process.platform === 'win32',
 });
 process.stdout.write(JSON.stringify({
   type: 'assistant',
-  message: { content: [{ type: 'tool_use', id: 'warmup-slock', name: 'Bash', input: { command: 'slock server info' } }] },
+  message: { content: [{ type: 'tool_use', id: 'warmup-aura', name: 'Bash', input: { command: 'aura server info' } }] },
 }) + '\\n');
 process.stdout.write(JSON.stringify({
   type: 'user',
-  message: { content: [{ type: 'tool_result', tool_use_id: 'warmup-slock', content: serverInfo.stdout || serverInfo.stderr || '' }] },
+  message: { content: [{ type: 'tool_result', tool_use_id: 'warmup-aura', content: serverInfo.stdout || serverInfo.stderr || '' }] },
 }) + '\\n');
 process.stdout.write(JSON.stringify({ type: 'result', duration_ms: 1 }) + '\\n');
 const result = {
@@ -179,7 +179,7 @@ const result = {
 const promptFlagIndex = result.argv.indexOf('--append-system-prompt-file');
 result.systemPromptFile = promptFlagIndex >= 0 ? result.argv[promptFlagIndex + 1] : null;
 if (${includeSend ? 'true' : 'false'}) {
-  const send = spawnSync(slockCommand, ['message', 'send', '--target', '#general', 'hello from runtime'], {
+  const send = spawnSync(auraCommand, ['message', 'send', '--target', '#general', 'hello from runtime'], {
     encoding: 'utf-8',
     env: process.env,
     shell: process.platform === 'win32',
@@ -208,8 +208,8 @@ if (args[0] === 'list') {
   process.stdout.write('         Zhipu GLM  glm-id    glm-5.1\\n');
   process.exit(0);
 }
-const slockCommand = process.platform === 'win32' ? 'slock.cmd' : 'slock';
-const serverInfo = spawnSync(slockCommand, ['server', 'info'], {
+const auraCommand = process.platform === 'win32' ? 'aura.cmd' : 'aura';
+const serverInfo = spawnSync(auraCommand, ['server', 'info'], {
   encoding: 'utf-8',
   env: process.env,
   shell: process.platform === 'win32',
@@ -242,8 +242,8 @@ let prompt = '';
 process.stdin.setEncoding('utf-8');
 process.stdin.on('data', chunk => { prompt += chunk; });
 process.stdin.on('end', () => {
-  const slockCommand = process.platform === 'win32' ? 'slock.cmd' : 'slock';
-  const serverInfo = spawnSync(slockCommand, ['server', 'info'], {
+  const auraCommand = process.platform === 'win32' ? 'aura.cmd' : 'aura';
+  const serverInfo = spawnSync(auraCommand, ['server', 'info'], {
     encoding: 'utf-8',
     env: process.env,
     shell: process.platform === 'win32',
@@ -262,7 +262,7 @@ process.stdin.on('end', () => {
   };
   process.stdout.write(JSON.stringify({
     type: 'assistant',
-    message: { content: [{ type: 'text', text: 'checked slock server info' }] },
+    message: { content: [{ type: 'text', text: 'checked aura server info' }] },
   }) + '\\n');
   writeFileSync(${JSON.stringify(marker)}, JSON.stringify(result));
 });
@@ -327,8 +327,8 @@ process.stdin.on('data', chunk => {
     } else if (msg.method === 'session/load') {
       send({ jsonrpc: '2.0', id: msg.id, result: {} });
     } else if (msg.method === 'session/prompt') {
-      const slockCommand = process.platform === 'win32' ? 'slock.cmd' : 'slock';
-      const serverInfo = spawnSync(slockCommand, ['server', 'info'], {
+      const auraCommand = process.platform === 'win32' ? 'aura.cmd' : 'aura';
+      const serverInfo = spawnSync(auraCommand, ['server', 'info'], {
         encoding: 'utf-8',
         env: process.env,
         shell: process.platform === 'win32',
@@ -337,7 +337,7 @@ process.stdin.on('data', chunk => {
       const warmup = prompt.includes('startup readiness check');
       const targetMatch = prompt.match(/\\btarget=([^\\s\\]]+)/);
       const target = targetMatch?.[1] ?? '#general';
-      const sendResult = warmup ? null : spawnSync(slockCommand, ['message', 'send', '--target', target, 'fake codex acp reply'], {
+      const sendResult = warmup ? null : spawnSync(auraCommand, ['message', 'send', '--target', target, 'fake codex acp reply'], {
         encoding: 'utf-8',
         env: process.env,
         shell: process.platform === 'win32',
@@ -370,8 +370,27 @@ process.stdin.on('data', chunk => {
             text: 'Model metadata for gpt-test not found. Defaulting to fallback metadata; this can degrade performance and cause issues.'
           }
         });
+        notify(msg.params.sessionId, {
+          sessionUpdate: 'agent_thought_chunk',
+          content: { type: 'text', text: 'checking the repository' }
+        });
       }
       notify(msg.params.sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'fake acp warmup ok' } });
+      if (!warmup) {
+        notify(msg.params.sessionId, {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'fake-acp-tool-1',
+          title: 'Bash',
+          kind: 'execute',
+          status: 'pending',
+          rawInput: { command: 'pwd' }
+        });
+        notify(msg.params.sessionId, {
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'fake-acp-tool-1',
+          status: 'completed'
+        });
+      }
       notify(msg.params.sessionId, { sessionUpdate: 'usage_update', used: 123, size: 258400 });
       send({
         jsonrpc: '2.0',
@@ -963,7 +982,7 @@ test('daemon resolves selected CC Switch Claude provider to detected Claude comm
   assert.equal(JSON.stringify(launch).includes('ccs-claude'), false);
 });
 
-test('daemon runtime starts fake Claude with slock wrapper on PATH', async () => {
+test('daemon runtime starts fake Claude with the workspace aura wrapper on PATH', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-runtime-'));
   const marker = join(root, 'runtime-marker.json');
   const fakeClaude = join(root, 'fake-claude.mjs');
@@ -1023,8 +1042,9 @@ test('daemon runtime starts fake Claude with slock wrapper on PATH', async () =>
     assert.match(runtime.launchId, /^pid-/);
     assert.equal(runtime.systemPromptFile, join(root, '.slock', 'claude-system-prompt.md'));
     const systemPrompt = readFileSync(runtime.systemPromptFile, 'utf-8');
-    assert.match(systemPrompt, /slock CLI ONLY/);
-    assert.match(systemPrompt, new RegExp(join(root, '.slock', 'slock').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(systemPrompt, /aura CLI ONLY/);
+    assert.match(systemPrompt, /aura server info/);
+    assert.doesNotMatch(systemPrompt, new RegExp(join(root, '.slock').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.equal(runtime.argv.includes('--system-prompt'), false);
 
     await waitFor(() => upstream.requests.some(item => item.req.url === '/internal/agent-api/server'));
@@ -1297,8 +1317,16 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
       return;
     }
     if (url.pathname === '/internal/agent-api/activity') {
-      activityBodies.push(JSON.parse(body));
-      res.end(JSON.stringify({ ok: true }));
+      const activity = JSON.parse(body);
+      const persistActivity = () => {
+        activityBodies.push(activity);
+        res.end(JSON.stringify({ ok: true }));
+      };
+      if (activity.type === 'runtime_output') {
+        setTimeout(persistActivity, 150);
+      } else {
+        persistActivity();
+      }
       return;
     }
     if (url.pathname === '/internal/agent-api/server') {
@@ -1395,10 +1423,12 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     assert.equal(runtime.currentWorkspacePath, root);
     assert.equal(runtime.sessionId, 'fake-acp-daemon-session');
     assert.match(runtime.prompt, /Codex ACP Runtime Notes/);
-    assert.match(runtime.prompt, /Use the Slock CLI wrapper at/);
-    assert.ok(runtime.prompt.includes(join(root, '.slock', 'slock')));
+    assert.match(runtime.prompt, /Use the PATH-injected `aura` CLI/);
+    assert.equal(runtime.prompt.includes(join(root, '.slock', 'slock')), false);
+    assert.equal(runtime.prompt.includes(join(root, '.slock', 'raft')), false);
+    assert.equal(runtime.prompt.includes(join(root, '.slock', 'aura')), false);
     assert.match(runtime.prompt, /request elevated execution immediately/);
-    assert.match(runtime.prompt, new RegExp(`Run \`${join(root, '.slock', 'slock').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} server info\` once`));
+    assert.match(runtime.prompt, /Run `aura server info` once/);
 
     await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-acp' && workspace.runtime === 'codex' && workspace.status === 'running')));
     const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-acp' && workspace.runtime === 'codex' && workspace.status === 'running'));
@@ -1450,8 +1480,30 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     assert.match(warning.description, /Model metadata/);
     const thinking = activityBodies.find(item => item.type === 'runtime_thinking');
     assert.ok(thinking, `runtime thinking activity missing: ${JSON.stringify(activityBodies)}`);
-    assert.equal(thinking.details.thought, 'fake acp warmup ok');
+    assert.equal(thinking.details.thought, 'checking the repository');
+    assert.equal(thinking.details.protocol, 'codex-acp');
+    assert.equal(thinking.details.sourceEvent, 'agent_thought_chunk');
     assert.doesNotMatch(thinking.details.thought, /Model metadata/);
+    assert.equal(
+      activityBodies.some(item => item.description === 'Generated output'),
+      false,
+      `Codex narration must not invent Generated output: ${JSON.stringify(activityBodies)}`,
+    );
+    const toolUse = activityBodies.find(item => item.type === 'runtime_output' && item.description === 'Ran Bash');
+    assert.ok(toolUse, `Codex tool-use activity missing: ${JSON.stringify(activityBodies)}`);
+    assert.equal(toolUse.details.sourceEvent, 'tool_call');
+    assert.equal(toolUse.details.commandPreview, 'pwd');
+    assert.equal(
+      activityBodies.some(item => item.description === 'Tool completed' || item.description === 'Tool failed'),
+      false,
+      `terminal tool updates must not invent a second Activity row: ${JSON.stringify(activityBodies)}`,
+    );
+    const turnStart = activityBodies.findIndex(item => item.type === 'runtime_working' && item.details.target === '#general');
+    const toolUseIndex = activityBodies.indexOf(toolUse);
+    const finalIdleIndex = activityBodies.findIndex((item, index) => index > toolUseIndex && item.type === 'runtime_idle');
+    assert.ok(turnStart >= 0 && turnStart < toolUseIndex, JSON.stringify(activityBodies));
+    assert.ok(toolUseIndex < finalIdleIndex, JSON.stringify(activityBodies));
+    assert.equal(finalIdleIndex, activityBodies.length - 1, `Idle must persist last: ${JSON.stringify(activityBodies)}`);
   } catch (err) {
     assert.fail(`${err.message}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
   } finally {
@@ -1704,7 +1756,7 @@ test('daemon handles backend start_runtime control command dynamically', async (
     assert.equal(runtime.currentWorkspacePath, runtimeWorkspace);
     assert.equal(runtime.systemPromptFile, join(runtimeWorkspace, '.slock', 'claude-system-prompt.md'));
     assert.match(
-      readFileSync(join(runtimeWorkspace, '.slock', 'slock'), 'utf-8'),
+      readFileSync(join(runtimeWorkspace, '.slock', 'aura'), 'utf-8'),
       /SLOCK_ALLOW_WRITES='1'/,
     );
 
@@ -1845,7 +1897,7 @@ test('daemon keeps dynamic start_runtime writes fail-closed without allowWrites'
     assert.match(runtime.sendStderr, /WRITES_NOT_ALLOWED/);
     assert.equal(runtime.allowWrites, null);
     assert.doesNotMatch(
-      readFileSync(join(runtimeWorkspace, '.slock', 'slock'), 'utf-8'),
+      readFileSync(join(runtimeWorkspace, '.slock', 'aura'), 'utf-8'),
       /SLOCK_ALLOW_WRITES=/,
     );
     assert.equal(sendRequests, 0);
@@ -2352,7 +2404,7 @@ test('smallkhoj-daemon connect uses a computer-scoped default runtime workspace'
   }
 });
 
-test('daemon start imports existing Slock runtime and Claude can call slock server info', async () => {
+test('daemon start imports existing Slock runtime and Claude can call aura server info', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-import-runtime-'));
   const runtimeDir = join(root, 'existing-runtime', '.slock');
   const tokenDir = join(root, 'tokens');

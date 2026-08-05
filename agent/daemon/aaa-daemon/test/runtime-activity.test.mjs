@@ -1,0 +1,175 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { translateRuntimeStreamActivity } from '../dist/runtime/runtime-activity.js';
+
+function assistantBlock(block, extra = {}) {
+  return {
+    type: 'assistant',
+    message: { content: [block] },
+    ...extra,
+  };
+}
+
+function toolResult(id, isError = false, extra = {}) {
+  return {
+    type: 'user',
+    message: {
+      content: [{
+        type: 'tool_result',
+        tool_use_id: id,
+        content: JSON.stringify({ status: isError ? 'failed' : 'completed' }),
+        is_error: isError,
+      }],
+    },
+    ...extra,
+  };
+}
+
+test('Codex ACP narration and thought chunks both use the Claude-compatible Thinking state', () => {
+  assert.deepEqual(
+    translateRuntimeStreamActivity('codex', assistantBlock(
+      { type: 'thinking', thinking: 'checking the repository' },
+      { runtime: 'codex_acp', acpUpdate: 'agent_thought_chunk' },
+    )),
+    [{
+      type: 'thinking',
+      protocol: 'codex-acp',
+      sourceEvent: 'agent_thought_chunk',
+      text: 'checking the repository',
+    }],
+  );
+
+  assert.deepEqual(
+    translateRuntimeStreamActivity('codex', assistantBlock(
+      { type: 'text', text: 'I found the relevant implementation.' },
+      { runtime: 'codex_acp', acpUpdate: 'agent_message_chunk' },
+    )),
+    [{
+      type: 'thinking',
+      protocol: 'codex-acp',
+      sourceEvent: 'agent_message_chunk',
+      text: 'I found the relevant implementation.',
+    }],
+  );
+});
+
+test('OpenCode SSE assistant narration is Thinking and only real tool execution is Output', () => {
+  assert.deepEqual(
+    translateRuntimeStreamActivity('opencode', assistantBlock(
+      { type: 'text', text: 'hello from opencode' },
+      { runtime: 'opencode', opencodeEvent: 'message.part.delta' },
+    )),
+    [{
+      type: 'thinking',
+      protocol: 'opencode-sse',
+      sourceEvent: 'message.part.delta',
+      text: 'hello from opencode',
+    }],
+  );
+
+  assert.deepEqual(
+    translateRuntimeStreamActivity('opencode', assistantBlock(
+      { type: 'thinking', thinking: 'checking the repository' },
+      { runtime: 'opencode', opencodeEvent: 'message.part.updated' },
+    )),
+    [{
+      type: 'thinking',
+      protocol: 'opencode-sse',
+      sourceEvent: 'message.part.updated',
+      text: 'checking the repository',
+    }],
+  );
+
+  assert.deepEqual(
+    translateRuntimeStreamActivity('opencode', assistantBlock(
+      {
+        type: 'tool_use',
+        id: 'tool-1',
+        name: 'bash',
+        input: { status: 'pending', command: 'pwd' },
+      },
+      { runtime: 'opencode', opencodeEvent: 'message.part.updated' },
+    )),
+    [{
+      type: 'tool_use',
+      protocol: 'opencode-sse',
+      sourceEvent: 'message.part.updated',
+      toolUseId: 'tool-1',
+      toolName: 'bash',
+      commandPreview: 'pwd',
+    }],
+  );
+
+  assert.deepEqual(
+    translateRuntimeStreamActivity('opencode', toolResult(
+      'tool-1',
+      false,
+      { runtime: 'opencode', opencodeEvent: 'message.part.updated' },
+    )),
+    [],
+  );
+});
+
+test('Codex ACP reports tool start once and does not invent a terminal Activity row', () => {
+  assert.deepEqual(
+    translateRuntimeStreamActivity('codex', assistantBlock(
+      { type: 'tool_use', id: 'call-1', name: 'terminal', input: { status: 'pending', command: 'pwd' } },
+      { runtime: 'codex_acp', acpUpdate: 'tool_call' },
+    )),
+    [{
+      type: 'tool_use',
+      protocol: 'codex-acp',
+      sourceEvent: 'tool_call',
+      toolUseId: 'call-1',
+      toolName: 'terminal',
+      commandPreview: 'pwd',
+    }],
+  );
+
+  assert.deepEqual(
+    translateRuntimeStreamActivity('codex', toolResult(
+      'call-1',
+      true,
+      { runtime: 'codex_acp', acpUpdate: 'tool_call_update' },
+    )),
+    [],
+  );
+});
+
+test('Claude stream-json keeps its existing plain-text thinking fallback', () => {
+  assert.deepEqual(
+    translateRuntimeStreamActivity('claude_code', assistantBlock(
+      { type: 'text', text: 'legacy stream-json progress' },
+      { runtime: 'claude_code' },
+    )),
+    [{
+      type: 'thinking',
+      protocol: 'claude-stream-json',
+      sourceEvent: 'assistant_text',
+      text: 'legacy stream-json progress',
+    }],
+  );
+});
+
+test('OpenCode generic connection and session events do not masquerade as activity', () => {
+  assert.deepEqual(translateRuntimeStreamActivity('opencode', {
+    type: 'opencode_event',
+    runtime: 'opencode',
+    opencodeEvent: 'server.connected',
+  }), []);
+  assert.deepEqual(translateRuntimeStreamActivity('opencode', {
+    type: 'status',
+    runtime: 'opencode',
+    opencodeEvent: 'session.status',
+  }), []);
+});
+
+test('user transcript parts are never Thinking or Output', () => {
+  assert.deepEqual(translateRuntimeStreamActivity('opencode', {
+    type: 'user',
+    runtime: 'opencode',
+    message: { content: [{ type: 'text', text: '[event=message.created] hello' }] },
+    opencodeEvent: 'message.part.updated',
+  }), []);
+});

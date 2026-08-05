@@ -43,7 +43,7 @@ export function buildCodexSlockPrompt(options: Pick<CodexRuntimeOptions, 'creden
     '',
     '- You are running under `codex exec` as a daemon-managed runtime.',
     '- Complete the current Slock event end to end before exiting.',
-    '- All user-visible communication must be sent with the generated `slock` CLI wrapper.',
+    '- All user-visible communication must be sent with the PATH-injected `aura` CLI.',
     '- Plain stdout/stderr from this process is daemon telemetry only; it is not delivered to Slock users.',
   ].join('\n');
 }
