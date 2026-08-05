@@ -431,6 +431,7 @@ async def test_create_agent_can_register_without_starting_runtime(monkeypatch):
     monkeypatch.setattr(public_api.daemon_control_hub, "push", fake_push)
     request = _JsonRequest({
         "name": "release-assignee",
+        "description": "  擅长后端排障和数据库迁移  ",
         "computerId": str(computer.id),
         "runtime": "codex",
         "runtimeProvider": "krill",
@@ -442,6 +443,8 @@ async def test_create_agent_can_register_without_starting_runtime(monkeypatch):
     agent = db.added[0]
     workspace = db.added[1]
     assert response["created"] is True
+    assert agent.handle == "release-assignee"
+    assert agent.description == "擅长后端排障和数据库迁移"
     assert agent.config["runtimeDesiredStatus"] == "stopped"
     assert workspace.status == "stopped"
     assert pushed == []
@@ -753,6 +756,41 @@ def test_public_api_member_patch_ignores_agent_avatar_url():
     public_api._apply_member_patch(member, {"avatarUrl": "https://example.com/agent.png"})
 
     assert member.avatar_url is None
+
+
+def test_public_api_member_patch_keeps_name_immutable_and_description_agent_only():
+    agent = _profile_member(kind="agent")
+    public_api._apply_member_patch(agent, {"description": "  擅长后端排障\n和迁移  "})
+    assert agent.description == "擅长后端排障\n和迁移"
+
+    human = _profile_member(kind="human")
+    with pytest.raises(HTTPException) as human_description:
+        public_api._apply_member_patch(human, {"description": "不应保存"})
+    assert human_description.value.status_code == 400
+
+    for field in ("name", "handle", "displayName"):
+        with pytest.raises(HTTPException) as immutable_name:
+            public_api._apply_member_patch(agent, {field: "renamed"})
+        assert immutable_name.value.status_code == 400
+        assert immutable_name.value.detail["reasonCode"] == "NAME_IMMUTABLE"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["name", "handle", "displayName", "description"])
+async def test_agent_cannot_self_edit_human_managed_identity_fields(field):
+    member = _runtime_member(config={"permissions": {"updateProfile": True}})
+    member.handle = "helper"
+    server = SimpleNamespace(id=uuid.uuid4())
+
+    with pytest.raises(HTTPException) as rejected:
+        await agent_api.update_profile(
+            _JsonRequest({field: "self-authored"}),
+            agent=(member, server),
+            db=_FakeSession(),
+        )
+
+    assert rejected.value.status_code == 403
+    assert "human-managed" in rejected.value.detail
 
 
 def test_public_api_channel_member_payload_accepts_single_and_list_ids():

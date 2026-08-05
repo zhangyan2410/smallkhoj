@@ -23,12 +23,21 @@
   Channel removal, compact OpenCode join/leave context turns, zero tool calls,
   zero visible acknowledgement reply, and post-removal delivery cutoff. Evidence
   is under this task's `evidence/` directory.
-- Phase 11 cloud reset/rollout remains intentionally pending: the exact cloud
-  stack/database target has not been identified and must not be guessed.
+- Supplemental real UI evidence now also covers Chinese/English Create Agent
+  copy, live Unicode Name validation, the Description limit state, real `@/#`
+  suggestions, the IME Enter guard, and the English remove-Agent confirmation.
+  See `evidence/REAL_local_ui_supplement_20260806.md`.
+- Phase 11 cloud reset/rollout remains intentionally pending. Read-only SSH
+  inspection uniquely identified Tencent Lighthouse `124.222.40.40`, bundle
+  `/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy`, with backend/frontend/db/caddy
+  running. `PUBLIC_API_KEY` and `NEXT_PUBLIC_API_KEY` are both non-development
+  values and match, so the older key blocker is resolved. Destructive reset and
+  deploying HEAD `a7dc867` still require the explicit final go-ahead.
 - Broader manual acceptance cases still needing user/provider participation, if
-  required before release, are the two-origin same-Name collision, English locale,
-  bootstrap retry/invite return, narrow/IME/touch states, and proof that a removed
-  Agent continues working in another Channel.
+  required before release, are the two-origin same-Name collision, bootstrap
+  retry/invite return, a true narrow/touch run, and proof that a removed Agent
+  continues working in another Channel. English locale and IME behavior are now
+  covered by the supplemental real UI evidence.
 - The task remains `in_progress`; do not archive until the user accepts the local
   result and decides the cloud rollout target/timing.
 
