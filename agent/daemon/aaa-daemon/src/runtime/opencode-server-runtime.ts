@@ -4,6 +4,7 @@ import { EventEmitter } from 'events';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Credential } from '../types.js';
+import { channelMembershipPromptRules } from './channel-context.js';
 import { runtimeCommandSpawnSpec, runtimeProcessSpawnOptions, signalRuntimeProcessTree } from './process-tree.js';
 import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
 import { prependPathEnv } from './slock-wrapper.js';
@@ -107,6 +108,8 @@ export function buildOpenCodeSlockPrompt(options: Pick<OpenCodeServerRuntimeOpti
     `- OpenCode provider: ${model.providerID ?? '<provider-id>'}`,
     `- OpenCode model: ${model.modelID ?? '<model-id>'}`,
     `- OpenCode agent: ${options.agent ?? DEFAULT_AGENT}`,
+    '',
+    ...channelMembershipPromptRules(),
     '',
     '## Communication: Aura CLI Only',
     '',
@@ -343,6 +346,17 @@ export class OpenCodeServerRuntimeDriver extends EventEmitter implements Managed
 
   get busy(): boolean {
     return Boolean(this.bootstrapping || this.activePrompt);
+  }
+
+  discardQueuedChannel(channelId: string): number {
+    const before = this.pendingUserMessages.length;
+    for (let index = this.pendingUserMessages.length - 1; index >= 0; index -= 1) {
+      const scopeKey = this.pendingUserMessages[index].options?.sessionScopeKey;
+      if (scopeKey === `channel:${channelId}` || scopeKey?.startsWith(`thread:${channelId}:`)) {
+        this.pendingUserMessages.splice(index, 1);
+      }
+    }
+    return before - this.pendingUserMessages.length;
   }
 
   sendUserMessage(text: string, options?: RuntimeSendOptions): boolean {

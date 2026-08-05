@@ -128,6 +128,22 @@ export class ScopedProviderSessionStore {
       .sort((a, b) => a.agentId.localeCompare(b.agentId) || a.scopeKey.localeCompare(b.scopeKey));
     return items.map((record) => ({ ...record, scope: { ...record.scope } } as ScopedProviderSessionRecord));
   }
+
+  forgetChannel(agentId: string, channelId: string): number {
+    const normalizedAgentId = requireScopePart(agentId, 'agentId');
+    const normalizedChannelId = requireScopePart(channelId, 'channelId');
+    let removed = 0;
+    for (const [key, record] of this.records.entries()) {
+      if (record.agentId !== normalizedAgentId) continue;
+      const belongsToChannel = record.scope.type === 'channel'
+        ? record.scope.channelId === normalizedChannelId
+        : record.scope.type === 'thread' && record.scope.channelId === normalizedChannelId;
+      if (!belongsToChannel) continue;
+      this.records.delete(key);
+      removed += 1;
+    }
+    return removed;
+  }
 }
 
 function requireScopePart(value: string | undefined, name: string): string {

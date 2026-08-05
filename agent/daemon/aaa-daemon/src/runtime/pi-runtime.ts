@@ -205,6 +205,17 @@ export class PiRuntimeDriver extends EventEmitter implements ManagedRuntimeDrive
   get queuedMessageCount(): number { return this.pending.length; }
   get busy(): boolean { return this.activeTurn; }
 
+  discardQueuedChannel(channelId: string): number {
+    const before = this.pending.length;
+    for (let index = this.pending.length - 1; index >= 0; index -= 1) {
+      const scopeKey = this.pending[index].options?.sessionScopeKey;
+      if (scopeKey === `channel:${channelId}` || scopeKey?.startsWith(`thread:${channelId}:`)) {
+        this.pending.splice(index, 1);
+      }
+    }
+    return before - this.pending.length;
+  }
+
   start(): void {
     if (this.started) return;
     mkdirSync(this.configHome, { recursive: true });

@@ -28,6 +28,17 @@ import { OpenCodeServerRuntimeDriver } from '../runtime/opencode-server-runtime.
 import { PiRuntimeDriver, resolveBundledPiLayout } from '../runtime/pi-runtime.js';
 import type { ManagedRuntimeDriver } from '../runtime/runtime-driver.js';
 import { translateRuntimeStreamActivity } from '../runtime/runtime-activity.js';
+import {
+  RuntimeChannelContextRegistry,
+  formatChannelMembershipChange,
+  formatChannelRosterReconciliation,
+  formatChannelRosterSnapshot,
+  formatRemovedFromChannel,
+  type RuntimeChannelMember,
+  type RuntimeChannelMembershipChange,
+  type RuntimeChannelReferenceUpdate,
+  type RuntimeChannelSnapshot,
+} from '../runtime/channel-context.js';
 import { importSlockRuntime } from '../runtime/import-slock-runtime.js';
 import {
   chooseRuntimeSessionScope,
@@ -52,6 +63,7 @@ interface LogEntry {
 export interface RuntimeIncomingMessage {
   traceId?: string;
   eventType?: string;
+  eventId?: string;
   eventSeq?: string;
   target?: string;
   channelType?: string;
@@ -75,6 +87,10 @@ export interface RuntimeIncomingMessage {
   senderType?: string;
   assignee?: string;
   assigneeId?: string;
+  rosterRevision?: number;
+  member?: RuntimeChannelMember;
+  referenceUpdates?: RuntimeChannelReferenceUpdate[];
+  removedAgentId?: string;
   content: string;
 }
 
@@ -202,6 +218,8 @@ interface RuntimeRecord {
   activityReportChain: Promise<void>;
   /** Inbound turns accepted into a busy driver, awaiting its message_sent boundary. */
   pendingActivityTurns: RuntimeIncomingMessage[];
+  /** Serializes snapshot/event preparation and provider queue insertion per runtime. */
+  channelContextDeliveryChain: Promise<void>;
   /** Ground-truth token usage from the last completed turn (session-jsonl or provider) */
   lastTurnUsage?: {
     source: 'session-jsonl' | 'provider-stream-json';
@@ -273,6 +291,7 @@ export class DaemonCore extends EventEmitter {
   private proxyToken: string | null = null;
   private runtimeSessionIds = new Map<string, string>();
   private scopedProviderSessions = new ScopedProviderSessionStore();
+  private channelContexts = new RuntimeChannelContextRegistry();
   private daemonHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private wrapper: SlockWrapperResult | null = null;
   private stopping = false;
@@ -298,9 +317,10 @@ export class DaemonCore extends EventEmitter {
       if (!isRecord(data)) return;
       const eventType = firstString(data.type, data.eventType) ?? '';
       // Only deliver explicitly actionable non-message events to runtime; skip
-      // telemetry, status updates, and generic event feed noise.
+      // telemetry, status updates, and generic event feed noise. Membership
+      // events are a separate non-work context stream.
       if (eventType === 'message_received') return; // already handled above
-      if (!isRuntimeActionableEventType(eventType)) return;
+      if (!isRuntimeActionableEventType(eventType) && !isChannelMembershipEventType(eventType)) return;
       this.deliverRuntimeMessage(data, 'proxy');
     });
   }
@@ -346,7 +366,11 @@ export class DaemonCore extends EventEmitter {
     // Skip self-echo: if the message actor is the runtime's own agent, the
     // agent sent this message and should not receive it back as a new event.
     // This prevents unnecessary token consumption from self-message echoes.
-    if (message.actor && message.actor === runtime.agentId) {
+    if (
+      !isChannelMembershipEventType(message.eventType)
+      && message.actor
+      && message.actor === runtime.agentId
+    ) {
       this.log(
         `Runtime delivery skipped self-echo: agent=${runtime.agentId} msg=${message.messageId ?? 'unknown'}`,
         'debug',
@@ -377,7 +401,20 @@ export class DaemonCore extends EventEmitter {
         providerSessionId: scopedSession?.providerSessionId,
       });
     }
-    void this.deliverRuntimeMessageToDriver(runtime, message, source, sessionScope, scopedSession?.providerSessionId);
+    runtime.channelContextDeliveryChain = (runtime.channelContextDeliveryChain ?? Promise.resolve())
+      .then(() => this.deliverRuntimeMessageToDriver(
+        runtime,
+        message,
+        source,
+        sessionScope,
+        scopedSession?.providerSessionId,
+      ))
+      .catch((error) => {
+        this.log(
+          `Runtime Channel context delivery failed: agent=${runtime.agentId} error=${(error as Error).message}`,
+          'warn',
+        );
+      });
     return true;
   }
 
@@ -395,9 +432,23 @@ export class DaemonCore extends EventEmitter {
       }
       : undefined;
     const deliveryStarted = Date.now();
-    const basePrompt = formatRuntimeIncomingMessage(message);
-    const manifest = await this.loadRuntimeMemoryContextManifest(runtime, sessionScope, basePrompt);
-    const prompt = formatRuntimeIncomingMessageWithMemoryContext(message, manifest);
+    const membershipChange = runtimeChannelMembershipChange(message);
+    let prompt: string;
+    let contextOnly = false;
+    if (membershipChange) {
+      const contextPrompt = await this.prepareRuntimeMembershipChange(runtime, membershipChange);
+      if (!contextPrompt) return;
+      prompt = contextPrompt;
+      contextOnly = true;
+    } else {
+      const basePrompt = formatRuntimeIncomingMessage(message);
+      const manifest = await this.loadRuntimeMemoryContextManifest(runtime, sessionScope, basePrompt);
+      const messagePrompt = formatRuntimeIncomingMessageWithMemoryContext(message, manifest);
+      const snapshot = message.channelId
+        ? await this.ensureRuntimeChannelSnapshot(runtime, message.channelId)
+        : null;
+      prompt = snapshot ? `${formatChannelRosterSnapshot(snapshot)}\n\n${messagePrompt}` : messagePrompt;
+    }
     const delivered = runtime.driver.sendUserMessage(prompt, sendOptions);
     if (message.taskRunId) {
       void this.reportTaskRunLifecycle({
@@ -420,9 +471,9 @@ export class DaemonCore extends EventEmitter {
         sessionScope: sessionScope?.key,
       });
     }
-    if (delivered) {
+    if (delivered && !contextOnly) {
       this.beginRuntimeActivityTurn(runtime, message);
-    } else {
+    } else if (!delivered && !contextOnly) {
       runtime.pendingActivityTurns.push(message);
     }
     this.log(
@@ -430,6 +481,107 @@ export class DaemonCore extends EventEmitter {
       delivered ? 'info' : 'debug',
     );
     this.emit('runtime_delivery', { source, delivered, agentId: runtime.agentId, message, sessionScope: sessionScope?.key });
+  }
+
+  private async ensureRuntimeChannelSnapshot(
+    runtime: RuntimeRecord,
+    channelId: string,
+  ): Promise<RuntimeChannelSnapshot | null> {
+    const generation = runtime.wrapper.launchId;
+    if (this.channelContexts.has(runtime.agentId, generation, channelId)) return null;
+    const snapshot = await this.loadRuntimeChannelSnapshot(runtime, channelId);
+    if (!snapshot) return null;
+    this.channelContexts.initialize(runtime.agentId, generation, snapshot);
+    return snapshot;
+  }
+
+  private async prepareRuntimeMembershipChange(
+    runtime: RuntimeRecord,
+    change: RuntimeChannelMembershipChange,
+  ): Promise<string | null> {
+    const generation = runtime.wrapper.launchId;
+    if (change.removedAgentId === runtime.agentId) {
+      this.channelContexts.clearChannel(runtime.agentId, generation, change.channelId);
+      const pendingBefore = runtime.pendingActivityTurns.length;
+      for (let index = runtime.pendingActivityTurns.length - 1; index >= 0; index -= 1) {
+        if (runtime.pendingActivityTurns[index].channelId === change.channelId) {
+          runtime.pendingActivityTurns.splice(index, 1);
+        }
+      }
+      const driverDiscarded = runtime.driver.discardQueuedChannel(change.channelId);
+      this.scopedProviderSessions.forgetChannel(runtime.agentId, change.channelId);
+      this.log(
+        `Removed Agent Channel cutoff: agent=${runtime.agentId} channel=${change.channelId} `
+          + `daemonQueued=${pendingBefore - runtime.pendingActivityTurns.length} driverQueued=${driverDiscarded}`,
+        'info',
+      );
+      return formatRemovedFromChannel(change);
+    }
+
+    if (!this.channelContexts.has(runtime.agentId, generation, change.channelId)) {
+      const snapshot = await this.loadRuntimeChannelSnapshot(runtime, change.channelId);
+      if (!snapshot) return formatChannelMembershipChange(change);
+      this.channelContexts.initialize(runtime.agentId, generation, snapshot);
+      this.channelContexts.apply(runtime.agentId, generation, change);
+      return formatChannelRosterSnapshot(snapshot);
+    }
+
+    const result = this.channelContexts.apply(runtime.agentId, generation, change);
+    if (result.kind === 'duplicate') return null;
+    if (result.kind === 'gap') {
+      const snapshot = await this.loadRuntimeChannelSnapshot(runtime, change.channelId);
+      if (!snapshot) {
+        return [
+          formatChannelMembershipChange(change),
+          `A roster revision gap was detected (expected ${result.expectedRevision}, received ${result.receivedRevision}).`,
+          'Run `aura channel members --channel <target>` before relying on the member list.',
+        ].join('\n');
+      }
+      this.channelContexts.initialize(runtime.agentId, generation, snapshot);
+      return formatChannelRosterReconciliation(snapshot);
+    }
+    return formatChannelMembershipChange(change);
+  }
+
+  private async loadRuntimeChannelSnapshot(
+    runtime: RuntimeRecord,
+    channelId: string,
+  ): Promise<RuntimeChannelSnapshot | null> {
+    try {
+      const path = `/internal/agent/${encodeURIComponent(runtime.agentId)}`
+        + `/channel-members?channel=${encodeURIComponent(channelId)}`;
+      const response = await fetch(new URL(path, this.proxy.getProxyUrl()), {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${runtime.proxyToken}`,
+          'X-Agent-Id': runtime.agentId,
+        },
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => '');
+        this.log(
+          `Channel snapshot fetch failed: agent=${runtime.agentId} channel=${channelId} `
+            + `status=${response.status} detail=${detail.slice(0, 160)}`,
+          'warn',
+        );
+        return null;
+      }
+      const snapshot = parseRuntimeChannelSnapshot(await response.json(), channelId);
+      if (!snapshot) {
+        this.log(
+          `Channel snapshot response was invalid: agent=${runtime.agentId} channel=${channelId}`,
+          'warn',
+        );
+      }
+      return snapshot;
+    } catch (error) {
+      this.log(
+        `Channel snapshot fetch failed: agent=${runtime.agentId} channel=${channelId} `
+          + `error=${(error as Error).message}`,
+        'warn',
+      );
+      return null;
+    }
   }
 
   private beginRuntimeActivityTurn(runtime: RuntimeRecord, message: RuntimeIncomingMessage): void {
@@ -998,6 +1150,7 @@ export class DaemonCore extends EventEmitter {
       recordedToolUseIds: new Set(),
       activityReportChain: Promise.resolve(),
       pendingActivityTurns: [],
+      channelContextDeliveryChain: Promise.resolve(),
     };
     this.runtimes.set(agentId, runtime);
     this.startRuntimeStallWatchdog(runtime);
@@ -1402,6 +1555,7 @@ export class DaemonCore extends EventEmitter {
       if (this.runtimes.get(agentId) === runtime) {
         this.runtimes.delete(agentId);
       }
+      this.channelContexts.clearRuntime(agentId, runtime.wrapper.launchId);
       this.stopRuntimeStallWatchdog(runtime);
       this.proxy.unregister(proxyToken);
       if (!event.intentional && runtime.runtime === 'claude_code') {
@@ -1520,6 +1674,7 @@ export class DaemonCore extends EventEmitter {
     runtime.driver.stop();
     if (!this.stopping) void this.registerDaemonLifecycle('heartbeat');
     this.runtimes.delete(agentId);
+    this.channelContexts.clearRuntime(agentId, runtime.wrapper.launchId);
     this.proxy.unregister(runtime.proxyToken);
   }
 
@@ -2101,6 +2256,7 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
 
   const message: RuntimeIncomingMessage = { content };
   const details = isRecord(value.details) ? value.details : undefined;
+  assignIfPresent(message, 'eventId', firstString(value.eventId, value.event_id, value.id));
   assignIfPresent(message, 'target', firstString(value.target, value.channel, value.channelName));
   assignIfPresent(message, 'messageId', firstString(value.msg, value.messageId, value.message_id, value.id, value.shortId));
   assignIfPresent(message, 'eventSeq', firstString(value.eventSeq, value.eventLogCursor, value.eventCursor));
@@ -2132,10 +2288,50 @@ export function normalizeRuntimeIncomingMessage(input: unknown): RuntimeIncoming
   assignIfPresent(message, 'senderType', firstString(value.senderType, value.sender_type, value.type));
   assignIfPresent(message, 'assignee', firstString(value.assignee, value.assigneeHandle, value.assigneeName, details?.assignee));
   assignIfPresent(message, 'assigneeId', firstString(value.assigneeId, value.assignee_id, details?.assigneeId));
+  const rosterRevision = positiveInteger(value.rosterRevision ?? value.roster_revision);
+  if (rosterRevision !== undefined) message.rosterRevision = rosterRevision;
+  const rosterMember = parseRuntimeChannelMember(value.member);
+  if (rosterMember) message.member = rosterMember;
+  const referenceUpdates = parseRuntimeReferenceUpdates(value.referenceUpdates ?? value.reference_updates);
+  if (referenceUpdates.length > 0) message.referenceUpdates = referenceUpdates;
+  assignIfPresent(message, 'removedAgentId', firstString(value.removedAgentId, value.removed_agent_id));
   if (eventType && eventType !== 'message_received') {
     message.eventType = eventType;
   }
   return message;
+}
+
+export function parseRuntimeChannelSnapshot(
+  input: unknown,
+  fallbackChannelId?: string,
+): RuntimeChannelSnapshot | null {
+  if (!isRecord(input)) return null;
+  const channelId = firstString(input.channelId, input.channel_id, fallbackChannelId);
+  const rosterRevision = positiveInteger(input.rosterRevision ?? input.roster_revision);
+  if (!channelId || rosterRevision === undefined || !Array.isArray(input.members)) return null;
+  const members: RuntimeChannelMember[] = [];
+  for (const rawMember of input.members) {
+    const member = parseRuntimeChannelMember(rawMember);
+    if (member) members.push(member);
+  }
+  return { channelId, rosterRevision, members };
+}
+
+export function runtimeChannelMembershipChange(
+  message: RuntimeIncomingMessage,
+): RuntimeChannelMembershipChange | null {
+  const eventType = canonicalChannelMembershipEventType(message.eventType);
+  if (!eventType) return null;
+  if (!message.channelId || message.rosterRevision === undefined || !message.member) return null;
+  return {
+    eventId: message.eventId,
+    eventType,
+    channelId: message.channelId,
+    rosterRevision: message.rosterRevision,
+    member: message.member,
+    referenceUpdates: message.referenceUpdates ?? [],
+    removedAgentId: message.removedAgentId,
+  };
 }
 
 export function selectRuntimeSessionScope(message: RuntimeIncomingMessage): RuntimeSessionScope | undefined {
@@ -3000,6 +3196,19 @@ function normalizeRuntimeEventPayload(input: unknown): unknown {
     return normalized;
   }
 
+  if (isChannelMembershipEventType(rawType) && isRecord(input.payload)) {
+    const normalized: Record<string, unknown> = {
+      ...input.payload,
+      type: rawType,
+    };
+    assignRawIfMissing(normalized, 'eventId', input.eventId ?? input.event_id ?? input.id);
+    assignRawIfMissing(normalized, 'eventSeq', input.eventSeq ?? input.eventLogCursor ?? input.eventCursor ?? input.seq);
+    assignRawIfMissing(normalized, 'timestamp', input.timestamp ?? input.createdAt);
+    assignRawIfMissing(normalized, 'channelId', input.channelId ?? input.channel_id);
+    assignRawIfMissing(normalized, 'actor', input.actor ?? input.actorId ?? input.actor_id);
+    return normalized;
+  }
+
   return input;
 }
 
@@ -3022,6 +3231,53 @@ function firstRecord(...values: unknown[]): Record<string, unknown> | undefined 
     if (isRecord(value)) return value;
   }
   return undefined;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  const parsed = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? Number.parseInt(value, 10)
+      : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return Math.floor(parsed);
+}
+
+function parseRuntimeChannelMember(input: unknown): RuntimeChannelMember | null {
+  if (!isRecord(input)) return null;
+  const memberId = firstString(input.memberId, input.member_id, input.id);
+  const kind = firstString(input.kind, input.type);
+  const reference = firstString(input.reference, input.handle);
+  if (!memberId || !kind || !reference) return null;
+  const canonicalReference = reference.startsWith('@') ? reference : `@${reference}`;
+  const member: RuntimeChannelMember = {
+    memberId,
+    kind,
+    reference: canonicalReference,
+  };
+  const handle = firstString(input.handle);
+  if (handle) member.handle = handle.startsWith('@') ? handle.slice(1) : handle;
+  const status = firstString(input.status);
+  if (status) member.status = status;
+  const description = firstString(input.description);
+  if (kind === 'agent' && description) member.description = description;
+  return member;
+}
+
+function parseRuntimeReferenceUpdates(input: unknown): RuntimeChannelReferenceUpdate[] {
+  if (!Array.isArray(input)) return [];
+  const updates: RuntimeChannelReferenceUpdate[] = [];
+  for (const rawUpdate of input) {
+    if (!isRecord(rawUpdate)) continue;
+    const memberId = firstString(rawUpdate.memberId, rawUpdate.member_id, rawUpdate.id);
+    const reference = firstString(rawUpdate.reference, rawUpdate.handle);
+    if (!memberId || !reference) continue;
+    updates.push({
+      memberId,
+      reference: reference.startsWith('@') ? reference : `@${reference}`,
+    });
+  }
+  return updates;
 }
 
 function assignIfPresent<K extends keyof RuntimeIncomingMessage>(
@@ -3075,6 +3331,25 @@ export function isRuntimeActionableEventType(type?: string): boolean {
     || type === 'task.memory_requested'
     || type === 'thread_summary_requested'
     || type === 'thread.summary_requested';
+}
+
+export function isChannelMembershipEventType(type?: string): boolean {
+  return type === 'channel.member_joined'
+    || type === 'channel.member_left'
+    || type === 'channel_member_joined'
+    || type === 'channel_member_left';
+}
+
+function canonicalChannelMembershipEventType(
+  type?: string,
+): RuntimeChannelMembershipChange['eventType'] | null {
+  if (type === 'channel.member_joined' || type === 'channel_member_joined') {
+    return 'channel.member_joined';
+  }
+  if (type === 'channel.member_left' || type === 'channel_member_left') {
+    return 'channel.member_left';
+  }
+  return null;
 }
 
 function isMessageEventType(type: string): boolean {

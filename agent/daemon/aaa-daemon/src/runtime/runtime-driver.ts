@@ -33,6 +33,8 @@ export interface ManagedRuntimeDriver {
   stop(): void;
   killUnresponsive(): void;
   sendUserMessage(text: string, options?: RuntimeSendOptions): boolean;
+  /** Drop daemon-queued Channel/thread prompts without stopping other Channel scopes. */
+  discardQueuedChannel(channelId: string): number;
   readonly pid: number | undefined;
   readonly sessionId: string | undefined;
   readonly queuedMessageCount: number;

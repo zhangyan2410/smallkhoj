@@ -214,7 +214,7 @@ function eventsFromJsonRpc(msg: JSONRPCMessage): WebSocketManagerEvent[] {
   if (method.startsWith('message.')) {
     return [{ type: 'message', message: msg.params ?? msg }];
   }
-  if (method.startsWith('task.') || method.startsWith('task_')) {
+  if (isTaskEventType(method) || isThreadEventType(method) || isChannelMembershipEventType(method)) {
     return [{ type: 'event', event: { ...(isRecord(msg.params) ? msg.params : {}), type: method } }];
   }
   return [{ type: 'message', message: msg }];
@@ -232,7 +232,7 @@ function eventFromRawPayload(value: unknown): WebSocketManagerEvent[] {
   if (isMessageEventType(type)) {
     return [{ type: 'message', message: value.message ?? value.event ?? value }];
   }
-  if (isTaskEventType(type) || isThreadEventType(type)) {
+  if (isTaskEventType(type) || isThreadEventType(type) || isChannelMembershipEventType(type)) {
     return [{ type: 'event', event: value.event ?? value }];
   }
   if (isRecord(value.message) || typeof value.content === 'string') {
@@ -298,6 +298,13 @@ function isTaskEventType(type: string): boolean {
 
 function isThreadEventType(type: string): boolean {
   return type.startsWith('thread_') || type.startsWith('thread.');
+}
+
+function isChannelMembershipEventType(type: string): boolean {
+  return type === 'channel.member_joined'
+    || type === 'channel.member_left'
+    || type === 'channel_member_joined'
+    || type === 'channel_member_left';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

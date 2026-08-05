@@ -223,6 +223,17 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     return Boolean(this.child);
   }
 
+  discardQueuedChannel(channelId: string): number {
+    const before = this.pendingUserMessages.length;
+    for (let index = this.pendingUserMessages.length - 1; index >= 0; index -= 1) {
+      const scopeKey = this.pendingUserMessages[index].options?.sessionScopeKey;
+      if (scopeKey === `channel:${channelId}` || scopeKey?.startsWith(`thread:${channelId}:`)) {
+        this.pendingUserMessages.splice(index, 1);
+      }
+    }
+    return before - this.pendingUserMessages.length;
+  }
+
   sendUserMessage(text: string, options?: RuntimeSendOptions): boolean {
     if (!this.started || this.child) {
       this.pendingUserMessages.push({ text, options });

@@ -216,6 +216,7 @@ test('daemon formats inbound Slock messages for Claude runtime delivery', () => 
   });
 
   assert.deepEqual(message, {
+    eventId: 'msg-1',
     target: '#general',
     messageId: 'msg-1',
     timestamp: '2026-05-30T00:00:00.000Z',

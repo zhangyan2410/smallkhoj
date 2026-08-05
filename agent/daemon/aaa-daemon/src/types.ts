@@ -559,8 +559,15 @@ export interface ChannelEvent {
   type: 'channel.created' | 'channel.member_joined' | 'channel.member_left';
   payload: {
     channelId: string;
-    channelName: string;
-    memberId?: string;
+    channelName?: string;
+    rosterRevision?: number;
+    member?: {
+      memberId: string;
+      kind: 'human' | 'agent';
+      reference: string;
+    };
+    referenceUpdates?: Array<{ memberId: string; reference: string }>;
+    removedAgentId?: string;
   };
   seq: number;
   timestamp: string;

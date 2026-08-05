@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Credential } from '../types.js';
+import { channelMembershipPromptRules } from './channel-context.js';
 import { prependPathEnv } from './slock-wrapper.js';
 import { runtimeCommandSpawnSpec, runtimeProcessSpawnOptions, scheduleRuntimeProcessTreeKill, signalRuntimeProcessTree } from './process-tree.js';
 import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
@@ -50,14 +51,16 @@ export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'cred
     `- Server ID: ${options.credential.serverId}`,
     `- Workspace: ${options.workspacePath}`,
     '',
+    ...channelMembershipPromptRules(),
+    '',
     '## Communication — aura CLI ONLY',
     '',
     'Use the PATH-injected `aura` CLI for chat / task / attachment operations. The daemon places the workspace-local Aura wrapper first in PATH. Use bare `aura`; do not inspect, invoke, or fall back to generated absolute wrapper paths. Use ONLY these commands for communication:',
     '',
     '1. **`aura message check`** — Non-blocking check for new messages. Use freely during work — at natural breakpoints or after notifications.',
     '2. **`aura message send`** — Send a message to a channel or DM.',
-    '3. **`aura server info`** — List channels in this server, which ones you have joined, plus all agents and humans.',
-    '4. **`aura channel members`** — List the members (agents and humans) of a specific channel, DM, or thread target.',
+    '3. **`aura server info`** — List visible channels in this server and which ones you have joined.',
+    '4. **`aura channel members`** — List the current members of one specific channel, DM, or thread target with canonical references.',
     '5. **`aura channel join`** — Join a visible public channel. This only affects your own agent membership.',
     '6. **`aura channel leave`** — Leave a regular channel you have joined.',
     '7. **`aura thread unfollow`** — Stop receiving ordinary delivery for a thread you no longer need to follow.',
@@ -179,8 +182,8 @@ export function buildSlockSystemPrompt(options: Pick<ClaudeRuntimeOptions, 'cred
     '',
     '### Discovering people and channels',
     '',
-    'Call `aura server info` to see all channels in this server, which ones you have joined, other agents, and humans.',
-    'Visible public channels may appear even when `joined=false`. In that state you can still inspect them with `aura message read` and `aura channel members`, but you cannot send messages there or receive ordinary channel delivery until you join with `aura channel join --target "#channel-name"`. Private channels require a human with access to add you.',
+    'Call `aura server info` to see visible channels in this server and which ones you have joined. Use `aura channel members --channel <target>` for the current member list of one Channel; server discovery is never a Channel roster.',
+    'Visible public channels may appear even when `joined=false`. Join with `aura channel join --target "#channel-name"` before reading, listing members, sending, or receiving ordinary delivery there. Private channels require a human with access to add you.',
     '',
     'Private channels are membership-gated. If `aura server info` shows a channel as private, treat its name, members, and content as private to that channel; do not disclose that information in other channels, DMs, summaries, or task reports unless a human explicitly asks within an authorized context.',
     '',
@@ -543,6 +546,17 @@ export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeD
 
   get busy(): boolean {
     return this.isBusy();
+  }
+
+  discardQueuedChannel(channelId: string): number {
+    const before = this.pendingUserMessages.length;
+    for (let index = this.pendingUserMessages.length - 1; index >= 0; index -= 1) {
+      const scopeKey = this.pendingUserMessages[index].options?.sessionScopeKey;
+      if (scopeKey === `channel:${channelId}` || scopeKey?.startsWith(`thread:${channelId}:`)) {
+        this.pendingUserMessages.splice(index, 1);
+      }
+    }
+    return before - this.pendingUserMessages.length;
   }
 
   sendUserMessage(text: string, options?: RuntimeSendOptions): boolean {

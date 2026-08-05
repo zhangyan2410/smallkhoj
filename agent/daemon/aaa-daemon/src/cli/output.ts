@@ -215,6 +215,10 @@ export function formatReact(_json: unknown): string {
 // ─── Channel formatting ─────────────────────────────────────────
 
 interface MemberInfo {
+  memberId?: string;
+  kind?: string;
+  handle?: string;
+  reference?: string;
   name?: string;
   role?: string;
   type?: string;
@@ -224,21 +228,32 @@ interface MemberInfo {
 
 /** Format channel members response. */
 export function formatChannelMembers(json: unknown): string {
-  const data = json as { members?: MemberInfo[] };
+  const data = json as { channelId?: string; rosterRevision?: number; members?: MemberInfo[] };
   const members = data.members ?? [];
+  const heading = data.rosterRevision === undefined
+    ? '## Channel Members'
+    : `## Channel Members (revision ${data.rosterRevision})`;
   if (members.length === 0) {
-    return '## Channel Members\n\nNo members.\n';
+    return `${heading}\n\nNo members.\n`;
   }
   const formatMember = (m: MemberInfo): string => {
     const role = m.role ? ` [${m.role}]` : '';
     const status = m.status ? ` (${m.status})` : '';
-    const desc = m.description ? ` — ${m.description}` : '';
-    return `  @${m.name}${role}${status}${desc}`;
+    const kind = m.kind ?? m.type;
+    const desc = kind === 'agent' && m.description ? ` — ${m.description}` : '';
+    const rawReference = m.reference ?? m.handle ?? m.name ?? '<unknown>';
+    const reference = rawReference.startsWith('@') ? rawReference : `@${rawReference}`;
+    const identity = m.memberId ? ` [${kind ?? 'member'} id=${m.memberId}]` : role;
+    return `  ${reference}${identity}${status}${desc}`;
   };
-  const agents = members.filter((m) => m.type === 'agent');
-  const humans = members.filter((m) => m.type === 'human' || !m.type);
-  const others = members.filter((m) => m.type && m.type !== 'agent' && m.type !== 'human');
-  const lines = ['## Channel Members'];
+  const memberKind = (member: MemberInfo): string | undefined => member.kind ?? member.type;
+  const agents = members.filter((m) => memberKind(m) === 'agent');
+  const humans = members.filter((m) => memberKind(m) === 'human' || !memberKind(m));
+  const others = members.filter((m) => {
+    const kind = memberKind(m);
+    return Boolean(kind && kind !== 'agent' && kind !== 'human');
+  });
+  const lines = [heading];
   if (agents.length > 0) {
     lines.push('', 'Agents:', ...agents.map(formatMember));
   }
