@@ -54,18 +54,14 @@ test('Codex ACP narration and thought chunks both use the Claude-compatible Thin
   );
 });
 
-test('OpenCode SSE assistant narration is Thinking and only real tool execution is Output', () => {
+test('OpenCode SSE requires explicit reasoning for Thinking and only real tool execution is Output', () => {
   assert.deepEqual(
     translateRuntimeStreamActivity('opencode', assistantBlock(
       { type: 'text', text: 'hello from opencode' },
       { runtime: 'opencode', opencodeEvent: 'message.part.delta' },
     )),
-    [{
-      type: 'thinking',
-      protocol: 'opencode-sse',
-      sourceEvent: 'message.part.delta',
-      text: 'hello from opencode',
-    }],
+    [],
+    'final assistant transcript text must not masquerade as provider reasoning',
   );
 
   assert.deepEqual(

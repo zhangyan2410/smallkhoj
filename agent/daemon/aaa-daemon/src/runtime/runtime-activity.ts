@@ -25,9 +25,10 @@ export type RuntimeStreamActivitySignal =
 /**
  * Translate provider-specific stream events into the small, shared Activity
  * vocabulary consumed by DaemonCore. Provider adapters are responsible for
- * filtering user-authored transcript parts before this seam. The remaining
- * assistant narration follows the established Claude-compatible product
- * semantics: readable Thinking previews and Output only for real tool use.
+ * filtering user-authored transcript parts before this seam. Explicit
+ * reasoning follows the shared Thinking contract, while runtime-specific
+ * compatibility fallbacks decide whether plain assistant text is narration.
+ * Output remains reserved for real tool use.
  */
 export function translateRuntimeStreamActivity(
   runtime: RuntimeActivityRuntime,
@@ -52,6 +53,12 @@ export function translateRuntimeStreamActivity(
     }
 
     if (eventType === 'assistant' && blockType === 'text') {
+      // OpenCode persists final assistant transcript text in the same stream as
+      // explicit reasoning parts. Treating that text as Thinking exposes the
+      // reply body (often only its first SSE delta) as model thought. OpenCode
+      // therefore requires an explicit reasoning/thinking part; the other
+      // runtimes retain their established plain-text narration fallback.
+      if (runtime === 'opencode') continue;
       const text = stringField(block, 'text');
       if (!text) continue;
       signals.push({
