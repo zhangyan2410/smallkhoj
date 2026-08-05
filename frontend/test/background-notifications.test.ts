@@ -3,8 +3,8 @@ import test from "node:test"
 
 import {
   NOTIFICATION_THROTTLE_WINDOW_MS,
+  eventMentionsCurrentMember,
   flushThrottledNotifications,
-  mentionsCurrentUser,
   offerThrottledNotification,
   planNotificationForEvent,
   type NotificationPlanContext,
@@ -33,7 +33,7 @@ function event(overrides: Partial<PublicEventEnvelope>): PublicEventEnvelope {
 function ctx(overrides: Partial<NotificationPlanContext> = {}): NotificationPlanContext {
   return {
     pathname: "/",
-    currentMemberNames: ["me", "Me Display"],
+    currentMemberIds: ["member-me"],
     prefs: ALL_ON,
     documentVisible: false,
     ...overrides,
@@ -44,7 +44,7 @@ test("DM message plans a chat notification with direct route", () => {
   const plan = planNotificationForEvent(
     event({
       scope: { kind: "dm", id: "dm-1", name: "DM @zy" },
-      payload: { message: { sender: "zy" } },
+      payload: { senderId: "member-zy", sender: "@zy" },
     }),
     ctx(),
   )
@@ -57,11 +57,11 @@ test("DM message plans a chat notification with direct route", () => {
   })
 })
 
-test("own messages never notify (sender normalized with @ and case)", () => {
+test("own messages never notify by immutable sender Member ID", () => {
   const plan = planNotificationForEvent(
     event({
       scope: { kind: "dm", id: "dm-1", name: "DM @zy" },
-      payload: { message: { sender: "@ME" } },
+      payload: { senderId: "member-me", sender: "@me" },
     }),
     ctx(),
   )
@@ -71,7 +71,7 @@ test("own messages never notify (sender normalized with @ and case)", () => {
 test("viewing the same chat route with a focused document suppresses notification", () => {
   const incoming = event({
     scope: { kind: "dm", id: "dm-1", name: "DM @zy" },
-    payload: { message: { sender: "zy" } },
+    payload: { senderId: "member-zy", sender: "@zy" },
   })
   assert.equal(
     planNotificationForEvent(incoming, ctx({ pathname: `/chat/${encodeURIComponent("DM @zy")}`, documentVisible: true })),
@@ -84,35 +84,40 @@ test("viewing the same chat route with a focused document suppresses notificatio
   )
 })
 
-test("channel messages notify only on detectable @mention", () => {
+test("channel messages notify only when persisted mention Member IDs include the viewer", () => {
   const mentioned = event({
     scope: { kind: "channel", id: "ch-1", name: "#general" },
-    payload: { message: { sender: "zy", content: "hey @me please check" } },
+    payload: {
+      senderId: "member-zy",
+      sender: "@zy",
+      content: "hey @任意展示名 please check",
+      mentions: ["member-me"],
+    },
   })
   const plan = planNotificationForEvent(mentioned, ctx())
   assert.equal(plan?.variant, "mention")
   assert.equal(plan?.href, "/chat/general")
   assert.equal(plan?.throttleKey, "channel:general")
 
-  // 无提及 / 无正文 → 宁缺毋滥，不通知。
+  // 正文看起来像提及，但没有权威 UUID → 不通知。
   const noMention = event({
     scope: { kind: "channel", id: "ch-1", name: "#general" },
-    payload: { message: { sender: "zy", content: "hello all" } },
+    payload: { senderId: "member-zy", content: "hey @me please check", mentions: [] },
   })
   assert.equal(planNotificationForEvent(noMention, ctx()), null)
-  const noContent = event({
+  const anotherMember = event({
     scope: { kind: "channel", id: "ch-1", name: "#general" },
-    payload: { message: { sender: "zy" } },
+    payload: { senderId: "member-zy", content: "@me", mentions: ["member-other"] },
   })
-  assert.equal(planNotificationForEvent(noContent, ctx()), null)
+  assert.equal(planNotificationForEvent(anotherMember, ctx()), null)
 })
 
-test("mention detection is case-insensitive and matches display names", () => {
-  assert.equal(mentionsCurrentUser("ping @ME", ["me"]), true)
-  assert.equal(mentionsCurrentUser("cc @Me Display", ["me display"]), true)
-  assert.equal(mentionsCurrentUser("email me@example.com", ["me"]), false)
-  assert.equal(mentionsCurrentUser("", ["me"]), false)
-  assert.equal(mentionsCurrentUser("@me", []), false)
+test("mention targeting accepts only exact persisted Member IDs", () => {
+  assert.equal(eventMentionsCurrentMember(event({ payload: { mentions: ["member-me"] } }), ["member-me"]), true)
+  assert.equal(eventMentionsCurrentMember(event({ payload: { mentions: ["MEMBER-ME"] } }), ["member-me"]), false)
+  assert.equal(eventMentionsCurrentMember(event({ payload: { content: "@me", mentions: [] } }), ["member-me"]), false)
+  assert.equal(eventMentionsCurrentMember(event({ payload: { message: { mentions: ["member-me"] } } }), ["member-me"]), true)
+  assert.equal(eventMentionsCurrentMember(event({ payload: { mentions: ["member-me"] } }), []), false)
 })
 
 test("task events plan task notifications unless viewing /tasks focused", () => {
@@ -157,7 +162,7 @@ test("memory events plan review notifications routed by scope", () => {
 test("domain toggles suppress their events", () => {
   const dmEvent = event({
     scope: { kind: "dm", id: "dm-1", name: "DM @zy" },
-    payload: { message: { sender: "zy" } },
+    payload: { senderId: "member-zy", sender: "@zy" },
   })
   assert.equal(planNotificationForEvent(dmEvent, ctx({ prefs: { ...ALL_ON, chat: false } })), null)
 

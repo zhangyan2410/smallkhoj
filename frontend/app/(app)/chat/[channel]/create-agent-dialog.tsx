@@ -61,13 +61,13 @@ export function CreateAgentDialog() {
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, t])
 
   async function handleCreated(member: Member) {
     // 创建 agent 成功后，为它建一个 DM，使其出现在 DMS 列表。
     const dm = await apiPost<{ channel?: { name: string }; detail?: string }>(
       "/api/v1/dm",
-      { peer: member.displayName }
+      { peer: member.name }
     )
     const dmName = dm?.channel?.name
     if (dmName) {

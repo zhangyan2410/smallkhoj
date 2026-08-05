@@ -1,6 +1,6 @@
 "use client"
 
-import { useReducer, useState } from "react"
+import { useReducer, useState, type ReactElement } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +24,7 @@ import {
 
 export type DestructiveActionDialogProps<Result> = {
   triggerLabel: string
+  trigger?: ReactElement
   title: string
   targetName: string
   consequence: string
@@ -46,6 +47,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export function DestructiveActionDialog<Result>({
   triggerLabel,
+  trigger,
   title,
   targetName,
   consequence,
@@ -101,7 +103,7 @@ export function DestructiveActionDialog<Result>({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
-        render={(
+        render={trigger ?? (
           <Button type="button" variant="destructive" disabled={disabled}>
             {triggerLabel}
           </Button>

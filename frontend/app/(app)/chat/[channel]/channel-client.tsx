@@ -54,15 +54,28 @@ import {
   type ChannelFileItem,
 } from "@/lib/channel-files-state"
 import {
+  channelMembershipEventMemberId,
+  filterRemovedChannelMembers,
+  markChannelMemberPresent,
+  markChannelMemberRemoved,
+  type ChannelMemberRemovalBarrier,
+} from "@/lib/channel-member-removal-barrier"
+import {
   mergeMessageById,
   shouldHandleRealtimeEvent,
 } from "@/lib/realtime-events"
 import { chatLatestSeqDetailFromEvent, chatReadCursorRequestForThread, notifyChatLatestSeq } from "@/lib/chat-unread-state"
 import { channelMemberAddPayload } from "@/lib/channel-members"
+import { directMessageAgentHandle, mentionedAgentHandle } from "@/lib/task-assignee"
 
 import type { ChannelMessage, ThreadData } from "./chat-types"
 import { LazyWidgetLoading, MessageItem, MessageList } from "./message-list"
-import { ChatComposer, ThreadComposer } from "./composer"
+import {
+  ChatComposer,
+  ThreadComposer,
+  type ComposerChannelSuggestion,
+  type ComposerMemberSuggestion,
+} from "./composer"
 
 const TaskBoard = dynamic(
   () => import("@/components/task-board").then((module) => ({ default: module.TaskBoard })),
@@ -87,6 +100,55 @@ type DmInfo = {
   latestSeq?: number
   unreadCount?: number
   hasUnread?: boolean
+}
+
+type ChannelRosterMemberPayload = {
+  id?: string
+  memberId?: string
+  name?: string
+  handle?: string
+  reference?: string
+  displayName?: string | null
+  originServerName?: string | null
+  description?: string | null
+  kind: string
+  status?: string | null
+}
+
+type ChannelMember = Member & {
+  reference: string
+  originServerName?: string | null
+}
+
+function normalizeChannelMember(raw: ChannelRosterMemberPayload | Member): ChannelMember {
+  const memberId = raw.id || raw.memberId || ""
+  const handle = raw.handle || raw.name || ""
+  const description = raw.description ?? ("profile" in raw ? raw.profile?.description : null)
+  const displayName = raw.kind === "human"
+    ? raw.displayName || handle
+    : undefined
+  return {
+    ...raw,
+    id: memberId,
+    memberId,
+    name: handle,
+    handle,
+    reference: raw.reference || `@${handle}`,
+    displayName,
+    kind: raw.kind,
+    status: raw.status || "offline",
+    description,
+    profile: {
+      ...("profile" in raw ? raw.profile : undefined),
+      ...(raw.kind === "agent" ? { description } : {}),
+    },
+  }
+}
+
+function memberDisplayName(member: Member) {
+  return member.kind === "agent"
+    ? member.name
+    : member.displayName || member.profile?.displayName || member.name
 }
 
 const conversationTabs = [
@@ -165,6 +227,13 @@ function ChannelFileDeleteAction({
   )
 }
 
+type ChannelMemberRemoveResult = {
+  removed: boolean
+  channelId: string
+  memberId: string
+  rosterRevision: number
+}
+
 function createLatencyTraceId(prefix = "chat") {
   const random =
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -210,6 +279,7 @@ export function ChannelClient({
   sessionToken,
   activeServerId,
   canManageServer = false,
+  canManageChannelMembers = false,
   currentMemberId,
   initialThreadId,
   initialMessageId,
@@ -224,6 +294,7 @@ export function ChannelClient({
   sessionToken?: string | null
   activeServerId: string
   canManageServer?: boolean
+  canManageChannelMembers?: boolean
   currentMemberId?: string | null
   initialThreadId?: string
   initialMessageId?: string
@@ -253,7 +324,7 @@ export function ChannelClient({
     rejectAria: (path: string) => tChat("memoryRejectAria", { path }),
     base: tChat("memoryBase"),
   }
-  const [members, setMembers] = useState<Member[]>(initialMembers)
+  const [members, setMembers] = useState<ChannelMember[]>(() => initialMembers.map(normalizeChannelMember))
   const [allMembers, setAllMembers] = useState<Member[]>(initialAllMembers)
   const [channels, setChannels] = useState<ChannelInfo[]>(initialChannels)
   const [dms, setDms] = useState<DmInfo[]>(initialDms)
@@ -294,6 +365,7 @@ export function ChannelClient({
   const [threadWidthOverride, setThreadWidthOverride] = useState<number | null>(null)
   const dragDepthRef = useRef(0)
   const addMemberSelectRef = useRef<HTMLSelectElement>(null)
+  const removedChannelMemberIdsRef = useRef<ChannelMemberRemovalBarrier>(new Map())
   const realtimeCatchUpTimerRef = useRef<number | null>(null)
   const fileRequestGenerationRef = useRef(0)
   const fileRequestAbortRef = useRef<AbortController | null>(null)
@@ -320,6 +392,22 @@ export function ChannelClient({
   // useMemo：消息行 memo 的前提 —— 父组件重渲时该数组引用必须保持稳定，
   // 否则所有 MessageItem 的 allKnownMembers prop 都会变、memo 失效。
   const allKnownMembers = useMemo(() => [...members, ...allMembers], [members, allMembers])
+  const composerMembers = useMemo<ComposerMemberSuggestion[]>(() => members.map((member) => ({
+    id: member.id,
+    handle: member.handle || member.name,
+    reference: member.reference,
+    kind: member.kind,
+    displayName: member.kind === "human" ? member.displayName : null,
+    description: member.kind === "agent" ? member.description : null,
+    originServerName: member.originServerName,
+  })), [members])
+  const composerChannels = useMemo<ComposerChannelSuggestion[]>(() => channels
+    .filter((channel) => channel.type !== "dm")
+    .map((channel) => ({
+      id: channel.id,
+      name: channel.name,
+      description: channel.description,
+    })), [channels])
   const memberKindLabel = (kind: string) => kind === "agent" ? tChat("agentKind") : kind === "human" ? tChat("humanKind") : kind
 
   const markVisibleThreadRead = useCallback(async (threadId: string, data: ThreadData) => {
@@ -445,7 +533,16 @@ export function ChannelClient({
       if (match && !cancelled) {
         setChannelId(match.id)
         const mRes = await fetch(`${API_BASE}/api/v1/channels/${match.id}/members`, { headers: h })
-        if (mRes.ok) { const md = await mRes.json(); if (!cancelled) setMembers(md.members || []) }
+        if (mRes.ok) {
+          const md = await mRes.json() as { members?: ChannelRosterMemberPayload[] }
+          if (!cancelled) {
+            setMembers(filterRemovedChannelMembers(
+              removedChannelMemberIdsRef.current,
+              match.id,
+              (md.members || []).map(normalizeChannelMember),
+            ))
+          }
+        }
       }
       const membersRes = await fetch(`${API_BASE}/api/v1/members`, { headers: h })
       if (membersRes.ok) { const d = await membersRes.json(); if (!cancelled) setAllMembers(d.members || []) }
@@ -693,8 +790,12 @@ export function ChannelClient({
   const refreshMembers = useCallback(async () => {
     if (!channelId) return
     try {
-      const data = await apiGet<{ members: Member[] }>(`/api/v1/channels/${channelId}/members`, { members: [] }, sessionToken)
-      setMembers(data.members || [])
+      const data = await apiGet<{ members: ChannelRosterMemberPayload[] }>(`/api/v1/channels/${channelId}/members`, { members: [] }, sessionToken)
+      setMembers(filterRemovedChannelMembers(
+        removedChannelMemberIdsRef.current,
+        channelId,
+        (data.members || []).map(normalizeChannelMember),
+      ))
     } catch {
       setMembers([])
     }
@@ -731,6 +832,28 @@ export function ChannelClient({
       void refreshChannelsAndDms()
       void refreshMembers()
       void refreshAllMembers()
+      return
+    }
+
+    if (event.type === "channel.member_joined" || event.type === "channel.member_left") {
+      const eventChannelId = typeof event.payload.channelId === "string" ? event.payload.channelId : null
+      const changedMemberId = channelMembershipEventMemberId(event.payload)
+      if (eventChannelId && changedMemberId) {
+        if (event.type === "channel.member_joined") {
+          markChannelMemberPresent(
+            removedChannelMemberIdsRef.current,
+            eventChannelId,
+            changedMemberId,
+          )
+        } else {
+          markChannelMemberRemoved(
+            removedChannelMemberIdsRef.current,
+            eventChannelId,
+            changedMemberId,
+          )
+        }
+      }
+      if (eventChannelId === channelId) void refreshMembers()
       return
     }
 
@@ -826,6 +949,7 @@ export function ChannelClient({
     if (!channelId || !memberId) return
     try {
       await apiPost(`/api/v1/channels/${channelId}/members`, channelMemberAddPayload(memberId), sessionToken)
+      markChannelMemberPresent(removedChannelMemberIdsRef.current, channelId, memberId)
       if (addMemberSelectRef.current) addMemberSelectRef.current.value = ""
       await refreshMembers()
     } catch (e) {
@@ -833,25 +957,14 @@ export function ChannelClient({
     }
   }
 
-  const createTaskFromContent = useCallback(async (content: string, messageId?: string) => {
-    const mentionPattern = /@([A-Za-z0-9_\-]+)/g
-    const mentions = Array.from(content.matchAll(mentionPattern)).map((m) => m[1])
-    const agentPool = allMembers.length > 0 ? allMembers : members
-    const mentionedAgent = mentions
-      .map((handle) => {
-        const clean = handle.startsWith("@") ? handle.slice(1) : handle
-        return agentPool.find(
-          (m) => m.kind === "agent" && (m.displayName === clean || m.handle === `@${clean}` || m.handle === clean)
-        )
-      })
-      .find(Boolean)
-
+  const createTaskFromContent = useCallback(async (
+    content: string,
+    messageId?: string,
+    mentionMemberIds: string[] = [],
+  ) => {
     const dmAgent = currentDm?.peer?.kind === "agent" ? currentDm.peer : null
-    const assignee = mentionedAgent?.handle
-      ?? mentionedAgent?.displayName
-      ?? dmAgent?.handle
-      ?? dmAgent?.displayName
-      ?? null
+    const assignee = mentionedAgentHandle(mentionMemberIds, members, allMembers)
+      ?? directMessageAgentHandle(dmAgent)
 
     const taskTitle = content.length > 72 ? `${content.slice(0, 69)}...` : content
     const sourceChannel = currentDm?.name ?? currentChannel?.name ?? `#${channelName}`
@@ -879,13 +992,21 @@ export function ChannelClient({
 
   // Composer 回调：内容由 ChatComposer 的内部 state 提交上来。
   // 返回是否发送成功，Composer 据此决定要不要清空草稿。
-  const handleSend = useCallback(async (content: string, asTask: boolean): Promise<boolean> => {
+  const handleSend = useCallback(async (
+    content: string,
+    asTask: boolean,
+    mentionMemberIds: string[],
+  ): Promise<boolean> => {
     try {
       const encodedChannel = channelPathSegment(channelName)
       const traceId = createLatencyTraceId("chat-send")
-      const result = await apiPost<{ id: string }>(`/api/v1/channels/${encodedChannel}/messages`, { content, traceId }, sessionToken)
+      const result = await apiPost<{ id: string }>(`/api/v1/channels/${encodedChannel}/messages`, {
+        content,
+        traceId,
+        mentionMemberIds,
+      }, sessionToken)
       if (asTask) {
-        await createTaskFromContent(content, result?.id)
+        await createTaskFromContent(content, result?.id, mentionMemberIds)
         if (result?.id) {
           setTaskMessageIds((previous) => new Set(previous).add(result.id))
         }
@@ -898,7 +1019,7 @@ export function ChannelClient({
     }
   }, [channelName, createTaskFromContent, refreshMessages, sessionToken])
 
-  const handleThreadSend = useCallback(async (content: string): Promise<boolean> => {
+  const handleThreadSend = useCallback(async (content: string, mentionMemberIds: string[]): Promise<boolean> => {
     if (!activeThreadId) return false
     try {
       const encodedChannel = channelPathSegment(channelName)
@@ -907,6 +1028,7 @@ export function ChannelClient({
         content,
         threadId: activeThreadId,
         traceId,
+        mentionMemberIds,
       }, sessionToken)
       await Promise.all([refreshMessages(), refreshThread(activeThreadId)])
       return true
@@ -919,7 +1041,7 @@ export function ChannelClient({
   const handleCreateTaskFromMessage = useCallback(async (message: ChannelMessage) => {
     if (taskMessageIds.has(message.id)) return
     try {
-      const taskId = await createTaskFromContent(message.content, message.id)
+      const taskId = await createTaskFromContent(message.content, message.id, message.mentions)
       setTaskMessageIds((previous) => new Set(previous).add(message.id))
       if (taskId) {
         setTaskLinks((previous) => ({ ...previous, [message.id]: taskId }))
@@ -1023,16 +1145,6 @@ export function ChannelClient({
 
   function messageMaterialMode(messageId: string): MaterialSurfaceMode {
     return messageMaterialModes[messageId] ?? (activeMaterialMessageId === messageId ? "active" : "static")
-  }
-
-  async function handleRemoveMember(memberId: string) {
-    if (!channelId) return
-    try {
-      await apiDelete(`/api/v1/channels/${channelId}/members/${memberId}`, sessionToken)
-      await refreshMembers()
-    } catch (e) {
-      console.error("Remove member failed:", e)
-    }
   }
 
   async function handleDeleteChannel() {
@@ -1302,7 +1414,7 @@ export function ChannelClient({
                                 <span className="shrink-0 text-xs text-sand-muted">{formatFileSize(file.size)}</span>
                               </div>
                               <div className="mt-0.5 flex items-center gap-2 text-xs text-sand-muted">
-                                <span>{uploader?.displayName || tChat("unknown")}</span>
+                                <span>{uploader ? memberDisplayName(uploader) : tChat("unknown")}</span>
                                 {file.createdAt && (
                                   <>
                                     <span>·</span>
@@ -1410,9 +1522,13 @@ export function ChannelClient({
                 />
 
                 <ChatComposer
+                  key={`channel:${channelName}`}
                   placeholder={composerPlaceholder}
+                  scopeKey={`channel:${channelName}`}
                   uploading={uploading}
                   attachDisabled={!filesChannelId}
+                  members={composerMembers}
+                  channels={composerChannels}
                   onUpload={handleFileUpload}
                   onSend={handleSend}
                 />
@@ -1523,7 +1639,11 @@ export function ChannelClient({
                 </div>
 
                 <ThreadComposer
+                  key={`thread:${channelName}:${activeThreadId}`}
                   placeholder={tChat("replyPlaceholder")}
+                  scopeKey={`thread:${channelName}:${activeThreadId}`}
+                  members={composerMembers}
+                  channels={composerChannels}
                   onSend={handleThreadSend}
                 />
               </div>
@@ -1553,7 +1673,7 @@ export function ChannelClient({
               </div>
 
               {/* add member on TOP (was buried at the bottom) */}
-              {!currentIsDm && (
+              {!currentIsDm && canManageChannelMembers && (
                 <div className="shrink-0 space-y-1.5 border-b-2 border-[var(--ink)] p-3">
                   <h4 className="text-xs font-semibold text-sand-muted">{tChat("addMember")}</h4>
                   <div className="flex gap-1">
@@ -1565,7 +1685,7 @@ export function ChannelClient({
                       ref={addMemberSelectRef}
                       items={allMembers
                         .filter((m) => !members.some((cm) => cm.id === m.id))
-                        .map((m) => ({ value: m.id, label: `${m.displayName} (${memberKindLabel(m.kind)})` }))}
+                        .map((m) => ({ value: m.id, label: `${memberDisplayName(m)} (${memberKindLabel(m.kind)})` }))}
                       emptyLabel={tChat("selectMember")}
                       className="h-7 min-w-0 flex-1 px-1.5 py-1 text-xs"
                     />
@@ -1587,22 +1707,62 @@ export function ChannelClient({
                   {members.map((m) => (
                     <li
                       key={m.id}
-                      data-testid={`channel-member-${m.displayName}`}
+                      data-testid={`channel-member-${memberDisplayName(m)}`}
                       className="group/member"
                     >
                       <MemberNameTag kind={m.kind} status={m.status} className="flex min-w-0 items-center gap-2 px-1.5 py-1 text-sm">
                         <AvatarObject member={m} size="xs" />
-                        <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
+                        <span className="min-w-0 flex-1 truncate">{memberDisplayName(m)}</span>
                         <span className="shrink-0 text-xs text-sand-muted">{statusLabel(m.status)}</span>
-                        {m.kind === "agent" && !currentIsDm && (
-                          <button
-                            aria-label={tChat("removeMember", { member: m.displayName || m.name })}
-                            onClick={() => handleRemoveMember(m.id)}
-                            className="size-5 shrink-0 items-center justify-center text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover/member:flex"
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
-                        )}
+                        {m.kind === "agent" && !currentIsDm && canManageChannelMembers ? (
+                          <DestructiveActionDialog<ChannelMemberRemoveResult>
+                            triggerLabel={tChat("removeAgent")}
+                            trigger={(
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant="destructive"
+                                aria-label={tChat("removeMember", { member: m.name })}
+                                title={tChat("removeMember", { member: m.name })}
+                                data-testid={`remove-channel-agent-${m.id}`}
+                              >
+                                <Trash2 className="size-3" />
+                                {tChat("removeAgent")}
+                              </Button>
+                            )}
+                            title={tChat("removeAgentTitle", {
+                              agent: m.name,
+                              channel: currentTitle,
+                            })}
+                            targetName={`@${m.name.replace(/^@/, "")} · ${currentTitle}`}
+                            consequence={tChat("removeAgentConsequence", {
+                              agent: `@${m.name.replace(/^@/, "")}`,
+                              channel: currentTitle,
+                            })}
+                            confirmLabel={tChat("removeAgent")}
+                            cancelLabel={tCommon("cancel")}
+                            submittingLabel={tChat("removingAgent")}
+                            retryLabel={tCommon("tryAgain")}
+                            failureLabel={tChat("removeAgentFailed")}
+                            closeLabel={tCommon("close")}
+                            successLabel={tChat("removeAgentSucceeded")}
+                            onConfirm={() => apiDelete<ChannelMemberRemoveResult>(
+                              `/api/v1/channels/${channelId}/members/${m.id}`,
+                              sessionToken,
+                              activeServerId,
+                              { timeoutMs: 15_000 },
+                            )}
+                            onSuccess={() => {
+                              markChannelMemberRemoved(
+                                removedChannelMemberIdsRef.current,
+                                channelId,
+                                m.id,
+                              )
+                              setMembers((previous) => previous.filter((member) => member.id !== m.id))
+                              void refreshMembers()
+                            }}
+                          />
+                        ) : null}
                       </MemberNameTag>
                     </li>
                   ))}

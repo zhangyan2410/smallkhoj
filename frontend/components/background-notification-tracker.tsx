@@ -23,9 +23,9 @@ import { readNotificationPreferences } from "@/lib/notification-preferences"
  * 权限未授予 / 浏览器不支持 / 对应域开关关闭时静默降级。
  */
 export function BackgroundNotificationTracker({
-  currentMemberNames = [],
+  currentMemberIds = [],
 }: {
-  currentMemberNames?: readonly string[]
+  currentMemberIds?: readonly string[]
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -34,7 +34,7 @@ export function BackgroundNotificationTracker({
   const pathnameRef = useRef(pathname)
   const routerRef = useRef(router)
   const tRef = useRef(t)
-  const memberNamesRef = useRef(currentMemberNames)
+  const memberIdsRef = useRef(currentMemberIds)
   const throttleRef = useRef<NotificationThrottle>({})
   const plansRef = useRef(new Map<string, NotificationPlan>())
   const flushTimerRef = useRef<number | null>(null)
@@ -43,8 +43,8 @@ export function BackgroundNotificationTracker({
     pathnameRef.current = pathname
     routerRef.current = router
     tRef.current = t
-    memberNamesRef.current = currentMemberNames
-  }, [pathname, router, t, currentMemberNames])
+    memberIdsRef.current = currentMemberIds
+  }, [pathname, router, t, currentMemberIds])
 
   useEffect(() => {
     return () => {
@@ -94,7 +94,7 @@ export function BackgroundNotificationTracker({
 
     const plan = planNotificationForEvent(event, {
       pathname: pathnameRef.current,
-      currentMemberNames: memberNamesRef.current,
+      currentMemberIds: memberIdsRef.current,
       prefs: readNotificationPreferences(window.localStorage),
       documentVisible: document.visibilityState === "visible",
     })

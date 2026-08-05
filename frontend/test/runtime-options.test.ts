@@ -145,7 +145,11 @@ test("publicRuntimeValue normalizes opencode family", () => {
 
 test("agent creation presents Built-in Pi without a keyless product promise", () => {
   const source = readFileSync(new URL("../components/create-agent-form.tsx", import.meta.url), "utf8")
-  assert.match(source, /Built-in Pi/)
+  const en = JSON.parse(readFileSync(new URL("../messages/en.json", import.meta.url), "utf8")) as {
+    chat: { createAgentRuntimeHint: string }
+  }
+  assert.match(source, /createAgentRuntimeHint/)
+  assert.match(en.chat.createAgentRuntimeHint, /Built-in Pi/)
   assert.doesNotMatch(source, /无需.{0,8}key/i)
   assert.match(source, /if \(opt\.bundled\) return opt\.label/)
 })

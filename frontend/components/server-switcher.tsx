@@ -1,14 +1,13 @@
 "use client"
 
 import { useMemo } from "react"
-import { Check, GripVertical, LogOut, Plus, Server } from "lucide-react"
+import { Check, GripVertical, LogOut, Server } from "lucide-react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
 
-import { createServerAction, logoutAction, switchActiveServerAction } from "@/app/server-actions"
+import { logoutAction, switchActiveServerAction } from "@/app/server-actions"
 import { InkframeObjectSurface, ObjectField } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import type { AccountServerMembership, AccountSession } from "@/lib/control-plane"
 import { switchableMemberships } from "@/lib/server-switcher-state"
 
@@ -118,18 +117,6 @@ export function ServerSwitcher({ session }: { session: AccountSession }) {
           </div>
         ) : null}
 
-        <form action={createServerAction} className="border-t-2 border-[var(--ink)] px-2.5 py-2">
-          <input type="hidden" name="returnTo" value={returnTo} />
-          <label htmlFor="create-server-name" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            {t("createServer")}
-          </label>
-          <div className="flex gap-1.5">
-            <Input id="create-server-name" name="name" required placeholder={t("newServerPlaceholder")} className="h-7 text-xs" />
-            <Button type="submit" size="icon-sm" variant="outline" aria-label={t("createServer")}>
-              <Plus className="size-3.5" />
-            </Button>
-          </div>
-        </form>
         <form action={logoutAction} className="border-t-2 border-[var(--ink)] px-2.5 py-2">
           <Button type="submit" variant="ghost" size="sm" className="w-full justify-start gap-2" aria-label={t("signOut")}>
             <LogOut className="size-3.5" />

@@ -30,7 +30,7 @@ export type NotificationPlan = {
 
 export type NotificationPlanContext = {
   pathname: string
-  currentMemberNames?: readonly string[]
+  currentMemberIds?: readonly string[]
   prefs: NotificationPreferences
   /** document.visibilityState === "visible"。 */
   documentVisible: boolean
@@ -41,10 +41,6 @@ export const NOTIFICATION_THROTTLE_WINDOW_MS = 30_000
 
 export type NotificationThrottleEntry = { lastNotifiedAt: number; pending: number }
 export type NotificationThrottle = Record<string, NotificationThrottleEntry>
-
-function normalizeName(value?: string | null) {
-  return (value || "").trim().replace(/^@+/, "").toLowerCase()
-}
 
 function chatRouteNameFromPath(pathname: string): string | null {
   if (!pathname.startsWith("/chat/")) return null
@@ -61,30 +57,42 @@ function routeSegment(name: string) {
   return encodeURIComponent(name.replace(/^#/, ""))
 }
 
-function senderOf(event: PublicEventEnvelope): string {
-  const message = event.payload?.message as { sender?: unknown } | undefined
-  return normalizeName(typeof message?.sender === "string" ? message.sender : null)
+function messagePayload(event: PublicEventEnvelope): Record<string, unknown> {
+  const nested = event.payload?.message
+  return nested && typeof nested === "object" && !Array.isArray(nested)
+    ? nested as Record<string, unknown>
+    : event.payload
 }
 
-function contentOf(event: PublicEventEnvelope): string {
-  const message = event.payload?.message as { content?: unknown } | undefined
-  return typeof message?.content === "string" ? message.content : ""
+function senderIdOf(event: PublicEventEnvelope): string {
+  const message = messagePayload(event)
+  const senderId = message.senderId ?? event.payload.senderId ?? event.payload.actorId
+  return typeof senderId === "string" ? senderId : ""
 }
 
-/** 频道消息是否 @提及当前用户；判不定（无正文/无名字）返回 false。 */
-export function mentionsCurrentUser(content: string, currentMemberNames: readonly string[]): boolean {
-  if (!content) return false
-  const lower = content.toLowerCase()
-  return currentMemberNames.some((name) => {
-    const normalized = normalizeName(name)
-    return normalized.length > 0 && lower.includes(`@${normalized}`)
-  })
+function senderLabelOf(event: PublicEventEnvelope): string {
+  const message = messagePayload(event)
+  const sender = message.sender ?? event.payload.sender
+  return typeof sender === "string" ? sender.trim().replace(/^@+/, "") : ""
 }
 
-function isOwnMessage(event: PublicEventEnvelope, currentMemberNames: readonly string[]): boolean {
-  const sender = senderOf(event)
-  if (!sender) return false
-  return currentMemberNames.some((name) => normalizeName(name) === sender)
+/**
+ * Message mentions are an ID contract. Never infer delivery from authored
+ * text, a mutable Human display name, or a bare-handle prefix.
+ */
+export function eventMentionsCurrentMember(
+  event: PublicEventEnvelope,
+  currentMemberIds: readonly string[],
+): boolean {
+  const rawMentions = messagePayload(event).mentions ?? event.payload.mentions
+  if (!Array.isArray(rawMentions) || currentMemberIds.length === 0) return false
+  const currentIds = new Set(currentMemberIds)
+  return rawMentions.some((memberId) => typeof memberId === "string" && currentIds.has(memberId))
+}
+
+function isOwnMessage(event: PublicEventEnvelope, currentMemberIds: readonly string[]): boolean {
+  const senderId = senderIdOf(event)
+  return Boolean(senderId && currentMemberIds.includes(senderId))
 }
 
 function scopeLabel(event: PublicEventEnvelope): string {
@@ -100,11 +108,11 @@ export function planNotificationForEvent(
   context: NotificationPlanContext,
 ): NotificationPlan | null {
   const { pathname, prefs, documentVisible } = context
-  const currentMemberNames = context.currentMemberNames ?? []
+  const currentMemberIds = context.currentMemberIds ?? []
 
   if (event.type === "message.created" && (event.scope.kind === "dm" || event.scope.kind === "channel")) {
     if (!prefs.chat) return null
-    if (isOwnMessage(event, currentMemberNames)) return null
+    if (isOwnMessage(event, currentMemberIds)) return null
     const name = scopeLabel(event)
     if (!name) return null
     // 正在查看该频道/DM 且窗口聚焦时不发。
@@ -115,17 +123,17 @@ export function planNotificationForEvent(
         variant: "dm_message",
         throttleKey: `dm:${name}`,
         href: `/chat/${routeSegment(name)}`,
-        params: { sender: senderOf(event) || name.replace(/^DM @/, "") },
+        params: { sender: senderLabelOf(event) || name.replace(/^DM @/, "") },
       }
     }
-    // 频道消息：仅 @提及可判定时通知。
-    if (!mentionsCurrentUser(contentOf(event), currentMemberNames)) return null
+    // 频道消息：只信后端持久化的 Message.mentions UUID。
+    if (!eventMentionsCurrentMember(event, currentMemberIds)) return null
     return {
       domain: "chat",
       variant: "mention",
       throttleKey: `channel:${name}`,
       href: `/chat/${routeSegment(name)}`,
-      params: { channel: name, sender: senderOf(event) },
+      params: { channel: name, sender: senderLabelOf(event) },
     }
   }
 

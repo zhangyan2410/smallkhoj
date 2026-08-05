@@ -27,30 +27,6 @@ export async function switchActiveServerAction(formData: FormData) {
   redirect(returnTo)
 }
 
-export async function createServerAction(formData: FormData) {
-  const name = String(formData.get("name") || "").trim()
-  const returnTo = safeReturnTo(formData.get("returnTo"))
-  if (!name) redirect(appendError(returnTo, "Missing Server name"))
-
-  const response = await fetch(`${API_BASE}/api/v1/servers`, {
-    method: "POST",
-    cache: "no-store",
-    headers: await serverApiHeaders(true),
-    body: JSON.stringify({ name }),
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
-    redirect(appendError(returnTo, detail))
-  }
-
-  const data = (await response.json()) as AccountSession
-  if (data.server?.id) await setActiveServerCookie(data.server.id)
-  revalidatePath("/", "layout")
-  redirect(returnTo)
-}
-
 export async function acceptServerInviteAction(formData: FormData) {
   const token = String(formData.get("token") || "").trim()
   if (!token) redirect("/members?error=Missing%20invite")

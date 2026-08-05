@@ -37,7 +37,7 @@ import {
 } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select } from "@/components/ui/form"
+import { Select, Textarea } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import {
   API_BASE,
@@ -61,7 +61,9 @@ async function getComputers(sessionToken?: string | null, activeServerId?: strin
 }
 
 function profileName(member: Member) {
-  return member.profile?.displayName || member.displayName
+  return member.kind === "agent"
+    ? member.name
+    : member.profile?.displayName || member.displayName || member.name
 }
 
 function profileDescription(member: Member) {
@@ -128,6 +130,30 @@ async function updateHumanAvatarUrlAction(formData: FormData) {
   redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
 }
 
+async function updateAgentDescriptionAction(formData: FormData) {
+  "use server"
+  const memberId = String(formData.get("memberId") || "")
+  const description = String(formData.get("description") || "").trim()
+  if (!memberId) return
+
+  const response = await fetch(`${API_BASE}/api/v1/members/${memberId}`, {
+    method: "PATCH",
+    headers: await serverApiHeaders(true),
+    body: JSON.stringify({ description: description || null }),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string"
+      ? error.detail
+      : error.detail && typeof error.detail === "object" && typeof error.detail.message === "string"
+        ? error.detail.message
+        : `HTTP ${response.status}`
+    redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile&error=${encodeURIComponent(detail)}`)
+  }
+  revalidatePath("/members")
+  redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
+}
+
 /** tab 栏统一走 members 命名空间的翻译 key（zh-CN 默认中文）。 */
 function TabBar({ activeTab, memberId, labels }: { activeTab: TabKey; memberId: string; labels: Record<TabKey, string> }) {
   return (
@@ -155,7 +181,17 @@ function TabBar({ activeTab, memberId, labels }: { activeTab: TabKey; memberId: 
 
 type MembersT = (key: string, values?: Record<string, string | number>) => string
 
-function ProfileTab({ member, computers, t }: { member: Member; computers: Computer[]; t: MembersT }) {
+function ProfileTab({
+  member,
+  computers,
+  canManageMembers,
+  t,
+}: {
+  member: Member
+  computers: Computer[]
+  canManageMembers: boolean
+  t: MembersT
+}) {
   const description = profileDescription(member)
   const computer = computers.find((c) => c.id === member.computerId)
   const workspace = findMemberWorkspace(member, computers)
@@ -172,7 +208,7 @@ function ProfileTab({ member, computers, t }: { member: Member; computers: Compu
         <div className="min-w-0">
           <div className="text-lg font-semibold">{profileName(member)}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">{member.handle || `@${member.displayName}`}</span>
+            <span className="text-sm text-muted-foreground">@{(member.handle || member.name).replace(/^@/, "")}</span>
             <StatusPill status={member.status} label={statusLabel(member.status)} />
             <RuntimeChip tone="neutral">{member.kind}</RuntimeChip>
             {(member.config?.provider || member.runtimeProvider || member.backend) && (
@@ -184,6 +220,29 @@ function ProfileTab({ member, computers, t }: { member: Member; computers: Compu
           <p className="mt-2 text-sm text-muted-foreground">{description || t("noProfileDescription")}</p>
         </div>
       </MemberNameTag>
+
+      {member.kind === "agent" && canManageMembers ? (
+        <form action={updateAgentDescriptionAction} className="sk-object-surface space-y-2 p-3">
+          <input type="hidden" name="memberId" value={member.id} />
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor={`agent-description-${member.id}`} className="text-sm font-medium text-foreground">
+              {t("agentDescription")}
+            </label>
+            <span className="text-xs text-muted-foreground">{t("agentDescriptionLimit")}</span>
+          </div>
+          <Textarea
+            id={`agent-description-${member.id}`}
+            name="description"
+            rows={3}
+            defaultValue={description ?? ""}
+            placeholder={t("agentDescriptionPlaceholder")}
+          />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">{t("agentDescriptionHint")}</p>
+            <Button type="submit" size="sm" variant="outline">{t("save")}</Button>
+          </div>
+        </form>
+      ) : null}
 
       {member.kind === "human" && (
         <form action={updateHumanAvatarUrlAction} className="sk-object-surface p-3">
@@ -651,11 +710,13 @@ function AppsTab({ member, t }: { member: Member; t: MembersT }) {
 function MemberDetail({
   member,
   computers,
+  canManageMembers,
   activeTab,
   t,
 }: {
   member: Member
   computers: Computer[]
+  canManageMembers: boolean
   activeTab: TabKey
   t: MembersT
 }) {
@@ -668,7 +729,7 @@ function MemberDetail({
         <CardTitle className="flex items-center gap-2 text-base">
           {member.kind === "agent" ? <Bot className="size-4" /> : <UserRound className="size-4" />}
           {t("detailTitle")}
-          {member.kind === "agent" && (
+          {member.kind === "agent" && canManageMembers && (
             <form action={deleteMemberAction} className="ml-auto">
               <input type="hidden" name="memberId" value={member.id} />
               <Button type="submit" size="sm" variant="outline">
@@ -683,7 +744,7 @@ function MemberDetail({
       <CardContent className="space-y-4 pt-4">
         <TabBar activeTab={activeTab} memberId={member.id} labels={tabLabels} />
         <div className="min-h-48">
-          {activeTab === "profile" && <ProfileTab member={member} computers={computers} t={t} />}
+          {activeTab === "profile" && <ProfileTab member={member} computers={computers} canManageMembers={canManageMembers} t={t} />}
           {activeTab === "permissions" && <PermissionsTab member={member} t={t} />}
           {activeTab === "dms" && <DmTab member={member} t={t} />}
           {activeTab === "reminders" && <RemindersTab member={member} t={t} />}
@@ -764,7 +825,7 @@ export default async function MembersPage({
       }
       actions={
         <>
-          <CreateAgentDialog />
+          {canInviteMembers ? <CreateAgentDialog /> : null}
           <Link href="/computers">
             <Button variant="outline" size="sm">
               <HardDrive className="size-4" />
@@ -786,7 +847,13 @@ export default async function MembersPage({
         </Suspense>
 
         {selectedMember && (
-          <MemberDetail member={selectedMember} computers={computers} activeTab={activeTab} t={t} />
+          <MemberDetail
+            member={selectedMember}
+            computers={computers}
+            canManageMembers={canInviteMembers}
+            activeTab={activeTab}
+            t={t}
+          />
         )}
 
         {error && (

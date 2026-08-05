@@ -250,13 +250,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
           actions={(
             <>
               <TaskRouteFormDialogs
+                key="task-form-dialogs"
                 createAction={createTaskAction}
                 updateAction={updateTaskAction}
                 channels={channels}
                 agents={agents}
                 templates={activeTemplates}
               />
-              <Link href="/daemon">
+              <Link key="daemon-link" href="/daemon">
                 <Button variant="outline" size="sm">{t("controlPlane")}</Button>
               </Link>
             </>

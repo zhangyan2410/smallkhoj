@@ -91,9 +91,9 @@ export function TaskListPanel({
                       >
                         {task.title}
                       </p>
-                      {task.assigneeMember?.displayName && (
+                      {(task.assigneeMember?.displayName || task.assigneeMember?.name) && (
                         <p className="mt-0.5 truncate text-xs text-sand-muted">
-                          @ {task.assigneeMember.displayName}
+                          @{task.assigneeMember.displayName || task.assigneeMember.name}
                         </p>
                       )}
                     </TaskMaterialSurface>

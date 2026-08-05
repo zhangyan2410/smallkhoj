@@ -23,6 +23,7 @@ export type ChannelMessage = {
   sender: string
   senderType: string
   content: string
+  mentions?: string[]
   time: string
   parentId?: string | null
   threadId?: string

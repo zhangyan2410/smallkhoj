@@ -109,7 +109,7 @@ export default async function ChatPage() {
             >
               <AvatarObject member={dmAvatarMember(dm)} size="sm" />
               <span className="min-w-0 flex-1 truncate font-medium">
-                {dm.peer?.displayName || dm.displayName}
+                {dm.peer?.displayName || dm.peer?.name || dm.displayName}
               </span>
               <span className="text-xs text-muted-foreground">{t("dms")}</span>
             </Link>

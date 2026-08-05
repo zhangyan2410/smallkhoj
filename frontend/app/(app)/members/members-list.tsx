@@ -7,7 +7,9 @@ import type { Computer, Member } from "@/lib/control-plane"
 import { controlMemberLifecycleAction as lifecycleAction } from "./actions"
 
 function profileName(member: Member) {
-  return member.profile?.displayName || member.displayName
+  return member.kind === "agent"
+    ? member.name
+    : member.profile?.displayName || member.displayName || member.name
 }
 
 function memberHref(member: Member) {

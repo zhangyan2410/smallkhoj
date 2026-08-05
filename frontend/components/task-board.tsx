@@ -115,7 +115,7 @@ function SortableTaskCard({
   }
 
   const source = task.data?.source
-  const agentName = task.assigneeMember?.displayName ?? task.assignee ?? undefined
+  const agentName = task.assigneeMember?.displayName ?? task.assigneeMember?.name ?? task.assignee ?? undefined
   const sortableListeners = listeners as { onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void }
   const acceptsAgentDrop = Boolean(onAssignAgent)
 
@@ -301,7 +301,7 @@ function ListRow({
   selected: boolean
   onSelect: (task: Task) => void
 }) {
-  const agentName = task.assigneeMember?.displayName ?? task.assignee ?? undefined
+  const agentName = task.assigneeMember?.displayName ?? task.assigneeMember?.name ?? task.assignee ?? undefined
   return (
     <div
       role="button"
@@ -543,7 +543,7 @@ function TaskDetailInline({ task, activity, sessionToken }: { task: Task; activi
   const source = task.data?.source
   const evidence = task.data?.evidence
   const entries = evidence?.entries ?? []
-  const agentName = task.assigneeMember?.displayName ?? task.assignee ?? undefined
+  const agentName = task.assigneeMember?.displayName ?? task.assigneeMember?.name ?? task.assignee ?? undefined
   return (
     <div data-slot="task-detail-inline" className="min-w-0 space-y-3 overflow-x-hidden">
       <div>
@@ -805,7 +805,7 @@ export function TaskBoard({
       setDragError(message)
       window.setTimeout(() => setDragError(null), 4000)
     }
-  }, [tasks, sessionToken, onTaskMoved, statusForOver, updateLocalTask, flashTask])
+  }, [tasks, sessionToken, onTaskMoved, statusForOver, updateLocalTask, flashTask, t])
 
   const handleAssignAgent = useCallback(async (task: Task, agent: AgentDragPayload) => {
     const assignee = agent.handle ?? agent.displayName ?? agent.name
@@ -838,7 +838,7 @@ export function TaskBoard({
       setDragError(message)
       window.setTimeout(() => setDragError(null), 4000)
     }
-  }, [sessionToken, updateLocalTask, flashTask])
+  }, [sessionToken, updateLocalTask, flashTask, t])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -937,7 +937,7 @@ export function TaskBoard({
                     <div className="flex min-w-0 items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-mono text-xs text-muted-foreground">
-                          {formatChannelName(activeTask.channel, activeTask.assigneeMember?.displayName ?? activeTask.assignee ?? undefined)} #{activeTask.number}
+                          {formatChannelName(activeTask.channel, activeTask.assigneeMember?.displayName ?? activeTask.assigneeMember?.name ?? activeTask.assignee ?? undefined)} #{activeTask.number}
                         </div>
                         <div className="mt-1 line-clamp-2 text-sm font-medium">{activeTask.title}</div>
                       </div>

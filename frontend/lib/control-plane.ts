@@ -39,9 +39,12 @@ export type MemberProfile = {
 
 export type Member = {
   id: string
+  memberId?: string
   name: string
   displayName?: string
   handle?: string
+  reference?: string
+  originServerName?: string | null
   kind: "human" | "agent" | string
   type?: string
   profile?: MemberProfile

@@ -109,7 +109,8 @@ type Reminder = {
 
 type Member = {
   id: string
-  displayName: string
+  name: string
+  displayName?: string
   handle?: string
   kind: string
   status: string
@@ -470,7 +471,7 @@ export default async function DaemonPage({
                 <Input name="title" placeholder="Title" required />
                 <Input name="description" placeholder="Description" />
                 <ControlSelect name="channel" items={data.channels.map((item) => item.name)} fallback="#all" />
-                <ControlSelect name="assignee" items={data.members.filter((item) => item.kind === "agent").map((item) => item.displayName)} fallback="" />
+                <ControlSelect name="assignee" items={data.members.filter((item) => item.kind === "agent").map((item) => item.name)} fallback="" />
                 <ControlSelect name="status" items={["todo", "in_progress", "in_review", "done"]} fallback="todo" />
                 <Button size="sm" className="w-full" type="submit">
                   <CheckSquare className="size-4" />
@@ -487,7 +488,7 @@ export default async function DaemonPage({
                   splitValue
                 />
                 <ControlSelect name="status" items={["todo", "in_progress", "in_review", "done", "closed"]} fallback="in_review" />
-                <ControlSelect name="assignee" items={data.members.filter((item) => item.kind === "agent").map((item) => item.displayName)} fallback="" />
+                <ControlSelect name="assignee" items={data.members.filter((item) => item.kind === "agent").map((item) => item.name)} fallback="" />
                 <Button size="sm" variant="outline" className="w-full" type="submit">
                   Update
                 </Button>
@@ -552,7 +553,7 @@ export default async function DaemonPage({
               <form action={createReminderAction} className="space-y-2">
                 <ControlLabel text="Reminder" />
                 <Input name="title" placeholder="Title" required />
-                <ControlSelect name="agent" items={data.members.filter((item) => item.kind === "agent").map((item) => item.displayName)} fallback="aaa" />
+                <ControlSelect name="agent" items={data.members.filter((item) => item.kind === "agent").map((item) => item.name)} fallback="aaa" />
                 <ControlSelect name="channel" items={data.channels.map((item) => item.name)} fallback="#all" />
                 <Input name="delaySeconds" type="number" min="1" defaultValue="300" />
                 <Button size="sm" variant="secondary" className="w-full" type="submit">

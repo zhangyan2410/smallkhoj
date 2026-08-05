@@ -6,14 +6,15 @@ import { Bot } from "lucide-react"
 
 import { ProviderSelect } from "@/components/provider-select"
 import { InkframeObjectSurface } from "@/components/inkframe-object-ui"
+import { MemberNameField } from "@/components/member-name-field"
 import { Button } from "@/components/ui/button"
-import { Select } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
+import { Select, Textarea } from "@/components/ui/form"
 import {
   apiPost,
   type Computer,
   type Member,
 } from "@/lib/control-plane"
+import { codePointLength, MAX_AGENT_DESCRIPTION_CODEPOINTS } from "@/lib/member-name"
 import {
   detectedProviderOptions,
   unavailableProviderOptions,
@@ -57,6 +58,7 @@ export function CreateAgentForm({
   const [error, setError] = useState<string | null>(null)
   const [computerId, setComputerId] = useState("")
   const [runtime, setRuntime] = useState("claude_code")
+  const [description, setDescription] = useState("")
   const runtimeOptions = computerId
     ? runtimeOptionsFromDetected(computers, { computerId })
     : runtimeOptionsFromDetected(computers)
@@ -81,6 +83,7 @@ export function CreateAgentForm({
     const form = event.currentTarget
     const formData = new FormData(form)
     const name = String(formData.get("name") ?? "").trim()
+    const description = String(formData.get("description") ?? "").trim()
     const computerId = String(formData.get("computerId") ?? "")
     const runtime = String(formData.get("runtime") ?? "") || "claude_code"
     const runtimeProvider = String(formData.get("runtimeProvider") ?? "")
@@ -89,16 +92,21 @@ export function CreateAgentForm({
       setError(t("missingNameOrComputer"))
       return
     }
+    if (codePointLength(description) > MAX_AGENT_DESCRIPTION_CODEPOINTS) {
+      setError(t("agentDescriptionTooLong"))
+      return
+    }
     setSubmitting(true)
     try {
       const data = await apiPost<{ member?: CreatedMember; detail?: string }>(
         "/api/v1/members/agents",
-        { name, computerId, runtime, runtimeProvider, provider }
+        { name, description: description || null, computerId, runtime, runtimeProvider, provider }
       )
       if (!data.member) {
         throw new Error(data.detail || t("createAgentFailed"))
       }
       form.reset()
+      setDescription("")
       await onSuccess?.(data.member)
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e)
@@ -110,7 +118,7 @@ export function CreateAgentForm({
 
   function runtimeOptionLabel(opt: RuntimeOption): string {
     if (opt.bundled) return opt.label
-    return opt.available ? opt.label : `${opt.label} (本机未检测到)`
+    return opt.available ? opt.label : `${opt.label} (${t("runtimeNotDetected")})`
   }
 
   return (
@@ -121,19 +129,19 @@ export function CreateAgentForm({
         </InkframeObjectSurface>
       )}
       <p className="text-xs text-muted-foreground">
-        以下是这台电脑能用的 runtime，选一个就能建 agent。本机没装别的也没关系，可以使用 Built-in Pi。
+        {t("createAgentRuntimeHint")}
       </p>
       <div className="flex items-center gap-2 text-sm font-medium">
         <Bot className="size-4" />
         {t("createAgentTitle")}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="agent-name" className="text-xs font-medium text-muted-foreground">
-            {t("agentNameLabel")}
-          </label>
-          <Input id="agent-name" name="name" placeholder={t("agentNamePlaceholder")} required autoComplete="off" />
-        </div>
+        <MemberNameField
+          id="agent-name"
+          label={t("agentNameLabel")}
+          placeholder={t("agentNamePlaceholder")}
+          availabilityPath="/api/v1/members/agents/name-availability"
+        />
         <div className="flex flex-col gap-1.5">
           <label htmlFor="agent-computer" className="text-xs font-medium text-muted-foreground">
             {t("computerLabel")}
@@ -148,6 +156,29 @@ export function CreateAgentForm({
             emptyLabel={t("selectPlaceholder")}
             onChange={(event) => setComputerId(event.target.value)}
           />
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="agent-description" className="text-xs font-medium text-muted-foreground">
+              {t("agentDescriptionLabel")}
+            </label>
+            <span
+              className={`text-xs ${codePointLength(description) > MAX_AGENT_DESCRIPTION_CODEPOINTS ? "text-destructive" : "text-muted-foreground"}`}
+              aria-live="polite"
+            >
+              {codePointLength(description)}/{MAX_AGENT_DESCRIPTION_CODEPOINTS}
+            </span>
+          </div>
+          <Textarea
+            id="agent-description"
+            name="description"
+            rows={3}
+            value={description}
+            aria-invalid={codePointLength(description) > MAX_AGENT_DESCRIPTION_CODEPOINTS}
+            placeholder={t("agentDescriptionPlaceholder")}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">{t("agentDescriptionHint")}</p>
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="agent-runtime" className="text-xs font-medium text-muted-foreground">

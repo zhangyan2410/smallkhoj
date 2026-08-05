@@ -712,7 +712,7 @@ test("chat mobile message and composer surfaces are contained flex regions", () 
   assert.match(composerSurfaceMatch[1], /(?:^|\s)flex-wrap(?:\s|$)/)
   assert.match(composerSurfaceMatch[1], /(?:^|\s)items-end(?:\s|$)/)
 
-  const mainInputMatch = chatSource.match(/<Input[\s\S]*?name="content"[\s\S]*?className="([^"]*)"[\s\S]*\/>/)
+  const mainInputMatch = chatSource.match(/<SuggestionInput[\s\S]*?name="content"[\s\S]*?className="([^"]*)"[\s\S]*\/>/)
   assert.ok(mainInputMatch, "chat message input should be a contained flex child")
   assert.match(mainInputMatch[1], /(?:^|\s)min-w-0(?:\s|$)/)
   assert.match(mainInputMatch[1], /(?:^|\s)flex-1(?:\s|$)/)
@@ -726,12 +726,12 @@ test("chat mobile message and composer surfaces are contained flex regions", () 
   assert.match(threadScrollerMatch[1], /(?:^|\s)overflow-x-hidden(?:\s|$)/)
 
   const threadComposerMatch = chatSource.match(
-    /<div className="([^"]*border-t[^"]*min-w-0[^"]*)"[\s\S]*?>\s*<Input[\s\S]*?value=\{input\}/,
+    /<div className="([^"]*border-t[^"]*min-w-0[^"]*)"[\s\S]*?>\s*<SuggestionInput[\s\S]*?value=\{input\}/,
   )
   assert.ok(threadComposerMatch, "thread reply composer should be a contained flex row")
   assert.match(threadComposerMatch[1], /(?:^|\s)overflow-x-hidden(?:\s|$)/)
 
-  const threadInputMatch = chatSource.match(/<Input[\s\S]*?placeholder=\{placeholder\}[\s\S]*?className="([^"]*)"[\s\S]*\/>/)
+  const threadInputMatch = chatSource.match(/<SuggestionInput[\s\S]*?placeholder=\{placeholder\}[\s\S]*?className="([^"]*)"[\s\S]*\/>/)
   assert.ok(threadInputMatch, "thread reply input should be a contained flex child")
   assert.match(threadInputMatch[1], /(?:^|\s)min-w-0(?:\s|$)/)
   assert.match(threadInputMatch[1], /(?:^|\s)flex-1(?:\s|$)/)

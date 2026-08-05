@@ -39,7 +39,7 @@ export default async function AppShellLayout({ children }: { children: ReactNode
       {/* 全局未读活动 tracker（无 UI）：订阅复用同一条 SSE，事件→未读键映射写入统一存储。 */}
       <ActivityUnreadTracker currentMemberNames={currentMemberNames} currentMemberIds={currentMemberIds} />
       {/* 后台系统通知 tracker（无 UI）：同一条 SSE 订阅，权限授予且页面不在前台对应路由时弹通知。 */}
-      <BackgroundNotificationTracker currentMemberNames={currentMemberNames} />
+      <BackgroundNotificationTracker currentMemberIds={currentMemberIds} />
       <main
         data-slot="workbench-desk"
         data-inkframe-background-owner="product-shell"

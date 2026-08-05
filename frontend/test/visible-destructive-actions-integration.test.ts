@@ -15,8 +15,17 @@ test("channel file deletion is server-authorized, strictly scoped, and collectio
 
   assert.match(page, /activeServerId=\{session\.server\.id\}/)
   assert.match(page, /canManageServer=\{canManageActiveServer\(session\)\}/)
+  assert.match(page, /canManageChannelMembers=\{canManageActiveServer\(session\)\}/)
   assert.doesNotMatch(client, /canManageActiveServer/)
   assert.match(client, /canManageServer \? \(/)
+  assert.match(client, /!currentIsDm && canManageChannelMembers && \(/)
+  assert.match(client, /remove-channel-agent-/)
+  assert.doesNotMatch(client, /group-hover\/member:flex/)
+  assert.match(client, /DestructiveActionDialog<ChannelMemberRemoveResult>/)
+  assert.match(client, /markChannelMemberRemoved\(/)
+  assert.match(client, /filterRemovedChannelMembers\(/)
+  assert.match(client, /setMembers\(\(previous\) => previous\.filter/)
+  assert.match(client, /void refreshMembers\(\)/)
 
   assert.match(client, /apiGetCritical<\{ files: ChannelFileItem\[\]; count: number \}>/)
   assert.match(client, /sessionToken,\s*activeServerId,\s*\{ signal: controller\.signal, timeoutMs: 15_000 \}/)
@@ -54,6 +63,12 @@ test("English and Chinese destructive-action copy stays complete and non-empty",
     "filesLoadFailedDesc",
     "fileQuarantineWarningTitle",
     "fileQuarantineWarningDesc",
+    "removeAgent",
+    "removeAgentTitle",
+    "removeAgentConsequence",
+    "removingAgent",
+    "removeAgentFailed",
+    "removeAgentSucceeded",
   ] as const
 
   for (const key of commonKeys) {
