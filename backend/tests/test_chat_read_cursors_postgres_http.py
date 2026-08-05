@@ -62,6 +62,34 @@ def _auth_headers(*, server_id: uuid.UUID, token: str) -> dict[str, str]:
     }
 
 
+def _home_identity(server: Server, *, token: str) -> tuple[Member, Account, ServerMembership]:
+    account_id = uuid.uuid4()
+    member = Member(
+        id=uuid.uuid4(),
+        origin_server_id=server.id,
+        account_id=account_id,
+        kind="human",
+        handle="Lee",
+        handle_key="lee",
+    )
+    account = Account(
+        id=account_id,
+        auth_subject=f"test:{token}",
+        display_name="Lee",
+        home_server_id=server.id,
+        session_token_hash=public_api._hash_token(token),
+    )
+    membership = ServerMembership(
+        id=uuid.uuid4(),
+        server_id=server.id,
+        account_id=account.id,
+        member_id=member.id,
+        role="owner",
+        status="active",
+    )
+    return member, account, membership
+
+
 async def _insert_message_fixture_with_seq(db, message: Message) -> None:
     """Insert a fixed cursor boundary into a GENERATED ALWAYS test table."""
 
@@ -106,24 +134,8 @@ async def test_postgres_http_channel_cursor_persists_and_projects_unread_state()
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-        server = Server(id=uuid.uuid4(), name="Inkframe Test")
-        member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-        account = Account(
-            id=uuid.uuid4(),
-            name="lee",
-            display_name="Lee",
-            server_id=server.id,
-            member_id=member.id,
-            session_token_hash=public_api._hash_token("sk_session_pg"),
-        )
-        membership = ServerMembership(
-            id=uuid.uuid4(),
-            server_id=server.id,
-            account_id=account.id,
-            member_id=member.id,
-            role="owner",
-            status="active",
-        )
+        server = Server(id=uuid.uuid4(), name="Inkframe Test", server_handle="spg01")
+        member, account, membership = _home_identity(server, token="sk_session_pg")
         channel = Channel(id=uuid.uuid4(), server_id=server.id, name="general", kind="public")
         channel_member = ChannelMember(channel_id=channel.id, member_id=member.id, last_read_seq=0)
         message = Message(
@@ -211,24 +223,8 @@ async def test_postgres_http_dm_cursor_persists_with_dm_scope():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-        server = Server(id=uuid.uuid4(), name="Inkframe Test")
-        member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-        account = Account(
-            id=uuid.uuid4(),
-            name="lee",
-            display_name="Lee",
-            server_id=server.id,
-            member_id=member.id,
-            session_token_hash=public_api._hash_token("sk_session_pg_dm"),
-        )
-        membership = ServerMembership(
-            id=uuid.uuid4(),
-            server_id=server.id,
-            account_id=account.id,
-            member_id=member.id,
-            role="owner",
-            status="active",
-        )
+        server = Server(id=uuid.uuid4(), name="Inkframe Test", server_handle="spg01")
+        member, account, membership = _home_identity(server, token="sk_session_pg_dm")
         dm_channel = Channel(id=uuid.uuid4(), server_id=server.id, name="dm-lee-codex", kind="dm")
         dm_member = ChannelMember(channel_id=dm_channel.id, member_id=member.id, last_read_seq=1)
 
@@ -298,24 +294,8 @@ async def test_postgres_http_thread_cursor_persists_and_projects():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-        server = Server(id=uuid.uuid4(), name="Inkframe Test")
-        member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-        account = Account(
-            id=uuid.uuid4(),
-            name="lee",
-            display_name="Lee",
-            server_id=server.id,
-            member_id=member.id,
-            session_token_hash=public_api._hash_token("sk_session_pg_thread"),
-        )
-        membership = ServerMembership(
-            id=uuid.uuid4(),
-            server_id=server.id,
-            account_id=account.id,
-            member_id=member.id,
-            role="owner",
-            status="active",
-        )
+        server = Server(id=uuid.uuid4(), name="Inkframe Test", server_handle="spg01")
+        member, account, membership = _home_identity(server, token="sk_session_pg_thread")
         channel = Channel(id=uuid.uuid4(), server_id=server.id, name="general", kind="public")
         channel_member = ChannelMember(channel_id=channel.id, member_id=member.id, last_read_seq=2)
         root_message = Message(
@@ -422,24 +402,8 @@ async def test_postgres_http_channel_and_dm_scope_mismatches_reject_without_writ
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-        server = Server(id=uuid.uuid4(), name="Inkframe Test")
-        member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-        account = Account(
-            id=uuid.uuid4(),
-            name="lee",
-            display_name="Lee",
-            server_id=server.id,
-            member_id=member.id,
-            session_token_hash=public_api._hash_token("sk_session_pg_mismatch"),
-        )
-        membership = ServerMembership(
-            id=uuid.uuid4(),
-            server_id=server.id,
-            account_id=account.id,
-            member_id=member.id,
-            role="owner",
-            status="active",
-        )
+        server = Server(id=uuid.uuid4(), name="Inkframe Test", server_handle="spg01")
+        member, account, membership = _home_identity(server, token="sk_session_pg_mismatch")
         public_channel = Channel(id=uuid.uuid4(), server_id=server.id, name="general", kind="public")
         dm_channel = Channel(id=uuid.uuid4(), server_id=server.id, name="dm-lee-codex", kind="dm")
         public_member = ChannelMember(channel_id=public_channel.id, member_id=member.id, last_read_seq=4)
@@ -549,24 +513,11 @@ async def test_postgres_http_read_cursor_rejects_unjoined_active_server():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-        joined_server = Server(id=uuid.uuid4(), name="Joined Server")
-        other_server = Server(id=uuid.uuid4(), name="Other Server")
-        member = Member(id=uuid.uuid4(), server_id=joined_server.id, kind="human", display_name="Lee")
-        account = Account(
-            id=uuid.uuid4(),
-            name="lee",
-            display_name="Lee",
-            server_id=joined_server.id,
-            member_id=member.id,
-            session_token_hash=public_api._hash_token("sk_session_pg_unjoined"),
-        )
-        membership = ServerMembership(
-            id=uuid.uuid4(),
-            server_id=joined_server.id,
-            account_id=account.id,
-            member_id=member.id,
-            role="owner",
-            status="active",
+        joined_server = Server(id=uuid.uuid4(), name="Joined Server", server_handle="spg01")
+        other_server = Server(id=uuid.uuid4(), name="Other Server", server_handle="spg02")
+        member, account, membership = _home_identity(
+            joined_server,
+            token="sk_session_pg_unjoined",
         )
 
         async with session_factory() as db:
@@ -609,24 +560,8 @@ async def test_postgres_http_channel_cursor_write_is_monotonic():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-        server = Server(id=uuid.uuid4(), name="Inkframe Test")
-        member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-        account = Account(
-            id=uuid.uuid4(),
-            name="lee",
-            display_name="Lee",
-            server_id=server.id,
-            member_id=member.id,
-            session_token_hash=public_api._hash_token("sk_session_pg_monotonic"),
-        )
-        membership = ServerMembership(
-            id=uuid.uuid4(),
-            server_id=server.id,
-            account_id=account.id,
-            member_id=member.id,
-            role="owner",
-            status="active",
-        )
+        server = Server(id=uuid.uuid4(), name="Inkframe Test", server_handle="spg01")
+        member, account, membership = _home_identity(server, token="sk_session_pg_monotonic")
         channel = Channel(id=uuid.uuid4(), server_id=server.id, name="general", kind="public")
         channel_member = ChannelMember(channel_id=channel.id, member_id=member.id, last_read_seq=20)
 
@@ -681,24 +616,8 @@ async def test_postgres_http_dm_cursor_write_is_monotonic():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-        server = Server(id=uuid.uuid4(), name="Inkframe Test")
-        member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-        account = Account(
-            id=uuid.uuid4(),
-            name="lee",
-            display_name="Lee",
-            server_id=server.id,
-            member_id=member.id,
-            session_token_hash=public_api._hash_token("sk_session_pg_dm_monotonic"),
-        )
-        membership = ServerMembership(
-            id=uuid.uuid4(),
-            server_id=server.id,
-            account_id=account.id,
-            member_id=member.id,
-            role="owner",
-            status="active",
-        )
+        server = Server(id=uuid.uuid4(), name="Inkframe Test", server_handle="spg01")
+        member, account, membership = _home_identity(server, token="sk_session_pg_dm_monotonic")
         dm_channel = Channel(id=uuid.uuid4(), server_id=server.id, name="dm-lee-codex", kind="dm")
         dm_member = ChannelMember(channel_id=dm_channel.id, member_id=member.id, last_read_seq=20)
 
@@ -757,23 +676,10 @@ async def test_postgres_http_thread_cursor_write_is_monotonic_and_preserves_last
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-        server = Server(id=uuid.uuid4(), name="Inkframe Test")
-        member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-        account = Account(
-            id=uuid.uuid4(),
-            name="lee",
-            display_name="Lee",
-            server_id=server.id,
-            member_id=member.id,
-            session_token_hash=public_api._hash_token("sk_session_pg_thread_monotonic"),
-        )
-        membership = ServerMembership(
-            id=uuid.uuid4(),
-            server_id=server.id,
-            account_id=account.id,
-            member_id=member.id,
-            role="owner",
-            status="active",
+        server = Server(id=uuid.uuid4(), name="Inkframe Test", server_handle="spg01")
+        member, account, membership = _home_identity(
+            server,
+            token="sk_session_pg_thread_monotonic",
         )
         channel = Channel(id=uuid.uuid4(), server_id=server.id, name="general", kind="public")
         channel_member = ChannelMember(channel_id=channel.id, member_id=member.id, last_read_seq=2)

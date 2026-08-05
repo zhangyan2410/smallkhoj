@@ -183,7 +183,7 @@ async def pending_runtime_commands(
         .where(
             AgentWorkspace.computer_id == computer_id,
             AgentWorkspace.status == PENDING_RUNTIME_START_STATUS,
-            Member.server_id == server_id,
+            Member.origin_server_id == server_id,
             Member.kind == "agent",
         )
         .order_by(AgentWorkspace.created_at, AgentWorkspace.id)
@@ -214,7 +214,7 @@ async def mark_missing_runtimes_pending_start(
         .join(Member, Member.id == AgentWorkspace.agent_id)
         .where(
             AgentWorkspace.computer_id == computer_id,
-            Member.server_id == server_id,
+            Member.origin_server_id == server_id,
             Member.kind == "agent",
             AgentWorkspace.status.in_(RUNTIME_REARMABLE_STATUSES | RUNTIME_TERMINAL_STATUSES),
         )
@@ -386,9 +386,10 @@ async def pending_visible_events_for_computer(
     """Return daemon WS events expanded per target agent on a computer."""
     agent_result = await db.execute(
         select(Member).where(
-            Member.server_id == server_id,
+            Member.origin_server_id == server_id,
             Member.kind == "agent",
             Member.computer_id == computer_id,
+            Member.deleted_at.is_(None),
         )
     )
     agents = agent_result.scalars().all()
@@ -421,7 +422,7 @@ async def pending_visible_events_for_computer(
         scanned_cursor = max(scanned_cursor, int(record.seq or 0))
         await _backfill_task_event_target(db, record)
         for agent in agents:
-            if not _event_visible_to_agent(record, agent, visible_channels.get(agent.id, set())):
+            if not event_visible_to_agent(record, agent, visible_channels.get(agent.id, set())):
                 continue
             event = await _daemon_event_record_event(db, record, agent)
             event["agentId"] = str(agent.id)
@@ -466,24 +467,31 @@ async def push_latest_events_for_server(db: AsyncSession, *, server_id: uuid.UUI
     return delivered
 
 
-def _event_visible_to_agent(record: EventRecord, agent: Member, channel_ids: set[uuid.UUID]) -> bool:
+def event_visible_to_agent(record: EventRecord, agent: Member, channel_ids: set[uuid.UUID]) -> bool:
     target_agent_id = (record.payload or {}).get("targetAgentId")
     if target_agent_id and str(target_agent_id) != str(agent.id):
         return False
+    event_type = _dotted_event_type(record.event_type)
+    if record.channel_id is not None:
+        removed_agent_id = (record.payload or {}).get("removedAgentId")
+        is_exact_final_leave = (
+            event_type == "channel.member_left"
+            and removed_agent_id is not None
+            and str(removed_agent_id) == str(agent.id)
+        )
+        if not is_exact_final_leave and record.channel_id not in channel_ids:
+            return False
+        if is_exact_final_leave:
+            return True
     if target_agent_id and str(target_agent_id) == str(agent.id):
         return True
-    event_type = _dotted_event_type(record.event_type)
     if event_type == "thread.summary_updated":
         return False
     if event_type.startswith("workspace."):
         return False
     if event_type == "message.created" and record.actor_id == agent.id:
         return False
-    return (
-        record.channel_id is None
-        or record.actor_id == agent.id
-        or record.channel_id in channel_ids
-    )
+    return record.channel_id is None or record.channel_id in channel_ids
 
 
 async def _daemon_event_record_event(db: AsyncSession, record: EventRecord, recipient: Member) -> dict[str, Any]:
@@ -555,12 +563,13 @@ async def _message_target_for_recipient(
             .where(
                 ChannelMember.channel_id == channel.id,
                 Member.id != recipient.id,
+                Member.deleted_at.is_(None),
             )
-            .order_by(Member.kind.desc(), Member.display_name)
+            .order_by(Member.kind.desc(), Member.handle)
             .limit(1)
         )
         peer = peer_result.scalar_one_or_none()
-        base = f"dm:@{peer.display_name}" if peer else channel.name
+        base = f"dm:@{peer.handle}" if peer else channel.name
     else:
         base = f"#{channel.name}"
     return f"{base}:{thread_ref}" if thread_ref else base

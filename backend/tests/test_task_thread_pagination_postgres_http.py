@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from main import app
 from models import Channel, Message, Task
 from routers import public_api
+from services.channel_membership import add_channel_member
 from tests.postgres_test_support import disposable_postgres, run_alembic
 from tests.test_serializer_query_budget_postgres_http import (
     _agent_headers,
@@ -497,6 +498,12 @@ async def test_task_and_thread_cursors_reject_changed_query_scope():
             async with sessions.begin() as db:
                 db.add(second_channel)
                 await db.flush()
+                await add_channel_member(
+                    db,
+                    channel_id=second_channel.id,
+                    member_id=world["agent"].id,
+                    actor_id=world["owner"].id,
+                )
                 db.add_all([*roots, *replies])
 
             async def override_db():

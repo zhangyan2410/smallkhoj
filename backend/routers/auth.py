@@ -30,14 +30,18 @@ async def resolve_agent(
         raise HTTPException(401, "Invalid agent ID")
 
     result = await db.execute(
-        select(Member).where(Member.id == agent_id)
+        select(Member).where(
+            Member.id == agent_id,
+            Member.kind == "agent",
+            Member.deleted_at.is_(None),
+        )
     )
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(401, f"Agent {x_agent_id} not found")
 
     result = await db.execute(
-        select(Server).where(Server.id == member.server_id)
+        select(Server).where(Server.id == member.origin_server_id)
     )
     server = result.scalar_one_or_none()
     if not server:

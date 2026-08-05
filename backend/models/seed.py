@@ -6,9 +6,7 @@ this automatically before uvicorn starts). See ``docs/migration-workflow.md``.
 
 This module is intentionally NOT a schema source. The only things it does at startup:
   1. Seed builtin ``task_run_templates`` rows (data, not schema).
-  2. Backfill ``server_memberships`` owner rows for legacy accounts created
-     before the membership table existed (one-time data repair).
-  3. Backfill ``members.computer_id`` / ``members.backend`` from the legacy
+  2. Backfill ``members.computer_id`` / ``members.backend`` from the legacy
      ``config`` JSON column (one-time data repair).
 
 Never add table/index DDL here — that is Alembic's job. Add a new
@@ -22,106 +20,16 @@ from sqlalchemy import text
 
 from models import engine
 from services.agent_permissions import DEFAULT_LEGACY_AGENT_PERMISSIONS
-from services.server_membership import acquire_owner_election_lock
 
 
 async def create_tables():
     """Run idempotent runtime data seeds; the legacy name is retained for callers.
 
     Kept here (and kept in ``main.py:lifespan``) so that builtin templates and
-    legacy-account backfills run on every boot. Schema creation and upgrades live
+    compatible data seeds run on every boot. Schema creation and upgrades live
     exclusively in ``alembic upgrade head`` and must succeed before app startup.
     """
     async with engine.begin() as conn:
-        # Multiple backend workers can enter startup concurrently. Serialize the
-        # membership audit/backfill so every transaction observes the previous
-        # worker's committed result before choosing a legacy owner.
-        await acquire_owner_election_lock(conn)
-
-        # The former snapshot-based backfill could create several active owners
-        # for one Server. There is no provenance that can safely distinguish
-        # those rows from owners granted intentionally, so never guess which
-        # account to demote. Block startup with identifiers an operator can audit.
-        await conn.execute(text("""
-            DO $membership_owner_guard$
-            DECLARE
-                ambiguous_server_id uuid;
-                ambiguous_owner_account_ids text;
-            BEGIN
-                SELECT
-                    server_id,
-                    string_agg(account_id::text, ',' ORDER BY account_id::text)
-                INTO ambiguous_server_id, ambiguous_owner_account_ids
-                FROM server_memberships
-                WHERE role = 'owner'
-                  AND status = 'active'
-                GROUP BY server_id
-                HAVING COUNT(*) > 1
-                ORDER BY server_id
-                LIMIT 1;
-
-                IF ambiguous_server_id IS NOT NULL THEN
-                    RAISE EXCEPTION USING
-                        ERRCODE = 'P0001',
-                        MESSAGE = format(
-                            'LEGACY_MEMBERSHIP_MULTIPLE_ACTIVE_OWNERS: server_id=%s active_owner_account_ids=%s',
-                            ambiguous_server_id,
-                            ambiguous_owner_account_ids
-                        ),
-                        HINT = 'Inspect the listed memberships and explicitly retain or demote owners before restarting; the seed will not change owner roles automatically.';
-                END IF;
-            END
-            $membership_owner_guard$;
-        """))
-
-        # ── Data seeding: server_memberships owner bootstrap ────────────────
-        # Rank only accounts that still lack a membership. If a Server has no
-        # active owner/admin, its oldest legacy Account (UUID as tie-breaker)
-        # becomes owner and every other candidate becomes a member. The rank
-        # makes the decision independent of INSERT statement snapshot visibility.
-        await conn.execute(text("""
-            WITH ranked_candidates AS (
-                SELECT
-                    accounts.server_id,
-                    accounts.id AS account_id,
-                    accounts.member_id,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY accounts.server_id
-                        ORDER BY accounts.created_at, accounts.id
-                    ) AS candidate_rank
-                FROM accounts
-                WHERE accounts.server_id IS NOT NULL
-                  AND accounts.member_id IS NOT NULL
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM server_memberships current_membership
-                      WHERE current_membership.server_id = accounts.server_id
-                        AND current_membership.account_id = accounts.id
-                  )
-            )
-            INSERT INTO server_memberships (id, server_id, account_id, member_id, role, status, created_at, updated_at)
-            SELECT
-                gen_random_uuid(),
-                ranked_candidates.server_id,
-                ranked_candidates.account_id,
-                ranked_candidates.member_id,
-                CASE
-                    WHEN ranked_candidates.candidate_rank = 1
-                      AND NOT EXISTS (
-                        SELECT 1 FROM server_memberships existing
-                        WHERE existing.server_id = ranked_candidates.server_id
-                          AND existing.role IN ('owner', 'admin')
-                          AND existing.status = 'active'
-                    ) THEN 'owner'
-                    ELSE 'member'
-                END,
-                'active',
-                now(),
-                now()
-            FROM ranked_candidates
-            ON CONFLICT (server_id, account_id) DO NOTHING
-        """))
-
         # ── Data seeding: builtin task_run_templates ────────────────────────
         # Two builtin templates (general-task-runner, research-analyst) shipped
         # with the app. Idempotent via ON CONFLICT (slug) DO NOTHING.

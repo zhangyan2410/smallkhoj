@@ -55,7 +55,7 @@ def _patch_active_server_context(monkeypatch, server, *, member=None):
 @pytest.mark.asyncio
 async def test_public_memory_route_resolves_scope_with_current_viewer(monkeypatch):
     server = SimpleNamespace(id=uuid.uuid4())
-    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean")
+    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean", handle="zy-ean")
     context = SimpleNamespace(scope=MemoryScope("channel", uuid.uuid4()))
     seen = {}
 
@@ -100,7 +100,7 @@ async def test_public_memory_route_resolves_scope_with_current_viewer(monkeypatc
 @pytest.mark.asyncio
 async def test_public_task_memory_alias_resolves_scope_with_current_viewer(monkeypatch):
     server = SimpleNamespace(id=uuid.uuid4())
-    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean")
+    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean", handle="zy-ean")
     context = SimpleNamespace(scope=MemoryScope("task", uuid.uuid4()))
     seen = {}
 
@@ -144,7 +144,7 @@ async def test_public_task_memory_alias_resolves_scope_with_current_viewer(monke
 @pytest.mark.asyncio
 async def test_public_task_memory_request_route_queues_targeted_reminder(monkeypatch):
     server = SimpleNamespace(id=uuid.uuid4())
-    actor = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean")
+    actor = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean", handle="zy-ean")
     task = SimpleNamespace(id=uuid.uuid4(), task_number=9, status="in_review")
     event = SimpleNamespace(id=uuid.uuid4())
     db = _FakeSession()
@@ -237,8 +237,13 @@ async def test_public_task_memory_request_route_queues_targeted_reminder(monkeyp
 @pytest.mark.asyncio
 async def test_public_task_update_to_in_review_queues_memory_request(monkeypatch):
     server = SimpleNamespace(id=uuid.uuid4())
-    actor = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean")
-    assignee = SimpleNamespace(id=uuid.uuid4(), display_name="kimi", kind="agent")
+    actor = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean", handle="zy-ean")
+    assignee = SimpleNamespace(
+        id=uuid.uuid4(),
+        display_name="kimi",
+        handle="kimi",
+        kind="agent",
+    )
     task = SimpleNamespace(
         id=uuid.uuid4(),
         task_number=12,
@@ -355,11 +360,11 @@ async def test_public_task_update_to_in_review_queues_memory_request(monkeypatch
 
 
 def test_public_memory_actor_must_match_current_viewer():
-    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean")
+    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean", handle="zy-ean")
 
     public_api._ensure_memory_actor_matches_viewer({}, viewer)
     public_api._ensure_memory_actor_matches_viewer({"actor": "zy-ean"}, viewer)
-    public_api._ensure_memory_actor_matches_viewer({"actor": f"@{viewer.display_name}"}, viewer)
+    public_api._ensure_memory_actor_matches_viewer({"actor": f"@{viewer.handle}"}, viewer)
     public_api._ensure_memory_actor_matches_viewer({"actor": str(viewer.id)}, viewer)
 
     with pytest.raises(HTTPException) as exc:
@@ -371,7 +376,7 @@ def test_public_memory_actor_must_match_current_viewer():
 @pytest.mark.asyncio
 async def test_public_memory_proposal_routes_list_and_resolve_with_current_viewer(monkeypatch):
     server = SimpleNamespace(id=uuid.uuid4())
-    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean")
+    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean", handle="zy-ean")
     context = SimpleNamespace(scope=MemoryScope("channel", uuid.uuid4()))
     proposal = SimpleNamespace(id=uuid.uuid4(), path="MEMORY.md", status="open")
     entry = SimpleNamespace(path="MEMORY.md")
@@ -441,7 +446,7 @@ async def test_public_memory_proposal_routes_list_and_resolve_with_current_viewe
 @pytest.mark.asyncio
 async def test_public_memory_delete_route_soft_deletes_with_current_viewer(monkeypatch):
     server = SimpleNamespace(id=uuid.uuid4())
-    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean")
+    viewer = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean", handle="zy-ean")
     context = SimpleNamespace(scope=MemoryScope("channel", uuid.uuid4()))
     entry = SimpleNamespace(path="references/old.md", deleted_at=None)
     db = _FakeSession()

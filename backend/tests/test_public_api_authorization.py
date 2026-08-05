@@ -101,18 +101,20 @@ async def _asgi_request(db, method: str, path: str, **kwargs):
 
 
 def _server_context(*, role: str = "member"):
-    server = Server(id=uuid.uuid4(), name="Authorization Test")
+    server = Server(id=uuid.uuid4(), name="Authorization Test", server_handle="sauth")
+    account_id = uuid.uuid4()
     member = Member(
         id=uuid.uuid4(),
-        server_id=server.id,
+        origin_server_id=server.id,
+        account_id=account_id,
         kind="human",
-        display_name=f"{role}-viewer",
+        handle=f"{role}-viewer",
+        handle_key=f"{role}-viewer",
     )
     account = Account(
-        id=uuid.uuid4(),
-        name=f"{role}-account",
-        server_id=server.id,
-        member_id=member.id,
+        id=account_id,
+        auth_subject=f"{role}-account",
+        home_server_id=server.id,
     )
     membership = SimpleNamespace(role=role)
     return SimpleNamespace(
@@ -138,7 +140,7 @@ async def test_legacy_public_key_auth_cannot_rotate_existing_owner_token(monkeyp
         return account, context.server, context.member, "attacker-token"
 
     async def serialize(_db, _account, _server, _member):
-        return {"account": {"name": account.name}}
+        return {"account": {"name": context.member.handle}}
 
     monkeypatch.setattr(public_api, "_bootstrap_account", unsafe_bootstrap)
     monkeypatch.setattr(public_api, "_serialize_account", serialize)
@@ -148,7 +150,7 @@ async def test_legacy_public_key_auth_cannot_rotate_existing_owner_token(monkeyp
         db,
         "POST",
         path,
-        json={"name": account.name, "displayName": "Attacker"},
+        json={"name": context.member.handle, "displayName": "Attacker"},
     )
 
     assert response.status_code == 410
@@ -169,9 +171,11 @@ async def _channel_admin_request(monkeypatch, *, operation: str, role: str, kind
     )
     target = Member(
         id=uuid.uuid4(),
-        server_id=context.server.id,
+        origin_server_id=context.server.id,
+        account_id=uuid.uuid4(),
         kind="human",
-        display_name="target-member",
+        handle="target-member",
+        handle_key="target-member",
     )
     channel_membership = ChannelMember(channel_id=channel.id, member_id=target.id)
     side_effects = []
@@ -192,11 +196,26 @@ async def _channel_admin_request(monkeypatch, *, operation: str, role: str, kind
     async def push_events(*_args, **_kwargs):
         side_effects.append(("push",))
 
+    async def add_member(_db, *, channel_id, member_id, actor_id):
+        membership = ChannelMember(channel_id=channel_id, member_id=member_id)
+        _db.add(membership)
+        return SimpleNamespace(changed=True, roster_revision=1)
+
+    async def remove_member(_db, *, channel_id, member_id, actor_id, strict=True):
+        assert channel_id == channel.id
+        assert member_id == target.id
+        assert actor_id == context.member.id
+        assert strict is True
+        await _db.delete(channel_membership)
+        return SimpleNamespace(changed=True, roster_revision=1)
+
     monkeypatch.setattr(public_api, "_resolve_active_server_context", resolve_context)
     monkeypatch.setattr(public_api, "_resolve_human_actor", resolve_actor)
     monkeypatch.setattr(public_api, "_delete_channels_by_id", delete_channels)
     monkeypatch.setattr(public_api, "_record_activity", record_activity)
     monkeypatch.setattr(public_api, "_push_committed_events", push_events)
+    monkeypatch.setattr(public_api, "add_channel_member_record", add_member)
+    monkeypatch.setattr(public_api, "remove_channel_member_record", remove_member)
 
     if operation == "delete":
         db = _TrackingSession(_Result(scalar=channel))
@@ -205,7 +224,6 @@ async def _channel_admin_request(monkeypatch, *, operation: str, role: str, kind
         db = _TrackingSession(
             _Result(scalar=channel),
             _Result(scalar_rows=[target]),
-            _Result(rows=[]),
         )
         response = await _asgi_request(
             db,
@@ -216,7 +234,6 @@ async def _channel_admin_request(monkeypatch, *, operation: str, role: str, kind
     else:
         db = _TrackingSession(
             _Result(scalar=channel),
-            _Result(scalar=channel_membership),
         )
         response = await _asgi_request(
             db,
@@ -295,16 +312,13 @@ async def _list_channel_members_request(monkeypatch, *, kind: str, is_participan
     )
     listed_member = Member(
         id=uuid.uuid4(),
-        server_id=context.server.id,
+        origin_server_id=context.server.id,
+        account_id=uuid.uuid4(),
         kind="human",
-        display_name="listed-member",
+        handle="listed-member",
+        handle_key="listed-member",
     )
-    channel_membership = ChannelMember(channel_id=channel.id, member_id=listed_member.id)
-    db = _TrackingSession(
-        _Result(scalar=channel),
-        _Result(scalar_rows=[channel_membership]),
-        _Result(scalar_rows=[listed_member]),
-    )
+    db = _TrackingSession(_Result(scalar=channel))
 
     async def resolve_context(_db, _request):
         return context
@@ -312,16 +326,22 @@ async def _list_channel_members_request(monkeypatch, *, kind: str, is_participan
     async def channel_member(_db, *, channel_id, member_id):
         return is_participant
 
-    async def load_context(_db, _members):
-        return SimpleNamespace(computers={}, workspace_ids={})
-
-    async def serialize(_db, member, **_kwargs):
-        return {"id": str(member.id), "name": member.display_name}
+    async def load_roster(_db, *, channel_id):
+        assert channel_id == channel.id
+        return [
+            SimpleNamespace(
+                human_payload=lambda: {
+                    "memberId": str(listed_member.id),
+                    "kind": "human",
+                    "handle": listed_member.handle,
+                    "reference": f"@{listed_member.handle}",
+                }
+            )
+        ]
 
     monkeypatch.setattr(public_api, "_resolve_active_server_context", resolve_context)
     monkeypatch.setattr(public_api, "is_channel_member", channel_member)
-    monkeypatch.setattr(public_api, "load_member_serialization_context", load_context)
-    monkeypatch.setattr(public_api, "serialize_member", serialize)
+    monkeypatch.setattr(public_api, "load_channel_roster", load_roster)
 
     response = await _asgi_request(db, "GET", f"/api/v1/channels/{channel.id}/members")
     return response, db
@@ -357,7 +377,7 @@ async def test_channel_member_listing_preserves_public_and_participant_access(
     )
 
     assert response.status_code == 200, response.text
-    assert response.json()["members"][0]["name"] == "listed-member"
+    assert response.json()["members"][0]["handle"] == "listed-member"
 
 
 def _message_resource(context, channel, *, content="classified message"):
@@ -1029,9 +1049,10 @@ async def _task_route_request(
     task = _task_resource(context, channel)
     agent = Member(
         id=uuid.uuid4(),
-        server_id=context.server.id,
+        origin_server_id=context.server.id,
         kind="agent",
-        display_name="task-agent",
+        handle="task-agent",
+        handle_key="task-agent",
     )
     db = _TrackingSession(_Result(scalar=channel))
     side_effects = []

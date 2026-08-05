@@ -205,13 +205,14 @@ async def display_target_for_agent(
             .where(
                 ChannelMember.channel_id == channel.id,
                 Member.id != agent.id,
+                Member.deleted_at.is_(None),
             )
-            .order_by(Member.kind.desc(), Member.display_name)
+            .order_by(Member.kind.desc(), Member.handle)
             .limit(1)
         )
         peer = peer_result.scalar_one_or_none()
         if peer:
-            return f"dm:@{peer.display_name}:{root.short_id}"
+            return f"dm:@{peer.handle}:{root.short_id}"
         return f"{channel.name}:{root.short_id}"
     prefix = f"#{channel.name}" if channel.kind == "public" else channel.name
     return f"{prefix}:{root.short_id}"

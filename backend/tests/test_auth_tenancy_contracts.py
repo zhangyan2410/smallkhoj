@@ -64,11 +64,11 @@ class _ActorSession:
             matches = [
                 member
                 for member in self.members
-                if member.server_id == self.viewer.server_id
+                if member.origin_server_id == self.viewer.origin_server_id
                 and (
                     member.id in uuid_values
-                    or member.display_name in string_values
-                    or member.display_name.lower() in {value.lower() for value in string_values}
+                    or member.handle in string_values
+                    or member.handle_key in {value.casefold() for value in string_values}
                 )
             ]
             return _ActorResult(matches)
@@ -242,24 +242,28 @@ async def test_member_patch_rejects_non_admin_before_resolving_target(monkeypatc
 
 def _actor_context(*, duplicate_viewer_name=False):
     server_id = uuid.uuid4()
+    account_id = uuid.uuid4()
     viewer = Member(
         id=uuid.uuid4(),
-        server_id=server_id,
+        origin_server_id=server_id,
+        account_id=account_id,
         kind="human",
-        display_name="Viewer",
+        handle="Viewer",
+        handle_key="viewer",
     )
     foreign = Member(
         id=uuid.uuid4(),
-        server_id=server_id,
+        origin_server_id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
         kind="human",
-        display_name="Other",
+        handle="Other",
+        handle_key="other",
     )
     account = Account(
-        id=uuid.uuid4(),
-        name="viewer-account",
+        id=account_id,
+        auth_subject="viewer-account",
         display_name="Viewer",
-        server_id=server_id,
-        member_id=viewer.id,
+        home_server_id=server_id,
         session_token_hash=public_api._hash_token("sk_actor_session"),
     )
     membership = ServerMembership(
@@ -275,9 +279,11 @@ def _actor_context(*, duplicate_viewer_name=False):
         members.append(
             Member(
                 id=uuid.uuid4(),
-                server_id=server_id,
+                origin_server_id=uuid.uuid4(),
+                account_id=uuid.uuid4(),
                 kind="human",
-                display_name="viewer",
+                handle="viewer",
+                handle_key="viewer",
             )
         )
     return (
@@ -330,24 +336,23 @@ async def test_human_actor_foreign_aliases_are_rejected(actor_form):
             role="contract actor",
         )
 
-    assert error.value.status_code == 403
+    assert error.value.status_code == 404
     assert db.added == []
 
 
 @pytest.mark.asyncio
-async def test_human_actor_ambiguous_alias_is_rejected_without_creating_member():
-    server, _viewer, _foreign, db, request = _actor_context(duplicate_viewer_name=True)
+async def test_human_actor_self_alias_uses_account_identity_despite_foreign_handle_collision():
+    server, viewer, _foreign, db, request = _actor_context(duplicate_viewer_name=True)
 
-    with pytest.raises(HTTPException) as error:
-        await public_api._resolve_human_actor(
-            db,
-            server,
-            request,
-            "VIEWER",
-            role="contract actor",
-        )
+    actor = await public_api._resolve_human_actor(
+        db,
+        server,
+        request,
+        "VIEWER",
+        role="contract actor",
+    )
 
-    assert error.value.status_code == 400
+    assert actor is viewer
     assert db.added == []
 
 

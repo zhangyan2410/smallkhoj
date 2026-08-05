@@ -156,32 +156,17 @@ async def _load_active_membership(
     return result.one_or_none()
 
 
-def _account_member_name(account: Account) -> str:
-    return (account.display_name or account.name or f"member-{str(account.id)[:8]}").strip()[:80]
-
-
-async def _create_human_member_for_account(db: Any, *, server: Server, account: Account) -> Member:
-    base_name = _account_member_name(account)
-    candidates = [base_name, f"{base_name}-{str(account.id)[:6]}"]
-    for name in candidates:
-        result = await db.execute(
-            select(Member).where(
-                Member.server_id == server.id,
-                Member.display_name == name,
-            )
+async def _load_account_human(db: Any, *, account: Account) -> Member:
+    result = await db.execute(
+        select(Member).where(
+            Member.account_id == account.id,
+            Member.kind == "human",
         )
-        if result.scalar_one_or_none() is None:
-            member = Member(
-                id=uuid.uuid4(),
-                server_id=server.id,
-                kind="human",
-                display_name=name,
-                status="online",
-            )
-            db.add(member)
-            await db.flush()
-            return member
-    raise HTTPException(409, "A member with this display name already exists")
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(409, "Account Human identity is missing")
+    return member
 
 
 async def inspect_server_invite(db: Any, *, token: str, account: Account | None = None) -> ServerInvitePreview:
@@ -204,7 +189,7 @@ async def accept_server_invite(db: Any, *, token: str, account: Account) -> Acce
     if existing:
         membership, member = existing
     else:
-        member = await _create_human_member_for_account(db, server=server, account=account)
+        member = await _load_account_human(db, account=account)
         membership = await ensure_account_membership(
             db,
             account=account,

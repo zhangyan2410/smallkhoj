@@ -75,32 +75,39 @@ async def _counted_get(client, engine, path: str, *, headers: dict[str, str]):
 
 async def _seed_query_world(session_factory, *, row_count: int = 100):
     now = datetime.now(timezone.utc)
-    server = Server(id=uuid.uuid4(), name=f"query-budget-{uuid.uuid4().hex[:8]}")
+    server = Server(
+        id=uuid.uuid4(),
+        name=f"query-budget-{uuid.uuid4().hex[:8]}",
+        server_handle=f"s{uuid.uuid4().hex[:4]}",
+    )
+    account_id = uuid.uuid4()
     owner = Member(
         id=uuid.uuid4(),
-        server_id=server.id,
+        origin_server_id=server.id,
+        account_id=account_id,
         kind="human",
-        display_name="Query Owner",
+        handle="query-owner",
+        handle_key="query-owner",
         status="online",
         config={},
         skills=[],
     )
     agent = Member(
         id=uuid.uuid4(),
-        server_id=server.id,
+        origin_server_id=server.id,
         kind="agent",
-        display_name="query-agent",
+        handle="query-agent",
+        handle_key="query-agent",
         status="offline",
         config={},
         skills=[],
     )
     account_token = f"query_session_{uuid.uuid4().hex}"
     account = Account(
-        id=uuid.uuid4(),
-        name=f"query-account-{uuid.uuid4().hex[:12]}",
-        display_name=owner.display_name,
-        server_id=server.id,
-        member_id=owner.id,
+        id=account_id,
+        auth_subject=f"test:{account_token}",
+        display_name="Query Owner",
+        home_server_id=server.id,
         session_token_hash=public_api._hash_token(account_token),
     )
     membership = ServerMembership(
@@ -131,9 +138,10 @@ async def _seed_query_world(session_factory, *, row_count: int = 100):
     extra_agents = [
         Member(
             id=uuid.uuid4(),
-            server_id=server.id,
+            origin_server_id=server.id,
             kind="agent",
-            display_name=f"listed-agent-{index:03d}",
+            handle=f"listed-agent-{index:03d}",
+            handle_key=f"listed-agent-{index:03d}",
             status="offline",
             config={},
             skills=[],
@@ -146,9 +154,11 @@ async def _seed_query_world(session_factory, *, row_count: int = 100):
         # every edge, so make the fixture's dependency order explicit.
         db.add(server)
         await db.flush()
+        db.add(account)
+        await db.flush()
         db.add_all([owner, agent, *extra_agents])
         await db.flush()
-        db.add_all([account, api_key, channel])
+        db.add_all([api_key, channel])
         await db.flush()
         db.add_all([membership, channel_member])
         await db.flush()
@@ -212,20 +222,17 @@ async def _seed_query_world(session_factory, *, row_count: int = 100):
 
 
 def _expected_member(member: Member) -> dict:
-    return {
+    payload = {
         "id": str(member.id),
-        "name": member.display_name,
-        "displayName": member.display_name,
-        "handle": f"@{member.display_name}",
+        "name": member.handle,
+        "handle": member.handle,
+        "reference": f"@{member.handle}",
         "kind": member.kind,
         "type": member.kind,
         "profile": {
-            "displayName": member.display_name,
-            "description": member.description,
             "avatarUrl": member.avatar_url,
         },
         "status": member.status,
-        "description": member.description,
         "avatarUrl": member.avatar_url,
         "skills": member.skills or [],
         "config": member.config or {},
@@ -236,6 +243,10 @@ def _expected_member(member: Member) -> dict:
         "permissions": {},
         "actions": {},
     }
+    if member.kind == "agent":
+        payload["profile"]["description"] = member.description
+        payload["description"] = member.description
+    return payload
 
 
 def _expected_agent_message(world: dict, message: Message, reaction: MessageReaction) -> dict:
@@ -249,7 +260,7 @@ def _expected_agent_message(world: dict, message: Message, reaction: MessageReac
         "channelId": str(channel.id),
         "channel": f"#{channel.name}",
         "senderId": str(agent.id),
-        "sender": f"@{agent.display_name}",
+        "sender": f"@{agent.handle}",
         "senderType": "agent",
         "content": message.content,
         "mentions": [],
@@ -262,7 +273,7 @@ def _expected_agent_message(world: dict, message: Message, reaction: MessageReac
                 "id": str(reaction.id),
                 "reaction": "👍",
                 "memberId": str(world["owner"].id),
-                "member": f"@{world['owner'].display_name}",
+                "member": f"@{world['owner'].handle}",
                 "createdAt": reaction.created_at.isoformat(),
             }
         ],
@@ -287,10 +298,10 @@ def _expected_public_task(world: dict, task: Task) -> dict:
         "title": task.title,
         "description": task.description,
         "status": "todo",
-        "creator": owner.display_name,
+        "creator": owner.handle,
         "creatorId": str(owner.id),
         "creatorMember": _expected_member(owner),
-        "assignee": agent.display_name,
+        "assignee": agent.handle,
         "assigneeId": str(agent.id),
         "assigneeMember": _expected_member(agent),
         "runs": [],
@@ -314,9 +325,9 @@ def _expected_agent_task(world: dict, task: Task) -> dict:
         "title": task.title,
         "description": task.description,
         "status": "todo",
-        "creator": f"@{owner.display_name}",
+        "creator": f"@{owner.handle}",
         "creatorId": str(owner.id),
-        "assignee": f"@{agent.display_name}",
+        "assignee": f"@{agent.handle}",
         "assigneeId": str(agent.id),
         "runs": [],
         "data": {},
@@ -332,7 +343,7 @@ def _expected_public_message(world: dict, message: Message, reaction: MessageRea
         "id": str(message.id),
         "shortId": message.short_id,
         "channelId": str(world["channel"].id),
-        "sender": f"@{agent.display_name}",
+        "sender": f"@{agent.handle}",
         "senderId": str(agent.id),
         "senderType": "agent",
         "senderMember": _expected_member(agent),
@@ -352,7 +363,7 @@ def _expected_public_message(world: dict, message: Message, reaction: MessageRea
                 "id": str(reaction.id),
                 "reaction": "👍",
                 "memberId": str(world["owner"].id),
-                "member": f"@{world['owner'].display_name}",
+                "member": f"@{world['owner'].handle}",
                 "createdAt": reaction.created_at.isoformat(),
             }
         ],
@@ -398,9 +409,10 @@ async def test_explicit_prefetched_missing_values_do_not_fall_back_to_sql():
 
     agent = Member(
         id=sender_id,
-        server_id=server_id,
+        origin_server_id=server_id,
         kind="agent",
-        display_name="missing-workspace",
+        handle="missing-workspace",
+        handle_key="missing-workspace",
         status="offline",
         config={},
         skills=[],

@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -30,13 +31,21 @@ def _utcnow():
 
 class Server(Base):
     __tablename__ = "servers"
+    __table_args__ = (
+        UniqueConstraint("server_handle", name="uq_servers_server_handle"),
+        CheckConstraint(
+            "server_handle ~ '^s[0-9abcdefghjkmnpqrstvwxyz]{4}$'",
+            name="ck_servers_server_handle_format",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    server_handle: Mapped[str] = mapped_column(String(5), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
-    members = relationship("Member", back_populates="server", lazy="selectin")
+    members = relationship("Member", back_populates="origin_server", lazy="selectin")
     channels = relationship("Channel", back_populates="server", lazy="selectin")
     computers = relationship("Computer", back_populates="server", lazy="selectin")
     activity_logs = relationship("ActivityLog", back_populates="server", lazy="selectin")
@@ -51,22 +60,31 @@ class Server(Base):
 class Account(Base):
     __tablename__ = "accounts"
     __table_args__ = (
-        UniqueConstraint("name", name="uq_accounts_name"),
-        Index("idx_accounts_member", "member_id"),
+        UniqueConstraint("auth_subject", name="uq_accounts_auth_subject"),
+        UniqueConstraint("home_server_id", name="uq_accounts_home_server"),
+        UniqueConstraint("id", "home_server_id", name="uq_accounts_id_home_server"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    auth_subject: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
-    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    home_server_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("servers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     session_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
-    server = relationship("Server")
-    member = relationship("Member")
+    home_server = relationship("Server")
+    member = relationship(
+        "Member",
+        back_populates="account",
+        uselist=False,
+        primaryjoin="Account.id == Member.account_id",
+    )
 
 
 class ServerMembership(Base):
@@ -77,6 +95,18 @@ class ServerMembership(Base):
         Index("idx_server_memberships_server", "server_id", "status"),
         CheckConstraint("role IN ('owner', 'admin', 'member')", name="ck_server_memberships_role"),
         CheckConstraint("status IN ('active', 'invited', 'disabled')", name="ck_server_memberships_status"),
+        ForeignKeyConstraint(
+            ["account_id", "member_id"],
+            ["members.account_id", "members.id"],
+            name="fk_server_memberships_account_member",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "uq_server_memberships_active_owner",
+            "server_id",
+            unique=True,
+            postgresql_where=text("role = 'owner' AND status = 'active'"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -90,7 +120,11 @@ class ServerMembership(Base):
 
     server = relationship("Server")
     account = relationship("Account")
-    member = relationship("Member")
+    member = relationship(
+        "Member",
+        foreign_keys=[member_id],
+        primaryjoin="ServerMembership.member_id == Member.id",
+    )
 
 
 class ServerInvite(Base):
@@ -126,16 +160,54 @@ class ServerInvite(Base):
 class Member(Base):
     __tablename__ = "members"
     __table_args__ = (
-        UniqueConstraint("server_id", "display_name", name="uq_members_server_display_name"),
-        Index("idx_members_server", "server_id"),
+        CheckConstraint("type IN ('human', 'agent')", name="ck_members_type"),
+        CheckConstraint(
+            "(type = 'human' AND account_id IS NOT NULL) OR "
+            "(type = 'agent' AND account_id IS NULL)",
+            name="ck_members_account_kind",
+        ),
+        CheckConstraint("char_length(handle) BETWEEN 1 AND 32", name="ck_members_handle_length"),
+        CheckConstraint("type = 'agent' OR description IS NULL", name="ck_members_agent_description"),
+        CheckConstraint(
+            "description IS NULL OR char_length(description) <= 200",
+            name="ck_members_description_length",
+        ),
+        UniqueConstraint("account_id", "id", name="uq_members_account_id_id"),
+        ForeignKeyConstraint(
+            ["account_id", "origin_server_id"],
+            ["accounts.id", "accounts.home_server_id"],
+            name="fk_members_account_origin_server",
+            ondelete="RESTRICT",
+        ),
+        Index("idx_members_origin_server", "origin_server_id"),
         Index("idx_members_computer", "computer_id"),
+        Index(
+            "uq_members_account_identity",
+            "account_id",
+            unique=True,
+            postgresql_where=text("account_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_members_origin_active_name",
+            "origin_server_id",
+            "handle_key",
+            unique=True,
+            postgresql_where=text("type = 'human' OR (type = 'agent' AND deleted_at IS NULL)"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    origin_server_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("servers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    account_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     kind: Mapped[str] = mapped_column("type", String(10), nullable=False)  # 'human' | 'agent'
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    handle: Mapped[str] = mapped_column(String(32), nullable=False)
+    handle_key: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="offline")
     skills: Mapped[list] = mapped_column(JSONB, default=list)
@@ -149,7 +221,13 @@ class Member(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
-    server = relationship("Server", back_populates="members")
+    origin_server = relationship("Server", back_populates="members", foreign_keys=[origin_server_id])
+    account = relationship(
+        "Account",
+        back_populates="member",
+        foreign_keys=[account_id],
+        primaryjoin="Member.account_id == Account.id",
+    )
     computer = relationship("Computer", back_populates="members")
     workspaces = relationship("AgentWorkspace", back_populates="agent", lazy="selectin")
 
@@ -262,6 +340,12 @@ class Channel(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     kind: Mapped[str] = mapped_column("type", String(10), nullable=False, default="public")  # public | private | dm
     creator_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("members.id"), nullable=True)
+    membership_revision: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 

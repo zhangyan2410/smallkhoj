@@ -150,9 +150,14 @@ async def start_feishu_jira_analysis(
     channel_id = feishu_outcome.route.channel_id
     assignee = Member(
         id=feishu_outcome.route.default_assignee_id,
-        server_id=getattr(jira_connector, "server_id", getattr(feishu_outcome.event, "server_id", uuid.uuid4())),
+        origin_server_id=getattr(
+            jira_connector,
+            "server_id",
+            getattr(feishu_outcome.event, "server_id", uuid.uuid4()),
+        ),
         kind="agent",
-        display_name="Jira analysis agent",
+        handle="Jira-analysis-agent",
+        handle_key="jira-analysis-agent",
     )
     message = Message(
         short_id=_short_id(),

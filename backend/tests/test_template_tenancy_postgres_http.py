@@ -30,20 +30,27 @@ def _headers(server_id: uuid.UUID, token: str) -> dict[str, str]:
 
 
 async def _seed_identity(session_factory, *, role="member"):
-    server = Server(id=uuid.uuid4(), name=f"template-server-{uuid.uuid4().hex[:8]}")
+    server = Server(
+        id=uuid.uuid4(),
+        name=f"template-server-{uuid.uuid4().hex[:8]}",
+        server_handle=f"s{uuid.uuid4().hex[:4]}",
+    )
+    account_id = uuid.uuid4()
+    handle = f"template-member-{uuid.uuid4().hex[:8]}"
     member = Member(
         id=uuid.uuid4(),
-        server_id=server.id,
+        origin_server_id=server.id,
+        account_id=account_id,
         kind="human",
-        display_name=f"template-member-{uuid.uuid4().hex[:8]}",
+        handle=handle,
+        handle_key=handle,
     )
     token = f"template_session_{uuid.uuid4().hex}"
     account = Account(
-        id=uuid.uuid4(),
-        name=f"template-account-{uuid.uuid4().hex[:12]}",
-        display_name=member.display_name,
-        server_id=server.id,
-        member_id=member.id,
+        id=account_id,
+        auth_subject=f"test:{token}",
+        display_name=member.handle,
+        home_server_id=server.id,
         session_token_hash=public_api._hash_token(token),
     )
     membership = ServerMembership(
@@ -96,9 +103,10 @@ async def test_template_http_routes_enforce_tenant_scope_and_builtin_privilege()
                 )
                 agent_a = Member(
                     id=uuid.uuid4(),
-                    server_id=server_a.id,
+                    origin_server_id=server_a.id,
                     kind="agent",
-                    display_name="template-agent-a",
+                    handle="template-agent-a",
+                    handle_key="template-agent-a",
                     config={"permissions": {}},
                 )
                 db.add_all([channel_a, agent_a])

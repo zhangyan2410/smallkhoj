@@ -66,9 +66,20 @@ from services.agent_permissions import (
     AGENT_PERMISSION_CAPABILITIES,
     agent_permissions_for_creation,
 )
+from services.channel_member_references import (
+    load_agent_channel_roster,
+    resolve_channel_mentions,
+)
+from services.channel_membership import (
+    add_channel_member as add_channel_member_record,
+)
+from services.channel_membership import (
+    remove_channel_member as remove_channel_member_record,
+)
 from services.daemon_control import (
     PENDING_RUNTIME_START_STATUS,
     daemon_control_hub,
+    event_visible_to_agent,
     initial_daemon_event_cursor,
     mark_missing_runtimes_pending_start,
     pending_runtime_commands,
@@ -93,6 +104,7 @@ from services.llm_run_leases import (
     require_active_lease,
     serialize_run_lease,
 )
+from services.member_identity import MemberIdentityError, normalize_handle
 from services.memory_api import (
     create_memory_proposal,
     delete_memory_entry,
@@ -173,7 +185,7 @@ async def _load_agent_event_stream_entities(
     member_result = await db.execute(
         select(Member).where(
             Member.id == claims.member_id,
-            Member.server_id == claims.server_id,
+            Member.origin_server_id == claims.server_id,
         )
     )
     member = member_result.scalar_one_or_none()
@@ -469,9 +481,6 @@ VALID_TASK_TRANSITIONS = {
 }
 
 
-MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]+)")
-
-
 async def _resolve_dm_channel(
     db: AsyncSession,
     server: Server,
@@ -482,11 +491,16 @@ async def _resolve_dm_channel(
     peer_name = target.replace("dm:", "", 1).lstrip("@")
     if not peer_name:
         raise HTTPException(400, "Missing DM peer")
+    try:
+        peer_identity = normalize_handle(peer_name)
+    except MemberIdentityError as error:
+        raise HTTPException(404, f"Peer {peer_name} not found") from error
 
     peer_result = await db.execute(
         select(Member).where(
-            Member.server_id == server.id,
-            Member.display_name == peer_name,
+            Member.origin_server_id == server.id,
+            Member.handle_key == peer_identity.handle_key,
+            Member.deleted_at.is_(None),
         )
     )
     peer = peer_result.scalar_one_or_none()
@@ -515,14 +529,29 @@ async def _resolve_dm_channel(
     )
     db.add(channel)
     await db.flush()
-    db.add(ChannelMember(channel_id=channel.id, member_id=member.id))
-    db.add(ChannelMember(channel_id=channel.id, member_id=peer.id))
-    await db.flush()
+    await add_channel_member_record(
+        db,
+        channel_id=channel.id,
+        member_id=member.id,
+        actor_id=member.id,
+    )
+    await add_channel_member_record(
+        db,
+        channel_id=channel.id,
+        member_id=peer.id,
+        actor_id=member.id,
+    )
     return channel
 
 
-async def _member_can_use_channel(db: AsyncSession, channel: Channel, member: Member | None) -> bool:
-    if channel.kind == "public":
+async def _member_can_use_channel(
+    db: AsyncSession,
+    channel: Channel,
+    member: Member | None,
+    *,
+    allow_public_unjoined: bool = False,
+) -> bool:
+    if channel.kind == "public" and allow_public_unjoined:
         return True
     if not member:
         return False
@@ -540,6 +569,7 @@ async def _resolve_existing_channel_ref(
     server: Server,
     target: str,
     member: Member | None = None,
+    allow_public_unjoined: bool = False,
 ) -> Channel | None:
     channel_name = _normalize_channel_name(target)
     parsed_channel_id = None
@@ -557,7 +587,12 @@ async def _resolve_existing_channel_ref(
         )
         channel = result.scalar_one_or_none()
         if channel:
-            if not await _member_can_use_channel(db, channel, member):
+            if not await _member_can_use_channel(
+                db,
+                channel,
+                member,
+                allow_public_unjoined=allow_public_unjoined,
+            ):
                 raise HTTPException(403, f"Agent cannot access channel {target}")
             return channel
 
@@ -570,7 +605,12 @@ async def _resolve_existing_channel_ref(
     channel = result.scalar_one_or_none()
     if not channel:
         return None
-    if not await _member_can_use_channel(db, channel, member):
+    if not await _member_can_use_channel(
+        db,
+        channel,
+        member,
+        allow_public_unjoined=allow_public_unjoined,
+    ):
         raise HTTPException(403, f"Agent cannot access channel {target}")
     return channel
 
@@ -581,8 +621,15 @@ async def _resolve_channel(
     target: str,
     member: Member | None = None,
     create_dm: bool = False,
+    allow_public_unjoined: bool = False,
 ) -> Channel:
-    channel = await _resolve_existing_channel_ref(db, server, target, member=member)
+    channel = await _resolve_existing_channel_ref(
+        db,
+        server,
+        target,
+        member=member,
+        allow_public_unjoined=allow_public_unjoined,
+    )
     if channel:
         return channel
 
@@ -631,11 +678,16 @@ async def _resolve_message_ref(
 async def _resolve_member_by_handle(db: AsyncSession, server: Server, handle: str | None) -> Member | None:
     if not handle:
         return None
-    display_name = handle.lstrip("@")
+    raw_name = handle.lstrip("@")
+    try:
+        identity = normalize_handle(raw_name)
+    except MemberIdentityError as error:
+        raise HTTPException(404, f"Member {handle} not found") from error
     result = await db.execute(
         select(Member).where(
-            Member.server_id == server.id,
-            Member.display_name == display_name,
+            Member.origin_server_id == server.id,
+            Member.handle_key == identity.handle_key,
+            Member.deleted_at.is_(None),
         )
     )
     member = result.scalar_one_or_none()
@@ -644,17 +696,9 @@ async def _resolve_member_by_handle(db: AsyncSession, server: Server, handle: st
     return member
 
 
-async def _parse_mentions(db: AsyncSession, server: Server, content: str) -> list[uuid.UUID]:
-    handles = sorted({match.group(1) for match in MENTION_RE.finditer(content or "")})
-    if not handles:
-        return []
-    result = await db.execute(
-        select(Member.id).where(
-            Member.server_id == server.id,
-            Member.display_name.in_(handles),
-        )
-    )
-    return list(result.scalars().all())
+async def _parse_mentions(db: AsyncSession, channel: Channel, content: str) -> list[uuid.UUID]:
+    roster = await load_agent_channel_roster(db, channel_id=channel.id)
+    return resolve_channel_mentions(content, roster)
 
 
 async def _message_target_for_member(
@@ -673,12 +717,13 @@ async def _message_target_for_member(
             .where(
                 ChannelMember.channel_id == channel.id,
                 Member.id != recipient.id,
+                Member.deleted_at.is_(None),
             )
-            .order_by(Member.kind.desc(), Member.display_name)
+            .order_by(Member.kind.desc(), Member.handle)
             .limit(1)
         )
         peer = peer_result.scalar_one_or_none()
-        base = f"dm:@{peer.display_name}" if peer else channel.name
+        base = f"dm:@{peer.handle}" if peer else channel.name
     else:
         base = _display_channel(channel)
     return f"{base}:{thread_ref}" if thread_ref else base
@@ -725,7 +770,7 @@ async def _resolve_workspace_agent(
         result = await db.execute(
             select(Member).where(
                 Member.id == parsed_agent_id,
-                Member.server_id == server.id,
+                Member.origin_server_id == server.id,
                 Member.kind == "agent",
             )
         )
@@ -776,9 +821,9 @@ async def _serialize_task(
         "title": task.title,
         "description": task.description,
         "status": task.status,
-        "creator": f"@{creator.display_name}" if creator else None,
+        "creator": f"@{creator.handle}" if creator else None,
         "creatorId": str(task.creator_id),
-        "assignee": f"@{assignee.display_name}" if assignee else None,
+        "assignee": f"@{assignee.handle}" if assignee else None,
         "assigneeId": str(task.assignee_id) if task.assignee_id else None,
         "runs": [serialize_task_run(run) for run in runs],
         "data": task.data or {},
@@ -865,7 +910,7 @@ async def _serialize_message(
         "channelId": str(msg.channel_id),
         "channel": _display_channel(channel) if channel else None,
         "senderId": str(msg.sender_id),
-        "sender": f"@{sender.display_name}" if sender else "unknown",
+        "sender": f"@{sender.handle}" if sender else "unknown",
         "senderType": sender.kind if sender else "unknown",
         "content": msg.content,
         "mentions": [str(item) for item in (msg.mentions or [])],
@@ -912,7 +957,7 @@ async def _serialize_reactions(
             "id": str(reaction.id),
             "reaction": reaction.reaction,
             "memberId": str(reaction.member_id),
-            "member": f"@{member.display_name}" if member else None,
+            "member": f"@{member.handle}" if member else None,
             "createdAt": reaction.created_at.isoformat() if reaction.created_at else None,
         })
 
@@ -1085,7 +1130,10 @@ async def _visible_event_records(
         except (TypeError, ValueError):
             query = query.where(EventRecord.seq > 0)
 
-    visibility = [EventRecord.channel_id.is_(None), EventRecord.actor_id == member.id]
+    visibility = [
+        EventRecord.channel_id.is_(None),
+        EventRecord.payload["removedAgentId"].as_string() == str(member.id),
+    ]
     if channel_ids:
         visibility.append(EventRecord.channel_id.in_(channel_ids))
     query = query.where(or_(*visibility))
@@ -1094,8 +1142,7 @@ async def _visible_event_records(
     records = result.scalars().all()
     visible = []
     for record in records:
-        target_agent_id = (record.payload or {}).get("targetAgentId")
-        if target_agent_id and str(target_agent_id) != str(member.id):
+        if not event_visible_to_agent(record, member, set(channel_ids)):
             continue
         visible.append(record)
     return visible
@@ -1159,13 +1206,13 @@ def _serialize_member(member: Member) -> dict:
     if member.kind == "agent" and member.workspaces:
         latest_workspace = max(member.workspaces, key=lambda item: item.updated_at)
         workspace_id = str(latest_workspace.id)
-    return {
+    payload = {
         "id": str(member.id),
-        "name": member.display_name,
-        "handle": f"@{member.display_name}",
+        "name": member.handle,
+        "handle": member.handle,
+        "reference": f"@{member.handle}",
         "kind": member.kind,
         "status": member.status,
-        "description": member.description,
         "avatarUrl": member.avatar_url,
         "skills": member.skills or [],
         "config": config,
@@ -1176,6 +1223,9 @@ def _serialize_member(member: Member) -> dict:
         "permissions": config.get("permissions") or {},
         "actions": config.get("actions") or {},
     }
+    if member.kind == "agent":
+        payload["description"] = member.description
+    return payload
 
 
 def _public_runtime(value: str | None) -> str:
@@ -1194,7 +1244,7 @@ async def _serialize_workspace(db: AsyncSession, workspace: AgentWorkspace) -> d
         "id": str(workspace.id),
         "computerId": str(workspace.computer_id),
         "agentId": str(workspace.agent_id),
-        "agentName": agent.display_name if agent else None,
+        "agentName": agent.handle if agent else None,
         "runtime": _public_runtime(workspace.runtime),
         "runtimeCommand": workspace.runtime_command,
         "runtimeModel": workspace.runtime_model,
@@ -1505,35 +1555,29 @@ async def get_server(
     member, server = agent
 
     channels_result = await db.execute(
-        select(Channel).where(Channel.server_id == server.id)
+        select(Channel, ChannelMember.member_id)
+        .outerjoin(
+            ChannelMember,
+            and_(
+                ChannelMember.channel_id == Channel.id,
+                ChannelMember.member_id == member.id,
+            ),
+        )
+        .where(
+            Channel.server_id == server.id,
+            or_(Channel.kind == "public", ChannelMember.member_id == member.id),
+        )
+        .order_by(Channel.name, Channel.id)
     )
-    channels = channels_result.scalars().all()
-
-    members_result = await db.execute(
-        select(Member).where(Member.server_id == server.id)
-    )
-    members = members_result.scalars().all()
-
-    # Group members
-    agents_list = []
-    humans_list = []
-    for m in members:
-        entry = {
-            "id": str(m.id),
-            "name": m.display_name,
-            "status": m.status,
-        }
-        if m.kind == "agent":
-            agents_list.append(entry)
-        else:
-            humans_list.append(entry)
 
     channels_list = []
-    for ch in channels:
+    for ch, joined_member_id in channels_result.all():
         channels_list.append({
             "id": str(ch.id),
-            "name": f"#{ch.name}" if ch.kind == "public" else ch.name,
+            "name": ch.name,
             "type": ch.kind,
+            "private": ch.kind == "private",
+            "joined": joined_member_id is not None,
             "description": ch.description or "",
         })
 
@@ -1543,9 +1587,8 @@ async def get_server(
     return {
         "serverId": str(server.id),
         "serverName": server.name,
+        "serverHandle": server.server_handle,
         "channels": channels_list,
-        "agents": agents_list,
-        "humans": humans_list,
         "computers": [await _serialize_computer(db, computer) for computer in computers],
     }
 
@@ -1714,7 +1757,7 @@ async def register_daemon(
             server,
             agent_member,
             "workspace_registered" if created else "workspace_updated",
-            f"@{agent_member.display_name} workspace {'registered' if created else 'updated'} on {computer.name}",
+            f"@{agent_member.handle} workspace {'registered' if created else 'updated'} on {computer.name}",
             {
                 "computerId": str(computer.id),
                 "workspaceId": str(workspace.id),
@@ -1788,7 +1831,7 @@ async def daemon_heartbeat(
                 server,
                 agent_member,
                 "workspace_registered",
-                f"@{agent_member.display_name} workspace registered on {computer.name}",
+                f"@{agent_member.handle} workspace registered on {computer.name}",
                 {
                     "computerId": str(computer.id),
                     "workspaceId": str(workspace.id),
@@ -1804,7 +1847,7 @@ async def daemon_heartbeat(
                 server,
                 agent_member,
                 "workspace_updated",
-                f"@{agent_member.display_name} workspace updated on {computer.name}",
+                f"@{agent_member.handle} workspace updated on {computer.name}",
                 {
                     "computerId": str(computer.id),
                     "workspaceId": str(workspace.id),
@@ -1898,7 +1941,7 @@ async def daemon_shutdown(
                 server,
                 agent_member,
                 "workspace_updated",
-                f"@{agent_member.display_name} workspace stopped on {computer.name}",
+                f"@{agent_member.handle} workspace stopped on {computer.name}",
                 {
                     "computerId": str(computer.id),
                     "workspaceId": str(workspace.id),
@@ -1996,6 +2039,14 @@ async def send_message(
         thread_ref = body.threadId or body.parentId or target_thread_ref
 
         channel = await _resolve_channel(db, server, base_target, member=member, create_dm=True)
+        current_membership = await db.execute(
+            select(ChannelMember).where(
+                ChannelMember.channel_id == channel.id,
+                ChannelMember.member_id == member.id,
+            )
+        )
+        if current_membership.scalar_one_or_none() is None:
+            raise HTTPException(403, "Agent is no longer a member of this Channel")
 
         parent_id = None
         thread_target_short_id = None
@@ -2020,7 +2071,7 @@ async def send_message(
             parent_id=parent_id,
             content=body.content,
             channel_type="thread" if parent_id else channel.kind,
-            mentions=await _parse_mentions(db, server, body.content),
+            mentions=await _parse_mentions(db, channel, body.content),
         )
         db.add(msg)
         await db.flush()
@@ -2036,7 +2087,7 @@ async def send_message(
             server,
             member,
             "message_sent",
-            f"@{member.display_name} sent a message to {target}",
+            f"@{member.handle} sent a message to {target}",
             {
                 "traceId": trace.trace_id,
                 "messageId": str(msg.id),
@@ -2337,7 +2388,7 @@ async def get_history(
             "messageId": str(msg.id),
             "time": msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else "",
             "type": sender.kind if sender else "unknown",
-            "sender": f"@{sender.display_name}" if sender else "unknown",
+            "sender": f"@{sender.handle}" if sender else "unknown",
             "content": msg.content,
             "mentions": [str(item) for item in (msg.mentions or [])],
             "parentId": str(msg.parent_id) if msg.parent_id else None,
@@ -2450,7 +2501,7 @@ async def add_message_reaction(
             server,
             member,
             "message_reaction_added",
-            f"@{member.display_name} reacted {reaction_text} to message {message.short_id}",
+            f"@{member.handle} reacted {reaction_text} to message {message.short_id}",
             {"messageId": str(message.id), "shortId": message.short_id, "reaction": reaction_text},
             channel_id=message.channel_id,
         )
@@ -2499,7 +2550,7 @@ async def remove_message_reaction(
             server,
             member,
             "message_reaction_removed",
-            f"@{member.display_name} removed {reaction_text} from message {message.short_id}",
+            f"@{member.handle} removed {reaction_text} from message {message.short_id}",
             {"messageId": str(message.id), "shortId": message.short_id, "reaction": reaction_text},
             channel_id=message.channel_id,
         )
@@ -2658,13 +2709,13 @@ async def create_tasks(
             assignment_mode="agent_delegated",
             trigger_type="leader_delegated",
         )
-        assignee_handle = f"@{assignee.display_name}" if assignee else None
+        assignee_handle = f"@{assignee.handle}" if assignee else None
         await _record_activity(
             db,
             server,
             member,
             "task_created",
-            f"@{member.display_name} created task #{task.task_number}",
+            f"@{member.handle} created task #{task.task_number}",
             {
                 "taskNumber": task.task_number,
                 "title": task.title,
@@ -2745,7 +2796,7 @@ async def claim_task(
         server,
         member,
         "task_claimed",
-        f"@{member.display_name} claimed task #{task.task_number}",
+        f"@{member.handle} claimed task #{task.task_number}",
         {"taskNumber": task.task_number, "title": task.title},
         channel_id=task.channel_id,
         task_id=task.id,
@@ -2802,7 +2853,7 @@ async def update_task_status(
         server,
         member,
         "task_unclaimed" if new_status == "todo" else "task_status_changed",
-        f"@{member.display_name} changed task #{task.task_number} to {new_status}",
+        f"@{member.handle} changed task #{task.task_number} to {new_status}",
         {"taskNumber": task.task_number, "status": new_status, "title": task.title},
         channel_id=task.channel_id,
         task_id=task.id,
@@ -2851,7 +2902,7 @@ async def claim_task_by_id(
                 server,
                 member,
                 "task_claimed",
-                f"@{member.display_name} started assigned task #{task.task_number}",
+                f"@{member.handle} started assigned task #{task.task_number}",
                 {"taskNumber": task.task_number, "title": task.title},
                 channel_id=task.channel_id,
                 task_id=task.id,
@@ -2879,7 +2930,7 @@ async def claim_task_by_id(
         server,
         member,
         "task_claimed",
-        f"@{member.display_name} claimed task #{task.task_number}",
+        f"@{member.handle} claimed task #{task.task_number}",
         {"taskNumber": task.task_number, "title": task.title},
         channel_id=task.channel_id,
         task_id=task.id,
@@ -2909,7 +2960,7 @@ async def unclaim_task_by_id(
         server,
         member,
         "task_unclaimed",
-        f"@{member.display_name} unclaimed task #{task.task_number}",
+        f"@{member.handle} unclaimed task #{task.task_number}",
         {"taskNumber": task.task_number, "status": task.status, "title": task.title},
         channel_id=task.channel_id,
         task_id=task.id,
@@ -2940,7 +2991,7 @@ async def submit_task_by_id(
         server,
         member,
         "task_status_changed",
-        f"@{member.display_name} submitted task #{task.task_number} for review",
+        f"@{member.handle} submitted task #{task.task_number} for review",
         {"taskNumber": task.task_number, "status": task.status, "title": task.title},
         channel_id=task.channel_id,
         task_id=task.id,
@@ -3043,7 +3094,7 @@ async def update_task_by_id(
         server,
         member,
         "task_unclaimed" if body.get("status") == "todo" else "task_status_changed" if "status" in body else "task_updated",
-        f"@{member.display_name} updated task #{task.task_number}",
+        f"@{member.handle} updated task #{task.task_number}",
         {"taskNumber": task.task_number, "updates": body},
         channel_id=task.channel_id,
         task_id=task.id,
@@ -3078,15 +3129,13 @@ async def list_channel_members(
 ):
     member, server = agent
     ch = await _resolve_channel(db, server, channel, member=member)
-    result = await db.execute(
-        select(Member).join(ChannelMember).where(ChannelMember.channel_id == ch.id)
-    )
-    members = result.scalars().all()
+    roster = await load_agent_channel_roster(db, channel_id=ch.id)
     return {
         "channel": _display_channel(ch),
         "channelId": str(ch.id),
-        "members": [_serialize_member(item) for item in members],
-        "count": len(members),
+        "rosterRevision": int(ch.membership_revision or 0),
+        "members": [item.agent_payload(include_description=True) for item in roster],
+        "count": len(roster),
     }
 
 
@@ -3136,35 +3185,30 @@ async def join_channel(
     db: AsyncSession = Depends(get_db),
 ):
     member, server = agent
-    ch = await _resolve_channel(db, server, channel_ref, member=member)
+    ch = await _resolve_channel(
+        db,
+        server,
+        channel_ref,
+        member=member,
+        allow_public_unjoined=True,
+    )
     if ch.kind == "dm":
         raise HTTPException(400, "Cannot join a DM channel explicitly")
 
-    existing_result = await db.execute(
-        select(ChannelMember).where(
-            ChannelMember.channel_id == ch.id,
-            ChannelMember.member_id == member.id,
-        )
+    mutation = await add_channel_member_record(
+        db,
+        channel_id=ch.id,
+        member_id=member.id,
+        actor_id=member.id,
     )
-    existing = existing_result.scalar_one_or_none()
-    joined = existing is None
-    if existing is None:
-        db.add(ChannelMember(channel_id=ch.id, member_id=member.id))
-        await _record_activity(
-            db,
-            server,
-            member,
-            "channel_joined",
-            f"@{member.display_name} joined {_display_channel(ch)}",
-            {"channelId": str(ch.id), "channel": _display_channel(ch)},
-            channel_id=ch.id,
-        )
     await db.commit()
+    await _push_committed_events(db, server_id=server.id)
     return {
-        "joined": joined,
+        "joined": mutation.changed,
         "channel": _display_channel(ch),
         "channelId": str(ch.id),
         "memberId": str(member.id),
+        "rosterRevision": mutation.roster_revision,
     }
 
 
@@ -3179,31 +3223,20 @@ async def leave_channel(
     if ch.kind == "dm":
         raise HTTPException(400, "Cannot leave a DM channel explicitly")
 
-    existing_result = await db.execute(
-        select(ChannelMember).where(
-            ChannelMember.channel_id == ch.id,
-            ChannelMember.member_id == member.id,
-        )
+    mutation = await remove_channel_member_record(
+        db,
+        channel_id=ch.id,
+        member_id=member.id,
+        actor_id=member.id,
     )
-    existing = existing_result.scalar_one_or_none()
-    left = existing is not None
-    if existing is not None:
-        await db.delete(existing)
-        await _record_activity(
-            db,
-            server,
-            member,
-            "channel_left",
-            f"@{member.display_name} left {_display_channel(ch)}",
-            {"channelId": str(ch.id), "channel": _display_channel(ch)},
-            channel_id=ch.id,
-        )
     await db.commit()
+    await _push_committed_events(db, server_id=server.id)
     return {
-        "left": left,
+        "left": mutation.changed,
         "channel": _display_channel(ch),
         "channelId": str(ch.id),
         "memberId": str(member.id),
+        "rosterRevision": mutation.roster_revision,
     }
 
 
@@ -3378,7 +3411,7 @@ async def update_thread_summary(
         server,
         member,
         "thread_summary_updated",
-        f"@{member.display_name} summarized thread {root.short_id}",
+        f"@{member.handle} summarized thread {root.short_id}",
         {
             "threadId": str(root.id),
             "threadShortId": root.short_id,
@@ -3436,7 +3469,7 @@ async def unfollow_thread(
         server,
         member,
         "thread_unfollowed",
-        f"@{member.display_name} unfollowed thread {root_id}",
+        f"@{member.handle} unfollowed thread {root_id}",
         {"threadId": str(root_id), "messageId": str(root_id)},
         channel_id=message.channel_id,
     )
@@ -3465,7 +3498,7 @@ async def follow_thread(
         server,
         member,
         "thread_followed",
-        f"@{member.display_name} followed thread {root_id}",
+        f"@{member.handle} followed thread {root_id}",
         {"threadId": str(root_id), "messageId": str(root_id)},
         channel_id=message.channel_id,
     )
@@ -3546,7 +3579,7 @@ async def create_reminder(
         server,
         member,
         "custom",
-        f"@{member.display_name} scheduled reminder: {title}",
+        f"@{member.handle} scheduled reminder: {title}",
         {"reminderId": str(reminder.id), "fireAt": reminder.fire_at.isoformat()},
         channel_id=channel_id,
     )
@@ -3605,7 +3638,7 @@ async def update_reminder(
         server,
         member,
         "custom",
-        f"@{member.display_name} updated reminder: {reminder.title}",
+        f"@{member.handle} updated reminder: {reminder.title}",
         {"reminderId": str(reminder.id), "updates": body},
         channel_id=reminder.channel_id,
     )
@@ -3675,7 +3708,7 @@ async def cancel_reminder(
         server,
         member,
         "custom",
-        f"@{member.display_name} cancelled reminder: {reminder.title}",
+        f"@{member.handle} cancelled reminder: {reminder.title}",
         {"reminderId": str(reminder.id)},
         channel_id=reminder.channel_id,
     )
@@ -3739,7 +3772,7 @@ async def upload_attachment(
                 server,
                 member,
                 "file_created",
-                f"@{member.display_name} uploaded {safe_name}",
+                f"@{member.handle} uploaded {safe_name}",
                 {
                     "attachmentId": str(entry.id),
                     "fileName": safe_name,
@@ -4063,10 +4096,8 @@ async def update_profile(
     _require_permission(member, "updateProfile")
     body = await request.json()
 
-    if "displayName" in body:
-        member.display_name = body["displayName"]
-    if "description" in body:
-        member.description = body["description"]
+    if {"name", "handle", "displayName", "description"}.intersection(body):
+        raise HTTPException(403, "Agent Name and Description are human-managed and immutable here")
     if "avatarUrl" in body:
         member.avatar_url = body["avatarUrl"]
     if "status" in body:
@@ -4079,7 +4110,7 @@ async def update_profile(
         server,
         member,
         "profile_updated",
-        f"@{member.display_name} updated profile",
+        f"@{member.handle} updated profile",
         {"updates": body},
     )
     await db.commit()
@@ -4129,7 +4160,7 @@ async def update_profile_avatar(
                 server,
                 member,
                 "profile_updated",
-                f"@{member.display_name} updated avatar",
+                f"@{member.handle} updated avatar",
                 {"attachmentId": str(entry.id), "avatarUrl": member.avatar_url},
             )
             staged.promote()
@@ -4216,7 +4247,7 @@ async def login_integration(
         server,
         member,
         "integration_connected",
-        f"@{member.display_name} connected {service}",
+        f"@{member.handle} connected {service}",
         {"service": service, "scopes": scopes},
     )
     await db.commit()
@@ -4266,7 +4297,7 @@ async def create_agent_activity(
     member, server = agent
     body = await request.json()
     kind = body.get("type") or body.get("kind") or "custom"
-    description = body.get("description") or f"@{member.display_name} reported {kind}"
+    description = body.get("description") or f"@{member.handle} reported {kind}"
 
     channel_id = None
     if body.get("channelId"):

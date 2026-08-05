@@ -35,20 +35,27 @@ def _headers(server_id: uuid.UUID, token: str) -> dict[str, str]:
 
 
 async def _seed_file_world(session_factory, *, role: str = "owner"):
-    server = Server(id=uuid.uuid4(), name=f"file-delete-{uuid.uuid4().hex[:8]}")
+    server = Server(
+        id=uuid.uuid4(),
+        name=f"file-delete-{uuid.uuid4().hex[:8]}",
+        server_handle=f"s{uuid.uuid4().hex[:4]}",
+    )
+    account_id = uuid.uuid4()
+    handle = f"file-owner-{uuid.uuid4().hex[:8]}"
     member = Member(
         id=uuid.uuid4(),
-        server_id=server.id,
+        origin_server_id=server.id,
+        account_id=account_id,
         kind="human",
-        display_name=f"file-owner-{uuid.uuid4().hex[:8]}",
+        handle=handle,
+        handle_key=handle,
     )
     token = f"file_delete_{uuid.uuid4().hex}"
     account = Account(
-        id=uuid.uuid4(),
-        name=f"file-account-{uuid.uuid4().hex[:10]}",
+        id=account_id,
+        auth_subject=f"test:{token}",
         display_name="File Deleter",
-        server_id=server.id,
-        member_id=member.id,
+        home_server_id=server.id,
         session_token_hash=public_api._hash_token(token),
     )
     membership = ServerMembership(

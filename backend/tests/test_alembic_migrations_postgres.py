@@ -17,6 +17,7 @@ from services.schema_readiness import SchemaReadinessError, assert_schema_at_hea
 
 BASELINE_REVISION = "77b8b147f689"
 IDENTITY_REVISION = "0002_messages_seq"
+AUTOMATIC_ONLY_REVISION = "0003_messages_seq_auto"
 
 
 async def _seed_message_context(connection: asyncpg.Connection) -> tuple[uuid.UUID, uuid.UUID]:
@@ -24,23 +25,59 @@ async def _seed_message_context(connection: asyncpg.Connection) -> tuple[uuid.UU
     member_id = uuid.uuid4()
     channel_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
-    await connection.execute(
-        "INSERT INTO servers (id, name, created_at, updated_at) VALUES ($1, $2, $3, $3)",
-        server_id,
-        "migration-test-server",
-        now,
-    )
-    await connection.execute(
+    stable_identity = await connection.fetchval(
         """
-        INSERT INTO members (
-            id, server_id, type, display_name, status, skills, config, created_at, updated_at
-        ) VALUES ($1, $2, 'human', $3, 'active', '[]'::jsonb, '{}'::jsonb, $4, $4)
-        """,
-        member_id,
-        server_id,
-        f"migration-member-{member_id.hex[:8]}",
-        now,
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'servers'
+              AND column_name = 'server_handle'
+        )
+        """
     )
+    if stable_identity:
+        await connection.execute(
+            """
+            INSERT INTO servers (id, name, server_handle, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $4)
+            """,
+            server_id,
+            "migration-test-server",
+            f"s{server_id.hex[:4]}",
+            now,
+        )
+        handle = f"migration-{member_id.hex[:8]}"
+        await connection.execute(
+            """
+            INSERT INTO members (
+                id, origin_server_id, type, handle, handle_key,
+                status, skills, config, created_at, updated_at
+            ) VALUES ($1, $2, 'agent', $3, $3, 'active', '[]'::jsonb, '{}'::jsonb, $4, $4)
+            """,
+            member_id,
+            server_id,
+            handle,
+            now,
+        )
+    else:
+        await connection.execute(
+            "INSERT INTO servers (id, name, created_at, updated_at) VALUES ($1, $2, $3, $3)",
+            server_id,
+            "migration-test-server",
+            now,
+        )
+        await connection.execute(
+            """
+            INSERT INTO members (
+                id, server_id, type, display_name, status, skills, config, created_at, updated_at
+            ) VALUES ($1, $2, 'human', $3, 'active', '[]'::jsonb, '{}'::jsonb, $4, $4)
+            """,
+            member_id,
+            server_id,
+            f"migration-member-{member_id.hex[:8]}",
+            now,
+        )
     await connection.execute(
         """
         INSERT INTO channels (id, server_id, name, type, creator_id, created_at, updated_at)
@@ -149,9 +186,89 @@ async def test_compatible_legacy_database_preflights_then_stamps_baseline_only()
         connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
         try:
             revision = await connection.fetchval("SELECT version_num FROM alembic_version")
-            assert revision == "0005_llm_run_lease"
+            assert revision == "0006_stable_member_identity"
         finally:
             await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_stable_identity_upgrade_requires_a_clean_reset():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", "0005_llm_run_lease")
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            now = datetime.now(timezone.utc)
+            await connection.execute(
+                "INSERT INTO servers (id, name, created_at, updated_at) VALUES ($1, $2, $3, $3)",
+                uuid.uuid4(),
+                "must-reset",
+                now,
+            )
+        finally:
+            await connection.close()
+
+        with pytest.raises(pytest.fail.Exception, match="IDENTITY_CLEAN_RESET_REQUIRED"):
+            run_alembic(postgres.database_url, "upgrade", "head")
+
+
+@pytest.mark.asyncio
+async def test_stable_identity_downgrade_is_complete_only_while_empty():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", "head")
+        run_alembic(postgres.database_url, "downgrade", "0005_llm_run_lease")
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            account_columns = {
+                row["column_name"]
+                for row in await connection.fetch(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND table_name = 'accounts'
+                    """
+                )
+            }
+            member_columns = {
+                row["column_name"]
+                for row in await connection.fetch(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND table_name = 'members'
+                    """
+                )
+            }
+            assert {"name", "server_id", "member_id"} <= account_columns
+            assert {"auth_subject", "home_server_id"}.isdisjoint(account_columns)
+            assert {"server_id", "display_name"} <= member_columns
+            assert {"origin_server_id", "handle", "handle_key", "deleted_at"}.isdisjoint(
+                member_columns
+            )
+        finally:
+            await connection.close()
+
+        run_alembic(postgres.database_url, "upgrade", "head")
+
+
+@pytest.mark.asyncio
+async def test_stable_identity_downgrade_rejects_nonempty_identity_data():
+    async with disposable_postgres() as postgres:
+        run_alembic(postgres.database_url, "upgrade", "head")
+        connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
+        try:
+            server_id = uuid.uuid4()
+            now = datetime.now(timezone.utc)
+            await connection.execute(
+                """
+                INSERT INTO servers (id, name, server_handle, created_at, updated_at)
+                VALUES ($1, 'must-reset', 's7k2m', $2, $2)
+                """,
+                server_id,
+                now,
+            )
+        finally:
+            await connection.close()
+
+        with pytest.raises(pytest.fail.Exception, match="IDENTITY_CLEAN_RESET_REQUIRED"):
+            run_alembic(postgres.database_url, "downgrade", "0005_llm_run_lease")
 
 
 @pytest.mark.asyncio
@@ -355,7 +472,7 @@ async def test_identity_migration_starts_above_historical_message_seq():
 
 
 @pytest.mark.asyncio
-async def test_head_reconciles_explicit_transition_writes_before_automatic_only_writers():
+async def test_automatic_only_revision_reconciles_explicit_transition_writes():
     async with disposable_postgres() as postgres:
         run_alembic(postgres.database_url, "upgrade", BASELINE_REVISION)
         connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
@@ -372,7 +489,7 @@ async def test_head_reconciles_explicit_transition_writes_before_automatic_only_
         finally:
             await connection.close()
 
-        run_alembic(postgres.database_url, "upgrade", "head")
+        run_alembic(postgres.database_url, "upgrade", AUTOMATIC_ONLY_REVISION)
         connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
         try:
             generated = await _insert_message(connection, channel_id, member_id, seq=None)

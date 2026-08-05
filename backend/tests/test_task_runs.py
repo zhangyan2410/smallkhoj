@@ -461,8 +461,8 @@ async def test_public_task_assignment_endpoint_auto_starts_with_template_snapsho
         data={},
     )
     server = SimpleNamespace(id=uuid.uuid4())
-    actor = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean", kind="human")
-    assignee = SimpleNamespace(id=uuid.uuid4(), display_name="agent-a", kind="agent")
+    actor = SimpleNamespace(id=uuid.uuid4(), display_name="zy-ean", handle="zy-ean", kind="human")
+    assignee = SimpleNamespace(id=uuid.uuid4(), display_name="agent-a", handle="agent-a", kind="agent")
     template = TaskRunTemplate(
         id=uuid.uuid4(),
         slug="research-analyst",
@@ -820,7 +820,7 @@ async def test_agent_task_run_lifecycle_endpoint_updates_current_agent_run(monke
     task_id = uuid.uuid4()
     agent_id = uuid.uuid4()
     channel_id = uuid.uuid4()
-    member = SimpleNamespace(id=agent_id, display_name="worker", kind="agent")
+    member = SimpleNamespace(id=agent_id, display_name="worker", handle="worker", kind="agent")
     server = SimpleNamespace(id=uuid.uuid4())
     run = SimpleNamespace(
         id=run_id,
@@ -899,7 +899,7 @@ async def test_agent_task_run_lifecycle_endpoint_triggers_terminal_writeback_hoo
     run_id = uuid.uuid4()
     task_id = uuid.uuid4()
     agent_id = uuid.uuid4()
-    member = SimpleNamespace(id=agent_id, display_name="worker", kind="agent")
+    member = SimpleNamespace(id=agent_id, display_name="worker", handle="worker", kind="agent")
     server = SimpleNamespace(id=uuid.uuid4())
     run = SimpleNamespace(
         id=run_id,
@@ -1267,6 +1267,7 @@ async def test_public_task_serializer_includes_task_runs():
     creator = SimpleNamespace(
         id=creator_id,
         display_name="zy-ean",
+        handle="zy-ean",
         kind="human",
         status="online",
         description=None,
@@ -1279,6 +1280,7 @@ async def test_public_task_serializer_includes_task_runs():
     assignee = SimpleNamespace(
         id=assignee_id,
         display_name="minimax",
+        handle="minimax",
         kind="agent",
         status="online",
         description=None,
@@ -1347,6 +1349,7 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
     creator = SimpleNamespace(
         id=uuid.uuid4(),
         display_name="zy-ean",
+        handle="zy-ean",
         kind="human",
         status="online",
         description=None,
@@ -1359,6 +1362,7 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
     assignee = SimpleNamespace(
         id=uuid.uuid4(),
         display_name="minimax",
+        handle="minimax",
         kind="agent",
         status="online",
         description=None,
@@ -1408,7 +1412,7 @@ async def test_public_create_task_creates_task_run_for_agent_assignment(monkeypa
     )
     db = _FakeSession(
         _ExecuteResult(channel),
-        _ExecuteResult(assignee),
+        _ExecuteResult(scalar_rows=[assignee]),
         _ExecuteResult(0),
         _ExecuteResult(creator),
         _ExecuteResult(assignee),
@@ -1460,13 +1464,15 @@ async def test_agent_create_task_targets_worker_and_creates_task_run(monkeypatch
     architect = SimpleNamespace(
         id=uuid.uuid4(),
         display_name="architect",
+        handle="architect",
         kind="agent",
         config={"permissions": {"createTask": True}},
     )
-    worker = SimpleNamespace(id=uuid.uuid4(), display_name="worker", kind="agent")
+    worker = SimpleNamespace(id=uuid.uuid4(), display_name="worker", handle="worker", kind="agent")
     run_id = uuid.uuid4()
     db = _FakeSession(
         _ExecuteResult(channel),
+        _ExecuteResult(SimpleNamespace(channel_id=channel.id, member_id=architect.id)),
         _ExecuteResult(0),
         _ExecuteResult(worker),
     )

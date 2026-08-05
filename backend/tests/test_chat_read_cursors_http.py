@@ -143,14 +143,20 @@ def _http_cursor_world(
     unread_message_seqs=None,
     last_seen_message_kind="reply",
 ):
-    server = Server(id=uuid.uuid4(), name="Inkframe")
-    member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-    account = Account(
+    server = Server(id=uuid.uuid4(), name="Inkframe", server_handle="sread")
+    member = Member(
         id=uuid.uuid4(),
-        name="lee",
+        origin_server_id=server.id,
+        account_id=uuid.uuid4(),
+        kind="human",
+        handle="Lee",
+        handle_key="lee",
+    )
+    account = Account(
+        id=member.account_id,
+        auth_subject="cursor-http-account",
         display_name="Lee",
-        server_id=server.id,
-        member_id=member.id,
+        home_server_id=server.id,
         session_token_hash=public_api._hash_token("sk_session_http"),
     ) if account_present else None
     membership = ServerMembership(

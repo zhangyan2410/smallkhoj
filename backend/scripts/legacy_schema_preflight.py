@@ -23,6 +23,10 @@ BASELINE_REVISION = "77b8b147f689"
 # objects here so a legitimate legacy DB is not rejected merely because the
 # application model advanced.
 POST_BASELINE_COLUMNS = {
+    "servers": {"server_handle"},
+    "accounts": {"auth_subject", "home_server_id"},
+    "members": {"origin_server_id", "account_id", "handle", "handle_key", "deleted_at"},
+    "channels": {"membership_revision"},
     "task_run_templates": {"server_id"},
 }
 # Entire tables introduced after the 0001 baseline. A stamped legacy DB has
@@ -32,22 +36,63 @@ POST_BASELINE_TABLES = {
     "llm_run_leases",
 }
 POST_BASELINE_INDEXES = {
+    "idx_members_origin_server",
     "idx_task_run_templates_server",
+    "uq_members_account_identity",
+    "uq_members_origin_active_name",
+    "uq_server_memberships_active_owner",
     "uq_task_run_templates_builtin_slug",
     "uq_task_run_templates_server_slug",
 }
 POST_BASELINE_CONSTRAINTS = {
+    "accounts_home_server_id_fkey",
+    "ck_members_account_kind",
+    "ck_members_agent_description",
+    "ck_members_description_length",
+    "ck_members_handle_length",
+    "ck_members_type",
+    "ck_servers_server_handle_format",
+    "fk_members_account_origin_server",
+    "fk_server_memberships_account_member",
     "ck_task_run_templates_tenant_scope",
     "fk_task_run_templates_server_id",
+    "members_origin_server_id_fkey",
+    "uq_accounts_auth_subject",
+    "uq_accounts_home_server",
+    "uq_accounts_id_home_server",
+    "uq_members_account_id_id",
+    "uq_servers_server_handle",
 }
 BASELINE_ONLY_CONSTRAINTS = {
     "uq_task_run_templates_slug",
 }
 POST_BASELINE_FOREIGN_KEYS = {
+    ("accounts", ("home_server_id",)),
+    ("members", ("account_id", "origin_server_id")),
+    ("members", ("origin_server_id",)),
+    ("server_memberships", ("account_id", "member_id")),
     ("task_run_templates", ("server_id",)),
 }
 BASELINE_ONLY_UNIQUE_CONSTRAINTS = {
+    "uq_accounts_name": ("accounts", ("name",)),
+    "uq_members_server_display_name": ("members", ("server_id", "display_name")),
     "uq_task_run_templates_slug": ("task_run_templates", ("slug",)),
+}
+BASELINE_ONLY_COLUMN_DEFINITIONS = {
+    ("accounts", "name"): ("varchar(255)", False, None, None),
+    ("accounts", "server_id"): ("uuid", False, None, None),
+    ("accounts", "member_id"): ("uuid", False, None, None),
+    ("members", "server_id"): ("uuid", False, None, None),
+    ("members", "display_name"): ("varchar(255)", False, None, None),
+}
+BASELINE_ONLY_INDEX_DEFINITIONS = {
+    "idx_accounts_member": ("accounts", False, "btree", ("member_id",), None),
+    "idx_members_server": ("members", False, "btree", ("server_id",), None),
+}
+BASELINE_ONLY_FOREIGN_KEY_DEFINITIONS = {
+    ("accounts", ("member_id",), "members", ("id",), "CASCADE"),
+    ("accounts", ("server_id",), "servers", ("id",), "CASCADE"),
+    ("members", ("server_id",), "servers", ("id",), "CASCADE"),
 }
 
 _POSTGRES_DIALECT = postgresql.dialect()
@@ -196,6 +241,8 @@ def _expected_column_definitions() -> dict[tuple[str, str], ColumnDefinition]:
                 identity_generation=identity_generation,
                 default=default,
             )
+    for key, raw_definition in BASELINE_ONLY_COLUMN_DEFINITIONS.items():
+        definitions[key] = ColumnDefinition(*raw_definition)
     return definitions
 
 
@@ -228,6 +275,8 @@ def _expected_index_definitions() -> dict[str, IndexDefinition]:
                     else None
                 ),
             )
+    for name, raw_definition in BASELINE_ONLY_INDEX_DEFINITIONS.items():
+        definitions[name] = IndexDefinition(*raw_definition)
     return definitions
 
 
@@ -333,6 +382,11 @@ def _expected_constraint_definitions() -> tuple[
         table_name, columns = definition
         primary_and_unique.append(("unique constraint", table_name, name, columns))
         named_uniques[name] = definition
+
+    foreign_keys.update(
+        ForeignKeyDefinition(*definition)
+        for definition in BASELINE_ONLY_FOREIGN_KEY_DEFINITIONS
+    )
 
     return primary_and_unique, named_uniques, checks, foreign_keys
 

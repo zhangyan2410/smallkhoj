@@ -13,7 +13,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 PRE_TEMPLATE_TENANCY_REVISION = "0003_messages_seq_auto"
 
 
-async def _insert_server(connection, *, server_id, member_id, name):
+async def _insert_legacy_server_member(connection, *, server_id, member_id, name):
     await connection.execute(
         """
         INSERT INTO servers (id, name, created_at, updated_at)
@@ -33,6 +33,48 @@ async def _insert_server(connection, *, server_id, member_id, name):
         member_id,
         server_id,
         f"member-{name}",
+    )
+
+
+async def _insert_head_identity(connection, *, server_id, member_id, name):
+    account_id = uuid.uuid4()
+    handle = f"member-{name}"
+    await connection.execute(
+        """
+        INSERT INTO servers (id, name, server_handle, created_at, updated_at)
+        VALUES ($1, $2, $3, now(), now())
+        """,
+        server_id,
+        name,
+        f"s{server_id.hex[:4]}",
+    )
+    await connection.execute(
+        """
+        INSERT INTO accounts (
+            id, auth_subject, display_name, home_server_id, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, now(), now())
+        """,
+        account_id,
+        f"test:{member_id}",
+        handle,
+        server_id,
+    )
+    await connection.execute(
+        """
+        INSERT INTO members (
+            id, origin_server_id, account_id, type, handle, handle_key,
+            status, skills, config, created_at, updated_at
+        )
+        VALUES (
+            $1, $2, $3, 'human', $4, $4,
+            'online', '[]'::jsonb, '{}'::jsonb, now(), now()
+        )
+        """,
+        member_id,
+        server_id,
+        account_id,
+        handle,
     )
 
 
@@ -82,8 +124,18 @@ async def test_template_tenancy_head_enforces_scoped_uniqueness_and_nullability(
         try:
             server_a, server_b = uuid.uuid4(), uuid.uuid4()
             member_a, member_b = uuid.uuid4(), uuid.uuid4()
-            await _insert_server(connection, server_id=server_a, member_id=member_a, name="a")
-            await _insert_server(connection, server_id=server_b, member_id=member_b, name="b")
+            await _insert_head_identity(
+                connection,
+                server_id=server_a,
+                member_id=member_a,
+                name="a",
+            )
+            await _insert_head_identity(
+                connection,
+                server_id=server_b,
+                member_id=member_b,
+                name="b",
+            )
 
             indexes = {
                 row["indexname"]: row["indexdef"]
@@ -152,13 +204,18 @@ async def test_template_tenancy_head_enforces_scoped_uniqueness_and_nullability(
 
 
 @pytest.mark.asyncio
-async def test_template_tenancy_migration_classifies_defensible_legacy_rows():
+async def test_template_tenancy_migration_classifies_defensible_legacy_rows_before_identity_reset():
     async with disposable_postgres() as postgres:
         run_alembic(postgres.database_url, "upgrade", PRE_TEMPLATE_TENANCY_REVISION)
         connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
         try:
             server_id, member_id = uuid.uuid4(), uuid.uuid4()
-            await _insert_server(connection, server_id=server_id, member_id=member_id, name="legacy")
+            await _insert_legacy_server_member(
+                connection,
+                server_id=server_id,
+                member_id=member_id,
+                name="legacy",
+            )
             human_template_id = uuid.uuid4()
             await _insert_template(
                 connection,
@@ -176,7 +233,7 @@ async def test_template_tenancy_migration_classifies_defensible_legacy_rows():
         finally:
             await connection.close()
 
-        run_alembic(postgres.database_url, "upgrade", "head")
+        run_alembic(postgres.database_url, "upgrade", "0005_llm_run_lease")
         connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
         try:
             row = await connection.fetchrow(
@@ -243,13 +300,23 @@ async def test_template_tenancy_migration_refuses_ambiguous_legacy_null_row():
 @pytest.mark.asyncio
 async def test_template_tenancy_downgrade_fails_closed_on_cross_server_slug_collision():
     async with disposable_postgres() as postgres:
-        run_alembic(postgres.database_url, "upgrade", "head")
+        run_alembic(postgres.database_url, "upgrade", "0005_llm_run_lease")
         connection = await asyncpg.connect(postgres.database_url.replace("+asyncpg", ""))
         try:
             server_a, server_b = uuid.uuid4(), uuid.uuid4()
             member_a, member_b = uuid.uuid4(), uuid.uuid4()
-            await _insert_server(connection, server_id=server_a, member_id=member_a, name="down-a")
-            await _insert_server(connection, server_id=server_b, member_id=member_b, name="down-b")
+            await _insert_legacy_server_member(
+                connection,
+                server_id=server_a,
+                member_id=member_a,
+                name="down-a",
+            )
+            await _insert_legacy_server_member(
+                connection,
+                server_id=server_b,
+                member_id=member_b,
+                name="down-b",
+            )
             await _insert_template(
                 connection,
                 template_id=uuid.uuid4(),

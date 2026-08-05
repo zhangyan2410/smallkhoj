@@ -672,6 +672,25 @@ def test_public_api_detaches_agent_from_computer_binding():
     assert agent.config["runtimeAutostart"] is False
 
 
+def test_public_workspace_agent_payload_has_no_display_name_alias():
+    workspace = _workspace()
+    workspace.computer_id = uuid.uuid4()
+    workspace.agent_id = uuid.uuid4()
+    agent = _runtime_member()
+    agent.id = workspace.agent_id
+    agent.handle = "排障专家"
+    agent.description = "擅长后端排障"
+    agent.avatar_url = None
+
+    payload = public_api._serialize_workspace(workspace, agent)
+
+    assert payload["agent"]["name"] == "排障专家"
+    assert payload["agent"]["handle"] == "排障专家"
+    assert payload["agent"]["reference"] == "@排障专家"
+    assert "displayName" not in payload["agent"]
+    assert "displayName" not in payload["agent"]["profile"]
+
+
 def test_public_api_delete_blocking_workspace_statuses():
     workspaces = [
         _workspace(status="stopped"),

@@ -7,13 +7,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from models import Account, Channel, ChannelMember, Computer, Member, Server, ServerMembership
 
 ADMIN_ROLES = {"owner", "admin"}
-OWNER_ELECTION_LOCK_NAMESPACE = 0x534B484A
-OWNER_ELECTION_LOCK_SCOPE = 1
 
 
 @dataclass(frozen=True)
@@ -24,21 +22,6 @@ class ActiveServerContext:
     membership: ServerMembership
 
 
-async def acquire_owner_election_lock(db: Any) -> None:
-    """Serialize every global owner-election path for the transaction lifetime."""
-
-    await db.execute(
-        text(
-            "SELECT pg_advisory_xact_lock("
-            ":owner_election_namespace, :owner_election_scope)"
-        ),
-        {
-            "owner_election_namespace": OWNER_ELECTION_LOCK_NAMESPACE,
-            "owner_election_scope": OWNER_ELECTION_LOCK_SCOPE,
-        },
-    )
-
-
 async def ensure_account_membership(
     db: Any,
     *,
@@ -47,6 +30,13 @@ async def ensure_account_membership(
     member: Member,
     default_role: str = "member",
 ) -> ServerMembership:
+    if member.kind != "human" or member.account_id != account.id:
+        raise HTTPException(400, "Server membership requires the Account's Human identity")
+    if default_role == "owner" and server.id != account.home_server_id:
+        raise HTTPException(400, "Only the home Server membership can be owner")
+    if server.id == account.home_server_id and default_role != "owner":
+        raise HTTPException(400, "Home Server membership must be owner")
+
     result = await db.execute(
         select(ServerMembership).where(
             ServerMembership.server_id == server.id,
@@ -94,49 +84,16 @@ async def list_account_memberships(db: Any, *, account: Account) -> list[dict[st
                 },
                 "member": {
                     "id": str(member.id),
-                    "displayName": member.display_name,
+                    "name": member.handle,
+                    "handle": member.handle,
                     "kind": member.kind,
                 },
                 "role": membership.role,
                 "status": membership.status,
-                "isDefault": server.id == account.server_id,
+                "isDefault": server.id == account.home_server_id,
             }
         )
     return memberships
-
-
-async def create_server_for_account(
-    db: Any,
-    *,
-    account: Account,
-    name: str,
-) -> tuple[Server, Member, ServerMembership]:
-    server_name = (name or "").strip()
-    if not server_name:
-        raise HTTPException(400, "Missing Server name")
-
-    server = Server(id=uuid.uuid4(), name=server_name)
-    db.add(server)
-    await db.flush()
-
-    member = Member(
-        id=uuid.uuid4(),
-        server_id=server.id,
-        kind="human",
-        display_name=account.display_name or account.name,
-        status="online",
-    )
-    db.add(member)
-    await db.flush()
-
-    membership = await ensure_account_membership(
-        db,
-        account=account,
-        server=server,
-        member=member,
-        default_role="owner",
-    )
-    return server, member, membership
 
 
 def parse_server_id(raw: str | uuid.UUID | None) -> uuid.UUID | None:
@@ -156,7 +113,7 @@ async def resolve_active_server_context(
     account: Account,
     requested_server_id: uuid.UUID | None = None,
 ) -> ActiveServerContext:
-    selected_server_id = requested_server_id or account.server_id
+    selected_server_id = requested_server_id or account.home_server_id
     if not selected_server_id:
         raise HTTPException(403, "Account has no active Server membership")
 

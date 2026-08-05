@@ -19,19 +19,25 @@ async def test_runtime_seed_is_idempotent_and_materializes_only_missing_agent_pe
         engine = create_async_engine(postgres.database_url)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:
-            server = Server(id=uuid.uuid4(), name="runtime-seed-contract")
+            server = Server(
+                id=uuid.uuid4(),
+                name="runtime-seed-contract",
+                server_handle=f"s{uuid.uuid4().hex[:4]}",
+            )
             legacy_missing = Member(
                 id=uuid.uuid4(),
-                server_id=server.id,
+                origin_server_id=server.id,
                 kind="agent",
-                display_name="legacy-missing-permissions",
+                handle="legacy-missing-permissions",
+                handle_key="legacy-missing-permissions",
                 config={},
             )
             explicit_empty = Member(
                 id=uuid.uuid4(),
-                server_id=server.id,
+                origin_server_id=server.id,
                 kind="agent",
-                display_name="explicit-empty-permissions",
+                handle="explicit-empty-permissions",
+                handle_key="explicit-empty-permissions",
                 config={"permissions": {}},
             )
             async with sessions.begin() as db:

@@ -1,0 +1,22 @@
+{
+  "valid": [
+    {"input": "张翰", "handle": "张翰", "handleKey": "张翰"},
+    {"input": " 研发-1 ", "handle": "研发-1", "handleKey": "研发-1"},
+    {"input": "Ean", "handle": "Ean", "handleKey": "ean"},
+    {"input": "ＥＡＮ", "handle": "ＥＡＮ", "handleKey": "ean"},
+    {"input": "e\u0301an", "handle": "éan", "handleKey": "éan"}
+  ],
+  "invalid": [
+    {"input": "", "reasonCode": "NAME_REQUIRED"},
+    {"input": "-ean", "reasonCode": "NAME_INVALID_HYPHEN"},
+    {"input": "ean-", "reasonCode": "NAME_INVALID_HYPHEN"},
+    {"input": "ean lee", "reasonCode": "NAME_INVALID_CHARACTER"},
+    {"input": "@ean", "reasonCode": "NAME_INVALID_CHARACTER"},
+    {"input": "ean_dev", "reasonCode": "NAME_INVALID_CHARACTER"},
+    {"input": "ean.dev", "reasonCode": "NAME_INVALID_CHARACTER"},
+    {"input": "ean🙂", "reasonCode": "NAME_INVALID_CHARACTER"},
+    {"input": "ean-s7k2m", "reasonCode": "NAME_RESERVED_SERVER_SUFFIX"},
+    {"input": "EAN-S7K2M", "reasonCode": "NAME_RESERVED_SERVER_SUFFIX"},
+    {"input": "abcdefghijklmnopqrstuvwxyz1234567", "reasonCode": "NAME_TOO_LONG"}
+  ]
+}

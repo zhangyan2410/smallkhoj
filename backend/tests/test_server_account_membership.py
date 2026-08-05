@@ -46,7 +46,7 @@ class _FakeSession:
         self.added = []
         self.flushed = 0
 
-    async def execute(self, _statement):
+    async def execute(self, _statement, _parameters=None):
         if self._results:
             return self._results.pop(0)
         return _ExecuteResult()
@@ -160,6 +160,36 @@ def _invite(
     )
 
 
+def _server(name: str) -> Server:
+    return Server(id=uuid.uuid4(), name=name, server_handle=f"s{uuid.uuid4().hex[:4]}")
+
+
+def _home_identity(
+    server: Server,
+    *,
+    handle: str = "lee",
+    display_name: str | None = "Lee",
+    token: str | None = None,
+) -> tuple[Account, Member]:
+    account_id = uuid.uuid4()
+    member = Member(
+        id=uuid.uuid4(),
+        origin_server_id=server.id,
+        account_id=account_id,
+        kind="human",
+        handle=handle,
+        handle_key=handle.casefold(),
+    )
+    account = Account(
+        id=account_id,
+        auth_subject=f"test:{account_id}",
+        display_name=display_name,
+        home_server_id=server.id,
+        session_token_hash=public_api._hash_token(token) if token else None,
+    )
+    return account, member
+
+
 def test_server_membership_tables_are_declared():
     membership_table = Base.metadata.tables["server_memberships"]
     invite_table = Base.metadata.tables["server_invites"]
@@ -169,11 +199,11 @@ def test_server_membership_tables_are_declared():
 
 
 @pytest.mark.asyncio
-async def test_startup_seed_emits_membership_owner_backfill(monkeypatch):
+async def test_startup_seed_does_not_backfill_clean_reset_identity(monkeypatch):
     """Schema (server_memberships/server_invites tables) is owned by Alembic —
     see the ``0001_baseline`` migration for the CREATE TABLE statements.
-    seed.create_tables() now only emits runtime data seeding; this test guards
-    the owner-bootstrap backfill that promotes legacy accounts.
+    seed.create_tables() now emits runtime-only data seeding. Identity rows are
+    created transactionally by signup after the clean-reset migration.
     """
     fake_engine = _SeedEngine()
     monkeypatch.setattr(seed, "engine", fake_engine)
@@ -181,9 +211,9 @@ async def test_startup_seed_emits_membership_owner_backfill(monkeypatch):
     await seed.create_tables()
 
     statements = "\n".join(fake_engine.conn.statements)
-    assert "INSERT INTO server_memberships" in statements
-    assert "accounts.server_id" in statements
-    assert "accounts.member_id" in statements
+    assert "INSERT INTO server_memberships" not in statements
+    assert "accounts.server_id" not in statements
+    assert "accounts.member_id" not in statements
     # Schema DDL must NOT be emitted by create_tables() anymore — it lives in
     # the Alembic baseline migration.
     assert "CREATE TABLE IF NOT EXISTS server_memberships" not in statements
@@ -192,9 +222,8 @@ async def test_startup_seed_emits_membership_owner_backfill(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_bootstrap_account_creates_owner_membership_for_first_server_account():
-    server = Server(id=uuid.uuid4(), name="Release")
-    member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="lee")
-    account = Account(id=uuid.uuid4(), name="lee", display_name="Lee", server_id=server.id, member_id=member.id)
+    server = _server("Release")
+    account, member = _home_identity(server)
     db = _FakeSession(_ExecuteResult(None))
 
     membership = await server_membership.ensure_account_membership(
@@ -215,7 +244,7 @@ async def test_bootstrap_account_creates_owner_membership_for_first_server_accou
 
 @pytest.mark.asyncio
 async def test_active_server_requires_account_membership():
-    account = SimpleNamespace(id=uuid.uuid4(), server_id=uuid.uuid4(), member_id=uuid.uuid4())
+    account = SimpleNamespace(id=uuid.uuid4(), home_server_id=uuid.uuid4())
     requested_server_id = uuid.uuid4()
     db = _FakeSession(_ExecuteResult(None))
 
@@ -231,9 +260,9 @@ async def test_active_server_requires_account_membership():
 
 @pytest.mark.asyncio
 async def test_active_server_context_can_select_joined_server():
-    account = Account(id=uuid.uuid4(), name="lee", server_id=uuid.uuid4(), member_id=uuid.uuid4())
-    server = Server(id=uuid.uuid4(), name="Shared")
-    member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="lee")
+    home_server = _server("Personal")
+    account, member = _home_identity(home_server)
+    server = _server("Shared")
     membership = _membership(server, account, member, role="member")
     db = _FakeSession(_ExecuteResult(row=(membership, server, member)))
 
@@ -250,16 +279,10 @@ async def test_active_server_context_can_select_joined_server():
 
 @pytest.mark.asyncio
 async def test_active_server_context_uses_default_server_when_account_has_multiple_memberships():
-    default_server = Server(id=uuid.uuid4(), name="Personal")
-    shared_server = Server(id=uuid.uuid4(), name="Shared")
-    default_member = Member(id=uuid.uuid4(), server_id=default_server.id, kind="human", display_name="lee")
-    shared_member = Member(id=uuid.uuid4(), server_id=shared_server.id, kind="human", display_name="lee")
-    account = Account(
-        id=uuid.uuid4(),
-        name="lee",
-        server_id=default_server.id,
-        member_id=default_member.id,
-    )
+    default_server = _server("Personal")
+    shared_server = _server("Shared")
+    account, default_member = _home_identity(default_server)
+    shared_member = default_member
     default_membership = _membership(default_server, account, default_member, role="owner")
     shared_membership = _membership(shared_server, account, shared_member, role="member")
     default_row = (default_membership, default_server, default_member)
@@ -281,11 +304,10 @@ async def test_active_server_context_uses_default_server_when_account_has_multip
 
 @pytest.mark.asyncio
 async def test_list_account_memberships_returns_switcher_contract():
-    account = Account(id=uuid.uuid4(), name="lee", server_id=uuid.uuid4(), member_id=uuid.uuid4())
-    default_server = Server(id=account.server_id, name="lee")
-    shared_server = Server(id=uuid.uuid4(), name="Raft 中文社区")
-    default_member = Member(id=account.member_id, server_id=default_server.id, kind="human", display_name="lee")
-    shared_member = Member(id=uuid.uuid4(), server_id=shared_server.id, kind="human", display_name="lee")
+    default_server = _server("lee")
+    shared_server = _server("Raft 中文社区")
+    account, default_member = _home_identity(default_server, handle="lee")
+    shared_member = default_member
     rows = [
         (_membership(default_server, account, default_member, role="owner"), default_server, default_member),
         (_membership(shared_server, account, shared_member, role="member"), shared_server, shared_member),
@@ -297,14 +319,14 @@ async def test_list_account_memberships_returns_switcher_contract():
     assert memberships == [
         {
             "server": {"id": str(default_server.id), "name": "lee"},
-            "member": {"id": str(default_member.id), "displayName": "lee", "kind": "human"},
+            "member": {"id": str(default_member.id), "name": "lee", "handle": "lee", "kind": "human"},
             "role": "owner",
             "status": "active",
             "isDefault": True,
         },
         {
             "server": {"id": str(shared_server.id), "name": "Raft 中文社区"},
-            "member": {"id": str(shared_member.id), "displayName": "lee", "kind": "human"},
+            "member": {"id": str(shared_member.id), "name": "lee", "handle": "lee", "kind": "human"},
             "role": "member",
             "status": "active",
             "isDefault": False,
@@ -314,13 +336,12 @@ async def test_list_account_memberships_returns_switcher_contract():
 
 @pytest.mark.asyncio
 async def test_serialize_account_includes_all_active_server_memberships(monkeypatch):
-    account = Account(id=uuid.uuid4(), name="lee", display_name="Lee", server_id=uuid.uuid4(), member_id=uuid.uuid4())
-    server = Server(id=account.server_id, name="lee")
-    member = Member(id=account.member_id, server_id=server.id, kind="human", display_name="lee")
+    server = _server("lee")
+    account, member = _home_identity(server, handle="lee")
     membership_payload = [
         {
             "server": {"id": str(server.id), "name": "lee"},
-            "member": {"id": str(member.id), "displayName": "lee", "kind": "human"},
+            "member": {"id": str(member.id), "name": "lee", "handle": "lee", "kind": "human"},
             "role": "owner",
             "status": "active",
             "isDefault": True,
@@ -328,7 +349,7 @@ async def test_serialize_account_includes_all_active_server_memberships(monkeypa
     ]
 
     async def fake_serialize_member(_db, item):
-        return {"id": str(item.id), "name": item.display_name, "kind": item.kind, "status": item.status or "online"}
+        return {"id": str(item.id), "name": item.handle, "handle": item.handle, "kind": item.kind, "status": item.status or "online"}
 
     async def fake_list_memberships(_db, *, account):
         return membership_payload
@@ -344,91 +365,28 @@ async def test_serialize_account_includes_all_active_server_memberships(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_create_server_for_account_adds_owner_membership_without_changing_default_server():
-    original_server_id = uuid.uuid4()
-    original_member_id = uuid.uuid4()
-    account = Account(
-        id=uuid.uuid4(),
-        name="lee",
-        display_name="Lee",
-        server_id=original_server_id,
-        member_id=original_member_id,
-    )
-    db = _FakeSession()
-
-    server, member, membership = await server_membership.create_server_for_account(
-        db,
-        account=account,
-        name="Release Lab",
-    )
-
-    assert server.name == "Release Lab"
-    assert member.server_id == server.id
-    assert member.display_name == "Lee"
-    assert membership.server_id == server.id
-    assert membership.account_id == account.id
-    assert membership.member_id == member.id
-    assert membership.role == "owner"
-    assert account.server_id == original_server_id
-    assert account.member_id == original_member_id
-    assert server in db.added
-    assert member in db.added
-    assert membership in db.added
+async def test_additional_owned_server_service_is_removed():
+    assert not hasattr(server_membership, "create_server_for_account")
 
 
 @pytest.mark.asyncio
-async def test_create_server_endpoint_returns_switchable_account_payload(monkeypatch):
-    account = Account(id=uuid.uuid4(), name="lee", display_name="Lee", server_id=uuid.uuid4(), member_id=uuid.uuid4())
-    server = Server(id=uuid.uuid4(), name="Release Lab")
-    member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-    membership = _membership(server, account, member, role="owner")
+async def test_create_server_endpoint_rejects_additional_owned_server():
     db = _FakeSession()
-    calls = {}
+    with pytest.raises(HTTPException) as error:
+        await public_api.create_server(
+            _JsonRequest({"name": "Release Lab"}),
+            _auth=None,
+            db=db,
+        )
 
-    async def fake_current_account(_db, _request):
-        return account
-
-    async def fake_create_server(_db, *, account, name):
-        calls["name"] = name
-        return server, member, membership
-
-    async def fake_serialize_account(_db, account, server, member):
-        return {
-            "account": {"id": str(account.id), "name": account.name, "displayName": "Lee"},
-            "server": {"id": str(server.id), "name": server.name},
-            "member": {"id": str(member.id), "name": member.display_name, "kind": "human", "status": "online"},
-            "memberships": [
-                {
-                    "server": {"id": str(server.id), "name": server.name},
-                    "member": {"id": str(member.id), "displayName": member.display_name, "kind": "human"},
-                    "role": "owner",
-                    "status": "active",
-                    "isDefault": False,
-                }
-            ],
-        }
-
-    monkeypatch.setattr(public_api, "_current_account", fake_current_account)
-    monkeypatch.setattr(public_api, "create_server_for_account", fake_create_server)
-    monkeypatch.setattr(public_api, "_serialize_account", fake_serialize_account)
-
-    payload = await public_api.create_server(
-        _JsonRequest({"name": "Release Lab"}),
-        _auth=None,
-        db=db,
-    )
-
-    assert calls["name"] == "Release Lab"
-    assert db.committed is True
-    assert payload["created"] is True
-    assert payload["server"]["id"] == str(server.id)
-    assert payload["memberships"][0]["server"]["id"] == str(server.id)
+    assert error.value.status_code == 410
+    assert db.added == []
 
 
 @pytest.mark.asyncio
 async def test_create_server_invite_returns_join_url_and_stores_only_token_hash():
-    server = Server(id=uuid.uuid4(), name="青禾的服务器")
-    creator = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="青禾")
+    server = _server("青禾的服务器")
+    _account, creator = _home_identity(server, handle="青禾", display_name="青禾")
     db = _FakeSession()
 
     created = await server_invites.create_server_invite(
@@ -453,9 +411,8 @@ async def test_create_server_invite_returns_join_url_and_stores_only_token_hash(
 
 @pytest.mark.asyncio
 async def test_create_server_invite_endpoint_requires_owner_or_admin(monkeypatch):
-    account = Account(id=uuid.uuid4(), name="member", server_id=uuid.uuid4(), member_id=uuid.uuid4())
-    server = Server(id=account.server_id, name="青禾的服务器")
-    member = Member(id=account.member_id, server_id=server.id, kind="human", display_name="member")
+    server = _server("青禾的服务器")
+    account, member = _home_identity(server, handle="member", display_name=None)
     membership = _membership(server, account, member, role="member")
     db = _FakeSession()
 
@@ -477,9 +434,8 @@ async def test_create_server_invite_endpoint_requires_owner_or_admin(monkeypatch
 
 @pytest.mark.asyncio
 async def test_create_server_invite_endpoint_returns_admin_invite_for_owner(monkeypatch):
-    account = Account(id=uuid.uuid4(), name="owner", server_id=uuid.uuid4(), member_id=uuid.uuid4())
-    server = Server(id=account.server_id, name="青禾的服务器")
-    member = Member(id=account.member_id, server_id=server.id, kind="human", display_name="青禾")
+    server = _server("青禾的服务器")
+    account, member = _home_identity(server, handle="owner", display_name="青禾")
     membership = _membership(server, account, member, role="owner")
     db = _FakeSession()
 
@@ -508,39 +464,41 @@ async def test_create_server_invite_endpoint_returns_admin_invite_for_owner(monk
 
 
 @pytest.mark.asyncio
-async def test_accept_server_invite_creates_human_member_membership_and_marks_invite():
-    server = Server(id=uuid.uuid4(), name="青禾的服务器")
-    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影", server_id=uuid.uuid4(), member_id=uuid.uuid4())
+async def test_accept_server_invite_reuses_home_human_identity_and_marks_invite():
+    home_server = _server("竹影")
+    account, member = _home_identity(home_server, handle="zhuying", display_name="竹影")
+    server = _server("青禾的服务器")
     token = "sk_invite_test_token"
     invite = _invite(server, token_hash=server_invites.hash_invite_token(token))
     db = _FakeSession(
         _ExecuteResult(invite),
         _ExecuteResult(server),
         _ExecuteResult(row=None),
-        _ExecuteResult(None),
+        _ExecuteResult(member),
         _ExecuteResult(None),
     )
 
     accepted = await server_invites.accept_server_invite(db, token=token, account=account)
 
     assert accepted.server is server
-    assert accepted.member.server_id == server.id
+    assert accepted.member is member
+    assert accepted.member.origin_server_id == home_server.id
     assert accepted.member.kind == "human"
-    assert accepted.member.display_name == "竹影"
+    assert accepted.member.handle == "zhuying"
     assert accepted.membership.server_id == server.id
     assert accepted.membership.account_id == account.id
     assert accepted.membership.member_id == accepted.member.id
     assert accepted.membership.role == "member"
     assert invite.accepted_account_id == account.id
     assert invite.accepted_at is not None
-    assert accepted.member in db.added
+    assert accepted.member not in db.added
     assert accepted.membership in db.added
 
 
 @pytest.mark.asyncio
 async def test_accept_server_invite_rejects_consumed_by_another_account():
-    server = Server(id=uuid.uuid4(), name="青禾的服务器")
-    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影")
+    server = _server("青禾的服务器")
+    account, _member = _home_identity(_server("竹影"), handle="zhuying", display_name="竹影")
     token = "sk_invite_consumed"
     invite = _invite(
         server,
@@ -558,7 +516,7 @@ async def test_accept_server_invite_rejects_consumed_by_another_account():
 
 @pytest.mark.asyncio
 async def test_accept_server_invite_rejects_malformed_token_without_database_lookup():
-    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影")
+    account, _member = _home_identity(_server("竹影"), handle="zhuying", display_name="竹影")
     db = _FakeSession()
 
     with pytest.raises(HTTPException) as error:
@@ -570,8 +528,8 @@ async def test_accept_server_invite_rejects_malformed_token_without_database_loo
 
 @pytest.mark.asyncio
 async def test_accept_server_invite_rejects_expired_invite():
-    server = Server(id=uuid.uuid4(), name="青禾的服务器")
-    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影")
+    server = _server("青禾的服务器")
+    account, _member = _home_identity(_server("竹影"), handle="zhuying", display_name="竹影")
     token = "sk_invite_expired"
     invite = _invite(
         server,
@@ -589,8 +547,8 @@ async def test_accept_server_invite_rejects_expired_invite():
 
 @pytest.mark.asyncio
 async def test_accept_server_invite_rejects_revoked_invite():
-    server = Server(id=uuid.uuid4(), name="青禾的服务器")
-    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影")
+    server = _server("青禾的服务器")
+    account, _member = _home_identity(_server("竹影"), handle="zhuying", display_name="竹影")
     token = "sk_invite_revoked"
     invite = _invite(
         server,
@@ -608,9 +566,9 @@ async def test_accept_server_invite_rejects_revoked_invite():
 
 @pytest.mark.asyncio
 async def test_accept_server_invite_is_idempotent_for_same_account_membership():
-    server = Server(id=uuid.uuid4(), name="青禾的服务器")
-    member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="竹影")
-    account = Account(id=uuid.uuid4(), name="zhuying", display_name="竹影", server_id=uuid.uuid4(), member_id=uuid.uuid4())
+    home_server = _server("竹影")
+    account, member = _home_identity(home_server, handle="zhuying", display_name="竹影")
+    server = _server("青禾的服务器")
     membership = _membership(server, account, member, role="member")
     token = "sk_invite_same_account"
     invite = _invite(
@@ -639,36 +597,31 @@ async def test_better_auth_bootstrap_creates_personal_server_and_session_token()
     account, server, member, token = await public_api._bootstrap_better_auth_account(
         db,
         external_user_id="better-auth-user-123",
-        email="lee@example.com",
-        display_name="Lee",
+        name="Lee",
     )
 
-    assert account.name.startswith("ba_")
-    assert account.display_name == "Lee"
-    assert server.name == "Lee的服务器"
-    assert member.server_id == server.id
-    assert member.display_name == "Lee"
-    assert account.server_id == server.id
-    assert account.member_id == member.id
+    assert account.auth_subject == "better-auth:better-auth-user-123"
+    assert account.display_name is None
+    assert server.name == "Lee"
+    assert server.server_handle.startswith("s")
+    assert member.origin_server_id == server.id
+    assert member.handle == "Lee"
+    assert account.home_server_id == server.id
+    assert member.account_id == account.id
     assert token.startswith("sk_session_")
     assert account.session_token_hash == public_api._hash_token(token)
-    assert any(isinstance(item, Server) and item.name == "Lee的服务器" for item in db.added)
+    assert any(isinstance(item, Server) and item.name == "Lee" for item in db.added)
     assert any(isinstance(item, ServerMembership) and item.role == "owner" for item in db.added)
 
 
 @pytest.mark.asyncio
 async def test_better_auth_bootstrap_reuses_existing_personal_server_without_duplicates():
-    server = Server(id=uuid.uuid4(), name="Lee's Server")
-    member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-    account = Account(
-        id=uuid.uuid4(),
-        name=public_api._better_auth_account_name("better-auth-user-123"),
-        display_name="Lee",
-        server_id=server.id,
-        member_id=member.id,
-    )
+    server = _server("Lee")
+    account, member = _home_identity(server, handle="Lee")
+    account.auth_subject = "better-auth:better-auth-user-123"
     membership = _membership(server, account, member, role="owner")
     db = _FakeSession(
+        _ExecuteResult(None),
         _ExecuteResult(account),
         _ExecuteResult(server),
         _ExecuteResult(member),
@@ -678,8 +631,7 @@ async def test_better_auth_bootstrap_reuses_existing_personal_server_without_dup
     resolved_account, resolved_server, resolved_member, token = await public_api._bootstrap_better_auth_account(
         db,
         external_user_id="better-auth-user-123",
-        email="lee@example.com",
-        display_name="Lee",
+        name="Lee",
     )
 
     assert resolved_account is account
@@ -714,26 +666,20 @@ async def test_better_auth_bridge_requires_configured_secret(monkeypatch):
 @pytest.mark.asyncio
 async def test_better_auth_bridge_returns_smallkhoj_session_payload(monkeypatch):
     monkeypatch.setattr(public_api, "settings", SimpleNamespace(auth_bridge_secret="sk_bridge_test", debug=False), raising=False)
-    server = Server(id=uuid.uuid4(), name="Lee's Server")
-    member = Member(id=uuid.uuid4(), server_id=server.id, kind="human", display_name="Lee")
-    account = Account(
-        id=uuid.uuid4(),
-        name="ba_user_123",
-        display_name="Lee",
-        server_id=server.id,
-        member_id=member.id,
-    )
+    server = _server("Lee")
+    account, member = _home_identity(server, handle="Lee")
+    account.auth_subject = "better-auth:better-auth-user-123"
     calls = {}
 
-    async def fake_bootstrap(_db, *, external_user_id, email, display_name):
-        calls["identity"] = (external_user_id, email, display_name)
+    async def fake_bootstrap(_db, *, external_user_id, name):
+        calls["identity"] = (external_user_id, name)
         return account, server, member, "sk_session_bridge"
 
     async def fake_serialize(_db, account, server, member):
         return {
-            "account": {"id": str(account.id), "name": account.name, "displayName": account.display_name},
-            "server": {"id": str(server.id), "name": server.name},
-            "member": {"id": str(member.id), "name": member.display_name, "kind": "human", "status": "online"},
+            "account": {"id": str(account.id), "name": member.handle, "displayName": account.display_name},
+            "server": {"id": str(server.id), "name": server.name, "serverHandle": server.server_handle},
+            "member": {"id": str(member.id), "name": member.handle, "handle": member.handle, "kind": "human", "status": "online"},
             "memberships": [],
         }
 
@@ -754,10 +700,10 @@ async def test_better_auth_bridge_returns_smallkhoj_session_payload(monkeypatch)
         db=db,
     )
 
-    assert calls["identity"] == ("better-auth-user-123", "lee@example.com", "Lee")
+    assert calls["identity"] == ("better-auth-user-123", "Lee")
     assert db.committed is True
     assert payload["sessionToken"] == "sk_session_bridge"
-    assert payload["account"]["name"] == "ba_user_123"
+    assert payload["account"]["name"] == "Lee"
 
 
 def test_private_channel_requires_channel_membership():

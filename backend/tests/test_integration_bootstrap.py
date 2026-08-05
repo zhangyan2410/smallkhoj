@@ -1,4 +1,5 @@
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -66,15 +67,45 @@ def _request(**overrides):
 
 
 def _references(request):
-    server = Server(id=request.server_id, name="release")
+    server = Server(id=request.server_id, name="release", server_handle="s7k2m")
     channel = Channel(id=request.channel_id, server_id=request.server_id, name="release-loop", kind="public")
-    creator = Member(id=request.creator_id, server_id=request.server_id, kind="human", display_name="operator")
-    assignee = Member(id=request.assignee_id, server_id=request.server_id, kind="agent", display_name="worker")
+    creator = Member(
+        id=request.creator_id,
+        origin_server_id=request.server_id,
+        account_id=uuid.uuid4(),
+        kind="human",
+        handle="operator",
+        handle_key="operator",
+    )
+    assignee = Member(
+        id=request.assignee_id,
+        origin_server_id=request.server_id,
+        kind="agent",
+        handle="worker",
+        handle_key="worker",
+    )
     return server, channel, creator, assignee
 
 
+def _install_membership_stub(monkeypatch, db, *, existing_ids=()):
+    existing = set(existing_ids)
+
+    async def fake_add_channel_member(_db, *, channel_id, member_id, actor_id):
+        assert _db is db
+        assert channel_id
+        assert actor_id
+        if member_id not in existing:
+            db.add(ChannelMember(channel_id=channel_id, member_id=member_id))
+        return SimpleNamespace(changed=member_id not in existing)
+
+    monkeypatch.setattr(
+        "services.integration_bootstrap.add_channel_member",
+        fake_add_channel_member,
+    )
+
+
 @pytest.mark.asyncio
-async def test_bootstrap_creates_connectors_route_and_channel_memberships():
+async def test_bootstrap_creates_connectors_route_and_channel_memberships(monkeypatch):
     request = _request()
     server, channel, creator, assignee = _references(request)
     db = _FakeSession(
@@ -88,6 +119,7 @@ async def test_bootstrap_creates_connectors_route_and_channel_memberships():
         None,
         None,
     )
+    _install_membership_stub(monkeypatch, db)
 
     result = await bootstrap_initial_release_integrations(db, request)
 
@@ -119,7 +151,7 @@ async def test_bootstrap_creates_connectors_route_and_channel_memberships():
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_is_idempotent_for_existing_connector_and_route_rows():
+async def test_bootstrap_is_idempotent_for_existing_connector_and_route_rows(monkeypatch):
     request = _request(jira_site_url="https://new-team.atlassian.net")
     server, channel, creator, assignee = _references(request)
     feishu_connector = ExternalConnector(
@@ -160,6 +192,11 @@ async def test_bootstrap_is_idempotent_for_existing_connector_and_route_rows():
         creator_membership,
         assignee_membership,
     )
+    _install_membership_stub(
+        monkeypatch,
+        db,
+        existing_ids={request.creator_id, request.assignee_id},
+    )
 
     result = await bootstrap_initial_release_integrations(db, request)
 
@@ -190,10 +227,11 @@ async def test_bootstrap_fails_before_writes_when_required_reference_is_missing(
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_output_excludes_secret_values_and_prints_worker_env_guidance():
+async def test_bootstrap_output_excludes_secret_values_and_prints_worker_env_guidance(monkeypatch):
     request = _request()
     server, channel, creator, assignee = _references(request)
     db = _FakeSession(server, channel, creator, assignee, None, None, None, None, None)
+    _install_membership_stub(monkeypatch, db)
 
     result = await bootstrap_initial_release_integrations(db, request)
     payload = serialize_bootstrap_result(result)

@@ -133,7 +133,7 @@ async def test_mark_channel_read_updates_channel_member_monotonically():
     channel_id = uuid.uuid4()
     member_id = uuid.uuid4()
     membership = ChannelMember(channel_id=channel_id, member_id=member_id, last_read_seq=12)
-    db = _FakeSession(_ExecuteResult(membership))
+    db = _FakeSession(_ExecuteResult(membership), _ExecuteResult(membership))
 
     updated = await mark_channel_read(db, channel_id=channel_id, member_id=member_id, last_read_seq=9)
     assert updated.last_read_seq == 12

@@ -1,3 +1,4 @@
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -101,8 +102,23 @@ def test_relay_rejects_missing_service_credential_without_echoing_secrets():
 
 
 def test_only_pi_bound_agents_can_use_builtin_llm_relay():
-    pi_member = Member(kind="agent", display_name="Guide", backend="pi", config={"runtime": "pi"})
-    regular = Member(kind="agent", display_name="Claude", backend="claude_code", config={})
+    server_id = uuid.uuid4()
+    pi_member = Member(
+        origin_server_id=server_id,
+        kind="agent",
+        handle="Guide",
+        handle_key="guide",
+        backend="pi",
+        config={"runtime": "pi"},
+    )
+    regular = Member(
+        origin_server_id=server_id,
+        kind="agent",
+        handle="Claude",
+        handle_key="claude",
+        backend="claude_code",
+        config={},
+    )
 
     require_pi_runtime_member(pi_member)
     with pytest.raises(HTTPException) as exc:

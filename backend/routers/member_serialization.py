@@ -68,13 +68,14 @@ async def serialize_member(
     *,
     _computer: Computer | None | object = UNSET,
     _workspace_id: str | None | object = UNSET,
+    _reference: str | None = None,
 ) -> dict:
     config = member.config or {}
     profile = {
-        "displayName": member.display_name,
-        "description": member.description,
         "avatarUrl": member.avatar_url,
     }
+    if member.kind == "agent":
+        profile["description"] = member.description
 
     status = member.status
     if member.kind == "agent" and member.computer_id and status in {"online", "active", "running", "idle"}:
@@ -93,16 +94,15 @@ async def serialize_member(
     else:
         workspace_id = cast(str | None, _workspace_id)
 
-    return {
+    payload = {
         "id": str(member.id),
-        "name": member.display_name,
-        "displayName": member.display_name,
-        "handle": f"@{member.display_name}",
+        "name": member.handle,
+        "handle": member.handle,
+        "reference": _reference or f"@{member.handle}",
         "kind": member.kind,
         "type": member.kind,
         "profile": profile,
         "status": status,
-        "description": member.description,
         "avatarUrl": member.avatar_url,
         "skills": member.skills or [],
         "config": config,
@@ -113,3 +113,6 @@ async def serialize_member(
         "permissions": config.get("permissions") or {},
         "actions": config.get("actions") or {},
     }
+    if member.kind == "agent":
+        payload["description"] = member.description
+    return payload

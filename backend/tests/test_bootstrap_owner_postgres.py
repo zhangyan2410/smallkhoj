@@ -17,14 +17,6 @@ async def test_concurrent_first_registrations_commit_exactly_one_bootstrap_owner
         engine = create_async_engine(postgres.database_url)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:
-            async with sessions.begin() as db:
-                db.add(
-                    Server(
-                        id=public_api.DEFAULT_SERVER_ID,
-                        name=public_api.DEFAULT_SERVER_NAME,
-                    )
-                )
-
             async def register(name: str):
                 async with sessions.begin() as db:
                     account, server, member, _token = await public_api._bootstrap_account(
@@ -40,31 +32,23 @@ async def test_concurrent_first_registrations_commit_exactly_one_bootstrap_owner
             )
 
             assert len(registrations) == 2
-            assert {server_id for _account_id, server_id, _member_id in registrations} == {
-                public_api.DEFAULT_SERVER_ID
-            }
+            assert len({server_id for _account_id, server_id, _member_id in registrations}) == 2
 
             async with sessions() as db:
                 account_count = await db.scalar(select(func.count()).select_from(Account))
+                server_count = await db.scalar(select(func.count()).select_from(Server))
                 member_count = await db.scalar(select(func.count()).select_from(Member))
                 memberships = list(
-                    (
-                        await db.execute(
-                            select(ServerMembership).where(
-                                ServerMembership.server_id == public_api.DEFAULT_SERVER_ID,
-                                ServerMembership.status == "active",
-                            )
-                        )
-                    )
+                    (await db.execute(select(ServerMembership).where(ServerMembership.status == "active")))
                     .scalars()
                     .all()
                 )
 
             assert account_count == 2
+            assert server_count == 2
             assert member_count == 2
             assert len(memberships) == 2
-            assert [membership.role for membership in memberships].count("owner") == 1
-            assert [membership.role for membership in memberships].count("member") == 1
+            assert [membership.role for membership in memberships] == ["owner", "owner"]
         finally:
             await engine.dispose()
 
@@ -76,14 +60,6 @@ async def test_rolled_back_first_registration_releases_lock_and_leaves_no_orphan
         engine = create_async_engine(postgres.database_url)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:
-            async with sessions.begin() as db:
-                db.add(
-                    Server(
-                        id=public_api.DEFAULT_SERVER_ID,
-                        name=public_api.DEFAULT_SERVER_NAME,
-                    )
-                )
-
             with pytest.raises(RuntimeError, match="forced registration rollback"):
                 async with sessions.begin() as db:
                     await public_api._bootstrap_account(
@@ -95,6 +71,7 @@ async def test_rolled_back_first_registration_releases_lock_and_leaves_no_orphan
 
             async with sessions() as db:
                 assert await db.scalar(select(func.count()).select_from(Account)) == 0
+                assert await db.scalar(select(func.count()).select_from(Server)) == 0
                 assert await db.scalar(select(func.count()).select_from(Member)) == 0
                 assert await db.scalar(select(func.count()).select_from(ServerMembership)) == 0
 

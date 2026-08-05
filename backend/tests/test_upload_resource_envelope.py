@@ -102,6 +102,7 @@ def _member(*, permission: str):
     return SimpleNamespace(
         id=uuid.uuid4(),
         display_name="upload-agent",
+        handle="upload-agent",
         kind="agent",
         status="offline",
         config={"permissions": {permission: True}},
@@ -439,23 +440,29 @@ async def test_public_upload_exact_limit_and_over_limit_leave_consistent_postgre
         engine = create_async_engine(postgres.database_url)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:
-            server = Server(id=uuid.uuid4(), name=f"upload-{uuid.uuid4().hex[:8]}")
+            server = Server(
+                id=uuid.uuid4(),
+                name=f"upload-{uuid.uuid4().hex[:8]}",
+                server_handle=f"s{uuid.uuid4().hex[:4]}",
+            )
+            account_id = uuid.uuid4()
             member = Member(
                 id=uuid.uuid4(),
-                server_id=server.id,
+                origin_server_id=server.id,
+                account_id=account_id,
                 kind="human",
-                display_name="Upload Owner",
+                handle="upload-owner",
+                handle_key="upload-owner",
                 status="online",
                 config={},
                 skills=[],
             )
             token = f"upload_session_{uuid.uuid4().hex}"
             account = Account(
-                id=uuid.uuid4(),
-                name=f"upload-account-{uuid.uuid4().hex[:12]}",
-                display_name=member.display_name,
-                server_id=server.id,
-                member_id=member.id,
+                id=account_id,
+                auth_subject=f"test:{token}",
+                display_name="Upload Owner",
+                home_server_id=server.id,
                 session_token_hash=public_api._hash_token(token),
             )
             membership = ServerMembership(
@@ -476,9 +483,11 @@ async def test_public_upload_exact_limit_and_over_limit_leave_consistent_postgre
             async with sessions() as db:
                 db.add(server)
                 await db.flush()
+                db.add(account)
+                await db.flush()
                 db.add(member)
                 await db.flush()
-                db.add_all([account, channel])
+                db.add(channel)
                 await db.flush()
                 db.add(membership)
                 await db.commit()

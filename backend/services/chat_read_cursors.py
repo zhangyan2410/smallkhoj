@@ -3,11 +3,13 @@
 import uuid
 from typing import Any, Literal
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import ChannelMember
+from models import Channel, ChannelMember
 from models.slock import ChatThreadReadCursor
+from services.channel_membership import add_channel_member
 
 ChannelCursorKind = Literal["channel", "dm"]
 
@@ -42,8 +44,25 @@ async def mark_channel_read(
     )
     membership = result.scalar_one_or_none()
     if membership is None:
-        membership = ChannelMember(channel_id=channel_id, member_id=member_id, last_read_seq=0)
-        db.add(membership)
+        channel_result = await db.execute(select(Channel).where(Channel.id == channel_id))
+        channel = channel_result.scalar_one_or_none()
+        if not channel:
+            raise HTTPException(404, "Channel not found")
+        if channel.kind != "public":
+            raise HTTPException(403, "Private and DM Channels do not support implicit membership")
+        await add_channel_member(
+            db,
+            channel_id=channel_id,
+            member_id=member_id,
+            actor_id=member_id,
+        )
+        result = await db.execute(
+            select(ChannelMember).where(
+                ChannelMember.channel_id == channel_id,
+                ChannelMember.member_id == member_id,
+            )
+        )
+        membership = result.scalar_one()
 
     membership.last_read_seq = _monotonic_seq(membership.last_read_seq, last_read_seq)
     await db.flush()

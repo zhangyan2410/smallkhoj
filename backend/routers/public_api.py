@@ -17,7 +17,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import and_, delete, exists, func, or_, select, update
+from sqlalchemy import and_, delete, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
@@ -56,7 +56,21 @@ from routers.serialization_prefetch import (
     load_message_serialization_context,
     load_task_serialization_context,
 )
+from services.account_bootstrap import bootstrap_account
 from services.agent_permissions import agent_permissions_for_creation
+from services.channel_member_references import (
+    load_channel_roster,
+    resolve_channel_mentions,
+)
+from services.channel_membership import (
+    add_channel_member as add_channel_member_record,
+)
+from services.channel_membership import (
+    remove_agent_from_all_channels,
+)
+from services.channel_membership import (
+    remove_channel_member as remove_channel_member_record,
+)
 from services.chat_read_cursors import (
     mark_channel_read,
     read_state_from_message_seq,
@@ -79,6 +93,12 @@ from services.daemon_control import (
     runtime_start_command,
 )
 from services.latency_trace import LatencyTrace, trace_id_from_request
+from services.member_identity import (
+    MemberIdentityError,
+    integrity_constraint_name,
+    normalize_description,
+    normalize_handle,
+)
 from services.memory_api import (
     create_memory_proposal,
     delete_memory_entry,
@@ -113,9 +133,6 @@ from services.server_invites import (
     inspect_server_invite,
 )
 from services.server_membership import (
-    acquire_owner_election_lock,
-    create_server_for_account,
-    ensure_account_membership,
     ensure_channel_access,
     ensure_server_scoped_computer,
     is_channel_member,
@@ -157,8 +174,6 @@ DAEMON_CLI_COMMAND = "aura"
 DAEMON_DOWNLOAD_PATH = "/downloads/smallkhoj-daemon"
 DAEMON_NPX_PACKAGE_PREFIX = "smallkhoj-smallkhoj-daemon"
 CONNECT_TICKET_TTL_SECONDS = 300
-DEFAULT_SERVER_ID = uuid.UUID("3893c518-c8f8-43ba-af0d-54a7773bbb6d")
-DEFAULT_SERVER_NAME = "Slock Server"
 SESSION_COOKIE_NAME = "smallkhoj_session"
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / ".data" / "uploads"
 MAX_UPLOAD_SIZE = settings.upload_max_bytes
@@ -174,7 +189,6 @@ DANGEROUS_MIME_TYPES = {
     "application/javascript",
     "text/javascript",
 }
-ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 AUTH_BRIDGE_SECRET_HEADER = "X-Auth-Bridge-Secret"
 TASK_NUMBER_RETRY_LIMIT = 5
 DELETE_BLOCKING_WORKSPACE_STATUSES = RUNTIME_ACTIVE_STATUSES | {"busy", "starting", "restarting"}
@@ -295,9 +309,6 @@ def _computer_connect_command(connect_token: str, server_url: str, server_label:
     )
     return _with_server_comment(command, server_label)
 
-MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]+)")
-
-
 def _utcnow() -> datetime:
     return datetime.utcnow()
 
@@ -345,17 +356,6 @@ async def _get_server(db: AsyncSession) -> Server:
     return server
 
 
-async def _ensure_server(db: AsyncSession) -> Server:
-    result = await db.execute(select(Server).limit(1))
-    server = result.scalar_one_or_none()
-    if server:
-        return server
-    server = Server(id=DEFAULT_SERVER_ID, name=DEFAULT_SERVER_NAME)
-    db.add(server)
-    await db.flush()
-    return server
-
-
 async def _resolve_member(db: AsyncSession, server: Server, handle_or_id: str | None) -> Member | None:
     if not handle_or_id:
         return None
@@ -363,46 +363,35 @@ async def _resolve_member(db: AsyncSession, server: Server, handle_or_id: str | 
         parsed_id = uuid.UUID(handle_or_id)
     except ValueError:
         parsed_id = None
+    server_scope = or_(
+        Member.origin_server_id == server.id,
+        and_(
+            Member.kind == "human",
+            exists(
+                select(ServerMembership.id).where(
+                    ServerMembership.server_id == server.id,
+                    ServerMembership.account_id == Member.account_id,
+                    ServerMembership.status == "active",
+                )
+            ),
+        ),
+    )
+    filters = [server_scope, Member.deleted_at.is_(None)]
     if parsed_id:
-        result = await db.execute(
-            select(Member).where(Member.id == parsed_id, Member.server_id == server.id)
-        )
+        filters.append(Member.id == parsed_id)
     else:
-        result = await db.execute(
-            select(Member).where(
-                Member.server_id == server.id,
-                Member.display_name == handle_or_id.lstrip("@"),
-            )
-        )
-    member = result.scalar_one_or_none()
+        try:
+            handle_key = normalize_handle(handle_or_id.lstrip("@")).handle_key
+        except MemberIdentityError as error:
+            raise HTTPException(400, "Invalid member reference") from error
+        filters.append(Member.handle_key == handle_key)
+    result = await db.execute(select(Member).where(*filters))
+    candidates = list(result.scalars().all())
+    if len(candidates) > 1:
+        raise HTTPException(400, f"Member reference {handle_or_id} is ambiguous")
+    member = candidates[0] if candidates else None
     if not member:
         raise HTTPException(404, f"Member {handle_or_id} not found")
-    return member
-
-
-async def _ensure_human_member(db: AsyncSession, server: Server, handle_or_id: str) -> Member:
-    name = handle_or_id.lstrip("@").strip()
-    if not name:
-        raise HTTPException(400, "Missing human member")
-
-    result = await db.execute(
-        select(Member).where(
-            Member.server_id == server.id,
-            Member.display_name == name,
-        )
-    )
-    member = result.scalar_one_or_none()
-    if member:
-        return member
-
-    member = Member(
-        server_id=server.id,
-        kind="human",
-        display_name=name,
-        status="online",
-    )
-    db.add(member)
-    await db.flush()
     return member
 
 
@@ -446,33 +435,11 @@ def _serialize_invite_payload(invite, server: Server, *, join_url: str | None = 
     return payload
 
 
-def _normalize_account_name(raw_name: str | None) -> str:
-    name = (raw_name or "").strip().lstrip("@")
-    if not name:
-        raise HTTPException(400, "Missing account name")
-    if not ACCOUNT_NAME_RE.fullmatch(name):
-        raise HTTPException(400, "Account name must use letters, numbers, dot, underscore, or dash")
-    return name
-
-
-def _better_auth_account_name(external_user_id: str) -> str:
+def _better_auth_subject(external_user_id: str) -> str:
     user_id = (external_user_id or "").strip()
     if not user_id:
         raise HTTPException(400, "Missing Better Auth user id")
-    return f"ba_{hashlib.sha256(user_id.encode('utf-8')).hexdigest()[:24]}"
-
-
-def _better_auth_display_name(*, email: str | None, display_name: str | None, account_name: str) -> str:
-    candidate = (display_name or "").strip().lstrip("@")
-    if not candidate and email and "@" in email:
-        candidate = email.split("@", 1)[0].strip().lstrip("@")
-    if not candidate:
-        candidate = account_name
-    return candidate[:80]
-
-
-def _better_auth_personal_server_name(visible_name: str) -> str:
-    return f"{visible_name}的服务器"
+    return f"better-auth:{user_id}"
 
 
 def _verify_auth_bridge_secret(request: Request) -> None:
@@ -513,121 +480,27 @@ async def _bootstrap_account(
     name: str,
     display_name: str | None = None,
 ) -> tuple[Account, Server, Member, str]:
-    account_name = _normalize_account_name(name)
-    await acquire_owner_election_lock(db)
-    server = await _ensure_server(db)
-    result = await db.execute(select(Account).where(Account.name == account_name))
-    account = result.scalar_one_or_none()
-    if account:
-        member_result = await db.execute(select(Member).where(Member.id == account.member_id))
-        member = member_result.scalar_one_or_none()
-        if not member:
-            member = await _ensure_human_member(db, server, account_name)
-            account.member_id = member.id
-        account.server_id = server.id
-    else:
-        member = await _ensure_human_member(db, server, account_name)
-        account = Account(
-            name=account_name,
-            display_name=display_name or account_name,
-            server_id=server.id,
-            member_id=member.id,
-        )
-        db.add(account)
-        await db.flush()
-
-    member.status = "online"
-    if display_name:
-        account.display_name = display_name
-    owner_result = await db.execute(
-        select(ServerMembership.id)
-        .where(
-            ServerMembership.server_id == server.id,
-            ServerMembership.role == "owner",
-            ServerMembership.status == "active",
-        )
-        .limit(1)
-    )
-    default_role = "member" if owner_result.scalar_one_or_none() else "owner"
-    await ensure_account_membership(
+    result = await bootstrap_account(
         db,
-        account=account,
-        server=server,
-        member=member,
-        default_role=default_role,
+        auth_subject=f"legacy:{name}",
+        name=name,
+        display_name=display_name,
     )
-    token = f"sk_session_{secrets.token_urlsafe(32)}"
-    account.session_token_hash = _hash_token(token)
-    account.last_login_at = _utcnow_aware()
-    await db.flush()
-    return account, server, member, token
+    return result.account, result.server, result.member, result.session_token
 
 
 async def _bootstrap_better_auth_account(
     db: AsyncSession,
     *,
     external_user_id: str,
-    email: str | None = None,
-    display_name: str | None = None,
+    name: object,
 ) -> tuple[Account, Server, Member, str]:
-    account_name = _better_auth_account_name(external_user_id)
-    visible_name = _better_auth_display_name(email=email, display_name=display_name, account_name=account_name)
-
-    result = await db.execute(select(Account).where(Account.name == account_name))
-    account = result.scalar_one_or_none()
-    server = None
-    member = None
-
-    if account:
-        server_result = await db.execute(select(Server).where(Server.id == account.server_id))
-        server = server_result.scalar_one_or_none()
-        member_result = await db.execute(select(Member).where(Member.id == account.member_id))
-        member = member_result.scalar_one_or_none()
-
-    if not account or not server or not member:
-        server = Server(id=uuid.uuid4(), name=_better_auth_personal_server_name(visible_name))
-        db.add(server)
-        await db.flush()
-
-        member = Member(
-            id=uuid.uuid4(),
-            server_id=server.id,
-            kind="human",
-            display_name=visible_name,
-            status="online",
-        )
-        db.add(member)
-        await db.flush()
-
-        if account:
-            account.server_id = server.id
-            account.member_id = member.id
-        else:
-            account = Account(
-                name=account_name,
-                display_name=visible_name,
-                server_id=server.id,
-                member_id=member.id,
-            )
-            db.add(account)
-            await db.flush()
-
-    member.status = "online"
-    account.display_name = visible_name
-    membership = await ensure_account_membership(
+    result = await bootstrap_account(
         db,
-        account=account,
-        server=server,
-        member=member,
-        default_role="owner",
+        auth_subject=_better_auth_subject(external_user_id),
+        name=name,
     )
-    if membership.role != "owner":
-        membership.role = "owner"
-    token = f"sk_session_{secrets.token_urlsafe(32)}"
-    account.session_token_hash = _hash_token(token)
-    account.last_login_at = _utcnow_aware()
-    await db.flush()
-    return account, server, member, token
+    return result.account, result.server, result.member, result.session_token
 
 
 async def _resolve_human_actor(
@@ -658,14 +531,7 @@ async def _resolve_human_actor(
     if membership_row:
         _membership, viewer = membership_row
     else:
-        member_result = await db.execute(
-            select(Member).where(
-                Member.id == account.member_id,
-                Member.server_id == server.id,
-                Member.kind == "human",
-            )
-        )
-        viewer = member_result.scalar_one_or_none()
+        viewer = None
     if not viewer:
         if required:
             raise HTTPException(401, f"Login required for {role}")
@@ -682,35 +548,15 @@ async def _resolve_human_actor(
     except ValueError:
         actor_id = None
 
-    if actor_id:
-        actor_result = await db.execute(
-            select(Member).where(
-                Member.id == actor_id,
-                Member.server_id == server.id,
-                Member.kind == "human",
-            )
-        )
-        actor = actor_result.scalar_one_or_none()
-    else:
-        display_name = actor_ref.lstrip("@").strip()
-        if not display_name:
-            raise HTTPException(400, "Invalid actor reference")
-        actor_result = await db.execute(
-            select(Member).where(
-                Member.server_id == server.id,
-                Member.kind == "human",
-                func.lower(Member.display_name) == display_name.lower(),
-            )
-        )
-        candidates = list(actor_result.scalars().all())
-        if len(candidates) > 1:
-            raise HTTPException(400, "Ambiguous actor reference")
-        actor = candidates[0] if candidates else None
-
-    if not actor:
+    if actor_id and actor_id != viewer.id:
         raise HTTPException(404, "Actor not found")
-    if actor.id != viewer.id:
-        raise HTTPException(403, "Actor must match the current account")
+    if not actor_id:
+        try:
+            actor_name = normalize_handle(actor_ref.lstrip("@")).handle_key
+        except MemberIdentityError as error:
+            raise HTTPException(400, "Invalid actor reference") from error
+        if actor_name != viewer.handle_key:
+            raise HTTPException(404, "Actor not found")
     return viewer
 
 
@@ -723,7 +569,7 @@ def _ensure_memory_actor_matches_viewer(body: dict, viewer: Member) -> None:
     if not explicit_actor:
         return
     actor_ref = str(explicit_actor).strip().lstrip("@")
-    if actor_ref not in {str(viewer.id), viewer.display_name}:
+    if actor_ref not in {str(viewer.id), viewer.handle}:
         raise HTTPException(403, "Memory actor must match the current account")
 
 
@@ -731,12 +577,13 @@ async def _serialize_account(db: AsyncSession, account: Account, server: Server,
     return {
         "account": {
             "id": str(account.id),
-            "name": account.name,
-            "displayName": account.display_name or account.name,
+            "name": member.handle,
+            "displayName": account.display_name,
         },
         "server": {
             "id": str(server.id),
             "name": server.name,
+            "serverHandle": server.server_handle,
         },
         "member": await serialize_member(db, member),
         "memberships": await list_account_memberships(db, account=account),
@@ -753,7 +600,7 @@ async def _api_key_owner(db: AsyncSession, api_key: ApiKey) -> dict | None:
         result = await db.execute(select(Member).where(Member.id == api_key.resource_id))
         member = result.scalar_one_or_none()
         if member:
-            return {"id": str(member.id), "name": member.display_name, "type": member.kind}
+            return {"id": str(member.id), "name": member.handle, "type": member.kind}
     return None
 
 
@@ -770,17 +617,35 @@ async def _serialize_api_key(db: AsyncSession, api_key: ApiKey) -> dict:
     }
 
 
-async def _parse_mentions(db: AsyncSession, server: Server, content: str) -> list[uuid.UUID]:
-    handles = sorted({match.group(1) for match in MENTION_RE.finditer(content or "")})
-    if not handles:
-        return []
-    result = await db.execute(
-        select(Member.id).where(
-            Member.server_id == server.id,
-            Member.display_name.in_(handles),
-        )
+async def _parse_mentions(
+    db: AsyncSession,
+    channel: Channel,
+    content: str,
+    *,
+    selected_member_ids: list[uuid.UUID] | None = None,
+) -> list[uuid.UUID]:
+    roster = await load_channel_roster(db, channel_id=channel.id)
+    return resolve_channel_mentions(
+        content,
+        roster,
+        selected_member_ids=selected_member_ids or (),
     )
-    return list(result.scalars().all())
+
+
+def _parse_selected_mention_ids(raw: object) -> list[uuid.UUID]:
+    if raw in (None, ""):
+        return []
+    if not isinstance(raw, list):
+        raise HTTPException(400, "mentionMemberIds must be an array")
+    parsed: list[uuid.UUID] = []
+    for value in raw:
+        try:
+            member_id = uuid.UUID(str(value))
+        except ValueError:
+            raise HTTPException(400, "Invalid mentionMemberIds")
+        if member_id not in parsed:
+            parsed.append(member_id)
+    return parsed
 
 
 def _display_channel_target(channel: Channel) -> str:
@@ -790,7 +655,7 @@ def _display_channel_target(channel: Channel) -> str:
 
 
 def _message_target_for_runtime(channel: Channel, sender: Member, *, thread_ref: str | None = None) -> str:
-    base = f"dm:@{sender.display_name}" if channel.kind == "dm" else _display_channel_target(channel)
+    base = f"dm:@{sender.handle}" if channel.kind == "dm" else _display_channel_target(channel)
     return f"{base}:{thread_ref}" if thread_ref else base
 
 
@@ -962,6 +827,34 @@ async def login_account(request: Request, _auth: None = Depends(verify_public_ap
     raise HTTPException(410, "Legacy passwordless authentication is disabled")
 
 
+def _name_availability_payload(raw_name: object, *, available: bool = True) -> dict:
+    try:
+        normalized = normalize_handle(raw_name)
+    except MemberIdentityError as error:
+        return {
+            "valid": False,
+            "available": False,
+            "canonicalName": None,
+            "canonicalReference": None,
+            "reasonCode": error.code,
+        }
+    return {
+        "valid": True,
+        "available": available,
+        "canonicalName": normalized.handle,
+        "canonicalReference": f"@{normalized.handle}",
+        "reasonCode": None if available else "NAME_UNAVAILABLE",
+    }
+
+
+@router.get("/auth/name-preview")
+async def preview_signup_name(
+    name: str = Query(""),
+    _auth: None = Depends(verify_public_api_key),
+):
+    return _name_availability_payload(name)
+
+
 @router.get("/auth/me")
 async def current_account(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
     context = await _resolve_active_server_context(db, request)
@@ -975,8 +868,7 @@ async def bridge_better_auth_session(request: Request, _auth: None = Depends(ver
     account, server, member, token = await _bootstrap_better_auth_account(
         db,
         external_user_id=body.get("userId"),
-        email=body.get("email"),
-        display_name=body.get("name") or body.get("displayName"),
+        name=body.get("name"),
     )
     await db.commit()
     payload = await _serialize_account(db, account, server, member)
@@ -984,21 +876,32 @@ async def bridge_better_auth_session(request: Request, _auth: None = Depends(ver
     return payload
 
 
+@router.get("/members/agents/name-availability")
+async def agent_name_availability(
+    request: Request,
+    name: str = Query(""),
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    preview = _name_availability_payload(name)
+    if not preview["valid"]:
+        return preview
+    normalized = normalize_handle(name)
+    result = await db.execute(
+        select(Member.id).where(
+            Member.origin_server_id == context.server.id,
+            Member.handle_key == normalized.handle_key,
+            or_(Member.kind == "human", Member.deleted_at.is_(None)),
+        )
+    )
+    return _name_availability_payload(name, available=result.scalar_one_or_none() is None)
+
+
 @router.post("/servers")
 async def create_server(request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db)):
-    account = await _current_account(db, request)
-    if not account:
-        raise HTTPException(401, "Login required for Server creation")
-    body = await request.json()
-    server, member, _membership = await create_server_for_account(
-        db,
-        account=account,
-        name=body.get("name"),
-    )
-    await db.commit()
-    payload = await _serialize_account(db, account, server, member)
-    payload["created"] = True
-    return payload
+    raise HTTPException(410, "Each Account has exactly one home Server")
 
 
 @router.post("/server-invites")
@@ -1150,9 +1053,9 @@ def _serialize_workspace(
     if agent:
         agent_payload = {
             "id": str(agent.id),
-            "name": agent.display_name,
-            "displayName": agent.display_name,
-            "handle": f"@{agent.display_name}",
+            "name": agent.handle,
+            "handle": agent.handle,
+            "reference": f"@{agent.handle}",
             "kind": agent.kind,
             "type": agent.kind,
             "status": agent.status,
@@ -1162,7 +1065,6 @@ def _serialize_workspace(
             "computerId": member_computer_id(agent) or str(workspace.computer_id),
             "workspaceId": str(workspace.id),
             "profile": {
-                "displayName": agent.display_name,
                 "description": agent.description,
                 "avatarUrl": agent.avatar_url,
             },
@@ -1172,8 +1074,8 @@ def _serialize_workspace(
         "workspaceId": str(workspace.id),
         "computerId": str(workspace.computer_id),
         "agentId": str(workspace.agent_id),
-        "agentName": agent.display_name if agent else None,
-        "agentHandle": f"@{agent.display_name}" if agent else None,
+        "agentName": agent.handle if agent else None,
+        "agentHandle": f"@{agent.handle}" if agent else None,
         "agentStatus": agent.status if agent else None,
         "backend": member_backend(agent) if agent else None,
         "agent": agent_payload,
@@ -1399,7 +1301,7 @@ async def _serialize_activity(db: AsyncSession, activity: ActivityLog) -> dict:
         "id": str(activity.id),
         "serverId": str(activity.server_id),
         "agentId": str(activity.agent_id),
-        "agentName": agent.display_name if agent else None,
+        "agentName": agent.handle if agent else None,
         "type": activity.kind,
         "description": activity.description,
         "details": activity.details or {},
@@ -1463,7 +1365,7 @@ async def _serialize_reminder(db: AsyncSession, reminder: Reminder) -> dict:
         "id": str(reminder.id),
         "serverId": str(reminder.server_id),
         "agentId": str(reminder.agent_id),
-        "agentName": agent.display_name if agent else None,
+        "agentName": agent.handle if agent else None,
         "title": reminder.title,
         "description": reminder.description,
         "fireAt": reminder.fire_at.isoformat() if reminder.fire_at else None,
@@ -1521,7 +1423,7 @@ async def _serialize_public_message(
         "id": str(msg.id),
         "shortId": msg.short_id,
         "channelId": str(msg.channel_id),
-        "sender": f"@{sender.display_name}" if sender else "unknown",
+        "sender": f"@{sender.handle}" if sender else "unknown",
         "senderId": str(msg.sender_id),
         "senderType": sender.kind if sender else "unknown",
         "senderMember": sender_member,
@@ -1575,7 +1477,7 @@ async def _serialize_public_reactions(
             "id": str(reaction.id),
             "reaction": reaction.reaction,
             "memberId": str(reaction.member_id),
-            "member": f"@{member.display_name}" if member else None,
+            "member": f"@{member.handle}" if member else None,
             "createdAt": reaction.created_at.isoformat() if reaction.created_at else None,
         })
 
@@ -1698,8 +1600,9 @@ async def _dm_channel_payload(
         .where(
             ChannelMember.channel_id == channel.id,
             Member.id != viewer.id,
+            Member.deleted_at.is_(None),
         )
-        .order_by(Member.kind.desc(), Member.display_name)
+        .order_by(Member.kind.desc(), Member.handle)
         .limit(1)
     )
     peer = peer_result.scalar_one_or_none()
@@ -1707,7 +1610,7 @@ async def _dm_channel_payload(
         "id": str(channel.id),
         "name": channel.name,
         "type": "dm",
-        "displayName": f"DM @{peer.display_name}" if peer else "DM",
+        "displayName": f"DM @{peer.handle}" if peer else "DM",
         "peer": await serialize_member(db, peer) if peer else None,
         **_channel_read_state_payload(
             channel,
@@ -1797,10 +1700,10 @@ async def _serialize_task(
         "title": task.title,
         "description": task.description,
         "status": task.status,
-        "creator": creator.display_name if creator else "unknown",
+        "creator": creator.handle if creator else "unknown",
         "creatorId": str(task.creator_id),
         "creatorMember": creator_member,
-        "assignee": assignee.display_name if assignee else None,
+        "assignee": assignee.handle if assignee else None,
         "assigneeId": str(task.assignee_id) if task.assignee_id else None,
         "assigneeMember": assignee_member,
         "runs": [serialize_task_run(run) for run in runs],
@@ -2059,6 +1962,7 @@ async def update_chat_read_cursor(
             last_read_seq=last_read_seq,
         )
         await db.commit()
+        await _push_committed_events(db, server_id=context.server.id)
         return {
             "cursor": serialize_channel_read_cursor(cursor, scope_kind="dm" if channel.kind == "dm" else "channel")
         }
@@ -2282,6 +2186,13 @@ async def create_channel_message(
         member_in_channel = await is_channel_member(db, channel_id=channel.id, member_id=context.member.id)
         ensure_channel_access(channel, context.member.id, is_channel_member=member_in_channel)
         sender = context.member if not body.get("sender") else await _resolve_human_actor(db, server, request, body.get("sender"), role="message sender")
+        if not member_in_channel:
+            await add_channel_member_record(
+                db,
+                channel_id=channel.id,
+                member_id=sender.id,
+                actor_id=sender.id,
+            )
         parent_id = None
         thread_target_short_id = None
         thread_ref = body.get("threadId") or body.get("parentId")
@@ -2316,7 +2227,12 @@ async def create_channel_message(
             parent_id=parent_id,
             content=content,
             channel_type="thread" if parent_id else channel.kind,
-            mentions=await _parse_mentions(db, server, content),
+            mentions=await _parse_mentions(
+                db,
+                channel,
+                content,
+                selected_member_ids=_parse_selected_mention_ids(body.get("mentionMemberIds")),
+            ),
         )
         db.add(msg)
         await db.flush()
@@ -2328,7 +2244,7 @@ async def create_channel_message(
             server,
             sender,
             "supervisor_message_sent",
-            f"@{sender.display_name} sent supervisor message to #{channel.name}",
+            f"@{sender.handle} sent supervisor message to #{channel.name}",
             {
                 "traceId": trace.trace_id,
                 "messageId": str(msg.id),
@@ -2362,7 +2278,7 @@ async def create_channel_message(
             "seq": msg.seq,
             "channelId": str(channel.id),
             "channel": f"#{channel.name}",
-            "sender": f"@{sender.display_name}",
+            "sender": f"@{sender.handle}",
             "senderId": str(sender.id),
             "senderType": sender.kind,
             "senderMember": await serialize_member(db, sender),
@@ -2420,7 +2336,7 @@ async def add_public_message_reaction(
             server,
             actor,
             "message_reaction_added",
-            f"@{actor.display_name} reacted {reaction_text} to message {message.short_id}",
+            f"@{actor.handle} reacted {reaction_text} to message {message.short_id}",
             {"messageId": str(message.id), "shortId": message.short_id, "reaction": reaction_text},
             channel_id=message.channel_id,
         )
@@ -2475,7 +2391,7 @@ async def remove_public_message_reaction(
             server,
             actor,
             "message_reaction_removed",
-            f"@{actor.display_name} removed {reaction_text} from message {message.short_id}",
+            f"@{actor.handle} removed {reaction_text} from message {message.short_id}",
             {"messageId": str(message.id), "shortId": message.short_id, "reaction": reaction_text},
             channel_id=message.channel_id,
         )
@@ -2543,7 +2459,7 @@ async def _saved_message_context(
         "href": f"/chat/{channel_segment}?{message_query}",
         "channel": _display_channel_target(channel),
         "channelId": str(channel.id),
-        "sender": sender.display_name if sender else None,
+        "sender": sender.handle if sender else None,
         "timestamp": message.created_at.isoformat() if message.created_at else None,
     }
 
@@ -3170,12 +3086,12 @@ async def create_task_assignment(
         server,
         actor,
         "supervisor_task_assigned",
-        f"@{actor.display_name} assigned task #{task.task_number} to @{assignee.display_name}",
+        f"@{actor.handle} assigned task #{task.task_number} to @{assignee.handle}",
         {
             "taskNumber": task.task_number,
             "title": task.title,
             "status": task.status,
-            "assignee": f"@{assignee.display_name}",
+            "assignee": f"@{assignee.handle}",
             "assigneeId": str(assignee.id),
             "targetAgentId": str(assignee.id),
             "target": target,
@@ -3492,9 +3408,9 @@ async def create_task(request: Request, _auth: None = Depends(verify_public_api_
     channel_id = channel.id
     channel_target = f"#{channel.name}" if channel.kind == "public" else channel.name
     creator_id = creator.id
-    creator_name = creator.display_name
+    creator_name = creator.handle
     assignee_id = assignee.id if assignee else None
-    assignee_name = assignee.display_name if assignee else None
+    assignee_name = assignee.handle if assignee else None
     assignee_kind = assignee.kind if assignee else None
     has_runtime_assignment = bool(assignee_id and assignee_kind == "agent")
     if has_runtime_assignment and body.get("autoStart", True) is not True:
@@ -3648,13 +3564,13 @@ async def update_task(task_id: str, request: Request, _auth: None = Depends(veri
         server,
         actor,
         "supervisor_task_updated",
-        f"@{actor.display_name} updated task #{task.task_number}",
+        f"@{actor.handle} updated task #{task.task_number}",
         {
             "taskNumber": task.task_number,
             "title": task.title,
             "status": task.status,
             "updates": body,
-            "assignee": f"@{assignee.display_name}" if assignee else None,
+            "assignee": f"@{assignee.handle}" if assignee else None,
             "assigneeId": str(assignee.id) if assignee else None,
             "targetAgentId": str(assignee.id) if assignee and assignee.kind == "agent" else None,
         },
@@ -3713,7 +3629,7 @@ async def delete_task(
             server,
             actor,
             "supervisor_task_deleted",
-            f"@{actor.display_name} deleted task #{deleted_task_number}",
+            f"@{actor.handle} deleted task #{deleted_task_number}",
             {"taskId": str(deleted_task_id), "tombstone": tombstone},
             channel_id=deleted_channel_id,
             task_id=None,
@@ -3792,7 +3708,7 @@ async def delete_computer(
         server,
         actor,
         "workspace_lifecycle",
-        f"@{actor.display_name} deleted computer {computer.name}",
+        f"@{actor.handle} deleted computer {computer.name}",
         {
             "computerId": str(computer.id),
             "computerName": computer.name,
@@ -3901,7 +3817,7 @@ async def global_search(
             "href": f"/chat/{channel_segment}?{message_query}" if ch else None,
             "channel": _display_channel_target(ch) if ch else None,
             "channelId": str(ch.id) if ch else None,
-            "sender": sender.display_name if sender else None,
+            "sender": sender.handle if sender else None,
             "timestamp": msg.created_at.isoformat() if msg.created_at else None,
         })
 
@@ -3932,9 +3848,9 @@ async def global_search(
         })
 
     member_stmt = select(Member).where(
-        Member.server_id == server.id,
+        Member.origin_server_id == server.id,
         or_(
-            Member.display_name.ilike(pattern, escape="\\"),
+            Member.handle.ilike(pattern, escape="\\"),
             Member.description.ilike(pattern, escape="\\"),
         ),
     ).limit(requested_limit)
@@ -3942,9 +3858,9 @@ async def global_search(
         results.append({
             "type": "member",
             "id": str(member.id),
-            "title": member.display_name,
+            "title": member.handle,
             "description": member.description,
-            "handle": f"@{member.display_name}",
+            "handle": f"@{member.handle}",
             "kind": member.kind,
             "href": f"/members?member={member.id}",
         })
@@ -4280,7 +4196,7 @@ async def delete_file(
             server,
             actor,
             "supervisor_file_deleted",
-            f"@{actor.display_name} deleted file {deleted_original_name or deleted_file_name}",
+            f"@{actor.handle} deleted file {deleted_original_name or deleted_file_name}",
             {
                 "fileId": str(deleted_file_id),
                 "tombstone": tombstone,
@@ -4393,7 +4309,22 @@ async def list_members(request: Request, _auth: None = Depends(verify_public_api
     server = context.server
 
     result = await db.execute(
-        select(Member).options(noload("*")).where(Member.server_id == server.id)
+        select(Member).options(noload("*")).where(
+            Member.deleted_at.is_(None),
+            or_(
+                and_(Member.kind == "agent", Member.origin_server_id == server.id),
+                and_(
+                    Member.kind == "human",
+                    exists(
+                        select(ServerMembership.id).where(
+                            ServerMembership.server_id == server.id,
+                            ServerMembership.account_id == Member.account_id,
+                            ServerMembership.status == "active",
+                        )
+                    ),
+                ),
+            ),
+        )
     )
     members = list(result.scalars().all())
 
@@ -4414,10 +4345,24 @@ async def list_members(request: Request, _auth: None = Depends(verify_public_api
 
 
 def _apply_member_patch(member: Member, body: dict) -> None:
+    immutable_name_fields = {"name", "handle", "displayName"}.intersection(body)
+    if immutable_name_fields:
+        raise HTTPException(
+            400,
+            detail={"reasonCode": "NAME_IMMUTABLE", "message": "Member Name cannot be changed"},
+        )
     if "status" in body:
         member.status = body["status"]
     if "description" in body:
-        member.description = body["description"]
+        if member.kind != "agent":
+            raise HTTPException(400, "Human members do not have a Description")
+        try:
+            member.description = normalize_description(body["description"])
+        except MemberIdentityError as error:
+            raise HTTPException(
+                400,
+                detail={"reasonCode": error.code, "message": str(error)},
+            ) from error
     if "avatarUrl" in body and member.kind == "human":
         avatar_url = body["avatarUrl"]
         member.avatar_url = str(avatar_url).strip() if avatar_url else None
@@ -4481,7 +4426,7 @@ async def update_member(member_id: str, request: Request, _auth: None = Depends(
         server,
         actor,
         "supervisor_member_updated",
-        f"@{actor.display_name} updated @{member.display_name}",
+        f"@{actor.handle} updated @{member.handle}",
         {
             "memberId": str(member.id),
             "status": member.status,
@@ -4514,93 +4459,46 @@ async def delete_member(
     actor = await _resolve_human_actor(db, server, request, None, role="member deletion actor")
     workspaces_result = await db.execute(select(AgentWorkspace).where(AgentWorkspace.agent_id == member.id))
     workspaces = list(workspaces_result.scalars().all())
-    blocking_statuses = _delete_blocking_workspace_statuses(workspaces)
-    if blocking_statuses:
-        raise HTTPException(409, f"Stop runtime before deleting agent; blocking statuses: {', '.join(blocking_statuses)}")
-
     deleted_member_id = member.id
-    deleted_member_name = member.display_name
-    dm_channel_ids = await _member_dm_channel_ids(db, server, member.id)
-    authored_messages_result = await db.execute(
-        select(Message.id)
-        .join(Channel, Channel.id == Message.channel_id)
-        .where(Channel.server_id == server.id, Message.sender_id == member.id)
-    )
-    authored_message_ids = list(authored_messages_result.scalars().all())
-    expanded_message_ids = await _message_ids_for_deletion(db, authored_message_ids)
-    task_ids_result = await db.execute(select(Task.id).where(Task.creator_id == member.id))
-    created_task_ids = list(task_ids_result.scalars().all())
-    file_entries = await _file_entries_for_parent_deletion(
+    deleted_member_name = member.handle
+    channel_mutations = await remove_agent_from_all_channels(
         db,
-        server_id=server.id,
-        channel_ids=dm_channel_ids,
-        message_ids=expanded_message_ids,
-        uploaded_by=member.id,
+        agent=member,
+        actor_id=actor.id,
     )
-    quarantined_files = _quarantine_file_entries_for_deletion(file_entries)
+    await db.execute(
+        delete(ApiKey).where(
+            ApiKey.server_id == server.id,
+            ApiKey.resource_type == "agent",
+            ApiKey.resource_id == member.id,
+        )
+    )
+    for workspace in workspaces:
+        await db.delete(workspace)
 
-    try:
-        deleted_channels = await _delete_channels_by_id(db, dm_channel_ids)
-        deleted_messages = await _delete_messages_by_id(db, authored_message_ids)
-        await _delete_saved_item_references(
-            db,
-            task_ids=created_task_ids,
-            file_ids=[entry.id for entry in file_entries],
-        )
-        await db.execute(delete(Task).where(Task.creator_id == member.id))
-        await db.execute(update(Task).where(Task.assignee_id == member.id).values(assignee_id=None))
-        await db.execute(update(Channel).where(Channel.creator_id == member.id).values(creator_id=None))
-        await db.execute(
-            update(ThreadSummary)
-            .where(ThreadSummary.requested_agent_id == member.id)
-            .values(requested_agent_id=None)
-        )
-        await db.execute(
-            update(ThreadSummary)
-            .where(ThreadSummary.updated_by == member.id)
-            .values(updated_by=None)
-        )
-        await db.execute(
-            delete(ApiKey).where(
-                ApiKey.server_id == server.id,
-                ApiKey.resource_type == "agent",
-                ApiKey.resource_id == member.id,
-            )
-        )
-        for workspace in workspaces:
-            await db.delete(workspace)
-        await db.delete(member)
-        await _record_activity(
-            db,
-            server,
-            actor,
-            "supervisor_member_updated",
-            f"@{actor.display_name} deleted agent @{deleted_member_name}",
-            {
-                "memberId": str(deleted_member_id),
-                "memberName": deleted_member_name,
-                "action": "delete",
-                "deletedWorkspaces": len(workspaces),
-                "deletedDmChannels": deleted_channels["channels"],
-                "deletedMessages": deleted_channels["messages"]
-                + deleted_messages["messages"],
-                "deletedTasks": deleted_channels["tasks"]
-                + deleted_messages["tasks"]
-                + len(created_task_ids),
-                "deletedFiles": len(file_entries),
-                "storagePolicy": "quarantine-then-delete",
-            },
-        )
-        await db.commit()
-    except BaseException:
-        await _rollback_and_restore_quarantined_file_blobs(
-            db,
-            quarantined_files,
-            operation="Agent deletion",
-        )
-        raise
-
-    storage_cleanup = _purge_quarantined_file_blobs(quarantined_files)
+    member.deleted_at = _utcnow_aware()
+    member.status = "deleted"
+    member.description = None
+    member.computer_id = None
+    member.backend = None
+    member.skills = []
+    member.config = {}
+    await _record_activity(
+        db,
+        server,
+        actor,
+        "supervisor_member_updated",
+        f"@{actor.handle} deleted agent @{deleted_member_name}",
+        {
+            "memberId": str(deleted_member_id),
+            "memberName": deleted_member_name,
+            "action": "tombstone",
+            "deletedWorkspaces": len(workspaces),
+            "removedChannelMemberships": len(channel_mutations),
+            "historicalAttributionPreserved": True,
+        },
+    )
+    await db.commit()
     await _push_committed_events(db, server_id=server.id)
     return {
         "ok": True,
@@ -4608,11 +4506,8 @@ async def delete_member(
         "memberId": str(deleted_member_id),
         "memberName": deleted_member_name,
         "workspaces": len(workspaces),
-        "dmChannels": deleted_channels["channels"],
-        "messages": deleted_channels["messages"] + deleted_messages["messages"],
-        "tasks": deleted_channels["tasks"] + deleted_messages["tasks"] + len(created_task_ids),
-        "files": len(file_entries),
-        "storageCleanup": storage_cleanup,
+        "channelMemberships": len(channel_mutations),
+        "historicalAttributionPreserved": True,
     }
 
 
@@ -4661,7 +4556,7 @@ async def create_public_reminder(request: Request, _auth: None = Depends(verify_
         server,
         agent,
         "supervisor_reminder_created",
-        f"Supervisor scheduled reminder for @{agent.display_name}: {title}",
+        f"Supervisor scheduled reminder for @{agent.handle}: {title}",
         {"reminderId": str(reminder.id), "fireAt": reminder.fire_at.isoformat()},
         channel_id=channel_id,
     )
@@ -4820,7 +4715,7 @@ async def control_workspace_lifecycle(
         .join(Computer, Computer.id == AgentWorkspace.computer_id)
         .where(
             AgentWorkspace.id == parsed_workspace_id,
-            Member.server_id == server.id,
+            Member.origin_server_id == server.id,
             Computer.server_id == server.id,
         )
     )
@@ -4842,7 +4737,7 @@ async def control_workspace_lifecycle(
             server,
             agent,
             "workspace_lifecycle",
-            f"@{agent.display_name} runtime configuration failed on {computer.name}",
+            f"@{agent.handle} runtime configuration failed on {computer.name}",
             {
                 "computerId": str(computer.id),
                 "workspaceId": str(workspace.id),
@@ -4885,7 +4780,7 @@ async def control_workspace_lifecycle(
         server,
         agent,
         "workspace_lifecycle",
-        f"@{agent.display_name} runtime {action} requested on {computer.name}",
+        f"@{agent.handle} runtime {action} requested on {computer.name}",
         {
             "computerId": str(computer.id),
             "workspaceId": str(workspace.id),
@@ -4935,7 +4830,7 @@ async def delete_workspace(
         .join(Computer, Computer.id == AgentWorkspace.computer_id)
         .where(
             AgentWorkspace.id == parsed_workspace_id,
-            Member.server_id == server.id,
+            Member.origin_server_id == server.id,
             Computer.server_id == server.id,
         )
     )
@@ -4956,7 +4851,7 @@ async def delete_workspace(
         server,
         agent,
         "workspace_lifecycle",
-        f"@{agent.display_name} workspace deleted on {computer.name}",
+        f"@{agent.handle} workspace deleted on {computer.name}",
         {
             "computerId": str(computer.id),
             "workspaceId": str(parsed_workspace_id),
@@ -5073,14 +4968,26 @@ async def create_agent(
     require_admin_role(context.membership)
     server = context.server
     body = await request.json()
-    name = body.get("name")
-    if not name:
-        raise HTTPException(400, "Missing name")
+    try:
+        normalized_name = normalize_handle(body.get("name"))
+        description = normalize_description(body.get("description"))
+    except MemberIdentityError as error:
+        raise HTTPException(
+            400,
+            detail={"reasonCode": error.code, "message": str(error)},
+        ) from error
     existing_agent = (await db.execute(
-        select(Member).where(Member.server_id == server.id, Member.display_name == name)
+        select(Member).where(
+            Member.origin_server_id == server.id,
+            Member.handle_key == normalized_name.handle_key,
+            or_(Member.kind == "human", Member.deleted_at.is_(None)),
+        )
     )).scalar_one_or_none()
     if existing_agent:
-        raise HTTPException(409, f"Member name {name} already exists")
+        raise HTTPException(
+            409,
+            detail={"reasonCode": "NAME_UNAVAILABLE", "message": "Name is already in use"},
+        )
 
     computer_id = body.get("computerId")
     if not computer_id:
@@ -5123,9 +5030,12 @@ async def create_agent(
         raise HTTPException(400, str(exc)) from exc
 
     agent = Member(
-        server_id=server.id,
+        origin_server_id=server.id,
+        account_id=None,
         kind="agent",
-        display_name=name,
+        handle=normalized_name.handle,
+        handle_key=normalized_name.handle_key,
+        description=description,
         status=body.get("status", "offline"),
         computer_id=computer_id,
         backend=body.get("backend") or runtime,
@@ -5140,7 +5050,16 @@ async def create_agent(
         },
     )
     db.add(agent)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as error:
+        await db.rollback()
+        if integrity_constraint_name(error) == "uq_members_origin_active_name":
+            raise HTTPException(
+                409,
+                detail={"reasonCode": "NAME_UNAVAILABLE", "message": "Name is already in use"},
+            ) from error
+        raise
 
     workspace = AgentWorkspace(
         computer_id=computer_id,
@@ -5173,11 +5092,11 @@ async def create_agent(
             server,
             emit_actor,
             "supervisor_member_created",
-            f"@{emit_actor.display_name} created agent @{agent.display_name}",
+            f"@{emit_actor.handle} created agent @{agent.handle}",
             {
                 "memberId": str(agent.id),
                 "agentId": str(agent.id),
-                "memberName": agent.display_name,
+                "memberName": agent.handle,
                 "computerId": str(computer_id),
             },
         )
@@ -5231,23 +5150,25 @@ async def create_channel(
     )
     db.add(channel)
     await db.flush()
-
-    db.add(ChannelMember(channel_id=channel.id, member_id=creator.id))
-
-    member_ids = body.get("memberIds") or []
-    for mid in member_ids:
+    initial_member_ids = [creator.id]
+    for mid in body.get("memberIds") or []:
         try:
             parsed_mid = uuid.UUID(mid)
         except ValueError:
             continue
-        member = await db.execute(
-            select(Member).where(Member.id == parsed_mid, Member.server_id == server.id)
+        if parsed_mid not in initial_member_ids:
+            initial_member_ids.append(parsed_mid)
+    for member_id in initial_member_ids:
+        await add_channel_member_record(
+            db,
+            channel_id=channel.id,
+            member_id=member_id,
+            actor_id=creator.id,
         )
-        if member.scalar_one_or_none():
-            db.add(ChannelMember(channel_id=channel.id, member_id=parsed_mid))
 
     await db.commit()
     await db.refresh(channel)
+    await _push_committed_events(db, server_id=server.id)
     return {
         "created": True,
         "channel": {
@@ -5299,7 +5220,7 @@ async def delete_channel(
             server,
             actor,
             "supervisor_member_updated",
-            f"@{actor.display_name} deleted channel #{deleted_channel_name}",
+            f"@{actor.handle} deleted channel #{deleted_channel_name}",
             {
                 "channelId": str(deleted_channel_id),
                 "channelName": deleted_channel_name,
@@ -5363,29 +5284,19 @@ async def add_channel_member(
     body = await request.json()
     parsed_member_ids = _channel_member_ids_from_body(body)
 
-    members = await db.execute(
-        select(Member).where(Member.id.in_(parsed_member_ids), Member.server_id == server.id)
-    )
-    existing_members = {member.id for member in members.scalars().all()}
-    missing_member_ids = [member_id for member_id in parsed_member_ids if member_id not in existing_members]
-    if missing_member_ids:
-        raise HTTPException(404, "Member not found")
-
-    existing = await db.execute(
-        select(ChannelMember.member_id).where(
-            ChannelMember.channel_id == parsed_channel_id,
-            ChannelMember.member_id.in_(parsed_member_ids),
-        )
-    )
-    existing_member_ids = {member_id for (member_id,) in existing.all()}
     added_member_ids: list[uuid.UUID] = []
     for parsed_member_id in parsed_member_ids:
-        if parsed_member_id in existing_member_ids:
-            continue
-        db.add(ChannelMember(channel_id=parsed_channel_id, member_id=parsed_member_id))
-        added_member_ids.append(parsed_member_id)
+        mutation = await add_channel_member_record(
+            db,
+            channel_id=parsed_channel_id,
+            member_id=parsed_member_id,
+            actor_id=context.member.id,
+        )
+        if mutation.changed:
+            added_member_ids.append(parsed_member_id)
 
     await db.commit()
+    await _push_committed_events(db, server_id=server.id)
     if len(parsed_member_ids) == 1:
         parsed_member_id = parsed_member_ids[0]
         response = {
@@ -5430,19 +5341,21 @@ async def remove_channel_member(
     if channel.kind == "dm":
         raise HTTPException(403, "DM membership is managed by the DM lifecycle")
 
-    existing = await db.execute(
-        select(ChannelMember).where(
-            ChannelMember.channel_id == parsed_channel_id,
-            ChannelMember.member_id == parsed_member_id,
-        )
+    mutation = await remove_channel_member_record(
+        db,
+        channel_id=parsed_channel_id,
+        member_id=parsed_member_id,
+        actor_id=context.member.id,
+        strict=True,
     )
-    cm = existing.scalar_one_or_none()
-    if not cm:
-        return {"removed": False, "reason": "not_member"}
-
-    await db.delete(cm)
     await db.commit()
-    return {"removed": True, "channelId": str(parsed_channel_id), "memberId": str(parsed_member_id)}
+    await _push_committed_events(db, server_id=server.id)
+    return {
+        "removed": mutation.changed,
+        "channelId": str(parsed_channel_id),
+        "memberId": str(parsed_member_id),
+        "rosterRevision": mutation.roster_revision,
+    }
 
 
 # ── DM ───────────────────────────────────────────────────────
@@ -5470,28 +5383,12 @@ async def list_channel_members(
         raise HTTPException(404, "Channel not found")
     await _ensure_member_channel_access(db, channel, context.member.id)
 
-    result = await db.execute(
-        select(ChannelMember).where(ChannelMember.channel_id == parsed_channel_id)
-    )
-    cms = result.scalars().all()
-    member_ids = [cm.member_id for cm in cms]
-    members_result = await db.execute(
-        select(Member).options(noload("*")).where(Member.id.in_(member_ids))
-    )
-    members = list(members_result.scalars().all())
-
-    member_context = await load_member_serialization_context(db, members)
-
-    member_list = [
-        await serialize_member(
-            db,
-            member,
-            _computer=member_context.computers.get(member.computer_id),
-            _workspace_id=member_context.workspace_ids.get(member.id),
-        )
-        for member in members
-    ]
-    return {"members": member_list}
+    roster = await load_channel_roster(db, channel_id=parsed_channel_id)
+    return {
+        "channelId": str(channel.id),
+        "rosterRevision": int(channel.membership_revision or 0),
+        "members": [member.human_payload() for member in roster],
+    }
 
 
 @router.get("/dms")
@@ -5556,6 +5453,8 @@ async def create_or_get_dm(
 
     sender = await _resolve_human_actor(db, server, request, body.get("sender"), role="DM sender")
     peer = await _resolve_member(db, server, peer_name)
+    if not peer:
+        raise HTTPException(404, "DM peer not found")
 
     dm_name = f"dm:{min(str(sender.id), str(peer.id))}-{max(str(sender.id), str(peer.id))}"
     result = await db.execute(
@@ -5572,10 +5471,21 @@ async def create_or_get_dm(
         )
         db.add(channel)
         await db.flush()
-        db.add(ChannelMember(channel_id=channel.id, member_id=sender.id))
-        db.add(ChannelMember(channel_id=channel.id, member_id=peer.id))
+        await add_channel_member_record(
+            db,
+            channel_id=channel.id,
+            member_id=sender.id,
+            actor_id=sender.id,
+        )
+        await add_channel_member_record(
+            db,
+            channel_id=channel.id,
+            member_id=peer.id,
+            actor_id=sender.id,
+        )
         await db.commit()
         await db.refresh(channel)
+        await _push_committed_events(db, server_id=server.id)
 
     return {
         "channel": await _dm_channel_payload(db, channel, sender),

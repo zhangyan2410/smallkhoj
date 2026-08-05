@@ -6,7 +6,8 @@ from typing import Any
 
 from sqlalchemy import select
 
-from models import Channel, ChannelMember, ExternalConnector, ExternalRoute, Member, Server
+from models import Channel, ExternalConnector, ExternalRoute, Member, Server
+from services.channel_membership import add_channel_member
 
 BOOTSTRAP_REFERENCE_NOT_FOUND = "BOOTSTRAP_REFERENCE_NOT_FOUND"
 BOOTSTRAP_REFERENCE_SCOPE_MISMATCH = "BOOTSTRAP_REFERENCE_SCOPE_MISMATCH"
@@ -58,7 +59,11 @@ async def _one(db: Any, model: Any, row_id: uuid.UUID) -> Any | None:
 
 
 def _require_same_server(row: Any, *, server_id: uuid.UUID, label: str) -> None:
-    if getattr(row, "server_id", server_id) != server_id:
+    if isinstance(row, Member) and row.kind == "agent":
+        row_server_id = row.origin_server_id
+    else:
+        row_server_id = getattr(row, "server_id", server_id)
+    if row_server_id != server_id:
         raise BootstrapError(
             BOOTSTRAP_REFERENCE_SCOPE_MISMATCH,
             f"{label} does not belong to the selected server.",
@@ -177,31 +182,6 @@ async def _upsert_feishu_route(
     return route
 
 
-async def _find_channel_membership(
-    db: Any,
-    *,
-    channel_id: uuid.UUID,
-    member_id: uuid.UUID,
-) -> ChannelMember | None:
-    result = await db.execute(
-        select(ChannelMember).where(
-            ChannelMember.channel_id == channel_id,
-            ChannelMember.member_id == member_id,
-        )
-    )
-    return result.scalar_one_or_none()
-
-
-async def _ensure_channel_membership(db: Any, *, channel_id: uuid.UUID, member_id: uuid.UUID) -> ChannelMember:
-    membership = await _find_channel_membership(db, channel_id=channel_id, member_id=member_id)
-    if membership is not None:
-        return membership
-    membership = ChannelMember(channel_id=channel_id, member_id=member_id)
-    db.add(membership)
-    await db.flush()
-    return membership
-
-
 async def bootstrap_initial_release_integrations(
     db: Any,
     request: IntegrationBootstrapRequest,
@@ -226,8 +206,18 @@ async def bootstrap_initial_release_integrations(
         config={"siteUrl": request.jira_site_url.rstrip("/")},
     )
     feishu_route = await _upsert_feishu_route(db, request=request, feishu_connector=feishu_connector)
-    await _ensure_channel_membership(db, channel_id=request.channel_id, member_id=request.creator_id)
-    await _ensure_channel_membership(db, channel_id=request.channel_id, member_id=request.assignee_id)
+    await add_channel_member(
+        db,
+        channel_id=request.channel_id,
+        member_id=request.creator_id,
+        actor_id=request.creator_id,
+    )
+    await add_channel_member(
+        db,
+        channel_id=request.channel_id,
+        member_id=request.assignee_id,
+        actor_id=request.creator_id,
+    )
     return IntegrationBootstrapResult(
         status="ready",
         server=server,
