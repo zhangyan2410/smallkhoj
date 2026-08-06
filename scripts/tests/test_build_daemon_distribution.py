@@ -302,6 +302,9 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertIn(result.sha256, script)
             self.assertIn("private node.exe runtime", script)
             self.assertIn("manifest.json", script)
+            self.assertIn("$env:Path = $binRoot", script)
+            self.assertIn("Aura is ready in this PowerShell", script)
+            self.assertNotIn("Open a new PowerShell window", script)
             self.assertIn("$rootName = 'smallkhoj-daemon-v0.2.0-win32-x64'", script)
             self.assertNotIn("$rootName = 'smallkhoj-daemon-v0.2.0-win32-x64.zip'", script)
             with zipfile.ZipFile(result.artifact) as archive:
