@@ -931,6 +931,7 @@ test("members and computers sidebar entity lists share contained prefab rows", (
 test("member and computer detail surfaces expose contained mobile owners", () => {
   const membersPageSource = readFileSync(new URL("../app/(app)/members/page.tsx", import.meta.url), "utf8")
   const computersPageSource = readFileSync(new URL("../app/(app)/computers/page.tsx", import.meta.url), "utf8")
+  const connectComputerFormSource = readFileSync(new URL("../app/(app)/computers/connect-computer-form.tsx", import.meta.url), "utf8")
 
   const memberDetailMatch = membersPageSource.match(
     /function MemberDetail[\s\S]*?<Card[\s\S]*?data-inkframe-mobile-role="member-detail"[\s\S]*?className="([^"]*)"/,
@@ -999,7 +1000,7 @@ test("member and computer detail surfaces expose contained mobile owners", () =>
   assert.match(lifecycleMatch[1], /(?:^|\s)min-w-0(?:\s|$)/)
   assert.match(lifecycleMatch[1], /(?:^|\s)overflow-x-hidden(?:\s|$)/)
 
-  const reconnectMatch = computersPageSource.match(
+  const reconnectMatch = connectComputerFormSource.match(
     /data-inkframe-mobile-role="computer-reconnect-command"[\s\S]*?className="([^"]*)"/,
   )
   assert.ok(reconnectMatch, "reconnect command should expose a contained proof surface")

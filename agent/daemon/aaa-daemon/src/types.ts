@@ -657,6 +657,8 @@ export interface Credential {
 /** Daemon runtime configuration */
 export interface DaemonConfig {
   agentId: string;
+  /** Computer name written by the local Aura Setup step. */
+  computerName?: string;
   serverUrl: string;
   wsUrl: string;
   credentialPath: string;

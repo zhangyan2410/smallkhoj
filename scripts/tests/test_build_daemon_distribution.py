@@ -3,6 +3,7 @@ import hashlib
 import tarfile
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -38,6 +39,15 @@ def make_daemon_tree(root: Path, *, version: str = "0.2.0") -> None:
         console.log("smallkhoj agent cli")
     """)
     write(daemon_dir / "README.md", "# daemon")
+
+
+def write_minimal_pe(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = bytearray(128)
+    payload[:2] = b"MZ"
+    payload[0x3C:0x40] = (64).to_bytes(4, "little")
+    payload[64:68] = b"PE\0\0"
+    path.write_bytes(payload)
 
 
 class BuildDaemonDistributionTests(unittest.TestCase):
@@ -212,6 +222,93 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertTrue(payload["artifact"].endswith("smallkhoj-daemon-v0.3.0-linux-x64.tar.gz"))
             self.assertTrue(payload["npmPackage"].endswith("smallkhoj-smallkhoj-daemon-0.3.0.tgz"))
             json.dumps(payload)
+
+    def test_windows_build_requires_native_runtime_and_emits_powershell_installer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_daemon_tree(root)
+            output_dir = root / "artifacts"
+
+            with self.assertRaisesRegex(ValueError, "windows-runtime-dir"):
+                builder.build_distribution(
+                    root=root,
+                    output_dir=output_dir,
+                    target_platform="win32-x64",
+                    skip_build=True,
+                    install_production_deps=False,
+                    source_revision="0123456789abcdef0123456789abcdef01234567",
+                    clean_output_dir=True,
+                )
+
+            runtime = root / "windows-runtime"
+            write_minimal_pe(runtime / "node.exe")
+            write_minimal_pe(runtime / "aura.exe")
+            result = builder.build_distribution(
+                root=root,
+                output_dir=output_dir,
+                target_platform="win32-x64",
+                skip_build=True,
+                install_production_deps=False,
+                source_revision="0123456789abcdef0123456789abcdef01234567",
+                clean_output_dir=True,
+                windows_runtime_dir=runtime,
+            )
+
+            self.assertEqual(result.artifact.name, "smallkhoj-daemon-v0.2.0-win32-x64.zip")
+            self.assertEqual(result.install_script.name, "install.ps1")
+            script = result.install_script.read_text(encoding="utf-8")
+            self.assertIn("PROCESSOR_ARCHITEW6432", script)
+            self.assertIn("Get-AuraArchitecture", script)
+            self.assertIn("Get-FileHash -Algorithm SHA256", script)
+            self.assertIn("LOCALAPPDATA", script)
+            self.assertIn("AURA_STANDALONE=1", script)
+            self.assertIn(result.sha256, script)
+            self.assertIn("private node.exe runtime", script)
+            self.assertIn("manifest.json", script)
+            self.assertIn("$rootName = 'smallkhoj-daemon-v0.2.0-win32-x64'", script)
+            self.assertNotIn("$rootName = 'smallkhoj-daemon-v0.2.0-win32-x64.zip'", script)
+            with zipfile.ZipFile(result.artifact) as archive:
+                names = set(archive.namelist())
+                aura_cmd = archive.read("smallkhoj-daemon-v0.2.0-win32-x64/aura.cmd").decode("ascii")
+            prefix = "smallkhoj-daemon-v0.2.0-win32-x64"
+            self.assertIn(f"{prefix}/aura.exe", names)
+            self.assertIn(f"{prefix}/node.exe", names)
+            self.assertIn(f"{prefix}/aura.cmd", names)
+            self.assertIn(f"{prefix}/manifest.json", names)
+            self.assertIn("AURA_STANDALONE=1", aura_cmd)
+
+    def test_windows_build_rejects_non_pe_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_daemon_tree(root)
+            runtime = root / "windows-runtime"
+            write(runtime / "node.exe", "not-a-real-node")
+            write(runtime / "aura.exe", "not-a-real-pe")
+
+            with self.assertRaisesRegex(ValueError, "PE executable"):
+                builder.build_distribution(
+                    root=root,
+                    output_dir=root / "artifacts",
+                    target_platform="win32-x64",
+                    skip_build=True,
+                    install_production_deps=False,
+                    source_revision="0123456789abcdef0123456789abcdef01234567",
+                    windows_runtime_dir=runtime,
+                )
+
+    def test_windows_platform_rejects_unknown_architecture_label(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_daemon_tree(root)
+            with self.assertRaisesRegex(ValueError, "win32-x64"):
+                builder.build_distribution(
+                    root=root,
+                    output_dir=root / "artifacts",
+                    target_platform="win32-mips",
+                    skip_build=True,
+                    install_production_deps=False,
+                    source_revision="0123456789abcdef0123456789abcdef01234567",
+                )
 
 
 if __name__ == "__main__":

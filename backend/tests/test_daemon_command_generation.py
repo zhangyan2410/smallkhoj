@@ -1,5 +1,7 @@
 import json
+import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -120,3 +122,87 @@ def test_command_server_comment_is_single_line():
 
     assert command.endswith("# A Server")
     assert "\n" not in command
+
+
+def test_platform_preview_is_structured_and_ticket_free():
+    payload = public_api._platform_command_payload(
+        "https://smallkhoj.example.com",
+        name="Windows O'Brien",
+        server_label="Team Server",
+    )
+
+    assert set(payload) == {"windows", "unix"}
+    assert payload["windows"]["shell"] == "powershell"
+    assert payload["unix"]["shell"] == "bash"
+    assert payload["windows"]["connect"]["command"] is None
+    assert payload["unix"]["connect"]["command"] is None
+    assert payload["windows"]["setup"]["command"] == (
+        "aura setup --name 'Windows O''Brien' --server-url 'https://smallkhoj.example.com'"
+    )
+    assert "sk_connect_" not in repr(payload)
+
+
+def test_platform_action_contains_fresh_connect_commands_for_both_shells():
+    token = "sk_connect_test"
+    payload = public_api._platform_command_payload(
+        "https://smallkhoj.example.com",
+        name="my-computer",
+        connect_token=token,
+        server_label="Team Server",
+    )
+
+    windows = payload["windows"]
+    unix = payload["unix"]
+    assert windows["connect"]["command"].startswith("aura --server-url 'https://smallkhoj.example.com'")
+    assert "--api-key 'sk_connect_test'" in windows["connect"]["command"]
+    assert unix["connect"]["command"].startswith("npx -y --package ")
+    assert "--api-key sk_connect_test" in unix["connect"]["command"]
+
+
+def test_powershell_quote_doubles_embedded_single_quotes():
+    assert public_api._powershell_quote("a'b") == "'a''b'"
+
+
+def test_windows_release_metadata_fails_closed_without_published_manifest(monkeypatch):
+    monkeypatch.setattr(public_api.settings, "daemon_release_version", "0.2.6")
+    metadata = public_api._release_artifact_metadata(
+        "https://smallkhoj.example.com",
+        public_api.DAEMON_WINDOWS_PLATFORM,
+    )
+
+    assert metadata["available"] is False
+    assert metadata["platform"] == "win32-x64"
+    assert metadata["artifactUrl"].endswith("smallkhoj-daemon-v0.2.6-win32-x64.zip")
+
+
+@pytest.mark.asyncio
+async def test_connect_preview_never_persists_or_returns_ticket(monkeypatch):
+    server = SimpleNamespace(id=uuid.uuid4(), name="Team Server")
+
+    async def resolve_context(_db, _request):
+        return SimpleNamespace(server=server, membership=object())
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", resolve_context)
+    monkeypatch.setattr(public_api, "require_admin_role", lambda _membership: None)
+
+    class PreviewDb:
+        def add(self, _item):
+            raise AssertionError("preview must not add a ConnectTicket")
+
+        async def commit(self):
+            raise AssertionError("preview must not commit")
+
+    class PreviewRequest:
+        async def json(self):
+            return {"name": "preview-computer", "serverUrl": "https://smallkhoj.example.com"}
+
+    response = await public_api.preview_computer_connect_commands(
+        PreviewRequest(),
+        _auth=None,
+        db=PreviewDb(),
+    )
+
+    assert response["ticket"] is None
+    assert response["expiresAt"] is None
+    assert response["name"] == "preview-computer"
+    assert response["platforms"]["windows"]["connect"]["command"] is None

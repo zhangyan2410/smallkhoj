@@ -173,6 +173,8 @@ PUBLIC_API_KEY = settings.public_api_key
 DAEMON_CLI_COMMAND = "aura"
 DAEMON_DOWNLOAD_PATH = "/downloads/smallkhoj-daemon"
 DAEMON_NPX_PACKAGE_PREFIX = "smallkhoj-smallkhoj-daemon"
+DAEMON_WINDOWS_PLATFORM = "win32-x64"
+DAEMON_UNIX_PLATFORM = "unix"
 CONNECT_TICKET_TTL_SECONDS = 300
 SESSION_COOKIE_NAME = "smallkhoj_session"
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / ".data" / "uploads"
@@ -293,6 +295,208 @@ def _daemon_install_metadata(server_url: str) -> dict[str, str]:
             f"curl -fsSL {shlex.quote(install_script_url)} "
             f"| SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL={shlex.quote(download_base_url)} bash"
         ),
+    }
+
+
+def _powershell_quote(value: str) -> str:
+    """Quote a value for a single-quoted PowerShell argument.
+
+    PowerShell escapes a single quote inside a single-quoted string by
+    doubling it.  Keeping this helper next to the command builders makes it
+    harder for a future platform command to accidentally interpolate a server
+    URL, computer name, or one-time token as shell syntax.
+    """
+
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _release_artifact_metadata(server_url: str, target_platform: str) -> dict[str, object]:
+    """Return immutable release metadata when a generated manifest is present.
+
+    The backend image mounts ``release-artifacts/smallkhoj-daemon`` in the
+    current deployment.  Local development often has no Windows artifact yet,
+    so the response deliberately remains well-formed with ``available=false``
+    instead of emitting a plausible-but-unpublished command.  A Windows host
+    can publish the artifact later without changing the API contract.
+    """
+
+    version = settings.daemon_release_version.strip()
+    base_url = _daemon_download_base_url(server_url)
+    result: dict[str, object] = {
+        "daemonVersion": version or None,
+        "platform": target_platform,
+        "artifactUrl": None,
+        "sha256": None,
+        "minimumDaemonVersion": settings.minimum_daemon_version.strip() or None,
+        "available": False,
+    }
+    if not version:
+        return result
+
+    artifact_dir = Path(__file__).resolve().parents[2] / "release-artifacts" / "smallkhoj-daemon"
+    manifests = sorted(artifact_dir.glob("*.manifest.json")) if artifact_dir.is_dir() else []
+    for manifest_path in manifests:
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if str(payload.get("version", "")).strip() != version:
+            continue
+        if str(payload.get("platform", "")).strip() != target_platform:
+            continue
+        artifact_value = payload.get("artifact")
+        artifact_name = Path(artifact_value).name if isinstance(artifact_value, str) else ""
+        if not artifact_name:
+            continue
+        result.update(
+            {
+                "artifactUrl": f"{base_url}/{artifact_name}",
+                "sha256": payload.get("sha256"),
+                "available": True,
+                "manifestUrl": f"{base_url}/{manifest_path.name}",
+            }
+        )
+        return result
+
+    # A release version may be configured before the artifact is mounted.  We
+    # still advertise the deterministic URL for diagnostics, but keep the
+    # availability bit false so clients render a recoverable warning.
+    suffix = "zip" if target_platform.startswith("win32-") else "tar.gz"
+    result["artifactUrl"] = f"{base_url}/{DAEMON_DOWNLOAD_PATH.rsplit('/', 1)[-1]}-v{version}-{target_platform}.{suffix}"
+    return result
+
+
+def _windows_install_command(server_url: str) -> str:
+    base_url = _daemon_download_base_url(server_url)
+    script_url = f"{base_url}/install.ps1"
+    return f"$env:AURA_DOWNLOAD_BASE_URL={_powershell_quote(base_url)}; irm {_powershell_quote(script_url)} | iex"
+
+
+def _windows_setup_command(name: str, server_url: str) -> str:
+    return " ".join(
+        [
+            DAEMON_CLI_COMMAND,
+            "setup",
+            "--name",
+            _powershell_quote(name),
+            "--server-url",
+            _powershell_quote(server_url),
+        ]
+    )
+
+
+def _windows_connect_command(connect_token: str, server_url: str, server_label: str | None = None) -> str:
+    command = " ".join(
+        [
+            DAEMON_CLI_COMMAND,
+            "--server-url",
+            _powershell_quote(server_url),
+            "--api-key",
+            _powershell_quote(connect_token),
+        ]
+    )
+    return _with_server_comment(command, server_label)
+
+
+def _platform_command_payload(
+    server_url: str,
+    *,
+    name: str,
+    connect_token: str | None = None,
+    server_label: str | None = None,
+) -> dict[str, object]:
+    """Build the mutually-exclusive Install/Setup/Connect command contract.
+
+    ``connect_token`` is intentionally optional.  Preview responses pass no
+    token and therefore contain no secret or expiry; explicit Connect and
+    Reconnect responses pass one and return the command plus ticket metadata.
+    """
+
+    unix_install = _daemon_install_metadata(server_url)
+    try:
+        unix_connect = (
+            _computer_connect_command(connect_token, server_url, server_label)
+            if connect_token
+            else None
+        )
+    except HTTPException:
+        # Keep previews useful when a local checkout has not selected a
+        # downloadable npm version yet.  The explicit action still fails closed
+        # through _computer_connect_command, preserving the existing contract.
+        unix_connect = None
+
+    windows_release = _release_artifact_metadata(server_url, DAEMON_WINDOWS_PLATFORM)
+    unix_release = _release_artifact_metadata(server_url, DAEMON_UNIX_PLATFORM)
+    windows_connect = (
+        _windows_connect_command(connect_token, server_url, server_label)
+        if connect_token
+        else None
+    )
+    return {
+        "windows": {
+            "platform": "windows",
+            "shell": "powershell",
+            "available": bool(windows_release.get("available")),
+            "release": windows_release,
+            "install": {
+                "command": _windows_install_command(server_url),
+                "label": "Install（安装）",
+                "requiresTicket": False,
+            },
+            "setup": {
+                "command": _windows_setup_command(name, server_url),
+                "commandTemplate": _windows_setup_command("{{name}}", server_url),
+                "label": "Setup（初始化）",
+                "requiresTicket": False,
+            },
+            "connect": {
+                "command": windows_connect,
+                "label": "Connect（连接）",
+                "requiresTicket": True,
+            },
+        },
+        "unix": {
+            "platform": DAEMON_UNIX_PLATFORM,
+            "shell": "bash",
+            "available": True,
+            "release": unix_release,
+            "install": {
+                "command": unix_install["installCommand"],
+                "label": "Install（安装）",
+                "requiresTicket": False,
+            },
+            "setup": {
+                "command": " ".join(
+                    [
+                        DAEMON_CLI_COMMAND,
+                        "setup",
+                        "--name",
+                        shlex.quote(name),
+                        "--server-url",
+                        shlex.quote(server_url),
+                    ]
+                ),
+                "commandTemplate": " ".join(
+                    [
+                        DAEMON_CLI_COMMAND,
+                        "setup",
+                        "--name",
+                        shlex.quote("{{name}}"),
+                        "--server-url",
+                        shlex.quote(server_url),
+                    ]
+                ),
+                "label": "Setup（初始化）",
+                "requiresTicket": False,
+            },
+            "connect": {
+                "command": unix_connect,
+                "label": "Connect（连接）",
+                "requiresTicket": True,
+            },
+        },
     }
 
 
@@ -4610,6 +4814,80 @@ async def update_public_reminder(reminder_id: str, request: Request, _auth: None
 # ── Computer Credential ───────────────────────────────────────
 
 
+@router.post("/computers/connect-preview")
+async def preview_computer_connect_commands(
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return Install/Setup/Connect metadata without issuing a ticket.
+
+    This endpoint is deliberately separate from ``connect-command``.  The
+    frontend can call it while opening the dialog or switching platform tabs;
+    no ConnectTicket row is created until the user explicitly requests the
+    Connect command.
+    """
+
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
+    body = await request.json()
+    name = str(body.get("name") or "my-computer").strip() or "my-computer"
+    server_url = str(body.get("serverUrl") or "http://localhost:8000").strip()
+    return {
+        "name": name,
+        "serverId": str(server.id),
+        "serverName": server.name,
+        "platforms": _platform_command_payload(
+            server_url,
+            name=name,
+            server_label=server.name,
+        ),
+        "ticket": None,
+        "expiresAt": None,
+    }
+
+
+@router.post("/computers/{computer_id}/reconnect-preview")
+async def preview_computer_reconnect_commands(
+    computer_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return reconnect phases without creating or consuming a ticket."""
+
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
+    try:
+        parsed_computer_id = uuid.UUID(computer_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid computer id")
+
+    result = await db.execute(
+        select(Computer).where(Computer.id == parsed_computer_id, Computer.server_id == server.id)
+    )
+    computer = result.scalar_one_or_none()
+    if not computer:
+        raise HTTPException(404, "Computer not found")
+    body = await request.json()
+    server_url = str(body.get("serverUrl") or "http://localhost:8000").strip()
+    return {
+        "computerId": str(computer.id),
+        "name": computer.name,
+        "serverId": str(server.id),
+        "serverName": server.name,
+        "platforms": _platform_command_payload(
+            server_url,
+            name=computer.name,
+            server_label=server.name,
+        ),
+        "ticket": None,
+        "expiresAt": None,
+    }
+
+
 @router.post("/computers/connect-command")
 async def generate_computer_connect_command(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
@@ -4633,10 +4911,21 @@ async def generate_computer_connect_command(
     ))
     server_url = body.get("serverUrl", "http://localhost:8000")
     await db.commit()
+    platforms = _platform_command_payload(
+        server_url,
+        name=name,
+        connect_token=token,
+        server_label=server.name,
+    )
     return {
         "connectToken": token,
         "command": _computer_connect_command(token, server_url, server.name),
         "daemonInstall": _daemon_install_metadata(server_url),
+        "platforms": platforms,
+        "ticket": {
+            "expiresAt": expires_at.isoformat(),
+            "ttlSeconds": CONNECT_TICKET_TTL_SECONDS,
+        },
         "serverId": str(server.id),
         "serverName": server.name,
         "expiresAt": expires_at.isoformat(),
@@ -4674,14 +4963,26 @@ async def generate_computer_reconnect_command(
         requested_name=computer.name,
         expires_at=expires_at,
     ))
-    server_url = (await request.json()).get("serverUrl", "http://localhost:8000")
+    body = await request.json()
+    server_url = body.get("serverUrl", "http://localhost:8000")
     await db.commit()
+    platforms = _platform_command_payload(
+        server_url,
+        name=computer.name,
+        connect_token=token,
+        server_label=server.name,
+    )
     return {
         "connectToken": token,
         "computerId": str(computer.id),
         "name": computer.name,
         "command": _computer_connect_command(token, server_url, server.name),
         "daemonInstall": _daemon_install_metadata(server_url),
+        "platforms": platforms,
+        "ticket": {
+            "expiresAt": expires_at.isoformat(),
+            "ttlSeconds": CONNECT_TICKET_TTL_SECONDS,
+        },
         "serverId": str(server.id),
         "serverName": server.name,
         "expiresAt": expires_at.isoformat(),

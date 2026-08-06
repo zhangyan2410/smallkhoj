@@ -1,0 +1,31 @@
+{
+  "id": "windows-computer-install-setup-connect",
+  "name": "windows-computer-install-setup-connect",
+  "title": "Windows Computer 三阶段安装与连接流程",
+  "description": "Platform-aware Aura Install/Setup/Connect onboarding with Windows standalone packaging and explicit Mac/Windows acceptance handoff.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "张岩.ean",
+  "assignee": "张岩.ean",
+  "createdAt": "2026-08-06",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "Mac-side implementation and automated verification are complete. Windows x64 real-host acceptance and same-candidate Mac browser/runtime evidence remain open; see handoff.md, windows-acceptance.md, and macos-evidence.md.",
+  "meta": {
+    "macAutomated": "focused_pass_runtime_suite_blocked",
+    "macRealEvidence": "blocked_candidate_identity",
+    "windowsRealAcceptance": "pending",
+    "evidenceDir": "evidence/"
+  }
+}

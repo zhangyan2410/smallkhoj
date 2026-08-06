@@ -22,13 +22,13 @@ import {
 } from "lucide-react"
 
 import { ProductShell } from "@/components/product-shell"
-import { AttachmentSheet, ComputerInkstone, InkframeObjectSurface, ObjectField, ObjectMetric, SidebarEntityItem } from "@/components/inkframe-object-ui"
+import { ComputerInkstone, InkframeObjectSurface, ObjectMetric, SidebarEntityItem } from "@/components/inkframe-object-ui"
 import { RealtimeRefresh } from "@/components/realtime-refresh"
 import { EmptyState, RuntimeChip, type CategoryTone, StatusPill } from "@/components/product-ui"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Panel } from "@/components/ui/panel"
-import { ConnectComputerDialog } from "./connect-computer-form"
+import { ConnectComputerDialog, ReconnectCommandCard } from "./connect-computer-form"
 import { BatchLifecycleButtons } from "./batch-lifecycle-buttons"
 import { buildComputerReconnectUrl, shouldShowConnectComputerForm } from "@/lib/computer-navigation"
 import {
@@ -36,7 +36,6 @@ import {
   API_BASE,
   formatTime,
   runtimeLabel,
-  shortId,
   statusLabel,
   type AgentWorkspace,
   type Computer,
@@ -45,6 +44,7 @@ import {
 import { isPrimaryRuntime } from "@/lib/runtime-options"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
 import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
+import type { OnboardingPreview, PlatformCommandMap } from "@/lib/computer-onboarding"
 
 type TranslationFn = (key: string, values?: Record<string, string | number>) => string
 
@@ -128,6 +128,25 @@ async function getComputers(sessionToken?: string | null, activeServerId?: strin
   return apiGet<{ computers: Computer[]; count?: number }>("/api/v1/computers", { computers: [], count: 0 }, sessionToken, activeServerId)
 }
 
+/** Preview metadata is intentionally ticket-free; only the Connect form action issues a ticket. */
+async function getComputerOnboardingPreview(name: string): Promise<OnboardingPreview | null> {
+  try {
+    const publicServerUrl = resolvePublicApiBaseFromHeaders(process.env, await headers())
+    const response = await fetch(`${API_BASE}/api/v1/computers/connect-preview`, {
+      method: "POST",
+      headers: await serverApiHeaders(true),
+      body: JSON.stringify({ name, serverUrl: publicServerUrl }),
+      cache: "no-store",
+    })
+    if (!response.ok) return null
+    const data = await response.json().catch(() => null)
+    if (!data || typeof data !== "object" || !data.platforms) return null
+    return data as OnboardingPreview
+  } catch {
+    return null
+  }
+}
+
 function searchValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
 }
@@ -143,6 +162,7 @@ function parseCredentialCookie(value?: string) {
       computerId?: unknown
       serverId?: unknown
       serverName?: unknown
+      platforms?: unknown
     }
     if (typeof data.name !== "string" || typeof data.command !== "string" || typeof data.expiresAt !== "string") {
       return null
@@ -151,10 +171,11 @@ function parseCredentialCookie(value?: string) {
       name: data.name,
       command: data.command,
       expiresAt: data.expiresAt,
-      mode: data.mode === "reconnect" ? "reconnect" : "create",
+      mode: (data.mode === "reconnect" ? "reconnect" : "create") as "create" | "reconnect",
       computerId: typeof data.computerId === "string" ? data.computerId : null,
       serverId: typeof data.serverId === "string" ? data.serverId : null,
       serverName: typeof data.serverName === "string" ? data.serverName : null,
+      platforms: data.platforms && typeof data.platforms === "object" ? data.platforms as PlatformCommandMap : null,
     }
   } catch {
     return null
@@ -184,6 +205,7 @@ async function createComputerConnectCommandAction(formData: FormData) {
     name,
     command: data.command,
     expiresAt: data.expiresAt,
+    platforms: data.platforms,
     serverId: data.serverId,
     serverName: data.serverName,
     mode: "create",
@@ -222,6 +244,7 @@ async function createComputerReconnectCommandAction(formData: FormData) {
     name: data.name,
     command: data.command,
     expiresAt: data.expiresAt,
+    platforms: data.platforms,
     serverId: data.serverId,
     serverName: data.serverName,
     mode: "reconnect",
@@ -280,20 +303,6 @@ async function deleteComputerAction(formData: FormData) {
   revalidatePath("/computers")
   revalidatePath("/members")
   redirect("/computers?deleted=1")
-}
-
-function Field({ label, value, icon }: { label: string; value?: string | null; icon?: React.ReactNode }) {
-  return (
-    <ObjectField
-      label={
-        <span className="inline-flex items-center gap-1">
-          {icon}
-          {label}
-        </span>
-      }
-      value={value || "none"}
-    />
-  )
 }
 
 /** runtime 安装状态 → CategoryTone 单一真源。色走 sk-cat-* token。 */
@@ -496,25 +505,10 @@ function ComputerDetail({
           </div>
 
           {reconnectCredential?.computerId === computer.id && reconnectComputerId === computer.id && (
-            <InkframeObjectSurface material="drying" data-inkframe-mobile-role="computer-reconnect-command" className="min-w-0 space-y-2 overflow-x-hidden p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-medium text-foreground">{copy.reconnectCommand}</div>
-                <div className="text-xs text-muted-foreground">{copy.useOn(computer.name)}</div>
-              </div>
-              <AttachmentSheet kind="proof" className="p-2">
-                <code
-                  data-testid="reconnect-command"
-                  className="block whitespace-pre-wrap break-all text-xs"
-                >
-                  {reconnectCredential.command}
-                </code>
-              </AttachmentSheet>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <Field label={copy.computerName} value={reconnectCredential.name} />
-                <Field label={copy.server} value={reconnectCredential.serverName || shortId(reconnectCredential.serverId)} />
-                <Field label={copy.expires} value={reconnectCredential.expiresAt} />
-              </div>
-            </InkframeObjectSurface>
+            <ReconnectCommandCard
+              credential={reconnectCredential}
+              computerName={computer.name}
+            />
           )}
 
           <div className="space-y-2">
@@ -737,6 +731,9 @@ export default async function ComputersPage({
     computerCount: computers.length,
     hasPendingCredential: Boolean(credential),
   })
+  // Fetch only preview metadata here; this endpoint never inserts a ConnectTicket.
+  // The explicit form action below remains the sole ticket-generating path.
+  const onboardingPreview = await getComputerOnboardingPreview("my-computer")
   const error = searchValue(resolvedSearchParams.error)
   const runningWorkspaces = computers.reduce(
     (total, c) => total + c.agentWorkspaces.filter((w) => w.status === "running").length,
@@ -758,6 +755,7 @@ export default async function ComputersPage({
               <ConnectComputerDialog
                 action={createComputerConnectCommandAction}
                 credential={credential}
+                preview={onboardingPreview}
                 connectedComputerName={connectedComputer?.name}
                 error={error}
                 initialStepsOpen={showConnectComputerForm}

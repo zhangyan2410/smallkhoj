@@ -1,0 +1,6 @@
+{"file":"prd.md","reason":"Requirements and mandatory Windows/macOS acceptance gates, especially R13 and the completion criteria."}
+{"file":"design.md","reason":"Platform command payload, ticket timing, standalone layout, identity, and conflict contracts."}
+{"file":"ui-design.md","reason":"Three-phase UI behavior, accessibility, bilingual copy, test IDs, and WebDriver evidence contract."}
+{"file":"implement.md","reason":"Ordered implementation phases, verification commands, and the open completion gate."}
+{"file":"../../spec/frontend/component-guidelines.md","reason":"Shared Tabs atom ownership and layering rules used by the onboarding UI."}
+{"file":"../../spec/frontend/quality-guidelines.md","reason":"Platform-mutual onboarding contract and browser evidence requirements."}

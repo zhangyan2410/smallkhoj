@@ -11,7 +11,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from 'fs';
 import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { arch, homedir, hostname, platform, release } from 'os';
@@ -53,6 +53,7 @@ import {
   type RuntimeProviderInventory,
 } from '../runtime/runtime-provider.js';
 import { DAEMON_VERSION } from '../version.js';
+import { daemonPaths } from '../platform/paths.js';
 
 interface LogEntry {
   timestamp: string;
@@ -256,8 +257,7 @@ function writeOpenCodeRuntimeConfig(workspacePath: string, config: Record<string
 export function defaultDaemonWorkspaceRoot(env: NodeJS.ProcessEnv = process.env): string {
   const explicitRoot = env.SMALLKHOJ_DAEMON_WORKSPACE_ROOT?.trim();
   if (explicitRoot) return explicitRoot;
-  const daemonHome = env.SMALLKHOJ_DAEMON_HOME?.trim() || join(homedir(), '.smallkhoj', 'daemon');
-  return join(daemonHome, 'workspaces');
+  return daemonPaths(env).workspaceRoot;
 }
 
 export function daemonRuntimeWorkspacePath(
@@ -881,9 +881,7 @@ export class DaemonCore extends EventEmitter {
   }
 
   private machineIdPath(): string {
-    return process.env.AAA_DAEMON_MACHINE_ID_FILE
-      || process.env.SLOCK_MACHINE_ID_FILE
-      || join(homedir(), '.slock', 'aaa-daemon', 'machine-id');
+    return daemonPaths().machineIdPath;
   }
 
   private loadMachineId(): string {
@@ -915,7 +913,7 @@ export class DaemonCore extends EventEmitter {
       body: JSON.stringify({
         daemonId: this.daemonId,
         machineId,
-        name: hostname(),
+        name: this.config.computerName || hostname(),
         os: `${platform()} ${release()} ${arch()}`,
         daemonVersion: DAEMON_VERSION,
         status: 'online',
@@ -935,7 +933,7 @@ export class DaemonCore extends EventEmitter {
       throw new Error('Daemon connect did not return a machine token');
     }
     if (data.daemonId) this.daemonId = data.daemonId;
-    return {
+    const credential: Credential = {
       agentId: this.config.agentId || process.env.SLOCK_AGENT_ID || '',
       serverId: data.computer?.serverId || process.env.SLOCK_SERVER_ID || 'unknown',
       computerId: data.computer?.id,
@@ -944,6 +942,39 @@ export class DaemonCore extends EventEmitter {
       serverUrl,
       wsUrl: this.config.wsUrl,
     };
+    this.persistCredential(credential);
+    return credential;
+  }
+
+  /** Persist the machine credential for restart/reconnect without logging it. */
+  private persistCredential(credential: Credential): void {
+    const path = this.config.credentialPath;
+    if (!path) return;
+    const payload = {
+      agent_id: credential.agentId,
+      server_id: credential.serverId,
+      computer_id: credential.computerId,
+      machine_id: credential.machineId,
+      token: credential.token,
+      server_url: credential.serverUrl,
+      ws_url: credential.wsUrl,
+    };
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      const temporaryPath = `${path}.tmp-${randomUUID()}`;
+      const serialized = `${JSON.stringify(payload, null, 2)}\n`;
+      writeFileSync(temporaryPath, serialized, { encoding: 'utf-8', mode: 0o600 });
+      try {
+        renameSync(temporaryPath, path);
+      } catch {
+        // Windows may reject replacing an open destination. Keep the last
+        // known-good path and fall back only after the complete temp write.
+        writeFileSync(path, serialized, { encoding: 'utf-8', mode: 0o600 });
+        try { unlinkSync(temporaryPath); } catch { /* best effort cleanup */ }
+      }
+    } catch (err) {
+      console.warn('[Daemon] Failed to persist machine credential:', (err as Error).message);
+    }
   }
 
   // ── PID file ───────────────────────────────────────────────

@@ -1,0 +1,5 @@
+{"file":"implement.md","reason":"Execution order and explicit Phase 5 Windows/macOS real-host completion gate."}
+{"file":"design.md","reason":"Implementation contracts for release metadata, ticket-free preview, identity persistence, and reconnect safety."}
+{"file":"ui-design.md","reason":"Frontend phase cards, tab exclusivity, status matrix, test IDs, and evidence markers."}
+{"file":"../../spec/frontend/component-guidelines.md","reason":"Shared atom registration and component-layer constraints for Tabs."}
+{"file":"../../spec/frontend/quality-guidelines.md","reason":"Regression and WebDriver evidence contract for the new onboarding flow."}

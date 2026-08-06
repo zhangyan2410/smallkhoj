@@ -25,7 +25,7 @@ Every piece of UI must live in exactly one of these layers. Choose by asking
 ├─────────────────────────────────────────────────────────┤
 │  Layer 1 — Atoms (components/ui/**)                     │  knows nothing about product
 │    Card, Button, Input, Select, Textarea, Panel,        │  owns base styling
-│    Dialog, Avatar, ScrollArea, FieldLabel               │  references tokens only
+│    Dialog, Avatar, ScrollArea, Tabs, FieldLabel         │  references tokens only
 ├─────────────────────────────────────────────────────────┤
 │  Layer 0 — Tokens & utilities (globals.css :root)       │  the single source of truth
 │    --ink, --sand*, --primary, --success*, sk-* classes  │  change here → app follows
@@ -41,6 +41,12 @@ or page. Reference tokens: `bg-primary`, `border-[var(--ink)]`, `bg-success`.
 Own their base styling and reference tokens only. They must NOT import product
 code (`lib/control-plane`, feature components). A `<Card>` knows nothing about
 tasks or members — it just renders a bordered box.
+
+`Tabs` (`components/ui/tabs.tsx`) is the shared accessible tab atom. It owns
+`role="tablist"`/`role="tab"`/`role="tabpanel"`, roving keyboard focus, and the
+ink-border active/inactive surface. Feature pages provide values and content;
+they must not hand-roll a second tab style or render an unselected panel's
+copyable command text.
 
 ### Layer 2 — Product primitives (components/*, not in ui/)
 Compose atoms + reference product concepts (status, runtime). Styling is allowed

@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +22,7 @@ from typing import Any
 
 DAEMON_RELATIVE_DIR = Path("agent/daemon/aaa-daemon")
 ARTIFACT_PREFIX = "smallkhoj-daemon"
+WINDOWS_PLATFORM_PREFIX = "win32-"
 
 
 @dataclass(frozen=True)
@@ -107,6 +109,74 @@ def write_launcher(staging_dir: Path) -> None:
     aura_launcher.chmod(0o755)
 
 
+def copy_windows_runtime(
+    staging_dir: Path,
+    *,
+    runtime_dir: Path | None,
+    launcher_path: Path | None,
+) -> None:
+    """Stage the private Windows Node runtime and user-facing Aura launcher.
+
+    A macOS checkout cannot manufacture a valid PE executable.  The builder
+    therefore requires a Windows-produced runtime directory (or an explicit
+    launcher path) for ``win32-*`` targets and fails closed with an actionable
+    message when it is missing.  The Windows release job supplies these files;
+    Unix builds continue to use the shell launchers above.
+    """
+
+    if runtime_dir is None and launcher_path is None:
+        raise ValueError(
+            "Windows standalone packaging requires --windows-runtime-dir "
+            "(containing node.exe and aura.exe) or --windows-launcher"
+        )
+
+    def require_pe(path: Path, label: str) -> None:
+        try:
+            with path.open("rb") as handle:
+                dos_header = handle.read(64)
+                if len(dos_header) < 64 or dos_header[:2] != b"MZ":
+                    raise ValueError
+                pe_offset = int.from_bytes(dos_header[0x3C:0x40], "little")
+                handle.seek(pe_offset)
+                if handle.read(4) != b"PE\0\0":
+                    raise ValueError
+        except (OSError, ValueError):
+            raise ValueError(f"Windows {label} must be a PE executable (MZ/PE header): {path}") from None
+
+    if runtime_dir is not None:
+        runtime_dir = runtime_dir.resolve()
+        node_runtime = runtime_dir / "node.exe"
+        if not node_runtime.is_file():
+            raise FileNotFoundError(f"Windows private Node runtime is missing: {node_runtime}")
+        require_pe(node_runtime, "private Node runtime")
+        shutil.copy2(node_runtime, staging_dir / "node.exe")
+        bundled_launcher = runtime_dir / "aura.exe"
+        if bundled_launcher.is_file():
+            require_pe(bundled_launcher, "Aura launcher")
+            shutil.copy2(bundled_launcher, staging_dir / "aura.exe")
+
+    if launcher_path is not None:
+        launcher_path = launcher_path.resolve()
+        if not launcher_path.is_file():
+            raise FileNotFoundError(f"Windows Aura launcher is missing: {launcher_path}")
+        require_pe(launcher_path, "Aura launcher")
+        shutil.copy2(launcher_path, staging_dir / "aura.exe")
+
+    if not (staging_dir / "aura.exe").is_file():
+        raise FileNotFoundError(
+            "Windows standalone packaging requires a valid aura.exe in the "
+            "runtime directory or --windows-launcher"
+        )
+    require_pe(staging_dir / "aura.exe", "Aura launcher")
+
+    # The .cmd shim is intentionally retained for diagnostics and PATH probes;
+    # the product command remains aura.exe once a real launcher is supplied.
+    (staging_dir / "aura.cmd").write_text(
+        "@echo off\r\nset \"AURA_STANDALONE=1\"\r\n\"%~dp0aura.exe\" %*\r\n",
+        encoding="utf-8",
+    )
+
+
 def write_manifest(
     staging_dir: Path,
     *,
@@ -121,6 +191,7 @@ def write_manifest(
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "gitCommit": git_commit,
         "entrypoint": "aura",
+        "standalone": target_platform.startswith(WINDOWS_PLATFORM_PREFIX),
         "requires": {
             "node": ">=20",
         },
@@ -171,6 +242,15 @@ def clean_artifact_output(root: Path, daemon_dir: Path, output_dir: Path) -> Non
 
 def create_archive(staging_dir: Path, output_dir: Path, *, version: str, target_platform: str) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
+    if target_platform.startswith(WINDOWS_PLATFORM_PREFIX):
+        artifact = output_dir / f"{ARTIFACT_PREFIX}-v{version}-{target_platform}.zip"
+        root_name = artifact.stem
+        with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for path in sorted(staging_dir.rglob("*")):
+                if path.is_file():
+                    archive.write(path, arcname=str(Path(root_name) / path.relative_to(staging_dir)))
+        return artifact
+
     artifact = output_dir / f"{ARTIFACT_PREFIX}-v{version}-{target_platform}.tar.gz"
     root_name = artifact.name.removesuffix(".tar.gz")
     with tarfile.open(artifact, "w:gz") as tar:
@@ -211,6 +291,16 @@ def write_install_script(
     target_platform: str,
     sha256: str,
 ) -> Path:
+    if target_platform.startswith(WINDOWS_PLATFORM_PREFIX):
+        return write_windows_install_script(
+            output_dir,
+            artifact_name=artifact_name,
+            root_name=root_name,
+            version=version,
+            target_platform=target_platform,
+            sha256=sha256,
+        )
+
     install_script = output_dir / "install.sh"
     install_script.write_text(
         "\n".join([
@@ -270,6 +360,100 @@ def write_install_script(
     return install_script
 
 
+def write_windows_install_script(
+    output_dir: Path,
+    *,
+    artifact_name: str,
+    root_name: str,
+    version: str,
+    target_platform: str,
+    sha256: str,
+) -> Path:
+    """Write a no-admin, fail-closed PowerShell installer for Aura.
+
+    The script intentionally performs architecture detection before download,
+    verifies the immutable SHA-256, stages a versioned directory under
+    ``%LOCALAPPDATA%\\Aura``, and updates the user PATH only after the files are
+    complete.  It is generated on any host but must be executed and smoke-tested
+    on a native Windows host before release.
+    """
+
+    install_script = output_dir / "install.ps1"
+    expected_arch = target_platform.removeprefix(WINDOWS_PLATFORM_PREFIX)
+    install_script.write_text(
+        "\n".join(
+            [
+                "[CmdletBinding()]",
+                "param([string]$BaseUrl = $env:AURA_DOWNLOAD_BASE_URL)",
+                "$ErrorActionPreference = 'Stop'",
+                "",
+                "function Get-AuraArchitecture {",
+                "  $raw = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }",
+                "  switch ($raw.ToUpperInvariant()) {",
+                "    'AMD64' { return 'x64' }",
+                "    'ARM64' { return 'arm64' }",
+                "    'X86' { return 'x86' }",
+                "    default { throw \"Unsupported Windows CPU architecture: $raw\" }",
+                "  }",
+                "}",
+                "",
+                f"$expectedPlatform = '{target_platform}'",
+                f"$expectedArchitecture = '{expected_arch}'",
+                "$architecture = Get-AuraArchitecture",
+                "if ($architecture -ne $expectedArchitecture) {",
+                "  throw \"This Aura release targets $expectedArchitecture, but the host reports $architecture.\"",
+                "}",
+                "if ([string]::IsNullOrWhiteSpace($BaseUrl)) {",
+                "  throw 'AURA_DOWNLOAD_BASE_URL is required (for example https://server/downloads/smallkhoj-daemon).'",
+                "}",
+                "",
+                f"$artifactName = '{artifact_name}'",
+                f"$artifactSha256 = '{sha256.lower()}'",
+                f"$version = '{version}'",
+                f"$rootName = '{root_name}'",
+                "$temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ('aura-install-' + [Guid]::NewGuid().ToString('N'))",
+                "$archivePath = Join-Path $temporaryRoot $artifactName",
+                "$extractPath = Join-Path $temporaryRoot 'extract'",
+                "New-Item -ItemType Directory -Force -Path $temporaryRoot, $extractPath | Out-Null",
+                "try {",
+                "  Invoke-WebRequest -UseBasicParsing -Uri ($BaseUrl.TrimEnd('/') + '/' + $artifactName) -OutFile $archivePath",
+                "  $actualSha256 = (Get-FileHash -Algorithm SHA256 -Path $archivePath).Hash.ToLowerInvariant()",
+                "  if ($actualSha256 -ne $artifactSha256) { throw \"SHA-256 verification failed for $artifactName.\" }",
+                "  Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force",
+                "  $source = Join-Path $extractPath $rootName",
+                "  if (-not (Test-Path (Join-Path $source 'aura.exe'))) { throw 'The archive does not contain aura.exe.' }",
+                "  if (-not (Test-Path (Join-Path $source 'node.exe'))) { throw 'The archive does not contain the private node.exe runtime.' }",
+                "  if (-not (Test-Path (Join-Path $source 'manifest.json'))) { throw 'The archive does not contain manifest.json.' }",
+                "  $installRoot = Join-Path $env:LOCALAPPDATA 'Aura'",
+                "  $versionRoot = Join-Path (Join-Path $installRoot 'versions') ('v' + $version + '-' + $expectedPlatform)",
+                "  $binRoot = Join-Path $installRoot 'bin'",
+                "  New-Item -ItemType Directory -Force -Path (Split-Path $versionRoot), $binRoot | Out-Null",
+                "  $staging = $versionRoot + '.staging-' + [Guid]::NewGuid().ToString('N')",
+                "  Copy-Item -LiteralPath $source -Destination $staging -Recurse -Force",
+                "  if (Test-Path $versionRoot) { Remove-Item -LiteralPath $versionRoot -Recurse -Force }",
+                "  Move-Item -LiteralPath $staging -Destination $versionRoot",
+                "  $launcherContent = '@echo off`r`nset \"AURA_STANDALONE=1\"`r`n\"' + (Join-Path $versionRoot 'aura.exe') + '\" %*`r`n'",
+                "  Set-Content -LiteralPath (Join-Path $binRoot 'aura.cmd') -Value $launcherContent -Encoding ASCII",
+                "  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')",
+                "  $pathParts = @($userPath -split ';' | Where-Object { $_ })",
+                "  if ($pathParts -notcontains $binRoot) { [Environment]::SetEnvironmentVariable('Path', (($pathParts + $binRoot) -join ';'), 'User') }",
+                "  $activePath = Join-Path $installRoot 'active.json'",
+                "  $activeTemp = $activePath + '.tmp-' + [Guid]::NewGuid().ToString('N')",
+                "  @{ version = $version; platform = $expectedPlatform; path = $versionRoot } | ConvertTo-Json | Set-Content -LiteralPath $activeTemp -Encoding UTF8",
+                "  Move-Item -LiteralPath $activeTemp -Destination $activePath -Force",
+                "  Write-Output (\"Installed Aura $version ($expectedPlatform) to $versionRoot\")",
+                "  Write-Output (\"Open a new PowerShell window before running 'aura'.\")",
+                "} finally {",
+                "  if (Test-Path $temporaryRoot) { Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue }",
+                "}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return install_script
+
+
 def build_distribution(
     *,
     root: Path,
@@ -279,6 +463,8 @@ def build_distribution(
     install_production_deps: bool = True,
     source_revision: str | None = None,
     clean_output_dir: bool = False,
+    windows_runtime_dir: Path | None = None,
+    windows_launcher: Path | None = None,
 ) -> DaemonDistribution:
     root = root.resolve()
     daemon_dir = root / DAEMON_RELATIVE_DIR
@@ -289,6 +475,15 @@ def build_distribution(
     package_json = read_package_json(daemon_dir)
     version = str(package_json["version"])
     platform_value = target_platform or default_platform()
+    if platform_value.startswith(WINDOWS_PLATFORM_PREFIX) and platform_value not in {
+        "win32-x64",
+        "win32-arm64",
+        "win32-x86",
+    }:
+        raise ValueError(
+            "Windows target platform must be win32-x64, win32-arm64, or win32-x86 "
+            f"(received {platform_value})"
+        )
 
     if not skip_build:
         dist_dir = daemon_dir / "dist"
@@ -305,7 +500,14 @@ def build_distribution(
         staging_dir = Path(tmp) / "staging"
         staging_dir.mkdir(parents=True)
         copy_required_runtime_files(daemon_dir, staging_dir)
-        write_launcher(staging_dir)
+        if platform_value.startswith(WINDOWS_PLATFORM_PREFIX):
+            copy_windows_runtime(
+                staging_dir,
+                runtime_dir=windows_runtime_dir,
+                launcher_path=windows_launcher,
+            )
+        else:
+            write_launcher(staging_dir)
         write_manifest(
             staging_dir,
             version=version,
@@ -327,7 +529,7 @@ def build_distribution(
     install_script = write_install_script(
         output_dir,
         artifact_name=artifact.name,
-        root_name=artifact.name.removesuffix(".tar.gz"),
+        root_name=artifact.stem if platform_value.startswith(WINDOWS_PLATFORM_PREFIX) else artifact.name.removesuffix(".tar.gz"),
         version=version,
         target_platform=platform_value,
         sha256=digest,
@@ -406,6 +608,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not run npm install --omit=dev in the staged artifact.",
     )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument(
+        "--windows-runtime-dir",
+        type=Path,
+        help="Windows-only directory containing a private node.exe and aura.exe launcher.",
+    )
+    parser.add_argument(
+        "--windows-launcher",
+        type=Path,
+        help="Windows-only path to a prebuilt aura.exe launcher.",
+    )
     return parser
 
 
@@ -420,6 +632,8 @@ def main(argv: list[str] | None = None) -> int:
             install_production_deps=not args.skip_production_deps,
             source_revision=args.source_revision,
             clean_output_dir=args.clean_output_dir,
+            windows_runtime_dir=args.windows_runtime_dir,
+            windows_launcher=args.windows_launcher,
         )
     except Exception as exc:
         print(str(exc), file=sys.stderr)

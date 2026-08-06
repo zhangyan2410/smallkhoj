@@ -782,6 +782,8 @@ def test_public_human_routes_resolve_active_server_instead_of_default_server():
         public_api.delete_member,
         public_api.create_public_reminder,
         public_api.update_public_reminder,
+        public_api.preview_computer_connect_commands,
+        public_api.preview_computer_reconnect_commands,
         public_api.generate_computer_connect_command,
         public_api.generate_computer_reconnect_command,
         public_api.control_workspace_lifecycle,

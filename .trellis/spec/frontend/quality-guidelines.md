@@ -203,41 +203,53 @@ return await Promise.race([response.json(), abortPromise])
   reason.
 - Non-success error-body parsing is covered by the same bound.
 
-### Convention: Daemon Onboarding Shows One Copyable Command
+### Convention: Daemon Onboarding Uses Platform-Mutual Three Phases
 
-**What**: Computers onboarding and reconnect surfaces must show exactly one
-copyable command to the user:
+**What**: Computers onboarding and reconnect surfaces expose the currently
+selected platform only, with three observable phases:
 
 ```text
-npx -y <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz --server-url <public-base-url> --api-key <token> # <server-name>
+Install（安装） → Setup（初始化） → Connect（连接） → Online
 ```
 
-Do not show separate install/download/connect command blocks in the product UI.
-The command card must also show the Server name or short Server id in metadata.
+Windows uses a PowerShell standalone Aura installer and `aura` executable;
+macOS/Linux retain the existing npx/shell path.  The two platform tabs are
+mutually exclusive: the unselected platform's command text and copy controls
+must not be rendered in the DOM.  Install and Setup are ticket-free previews;
+only the explicit Connect/Reconnect action returns a `sk_connect_` command and
+`expiresAt`.
 
-**Why**: The split install/connect UI made it unclear which command was real
-and hid whether the command was production-installable. The product contract
-should match Raft-style onboarding: copy one command, run it, daemon connects.
+The legacy Unix `command` field remains in the API response during rollout, but
+new UI code reads `platforms[platform].install/setup/connect` and preserves the
+Server identifier in metadata.
 
-**Wrong vs Correct**:
+**Why**: Windows cannot run Unix npx/curl instructions on a clean host, and a
+five-minute ticket should not start expiring while a user is still installing
+and setting up the machine.  Visible phases make failures recoverable without
+breaking existing Unix consumers.
+
+**Required hooks**:
+
 ```tsx
-// Wrong: three visible command blocks.
-<code data-testid="daemon-one-step-command">{oneStep}</code>
-<code data-testid="daemon-install-command">{install}</code>
-<code data-testid="connection-command">{connect}</code>
-
-// Correct: one visible command from the backend response.
-<code data-testid="daemon-connect-command">{credential.command}</code>
+<code data-testid="phase-command-install">{install}</code>
+<code data-testid="phase-command-setup">{setup}</code>
+<code data-testid="phase-command-connect">{connect}</code>
 ```
+
+The dialog also exposes `platform-tab-windows`, `platform-tab-unix`,
+`generate-ticket-button`/`regenerate-ticket-button`, and
+`connect-status-region` for browser evidence.
 
 **Tests Required**:
-- Frontend unit tests must not depend on install-command derivation helpers for
-  product onboarding.
-- `./twd` evidence must assert there is one visible command block and that the
-  page text does not include `安装命令`, `Install Command`,
-  `smallkhoj-daemon connect --token`, or `smallkhoj-daemon start --machine-token`.
-- `./twd` evidence must assert the copied command includes the `# <server-name>`
-  comment and the card visibly renders the Server identifier.
+- Contract tests prove preview/setup requests create no ConnectTicket and
+  return `ticket: null`/no expiry; Connect/Reconnect responses create a fresh
+  ticket and retain the legacy Unix command.
+- Frontend tests assert Chinese is the default, only the selected platform's
+  phase commands are visible/copyable, and an expired ticket offers
+  regeneration without repeating Setup.
+- `./twd` evidence asserts the Windows tab never displays curl/bash or npx and
+  the macOS/Linux tab never displays PowerShell/irm; Online/failure status is
+  visible in `connect-status-region`.
 
 ---
 
