@@ -1,7 +1,7 @@
 # Completion audit — stable member Names and Channel identity
 
 Audit date: 2026-08-06  
-Candidate: `main` at `7dd800649bb2` plus the task-local evidence changes
+Candidate: `main` at `be4c4e3a5604` plus the task-local removal evidence changes
 listed below.
 
 ## Status vocabulary
@@ -67,7 +67,7 @@ listed below.
 | 37 | PASS | Manual unique/ambiguous/unknown Unicode mention behavior is covered by `backend/tests/test_unicode_mentions.py`. |
 | 38 | PASS | Real `#` suggestions listed only visible current-Server `#identity-test`; backend/frontend scope tests cover public/private/non-DM rules. |
 | 39 | PASS | Keyboard and Chinese IME behavior were real-tested; a real `Input.dispatchTouchEvent` in the persistent narrow/coarse-pointer context inserted `@open2 ` and retained composer focus. Automated contracts cover pointer, scrolling, clipping, empty, loading, and error states. |
-| 40 | PARTIAL | Authorization, visible bilingual confirmation, compact final notice, dedupe, and delivery cutoff are covered by UI/backend/daemon tests. The exact current-build `open2` removal still awaits the user's click/observation, and continued operation in a second Channel has not yet been real-tested. |
+| 40 | PASS | The user removed `open2` and observed no acknowledgement reply. UI changed to two members and omitted `open2` from `@` suggestions; EventRecord seq 33 carried one Description-free leave notice; daemon logged zero queued work and the narrow final delivery; a fresh `#identity-test` marker produced no runtime delivery/reply; a fresh `#remove-continuity-20260806` marker produced the exact provider ACK. |
 | 41 | PASS | Fresh migration/bootstrap creates one home Server and no API/UI path can create another owned Server. |
 | 42 | BLOCKED | Local clean-reset rollout is complete. Cloud target discovery is complete, but cloud database reset/deploy/smoke has not run because destructive rollout still needs explicit final approval. |
 | 43 | PASS | The saved full gates plus focused identity, tenancy, Channel, mention, Description, UI, and daemon suites cover the requested contract categories. |
@@ -83,16 +83,16 @@ listed below.
 - `evidence/REAL_collision_suggestions_20260806.png`
 - `evidence/REAL_bootstrap_retry_setup_20260806.png`
 - `evidence/REAL_bootstrap_retry_success_20260806.png`
+- `evidence/REAL_remove_open2_member_count2_20260806.png`
+- `evidence/REAL_post_remove_cutoff_suggestions_20260806.png`
+- `evidence/REAL_second_channel_after_remove_ack_20260806.png`
 
 ## Remaining release decisions/actions
 
-1. User clicks **移除 open2** in `#identity-test` and observes no acknowledgement
-   reply plus no later delivery for that Channel, then run the prepared fresh
-   marker in `#remove-continuity-20260806` to prove the same Agent still works
-   there.
-2. Obtain explicit confirmation for destructive reset and rollout of Tencent
+1. Obtain explicit confirmation for destructive reset and rollout of Tencent
    Lighthouse `124.222.40.40`, then deploy the accepted commit and run the
    minimal cloud smoke.
 
-The task must remain `in_progress` until the user accepts the local provider
-result and decides the cloud rollout timing.
+The local implementation and provider acceptance are complete. The task must
+remain `in_progress` only until the user confirms cloud rollout timing and the
+cloud reset/deploy/smoke is evidenced.

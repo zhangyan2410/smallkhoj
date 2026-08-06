@@ -144,15 +144,66 @@ serverHandle:           s0rct
 No duplicate Better Auth user or SmallKhoj Account was created. Screenshot:
 `REAL_bootstrap_retry_success_20260806.png`.
 
-## Remaining local provider acceptance
+## 5. Remove-Agent final notice, cutoff, and other-Channel continuity — PASS
 
-Only the user-observed removal sequence remains:
+The user removed `open2` through the prepared owner UI and reported no abnormal
+or acknowledgement chat reply (`嗯 没问题`). The browser immediately changed
+from `成员（3）` to `成员（2）`; the active `open2` row and Remove action vanished.
+A fresh `@` popup contained only the two current Humans:
 
-1. Remove `open2` from `#identity-test` in the prepared owner UI.
-2. Confirm the member row and `@` suggestion disappear immediately.
-3. Confirm one Description-free final leave context update causes no visible
-   acknowledgement reply.
-4. Send a fresh marker in `#identity-test` and prove no later delivery.
-5. Send a fresh marker in `#remove-continuity-20260806` and prove `open2` still
-   replies there.
+```text
+@张翰-s8db6
+@张翰-st6e4
+```
 
+It did not offer `@open2`. Screenshots:
+
+- `REAL_remove_open2_member_count2_20260806.png`
+- `REAL_post_remove_cutoff_suggestions_20260806.png`
+
+Read-only database evidence proved that `open2` no longer had a
+`channel_members` row for `#identity-test`. Exactly one new logical leave event
+was committed for this removal:
+
+```text
+seq: 33
+eventType: channel.member_left
+channelId: 0397e5a6-6750-4aae-a989-32734bf43b3e
+rosterRevision: 8
+member: { kind: agent,
+          memberId: baab150d-7494-4217-a088-6cce86b9c59e,
+          reference: @open2 }
+removedAgentId: baab150d-7494-4217-a088-6cce86b9c59e
+referenceUpdates: []
+```
+
+The payload had no Description or full roster. Daemon trace at the same event
+recorded:
+
+```text
+Removed Agent Channel cutoff ... daemonQueued=0 driverQueued=0
+Runtime message delivered ... scope=channel:0397e5a6-6750-4aae-a989-32734bf43b3e
+```
+
+This is the one narrow final leave context turn. It finished without an `aura`
+send, no `open2` message was persisted after the event, and the user observed
+no visible acknowledgement reply.
+
+The real post-removal message
+`REAL_POST_REMOVE_202608060959` was then sent in `#identity-test`. It persisted
+with `mentions=0`, produced no daemon runtime-delivery record for that Channel
+after its timestamp, and produced no `open2` reply.
+
+Finally, the existing runtime remained available in the independent Channel
+`#remove-continuity-20260806`. The real provider received a fresh message in a
+new Channel-scoped session and invoked `aura` successfully:
+
+```text
+Human: @open2 REAL_SECOND_CHANNEL_AFTER_REMOVE_202608061001 ...
+Agent: REAL_SECOND_CHANNEL_AFTER_REMOVE_202608061001_ACK
+```
+
+Both message rows were verified in a read-only transaction. Screenshot:
+`REAL_second_channel_after_remove_ack_20260806.png`.
+
+All local browser/runtime acceptance items are now complete.

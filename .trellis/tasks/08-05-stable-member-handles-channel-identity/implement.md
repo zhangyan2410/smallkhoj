@@ -40,11 +40,12 @@
   values and match, so the older key blocker is resolved. Destructive reset and
   deploying the final accepted `main` candidate (currently `7dd8006` plus the
   task-local completion evidence) still require the explicit final go-ahead.
-- The only remaining local provider acceptance is the prepared `open2` removal:
-  observe no acknowledgement reply/no later `#identity-test` delivery, then
-  prove a fresh reply still succeeds in `#remove-continuity-20260806`.
-- The task remains `in_progress`; do not archive until the user accepts the local
-  result and decides the cloud rollout target/timing.
+- Local provider acceptance is complete. The user removed `open2` and observed
+  no acknowledgement reply; UI/EventRecord/daemon evidence proves the final
+  Description-free notice and later `#identity-test` cutoff, while a fresh
+  `#remove-continuity-20260806` marker received the exact OpenCode/aura ACK.
+- The task remains `in_progress`; do not archive until the user confirms the
+  cloud rollout timing and the reset/deploy/smoke is complete.
 
 ## Phase 0 — Start gate 与工作区保护
 
