@@ -15,6 +15,20 @@ https://<domain>/docs       -> backend:8000
 
 The `/internal/*` route is required for daemon WebSocket paths such as `/internal/agent-api/ws`. Caddy's `reverse_proxy` handles WebSocket upgrades.
 
+## Environment Map
+
+Keep the three deployment shapes separate when choosing a command or recording
+evidence:
+
+| Environment | Entrypoint | Database boundary | What it proves |
+| --- | --- | --- | --- |
+| `local-dev` | `./dev.sh`; frontend `127.0.0.1:3000`, backend `127.0.0.1:8000` | Host PostgreSQL from `DATABASE_URL` (the default is `127.0.0.1:5432`; use an explicit `SMALLKHOJ_DB_PORT` only for an isolated database) | Fast development behavior; not a release gate |
+| `local-prod` | `docker-compose.prod.yml` with a temporary env file; usually Caddy on `18080/18443` | Isolated Compose volume/database | Production-shaped image, migration, Caddy, and auth wiring |
+| `cloud-prod` | SSH-loaded images plus remote `docker-compose.prod.yml` | Persistent cloud database; updates leave `db` outside the app service set | Actual public health, package download, WebSocket route, and release evidence |
+
+The real-runtime SOP must follow `dev.sh` and the selected `DATABASE_URL`; it
+must not assume a fixed `55432` test port.
+
 ## Domain And SSL
 
 Do not buy a separate paid SSL certificate for the initial release by default. Caddy can request and renew Let's Encrypt certificates automatically when:
@@ -122,7 +136,7 @@ python3 scripts/production_image_transfer.py \
   --host <server-ip> \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
-  --remote-dir /opt/smallkhoj \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --platform linux/amd64 \
   --use-vpn-proxy \
   --capacity-report "$CAPACITY_REPORT" \
@@ -132,7 +146,7 @@ python3 scripts/production_image_transfer.py \
   --host <server-ip> \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
-  --remote-dir /opt/smallkhoj \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --platform linux/amd64 \
   --use-vpn-proxy \
   --capacity-report "$CAPACITY_REPORT"
@@ -180,7 +194,7 @@ python3 scripts/production_image_transfer.py \
   --host <server-ip> \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
-  --remote-dir /opt/smallkhoj \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --output-archive /Volumes/ORICO/smallkhoj-deploy/smallkhoj-production-images-amd64.tar \
   --platform linux/amd64 \
   --use-vpn-proxy \
@@ -290,6 +304,9 @@ AUTH_BRIDGE_SECRET=<generate-outside-repo>
 BETTER_AUTH_SECRET=<generate-outside-repo>
 BETTER_AUTH_URL=https://smallkhoj.example.com
 BACKEND_CORS_ORIGINS=https://smallkhoj.example.com
+MINIMUM_DAEMON_VERSION=<compatibility-floor>
+DAEMON_RELEASE_VERSION=<published-package-version>
+DAEMON_DOWNLOAD_BASE_URL=https://smallkhoj.example.com/downloads/smallkhoj-daemon
 UPLOAD_MAX_BYTES=52428800
 UPLOAD_READ_CHUNK_BYTES=65536
 UPLOAD_CLEANUP_TIMEOUT_SECONDS=5
@@ -424,6 +441,11 @@ steady-state memory budget.
 
 Provisioning notes captured on 2026-06-29:
 
+> The commands and smoke invocations in this dated evidence block are retained
+> for provenance only. They predate the app-only update contract and the
+> explicit Daemon package-version selection; use the current `Start`, `Verify`,
+> and `Daemon-only Carrier Refresh` sections for new operations.
+
 - Tencent Lighthouse firewall allows TCP 22, 80, and 443, plus ICMP ping.
 - SSH access is verified with the local key at `/Users/lee/.ssh/tengxun-ssh-key.pem` using the `ubuntu` user. Keep the key out of the repository and at `0600` permissions.
 - Docker 26.1.3 and Docker Compose v2.27.1 are present from the selected Docker base image.
@@ -506,7 +528,7 @@ python3 scripts/lighthouse_ssh_deploy_probe.py \
   --host <server-ip> \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
-  --remote-dir /opt/smallkhoj \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --dry-run
 ```
 
@@ -519,7 +541,7 @@ python3 scripts/lighthouse_ssh_deploy_probe.py \
   --host <server-ip> \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
-  --remote-dir /opt/smallkhoj \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --remote-env-file .env.prod \
   --runtime-preflight
 ```
@@ -531,26 +553,35 @@ python3 scripts/lighthouse_ssh_deploy_probe.py \
   --host <server-ip> \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
-  --remote-dir /opt/smallkhoj \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --remote-env-file .env.prod \
   --runtime-preflight \
   --compose-up \
+  --daemon-package-version <published-package-version> \
   --public-base-url http://<server-ip> \
   --allow-http
 ```
 
-If backend/frontend/Caddy images were loaded with `production_image_transfer.py`, add `--use-loaded-images` so the SSH runner pulls only the database image and does not try to pull local app tags or rebuild Caddy on the small server:
+The command above is the existing-production update path: it pulls/builds only
+application images and runs the app-only Compose command. For a brand-new
+server/database, add `--bootstrap-db` explicitly. Never add that flag while a
+production database already exists.
+
+If backend/frontend/Caddy images were loaded with `production_image_transfer.py`,
+add `--use-loaded-images`. The runner then uses the same app-only update command
+with `--pull never`; it does not pull or recreate `db`:
 
 ```bash
 python3 scripts/lighthouse_ssh_deploy_probe.py \
   --host <server-ip> \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
-  --remote-dir /opt/smallkhoj \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --remote-env-file .env.prod \
   --runtime-preflight \
   --compose-up \
   --use-loaded-images \
+  --daemon-package-version <published-package-version> \
   --public-base-url http://<server-ip> \
   --allow-http
 ```
@@ -562,14 +593,33 @@ python3 scripts/remote_deploy_evidence.py \
   --host <server-ip> \
   --user ubuntu \
   --identity-file ~/.ssh/<key> \
-  --remote-dir /opt/smallkhoj \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --remote-env-file .env.prod \
   --public-base-url http://<server-ip> \
+  --daemon-package-version <published-package-version> \
   --allow-http \
   --output /tmp/smallkhoj-remote-deploy-evidence.json
 ```
 
 The evidence collector records host probe, deploy preflight, compose service/ps/log output, Docker disk usage, memory/disk snapshots, and optional public smoke output. It does not print `.env.prod` or run `printenv`.
+
+### Remote Directory Contract
+
+The CLI defaults are generic and can remain under `/opt`, but the current
+Tencent Lighthouse host uses this layout. Pass these paths explicitly when
+operating that host; do not infer them from the local checkout:
+
+| Purpose | Current path |
+| --- | --- |
+| Image archive upload/load parent | `/home/ubuntu/smallkhoj-deploy/` |
+| Unpacked Compose bundle | `/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/` |
+| `.env.prod` and `docker-compose.prod.yml` | inside the unpacked bundle directory |
+| Release-worker external env input | local `/Volumes/ORICO/smallkhoj-secrets/` (never uploaded as a bundle file) |
+| Daemon rollback anchors | `/home/ubuntu/smallkhoj-deploy/rollback-anchors/` |
+
+`/opt/smallkhoj` and `/opt/smallkhoj-deploy` remain supported generic examples
+when a different host layout is intentionally selected; record the chosen
+`--remote-dir` in release evidence.
 
 ## Preflight
 
@@ -704,6 +754,11 @@ BETTER_AUTH_SECRET=sk_local_prod_smoke_better_auth_secret_min_32_chars
 BETTER_AUTH_URL=http://127.0.0.1:18080
 BETTER_AUTH_DATABASE_POOL_SIZE=10
 BACKEND_CORS_ORIGINS=http://127.0.0.1:18080
+# Replace both version placeholders with the values from the generated release
+# manifest before sourcing this file.
+MINIMUM_DAEMON_VERSION=REPLACE_ME
+DAEMON_RELEASE_VERSION=REPLACE_ME
+DAEMON_DOWNLOAD_BASE_URL=
 UPLOAD_MAX_BYTES=52428800
 UPLOAD_READ_CHUNK_BYTES=65536
 UPLOAD_CLEANUP_TIMEOUT_SECONDS=5
@@ -750,13 +805,17 @@ Start and smoke the stack:
 ```bash
 docker compose --env-file /tmp/smallkhoj-prod-smoke.env -f docker-compose.prod.yml up -d db backend frontend caddy
 sleep 3
-python3 scripts/post_deploy_smoke.py --base-url http://127.0.0.1:18080 --allow-http --json
+python3 scripts/post_deploy_smoke.py \
+  --base-url http://127.0.0.1:18080 \
+  --daemon-package-version "$DAEMON_RELEASE_VERSION" \
+  --allow-http --json
 docker compose --env-file /tmp/smallkhoj-prod-smoke.env -f docker-compose.prod.yml down -v
 ```
 
 ## Start
 
-Pull and start the core web stack when using registry-hosted backend/frontend images:
+For a first-time bootstrap with a brand-new database only, pull and start the
+core web stack:
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml pull db backend frontend
@@ -764,12 +823,18 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml build caddy
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
 ```
 
-When using locally loaded app images from `production_image_transfer.py`, pull only Postgres and then start the stack:
+For every update against an existing production database, use the app-only
+command below. It deliberately keeps `db` and its persistent volume outside the
+recreate set; backend startup still runs Alembic before Uvicorn:
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml pull db
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
+  --force-recreate --no-deps --no-build --pull never backend frontend caddy
 ```
+
+When using locally loaded app images from `production_image_transfer.py`, do
+not pull a database image as part of the update. Confirm the loaded image tags
+match `.env.prod`, then run the same app-only command.
 
 After the integration bootstrap and preflight pass, start the Feishu long-connection worker:
 
@@ -779,10 +844,16 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml --profile feishu-
 
 ## Verify
 
-Run the post-deploy smoke from a machine outside the Docker network:
+Run the post-deploy smoke from a machine outside the Docker network. Supply the
+published package version explicitly (or export `DAEMON_RELEASE_VERSION` and
+let the smoke discover it from that environment):
 
 ```bash
-python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --json
+export DAEMON_PACKAGE_VERSION=<published-package-version>
+python3 scripts/post_deploy_smoke.py \
+  --base-url https://smallkhoj.example.com \
+  --daemon-package-version "$DAEMON_PACKAGE_VERSION" \
+  --json
 ```
 
 The smoke includes a no-secret daemon WebSocket route check. It sends an unauthenticated WebSocket upgrade to `/internal/agent-api/ws` and expects an auth rejection, which proves Caddy reached the backend route without using a real machine token.
@@ -790,7 +861,10 @@ The smoke includes a no-secret daemon WebSocket route check. It sends an unauthe
 For IP-only HTTP smoke tests before DNS/ICP/HTTPS is ready, make the weaker transport explicit:
 
 ```bash
-python3 scripts/post_deploy_smoke.py --base-url http://<server-ip> --allow-http --json
+python3 scripts/post_deploy_smoke.py \
+  --base-url http://<server-ip> \
+  --daemon-package-version "$DAEMON_PACKAGE_VERSION" \
+  --allow-http --json
 ```
 
 Fallback manual checks:
@@ -826,12 +900,14 @@ install.sh
 smallkhoj-daemon-v<version>-darwin-arm64.tar.gz
 smallkhoj-daemon-v<version>-darwin-arm64.tar.gz.sha256
 smallkhoj-daemon-v<version>-darwin-arm64.tar.gz.manifest.json
+smallkhoj-smallkhoj-daemon-<version>.tgz
 ```
 
 Set backend deployment variables so generated onboarding metadata is public-domain aware:
 
 ```bash
-MINIMUM_DAEMON_VERSION=0.2.0
+MINIMUM_DAEMON_VERSION=<compatibility-floor>
+DAEMON_RELEASE_VERSION=<published-package-version>
 DAEMON_DOWNLOAD_BASE_URL=https://smallkhoj.example.com/downloads/smallkhoj-daemon
 ```
 
@@ -871,7 +947,56 @@ Troubleshooting:
 - connect returns `426 Unsupported daemon version`: install the current artifact or lower `MINIMUM_DAEMON_VERSION` only as an explicit release rollback decision.
 - connect returns `409 Computer already has an active daemon`: stop the existing daemon or wait for its backend lease to expire before reconnecting.
 - two connected Computers appear on the same host: verify their heartbeat workspace `cwd` values differ by the `<computerId-or-machineId>` path segment before starting live runtimes.
-- WebSocket fails after connect: verify Caddy routes `/internal/*` and run `python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --json`.
+- WebSocket fails after connect: verify Caddy routes `/internal/*` and run
+  `python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com
+  --daemon-package-version <published-package-version> --json`.
+
+### Daemon-only Carrier Refresh
+
+Use this narrower path only when the change is confined to the Daemon package
+payload and the backend/frontend/Caddy application code and configuration are
+unchanged:
+
+```text
+build the Daemon artifact from the clean candidate
+  -> verify the package manifest, npm tgz, and SHA-256
+  -> rebuild the Backend carrier image so release-artifacts/ is refreshed
+  -> save/upload/load the Backend image (or use the equivalent controlled cloud transfer)
+  -> recreate backend only; keep frontend, caddy, and db running
+  -> smoke the public package URL, /api/health, and unauthenticated Daemon WS route
+```
+
+The Backend carrier must be rebuilt even when its Python source is unchanged:
+the image contains `release-artifacts/smallkhoj-daemon/`, which is what serves
+the public tgz. The update command for an existing database is:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
+  --force-recreate --no-deps --no-build --pull never backend
+```
+
+Do not include `db`, `frontend`, or `caddy` in this refresh. Before and after the
+recreate, record the Alembic head, Backend image source revision, hosted tgz
+SHA-256, `GET /api/health`, and the WebSocket auth-rejection result. A
+Daemon-only refresh is not a substitute for the complete image-transfer gate
+when web code, env wiring, migrations, or Caddy configuration changed.
+
+### Same-version Artifact Replacement (Controlled Exception)
+
+The normal release rule is immutable artifact naming: bump the package version
+and publish a new URL. If an incident requires retaining the existing version
+string, treat replacing the tgz at that URL as an exception and record all of
+the following before calling it released:
+
+- old and new tgz SHA-256 values;
+- the matching source revision and manifest for the new package;
+- a rollback copy of the old tgz and its checksum outside the active bundle;
+- a successful public `GET` that returns the new SHA;
+- client cache handling (Windows/npm/npx clients may need the old cached package
+  removed or bypassed before reconnecting).
+
+Never mix a new manifest with an old tgz, or silently overwrite a rollback
+anchor. Version equality alone is not proof that the payload is current.
 
 Then validate daemon URL shape with the public server URL:
 

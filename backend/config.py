@@ -1,8 +1,62 @@
 """应用配置，使用 pydantic-settings 管理环境变量。"""
+import json
+import re
+from pathlib import Path
+
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEVELOPMENT_PUBLIC_API_KEY = "sk_public_local"
+_STABLE_SEMVER_RE = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
+
+
+def _discover_daemon_release_version(project_root: Path | None = None) -> str:
+    """Discover one locally generated, downloadable Daemon package version.
+
+    ``package.json.version`` identifies the source candidate, not a file that
+    the backend can serve.  Only a generated release manifest whose referenced
+    npm tarball exists is allowed to populate this local fallback.  Production
+    Compose still requires ``DAEMON_RELEASE_VERSION`` explicitly so an image
+    cannot silently advertise whichever artifact happened to be copied into
+    the build context.
+    """
+
+    project_root = project_root or Path(__file__).resolve().parents[1]
+    artifact_dir = project_root / "release-artifacts" / "smallkhoj-daemon"
+    versions: set[str] = set()
+    for manifest_path in sorted(artifact_dir.glob("*.manifest.json")):
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get("version")
+        if not isinstance(value, str):
+            continue
+        version = value.strip()
+        if not _STABLE_SEMVER_RE.fullmatch(version):
+            continue
+        npm_package = payload.get("npmPackage")
+        package_name = Path(npm_package).name if isinstance(npm_package, str) else ""
+        if not package_name.endswith(f"-{version}.tgz"):
+            continue
+        package_path = artifact_dir / package_name
+        if package_path.is_file() and not package_path.is_symlink():
+            versions.add(version)
+    if len(versions) == 1:
+        return next(iter(versions))
+    if len(versions) > 1:
+        return ""
+
+    # A package-only artifact directory is valid for older local build output,
+    # but it must still be unambiguous. Never consult source package metadata
+    # here: doing so can generate a URL for a tarball that does not exist.
+    for package_path in sorted(artifact_dir.glob("*.tgz")):
+        match = re.search(r"-(?P<version>\d+\.\d+\.\d+)\.tgz$", package_path.name)
+        if match and package_path.is_file() and not package_path.is_symlink():
+            versions.add(match.group("version"))
+    return next(iter(versions)) if len(versions) == 1 else ""
 
 
 class Settings(BaseSettings):
@@ -18,8 +72,11 @@ class Settings(BaseSettings):
     backend_cors_origins: str = ""
     auth_bridge_secret: str = ""
     public_api_key: str = ""
-    minimum_daemon_version: str = "0.2.0"
-    daemon_release_version: str = "0.2.6"
+    # Production supplies this compatibility policy through .env.prod. An
+    # empty local default means a checkout cannot silently reject a daemon
+    # based on an historical version literal.
+    minimum_daemon_version: str = ""
+    daemon_release_version: str = _discover_daemon_release_version()
     daemon_download_base_url: str = ""
     daemon_npx_package: str = ""
 

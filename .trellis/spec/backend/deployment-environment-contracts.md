@@ -22,6 +22,7 @@ Environment names:
 - `local-dev`: fast developer loop.
   - Backend URL: `http://127.0.0.1:8000`
   - Frontend URL: `http://127.0.0.1:3000`
+  - Host PostgreSQL: `127.0.0.1:5432` by default, as selected by `dev.sh`'s `DATABASE_URL`
   - Backend command shape: `rtk .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000`
   - Frontend command shape: `rtk bun run dev --hostname 0.0.0.0`
 - `local-prod`: local production-shape gate.
@@ -32,11 +33,19 @@ Environment names:
   - Current instance: Tencent Lighthouse `lhins-6gznhrts`, region `ap-shanghai`
   - Current host user/key: `ubuntu`, `/Users/lee/.ssh/tengxun-ssh-key.pem`
 
+Environment boundary summary:
+
+| Environment | Entrypoint | Database boundary | Evidence scope |
+| --- | --- | --- | --- |
+| `local-dev` | `./dev.sh` (`3000`/`8000`) | Host `DATABASE_URL`, default port `5432` | Development behavior only |
+| `local-prod` | Production Compose/Caddy on temporary ports | Isolated Compose volume/database | Production-shaped image and proxy wiring |
+| `cloud-prod` | Remote Compose plus public URL | Persistent cloud database; app-only updates | Actual public health, artifact, and WebSocket smoke |
+
 Release smoke commands:
 
 ```bash
-python3 scripts/post_deploy_smoke.py --base-url <base-url> --allow-http --json
-python3 scripts/initial_release_foundation_gate.py --base-url <base-url> --allow-http --json
+python3 scripts/post_deploy_smoke.py --base-url <base-url> --daemon-package-version <published-package-version> --allow-http --json
+python3 scripts/initial_release_foundation_gate.py --base-url <base-url> --daemon-package-version <published-package-version> --allow-http --json
 ```
 
 Current Caddy route signatures:
@@ -68,6 +77,8 @@ Current Caddy route signatures:
   E2E safety contract.
 - `cloud-prod` is the current user/product acceptance surface until a formal domain and HTTPS endpoint replace the IP-only URL.
 - `dev.sh` is a convenience script for `local-dev` only. It must not be used as release evidence, but it must keep local auth env coherent so browser signup/login works during development.
+- The real-runtime SOP follows the selected `DATABASE_URL`; the current `dev.sh`
+  default is host port `5432`. `55432` is not a fixed project test port.
 - `dev.sh` must start backend and frontend with the same `AUTH_BRIDGE_SECRET`. The backend rejects Better Auth bridge calls with `503 Auth bridge secret is not configured` when the backend secret is missing, and with `401 Invalid auth bridge secret` when the frontend-provided secret does not match.
 - `dev.sh` derives the backend `PUBLIC_API_KEY` and frontend `NEXT_PUBLIC_API_KEY` from one local-dev source: `${PUBLIC_API_KEY:-sk_public_local}`. A separate `NEXT_PUBLIC_API_KEY` override is not supported by the script.
 - `dev.sh` frontend startup must set local Better Auth env:
@@ -95,8 +106,13 @@ Current Caddy route signatures:
   - `PUBLIC_API_KEY`; missing values and the known `sk_public_local` development value are startup errors when `DEBUG=false`
   - `AUTH_BRIDGE_SECRET`
   - `BACKEND_CORS_ORIGINS` when using a domain or split origin
-  - `MINIMUM_DAEMON_VERSION` when daemon upgrade gating is enabled
+  - `MINIMUM_DAEMON_VERSION` as the explicit compatibility floor for production
   - `DAEMON_RELEASE_VERSION` for the self-hosted Daemon package advertised by onboarding and reconnect commands
+- A local backend checkout may discover `DAEMON_RELEASE_VERSION` only from one
+  generated release manifest/tgz that is actually present under
+  `release-artifacts/smallkhoj-daemon/`. The source `package.json.version` alone
+  must never be turned into a downloadable URL; production still supplies the
+  published version explicitly through `.env.prod`.
 - Daemon onboarding commands shown to users must be a single npx command, not a split install/connect workflow:
   - Default self-hosted shape: `npx -y --package <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz aura --server-url <public-base-url> --api-key <sk_connect_or_sk_machine_token> # <server-name>`
   - Optional npm-registry shape after publishing: `npx -y --package @smallkhoj/smallkhoj-daemon@latest aura --server-url <public-base-url> --api-key <sk_connect_or_sk_machine_token> # <server-name>`
@@ -121,6 +137,7 @@ Current Caddy route signatures:
 | `GET <cloud-base>/api/health` fails | Deployment blocker. Do not claim cloud readiness. |
 | `GET <cloud-base>/docs` fails | Backend/Caddy routing blocker. |
 | `GET <cloud-base>/downloads/smallkhoj-daemon/<daemon-package>.tgz` fails | Daemon onboarding deployment blocker. |
+| Smoke has no explicit package version, `DAEMON_RELEASE_VERSION`, or unique generated artifact | Fail closed with a package-version configuration error; never probe a historical hardcoded URL. |
 | `GET <cloud-base>/login` fails or does not render the deployed login page | Frontend/Caddy routing blocker. |
 | `WS /internal/agent-api/ws` is unreachable through Caddy | Daemon/runtime deployment blocker. |
 | Frontend build or boot fails because Better Auth env is missing | Env contract failure; fix env before testing UI behavior. |
@@ -382,6 +399,88 @@ Production:
   DAEMON_RELEASE_VERSION=<actually-hosted-package-version>
 ```
 
+## Scenario: Daemon-only Carrier Refresh
+
+### 1. Scope / Trigger
+
+Use this path only when a release changes the Daemon package payload while
+backend/frontend/Caddy source, migrations, and production environment wiring
+remain unchanged.
+
+### 2. Signatures
+
+```text
+Daemon artifact -> Backend carrier image -> docker save/SCP/load
+  -> app-only backend recreate -> public package/health/WS smoke
+```
+
+The selected package version must come from an explicit
+`DAEMON_RELEASE_VERSION`, `--daemon-package-version`, or the single generated
+artifact manifest being tested. No script may embed a current semantic-version
+literal.
+
+### 3. Contracts
+
+- Rebuild the Backend carrier even if Python source is unchanged: the image
+  contains `release-artifacts/smallkhoj-daemon/`, which serves the public npm tgz.
+- Existing production databases stay outside the update set. The only update
+  command is:
+
+  ```bash
+  docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
+    --force-recreate --no-deps --no-build --pull never backend
+  ```
+
+- Do not recreate frontend, caddy, or db for a Daemon-only refresh.
+- Record old/new artifact SHA-256, source revision, manifest, image source
+  revision, pre/post Alembic head, `/api/health`, package GET, and WS auth
+  rejection before claiming the refresh healthy.
+- The normal artifact rule is immutable versioned URLs. Replacing a tgz at the
+  same version is a controlled exception: retain the old artifact/checksum,
+  record both hashes and the public GET result, and document npm/npx cache
+  invalidation for clients that may have cached the old payload.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| Daemon payload changed but Backend carrier was not rebuilt | Block; the running image may still serve the old tgz. |
+| App-only refresh command contains `db`, `frontend`, or `caddy` | Contract violation; stop and use the backend-only command. |
+| Same-version replacement lacks old/new SHA or rollback copy | Block release evidence; restore a versioned artifact or supply the missing ledger. |
+| Package version cannot be resolved without a literal fallback | Fail closed and request an explicit published version. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: rebuild the carrier, load only the backend image, recreate backend, and
+  prove the hosted package SHA changed as intended while Alembic stays equal.
+- Base: use a same-version replacement only for a controlled incident with a
+  complete hash/cache/rollback record.
+- Bad: overwrite a tgz and merely restart the daemon, or include `db` in an
+  existing-production update command.
+
+### 6. Tests Required
+
+- Daemon focused tests and artifact manifest/checksum validation.
+- Backend carrier build with the exact source revision label.
+- App-only Compose plan inspection and cloud `/api/health`, package, and WS
+  smoke using the explicit published package version.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+Replace a same-named tgz, run `docker compose up -d db backend`, and infer that
+the new Daemon is deployed from the version string alone.
+```
+
+#### Correct
+
+```text
+Record the artifact identity, rebuild/load the Backend carrier, recreate only
+backend, and verify the served bytes plus health/WS evidence.
+```
+
 ## Scenario: Direct Image Archive Cloud Deployment
 
 ### 1. Scope / Trigger
@@ -397,7 +496,7 @@ python3 scripts/production_image_transfer.py \
   --host <server-ip> \
   --user ubuntu \
   --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
-  --remote-dir /opt/smallkhoj \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --output-archive /Volumes/ORICO/smallkhoj-deploy/smallkhoj-production-images-amd64.tar \
   --platform linux/amd64 \
   --capacity-report /absolute/path/to/formal-capacity-report.json \
@@ -479,8 +578,10 @@ Default local archive path if not overridden:
   merge-SHA mapping are the machine-readable release provenance.
 - `docker image ls` locally or remotely to confirm expected tags.
 - Remote `docker compose --env-file .env.prod -f docker-compose.prod.yml ps` after startup.
-- `python3 scripts/post_deploy_smoke.py --base-url <cloud-url> --allow-http --json`.
-- Release-level: `python3 scripts/initial_release_foundation_gate.py --base-url <cloud-url> --allow-http --json`.
+- `python3 scripts/post_deploy_smoke.py --base-url <cloud-url>
+  --daemon-package-version <published-package-version> --allow-http --json`.
+- Release-level: `python3 scripts/initial_release_foundation_gate.py --base-url <cloud-url>
+  --daemon-package-version <published-package-version> --allow-http --json`.
 
 ### 7. Wrong vs Correct
 

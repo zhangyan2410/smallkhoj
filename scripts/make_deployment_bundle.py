@@ -131,30 +131,43 @@ For the guarded rollout path after `release-worker.env` is filled, prefer:
 python3 scripts/release_worker_rollout.py --dry-run --json --host <server-ip> --identity-file ~/.ssh/<key> --env-file /path/outside/repo/release-worker.env --feishu-chat-id <chat-id>
 ```
 
-Pull and start the core stack:
+For a first-time bootstrap with a brand-new database only, pull and start the
+core stack (this is the only flow that includes `db`):
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+docker compose --env-file .env.prod -f docker-compose.prod.yml pull db backend frontend
+docker compose --env-file .env.prod -f docker-compose.prod.yml build caddy
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
 ```
 
-If backend/frontend/Caddy images were preloaded with `docker load`, pull only the database image before startup:
+For an existing production database, use the app-only update command. It keeps
+the database container and volume outside the update set:
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml pull db
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \\
+  --force-recreate --no-deps --no-build --pull never backend frontend caddy
 ```
+
+When the exact app images were preloaded with `docker load`, use the same
+app-only command; do not pull or recreate `db`.
 
 Smoke the public URL:
 
 ```bash
-python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --json
+export DAEMON_PACKAGE_VERSION=<published-package-version>
+python3 scripts/post_deploy_smoke.py \\
+  --base-url https://smallkhoj.example.com \\
+  --daemon-package-version "$DAEMON_PACKAGE_VERSION" \\
+  --json
 ```
 
 For IP-only HTTP smoke before DNS/HTTPS is ready:
 
 ```bash
-python3 scripts/post_deploy_smoke.py --base-url http://<server-ip> --allow-http --json
+python3 scripts/post_deploy_smoke.py \\
+  --base-url http://<server-ip> \\
+  --daemon-package-version "$DAEMON_PACKAGE_VERSION" \\
+  --allow-http --json
 ```
 
 See `docs/initial-release-production-deployment.md` for the full runbook.

@@ -17,6 +17,9 @@ class CreateProdEnvTemplateTests(unittest.TestCase):
         self.assertNotIn("NEXT_PUBLIC_API_KEY=", content)
         self.assertIn("BETTER_AUTH_DATABASE_POOL_SIZE=10", content)
         self.assertIn("BACKEND_CORS_ORIGINS=<public-origin>", content)
+        self.assertIn("MINIMUM_DAEMON_VERSION=<compatibility-floor>", content)
+        self.assertIn("DAEMON_RELEASE_VERSION=<published-package-version>", content)
+        self.assertIn("DAEMON_DOWNLOAD_BASE_URL=https://<public-host>/downloads/smallkhoj-daemon", content)
         self.assertIn("FEISHU_WORKER_APP_SECRET=<optional-set-outside-repo>", content)
         self.assertNotIn("sk_live", content)
 

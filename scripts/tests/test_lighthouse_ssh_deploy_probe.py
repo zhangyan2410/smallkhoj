@@ -60,9 +60,13 @@ class LighthouseSshDeployProbeTests(unittest.TestCase):
         commands = "\n".join(" ".join(step.argv) for step in plan.steps)
 
         self.assertIn("python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runtime --json", commands)
-        self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml pull db backend frontend", commands)
+        self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml pull backend frontend", commands)
         self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml build caddy", commands)
-        self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy", commands)
+        self.assertIn(
+            "docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --force-recreate --no-deps --no-build --pull never backend frontend caddy",
+            commands,
+        )
+        self.assertNotIn("up -d db backend frontend caddy", commands)
 
     def test_compose_start_can_use_preloaded_local_images(self) -> None:
         options = runner.RunOptions(
@@ -78,10 +82,43 @@ class LighthouseSshDeployProbeTests(unittest.TestCase):
         plan = runner.build_plan(options)
         commands = "\n".join(" ".join(step.argv) for step in plan.steps)
 
-        self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml pull db", commands)
+        self.assertNotIn("docker compose --env-file .env.prod -f docker-compose.prod.yml pull db", commands)
         self.assertNotIn("pull db backend frontend", commands)
         self.assertNotIn("build caddy", commands)
-        self.assertIn("docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy", commands)
+        self.assertIn(
+            "docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --force-recreate --no-deps --no-build --pull never backend frontend caddy",
+            commands,
+        )
+
+    def test_compose_start_requires_explicit_bootstrap_for_db(self) -> None:
+        options = runner.RunOptions(
+            host="203.0.113.10",
+            user="ubuntu",
+            remote_dir="/opt/smallkhoj",
+            local_bundle=Path("/tmp/bundle.tar.gz"),
+            remote_env_file=".env.prod",
+            compose_up=True,
+            bootstrap_db=True,
+        )
+
+        plan = runner.build_plan(options)
+        commands = "\n".join(" ".join(step.argv) for step in plan.steps)
+
+        self.assertIn("pull db backend frontend", commands)
+        self.assertIn("up -d db backend frontend caddy", commands)
+
+    def test_bootstrap_db_requires_compose_up(self) -> None:
+        options = runner.RunOptions(
+            host="203.0.113.10",
+            user="ubuntu",
+            remote_dir="/opt/smallkhoj",
+            local_bundle=Path("/tmp/bundle.tar.gz"),
+            remote_env_file=".env.prod",
+            bootstrap_db=True,
+        )
+
+        with self.assertRaises(ValueError):
+            runner.build_plan(options)
 
     def test_compose_up_requires_remote_env_file(self) -> None:
         options = runner.RunOptions(
@@ -117,6 +154,21 @@ class LighthouseSshDeployProbeTests(unittest.TestCase):
             "--json",
             "--allow-http",
         ])
+
+    def test_public_smoke_receives_explicit_daemon_package_version(self) -> None:
+        options = runner.RunOptions(
+            host="203.0.113.10",
+            user="ubuntu",
+            remote_dir="/opt/smallkhoj",
+            local_bundle=Path("/tmp/bundle.tar.gz"),
+            public_base_url="http://203.0.113.10",
+            allow_http=True,
+            daemon_package_version="9.9.9",
+        )
+
+        plan = runner.build_plan(options)
+
+        self.assertEqual(plan.steps[-1].argv[-2:], ["--daemon-package-version", "9.9.9"])
 
 
 if __name__ == "__main__":

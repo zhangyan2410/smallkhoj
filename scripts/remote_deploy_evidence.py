@@ -7,7 +7,6 @@ import argparse
 import json
 import shlex
 import subprocess
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +29,7 @@ class CollectOptions:
     remote_env_file: str | None = None
     public_base_url: str | None = None
     allow_http: bool = False
+    daemon_package_version: str | None = None
     output: Path = DEFAULT_OUTPUT
 
 
@@ -126,6 +126,8 @@ def build_plan(options: CollectOptions) -> CommandPlan:
         ]
         if options.allow_http:
             smoke.append("--allow-http")
+        if options.daemon_package_version:
+            smoke.extend(["--daemon-package-version", options.daemon_package_version])
         steps.append(PlanStep("public-smoke", smoke))
 
     return CommandPlan(steps=steps)
@@ -198,6 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--remote-env-file", help="Remote env file path relative to the unpacked bundle directory for runtime preflight.")
     parser.add_argument("--public-base-url", help="Run local public post-deploy smoke and capture its output.")
     parser.add_argument("--allow-http", action="store_true", help="Pass --allow-http to local post-deploy smoke.")
+    parser.add_argument("--daemon-package-version", help="Published self-hosted Daemon package version to pass to public smoke.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help=f"Local JSON evidence output path. Default: {DEFAULT_OUTPUT}")
     parser.add_argument("--dry-run", action="store_true", help="Print the evidence command plan without executing it.")
     parser.add_argument("--json", action="store_true", help="Print the command plan as JSON. Implies dry-run.")
@@ -215,6 +218,7 @@ def options_from_args(args: argparse.Namespace) -> CollectOptions:
         remote_env_file=args.remote_env_file,
         public_base_url=args.public_base_url,
         allow_http=args.allow_http,
+        daemon_package_version=args.daemon_package_version,
         output=args.output,
     )
 

@@ -33,7 +33,9 @@ Use this pattern for debugging real-test markers across browser/API/database/eve
 **Rules**:
 - Use `SELECT` only.
 - Do not run `UPDATE`, `DELETE`, `INSERT`, `TRUNCATE`, or DDL during observation.
-- Do not assume the active local database port. Check the running backend and test likely local ports such as `5432` and `55432`.
+- Follow the running backend's `DATABASE_URL`. `dev.sh` defaults to host port
+  `5432`; an alternate isolated port must be explicitly configured and recorded.
+  Do not treat `55432` as a project-wide test port.
 - Copy IDs from results into follow-up queries; do not patch rows to make evidence pass.
 
 **Marker queries**:
@@ -1566,7 +1568,7 @@ python3 scripts/remote_deploy_evidence.py --host <ip> --user ubuntu --remote-dir
 
 ### 5. Good/Base/Bad Cases
 - Good: local CI runs `python3 scripts/initial_release_deploy_preflight.py --json` and stores the JSON report with release evidence.
-- Good: deployment host runs `python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runtime --json` before `docker compose up`.
+- Good: deployment host runs `python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runtime --json` before Compose; first-time bootstrap may start `db`, while existing-production updates use the app-only service set.
 - Good: local production smoke sets `SMALLKHOJ_HTTP_PORT=18080` and `SMALLKHOJ_HTTPS_PORT=18443`, while Compose defaults still use public ports on real hosts.
 - Base: IP-only smoke uses `SMALLKHOJ_SITE_ADDRESS=:80`; env preflight warns but does not fail unless `--strict-warnings` is used.
 - Bad: starting Caddy before checking that ports 80/443 are already occupied by another service.
@@ -1591,17 +1593,23 @@ docker compose --env-file .env.prod up -d
 #### Correct
 ```text
 python3 scripts/initial_release_deploy_preflight.py --env-file .env.prod --runtime --json
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend frontend caddy
+  docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
+    --force-recreate --no-deps --no-build --pull never backend frontend caddy
 ```
 
 ## Scenario: Initial Release Post-Deploy Smoke CLI
 
 ### 1. Scope / Trigger
 - Trigger: validating a started production stack through its public base URL after Caddy/frontend/backend containers are running.
-- Use this after host probe and production deploy preflight pass, and after `docker compose up -d db backend frontend caddy`.
+- Use this after host probe and production deploy preflight pass. For an
+  existing production database, the preceding update is app-only; `db` is
+  included only in an explicitly documented first-time bootstrap.
 
 ### 2. Signatures
-- CLI module: `scripts/post_deploy_smoke.py`, run from the repository root with `python3 scripts/post_deploy_smoke.py --base-url <url>`.
+- CLI module: `scripts/post_deploy_smoke.py`, run from the repository root with
+  `python3 scripts/post_deploy_smoke.py --base-url <url>
+  --daemon-package-version <published-package-version>` (or with
+  `DAEMON_RELEASE_VERSION` set).
 - Optional flags:
   - `--json`: emit machine-readable public URL evidence.
   - `--allow-http`: allow HTTP without warning for IP-only or tunnel smoke tests.
@@ -1610,7 +1618,9 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend 
 
 ### 3. Contracts
 - The command must be read-only and must not require authentication, app secrets, Jira/Feishu credentials, machine tokens, or deployment env files.
-- Required checks: URL scheme, DNS resolution, TCP connect, frontend root, `/api/health`, `/docs`, `/openapi.json`, and an unauthenticated daemon WebSocket upgrade probe for `/internal/agent-api/ws`.
+- Required checks: URL scheme, DNS resolution, TCP connect, frontend root,
+  `/api/health`, `/docs`, `/openapi.json`, the selected Daemon package URL, and
+  an unauthenticated daemon WebSocket upgrade probe for `/internal/agent-api/ws`.
 - The daemon WebSocket probe must not send a real machine token. `401` or `403` is a passed check because it proves the route reaches the backend and preserves auth. `101 Switching Protocols` is a failed check without credentials.
 - HTTPS is expected by default. HTTP must warn unless `--allow-http` is used.
 - If DNS, TCP, or TLS prerequisites fail, endpoint checks should fail fast without waiting for repeated HTTP timeouts.
@@ -1631,8 +1641,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db backend 
 - `/internal/agent-api/ws` no-token upgrade returns `404`, `502`, malformed status, or no response -> failed daemon WebSocket route check.
 
 ### 5. Good/Base/Bad Cases
-- Good: `python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --json` returns ready after DNS, TLS, frontend, backend health, docs, and OpenAPI routes all pass.
-- Base: `python3 scripts/post_deploy_smoke.py --base-url http://<server-ip> --allow-http --json` proves IP-only HTTP smoke while ICP/domain/HTTPS are pending.
+- Good: `python3 scripts/post_deploy_smoke.py --base-url https://smallkhoj.example.com --daemon-package-version <published-package-version> --json` returns ready after DNS, TLS, frontend, backend health, docs, OpenAPI, package, and WebSocket checks all pass.
+- Base: `python3 scripts/post_deploy_smoke.py --base-url http://<server-ip> --daemon-package-version <published-package-version> --allow-http --json` proves IP-only HTTP smoke while ICP/domain/HTTPS are pending.
 - Good: daemon WebSocket smoke receives `403` for an unauthenticated upgrade, proving Caddy `/internal/*` reaches the backend while auth remains enforced.
 - Bad: relying only on `curl /` and missing a broken `/api/*` or `/openapi.json` Caddy route.
 - Bad: opening daemon WebSocket in smoke with a real machine token; daemon validation belongs to the daemon reconnect/live-run gate.
@@ -1652,7 +1662,7 @@ curl -I https://domain/
 
 #### Correct
 ```text
-python3 scripts/post_deploy_smoke.py --base-url https://domain --json
+python3 scripts/post_deploy_smoke.py --base-url https://domain --daemon-package-version <published-package-version> --json
 ```
 
 ## Scenario: Initial Release Feishu-Jira-TaskRun Loop

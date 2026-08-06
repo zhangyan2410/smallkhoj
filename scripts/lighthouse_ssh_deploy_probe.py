@@ -30,9 +30,11 @@ class RunOptions:
     remote_env_file: str | None = None
     runtime_preflight: bool = False
     compose_up: bool = False
+    bootstrap_db: bool = False
     use_loaded_images: bool = False
     public_base_url: str | None = None
     allow_http: bool = False
+    daemon_package_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,8 @@ def build_plan(options: RunOptions) -> CommandPlan:
         raise ValueError("--compose-up requires --remote-env-file")
     if options.runtime_preflight and not options.remote_env_file:
         raise ValueError("--runtime-preflight requires --remote-env-file")
+    if options.bootstrap_db and not options.compose_up:
+        raise ValueError("--bootstrap-db requires --compose-up")
 
     remote_dir = options.remote_dir.rstrip("/")
     remote_bundle = f"{remote_dir}/{options.local_bundle.name}"
@@ -130,16 +134,27 @@ def build_plan(options: RunOptions) -> CommandPlan:
     if options.compose_up:
         env_file = shlex.quote(options.remote_env_file or "")
         compose = f"docker compose --env-file {env_file} -f docker-compose.prod.yml"
-        if options.use_loaded_images:
+        if options.bootstrap_db:
+            if options.use_loaded_images:
+                commands = [
+                    f"{compose} pull db",
+                    f"{compose} up -d db backend frontend caddy",
+                ]
+            else:
+                commands = [
+                    f"{compose} pull db backend frontend",
+                    f"{compose} build caddy",
+                    f"{compose} up -d db backend frontend caddy",
+                ]
+        elif options.use_loaded_images:
             commands = [
-                f"{compose} pull db",
-                f"{compose} up -d db backend frontend caddy",
+                f"{compose} up -d --force-recreate --no-deps --no-build --pull never backend frontend caddy",
             ]
         else:
             commands = [
-                f"{compose} pull db backend frontend",
+                f"{compose} pull backend frontend",
                 f"{compose} build caddy",
-                f"{compose} up -d db backend frontend caddy",
+                f"{compose} up -d --force-recreate --no-deps --no-build --pull never backend frontend caddy",
             ]
         steps.append(PlanStep("compose-up", remote_shell(
             options,
@@ -156,6 +171,8 @@ def build_plan(options: RunOptions) -> CommandPlan:
         ]
         if options.allow_http:
             smoke.append("--allow-http")
+        if options.daemon_package_version:
+            smoke.extend(["--daemon-package-version", options.daemon_package_version])
         steps.append(PlanStep("public-smoke", smoke))
 
     return CommandPlan(steps=steps)
@@ -195,10 +212,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bundle-prefix", default=DEFAULT_PREFIX, help=f"Top-level directory inside the bundle. Default: {DEFAULT_PREFIX}")
     parser.add_argument("--remote-env-file", help="Remote env file path relative to the unpacked bundle directory, for env/runtime preflight or compose startup.")
     parser.add_argument("--runtime-preflight", action="store_true", help="Run remote deploy preflight with --runtime. Requires --remote-env-file.")
-    parser.add_argument("--compose-up", action="store_true", help="Pull/build/start db/backend/frontend/caddy remotely. Requires --remote-env-file.")
-    parser.add_argument("--use-loaded-images", action="store_true", help="When using --compose-up, assume backend/frontend/caddy images were loaded on the host and only pull db.")
+    parser.add_argument("--compose-up", action="store_true", help="Start the application services remotely. Requires --remote-env-file.")
+    parser.add_argument("--bootstrap-db", action="store_true", help="Explicitly perform a first-time bootstrap that starts db with the application services. Never use for an existing production database.")
+    parser.add_argument("--use-loaded-images", action="store_true", help="When using --compose-up, assume backend/frontend/caddy images are already loaded and use the app-only update command.")
     parser.add_argument("--public-base-url", help="Run local post-deploy smoke against this public base URL after remote steps.")
     parser.add_argument("--allow-http", action="store_true", help="Pass --allow-http to local post-deploy smoke.")
+    parser.add_argument("--daemon-package-version", help="Published self-hosted Daemon package version to pass to public smoke.")
     parser.add_argument("--dry-run", action="store_true", help="Print the command plan without executing it.")
     parser.add_argument("--json", action="store_true", help="Print the command plan as JSON. Implies dry-run.")
     return parser
@@ -216,9 +235,11 @@ def options_from_args(args: argparse.Namespace) -> RunOptions:
         remote_env_file=args.remote_env_file,
         runtime_preflight=args.runtime_preflight,
         compose_up=args.compose_up,
+        bootstrap_db=args.bootstrap_db,
         use_loaded_images=args.use_loaded_images,
         public_base_url=args.public_base_url,
         allow_http=args.allow_http,
+        daemon_package_version=args.daemon_package_version,
     )
 
 

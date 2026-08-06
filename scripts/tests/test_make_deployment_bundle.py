@@ -106,6 +106,10 @@ class DeploymentBundleTests(unittest.TestCase):
             self.assertLess(readme.index("initial_release_deploy_preflight.py"), readme.index("docker compose"))
             self.assertLess(readme.index("docker compose"), readme.index("post_deploy_smoke.py"))
             self.assertLess(readme.index("validate_release_worker_env.py"), readme.index("update_prod_env_from_stdin.py"))
+            self.assertIn("first-time bootstrap", readme)
+            self.assertIn("--force-recreate --no-deps --no-build --pull never backend frontend caddy", readme)
+            self.assertIn("--daemon-package-version \"$DAEMON_PACKAGE_VERSION\"", readme)
+            self.assertIn("do not pull or recreate `db`", readme)
 
     def test_tar_member_names_are_relative_under_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

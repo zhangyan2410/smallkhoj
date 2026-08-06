@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 
+import pytest
+from fastapi import HTTPException
+
 from routers import public_api
 
 DAEMON_PACKAGE_VERSION = json.loads(
@@ -12,6 +15,13 @@ DAEMON_PACKAGE_VERSION = json.loads(
         / "package.json"
     ).read_text(encoding="utf-8")
 )["version"]
+
+
+@pytest.fixture(autouse=True)
+def configured_daemon_release_version(monkeypatch):
+    """Tests choose their candidate explicitly; production never uses this fixture."""
+
+    monkeypatch.setattr(public_api.settings, "daemon_release_version", DAEMON_PACKAGE_VERSION)
 
 
 def test_connect_command_uses_hosted_npm_tarball_by_default_not_repo_path():
@@ -59,6 +69,17 @@ def test_connect_command_can_advertise_newer_daemon_without_raising_minimum(monk
 
     assert f"smallkhoj-smallkhoj-daemon-{advertised_version}.tgz" in command
     assert "aura --server-url https://smallkhoj.example.com" in command
+
+
+def test_connect_command_fails_closed_without_release_selection(monkeypatch):
+    monkeypatch.setattr(public_api.settings, "daemon_release_version", "")
+    monkeypatch.setattr(public_api.settings, "minimum_daemon_version", "0.0.1")
+
+    with pytest.raises(HTTPException) as error:
+        public_api._computer_connect_command("sk_connect_test", "https://smallkhoj.example.com")
+
+    assert error.value.status_code == 503
+    assert "DAEMON_RELEASE_VERSION" in str(error.value.detail)
 
 
 def test_daemon_install_metadata_is_domain_aware():

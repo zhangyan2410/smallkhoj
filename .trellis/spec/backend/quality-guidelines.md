@@ -58,7 +58,7 @@ Questions to answer:
 
 ### 2. Signatures
 - Foundation gate command:
-  `python3 scripts/initial_release_foundation_gate.py --base-url <public-url> [--allow-http] [--env-file <path>] [--runtime] [--skip-backend-tests] [--strict-warnings] [--partial] [--json]`
+  `python3 scripts/initial_release_foundation_gate.py --base-url <public-url> [--daemon-package-version <published-package-version>] [--allow-http] [--env-file <path>] [--runtime] [--skip-backend-tests] [--strict-warnings] [--partial] [--json]`
 - Backup/restore drill command:
   `python3 scripts/postgres_backup_restore_drill.py [--dry-run] [--env-file <path>] [--compose-file <path>] [--backup-dir <path>] [--restore-database <name>] [--json]`
 - JSON report fields include `ready`, `failures`, `blocked`, `warnings`, `p0Warnings`, `risks`, and `checks`.

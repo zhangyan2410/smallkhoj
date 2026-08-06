@@ -938,6 +938,7 @@ def _append_smoke_checks(
     base_url: str | None,
     allow_http: bool,
     timeout: float,
+    daemon_package_version: str | None,
 ) -> None:
     if not base_url:
         checks.append(blocked(
@@ -955,7 +956,12 @@ def _append_smoke_checks(
             priority="P0",
         ))
         return
-    report = smoke.run_smoke(base_url=base_url, allow_http=allow_http, timeout=timeout)
+    report = smoke.run_smoke(
+        base_url=base_url,
+        allow_http=allow_http,
+        timeout=timeout,
+        daemon_package_version=daemon_package_version,
+    )
     for check in report.checks:
         risk_id, priority = _risk_for_smoke_check(check)
         checks.append(_from_check_result("smoke", check, risk_id=risk_id, priority=priority))
@@ -969,6 +975,7 @@ def run_foundation_gate(
     allow_http: bool = False,
     include_runtime: bool = False,
     timeout: float = 8.0,
+    daemon_package_version: str | None = None,
     require_all_p0: bool = True,
     include_backend_tests: bool = False,
 ) -> FoundationReport:
@@ -988,7 +995,13 @@ def run_foundation_gate(
         checks.append(check_daemon_identity_backend_tests(resolved_root, timeout=max(timeout, 30.0)))
         checks.append(check_taskrun_lifecycle_backend_tests(resolved_root, timeout=max(timeout, 30.0)))
     _append_preflight_checks(checks, root=resolved_root, env_file=env_file, include_runtime=include_runtime)
-    _append_smoke_checks(checks, base_url=base_url, allow_http=allow_http, timeout=timeout)
+    _append_smoke_checks(
+        checks,
+        base_url=base_url,
+        allow_http=allow_http,
+        timeout=timeout,
+        daemon_package_version=daemon_package_version,
+    )
     if require_all_p0:
         checks.extend(missing_p0_coverage_checks(checks))
     return FoundationReport(checks=checks)
@@ -1098,6 +1111,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-file", help="Deployment env file to inspect without printing secret values.")
     parser.add_argument("--base-url", help="Public deployment base URL for post-deploy smoke checks.")
     parser.add_argument("--allow-http", action="store_true", help="Accept HTTP for IP-only or tunnel smoke tests.")
+    parser.add_argument(
+        "--daemon-package-version",
+        help="Published self-hosted Daemon package version to pass to public smoke.",
+    )
     parser.add_argument("--runtime", action="store_true", help="Inspect current host Docker, resources, and public port readiness.")
     parser.add_argument(
         "--skip-backend-tests",
@@ -1124,6 +1141,7 @@ def main(argv: list[str] | None = None) -> int:
         env_file=env_file,
         base_url=args.base_url,
         allow_http=args.allow_http,
+        daemon_package_version=args.daemon_package_version,
         include_runtime=args.runtime,
         timeout=args.timeout,
         require_all_p0=not args.partial,

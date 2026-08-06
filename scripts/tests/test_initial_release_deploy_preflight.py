@@ -250,6 +250,8 @@ class DeployPreflightTests(unittest.TestCase):
                         "BETTER_AUTH_SECRET",
                         "BETTER_AUTH_URL",
                         "AUTH_BRIDGE_SECRET",
+                        "MINIMUM_DAEMON_VERSION",
+                        "DAEMON_RELEASE_VERSION",
                     ],
                     "placeholder": [],
                 },
@@ -270,6 +272,8 @@ class DeployPreflightTests(unittest.TestCase):
                 BETTER_AUTH_SECRET=<set-outside-repo>
                 BETTER_AUTH_URL=<public-origin>
                 AUTH_BRIDGE_SECRET=<set-outside-repo>
+                MINIMUM_DAEMON_VERSION=<compatibility-floor>
+                DAEMON_RELEASE_VERSION=<published-package-version>
             """)
 
             report = preflight.run_preflight(root=root, env_file=env_file)
@@ -290,6 +294,8 @@ class DeployPreflightTests(unittest.TestCase):
                         "BETTER_AUTH_SECRET",
                         "BETTER_AUTH_URL",
                         "AUTH_BRIDGE_SECRET",
+                        "MINIMUM_DAEMON_VERSION",
+                        "DAEMON_RELEASE_VERSION",
                     ],
                 },
             )
@@ -313,6 +319,29 @@ class DeployPreflightTests(unittest.TestCase):
 
         self.assertEqual(preflight.exit_code_for(report, strict_warnings=False), 0)
         self.assertEqual(preflight.exit_code_for(report, strict_warnings=True), 2)
+
+    def test_env_file_rejects_non_semantic_daemon_release_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_repo(root)
+            env_file = root / ".env.prod"
+            write(env_file, """
+                SMALLKHOJ_SITE_ADDRESS=smallkhoj.example.com
+                SMALLKHOJ_BACKEND_IMAGE=registry/smallkhoj-backend:test
+                SMALLKHOJ_FRONTEND_IMAGE=registry/smallkhoj-frontend:test
+                POSTGRES_PASSWORD=secret
+                BACKEND_CORS_ORIGINS=https://smallkhoj.example.com
+                BETTER_AUTH_SECRET=abcdefghijklmnopqrstuvwxyz123456
+                BETTER_AUTH_URL=https://smallkhoj.example.com
+                AUTH_BRIDGE_SECRET=abcdefghijklmnopqrstuvwxyz123456
+                MINIMUM_DAEMON_VERSION=0.0.1
+                DAEMON_RELEASE_VERSION=latest
+            """)
+
+            report = preflight.run_preflight(root=root, env_file=env_file)
+
+            check = next(check for check in report.checks if check.name == "env.daemonReleaseVersion")
+            self.assertEqual(check.status, "failed")
 
 
 if __name__ == "__main__":

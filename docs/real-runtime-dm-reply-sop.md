@@ -2,7 +2,7 @@
 topics: [testing, real-test, runtime, daemon, dm]
 doc_kind: note
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-08-06
 ---
 
 # Real Runtime DM Reply SOP
@@ -26,7 +26,10 @@ Verify that a browser-authored DM from `zy-ean` reaches a real runtime and that 
 
 - Backend is running at `http://127.0.0.1:8000`.
 - Frontend is running at `http://127.0.0.1:3000`.
-- Test Postgres is reachable on port `55432`.
+- Test Postgres is reachable through the `DATABASE_URL` used by `./dev.sh`.
+  The default local-dev host port is `5432`; an isolated test port must be
+  supplied explicitly through the selected environment and recorded with the
+  evidence. `55432` is not a fixed project contract.
 - Project WebDriver master is available:
 
 ```bash

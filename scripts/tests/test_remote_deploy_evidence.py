@@ -105,6 +105,21 @@ class RemoteDeployEvidenceTests(unittest.TestCase):
             "--allow-http",
         ])
 
+    def test_public_smoke_can_receive_published_daemon_version(self) -> None:
+        options = evidence.CollectOptions(
+            host="203.0.113.10",
+            user="ubuntu",
+            remote_dir="/opt/smallkhoj",
+            output=Path("/tmp/evidence.json"),
+            public_base_url="http://203.0.113.10",
+            allow_http=True,
+            daemon_package_version="9.9.9",
+        )
+
+        plan = evidence.build_plan(options)
+
+        self.assertEqual(plan.steps[-1].argv[-2:], ["--daemon-package-version", "9.9.9"])
+
     def test_evidence_payload_contains_results_without_secret_fields(self) -> None:
         result = evidence.CommandResult(
             label="repo-preflight",

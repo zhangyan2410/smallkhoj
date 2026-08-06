@@ -1,9 +1,23 @@
 import json
+import os
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from scripts import post_deploy_smoke as smoke
+
+
+TEST_DAEMON_PACKAGE_VERSION = json.loads(
+    (
+        Path(__file__).resolve().parents[2]
+        / "agent"
+        / "daemon"
+        / "aaa-daemon"
+        / "package.json"
+    ).read_text(encoding="utf-8")
+)["version"]
 
 
 class FakeDeploymentHandler(BaseHTTPRequestHandler):
@@ -39,7 +53,10 @@ class FakeDeploymentHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"openapi": "3.1.0", "paths": {"/api/health": {}}}).encode())
             return
-        if self.path == "/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-0.2.1.tgz":
+        if self.path == (
+            "/downloads/smallkhoj-daemon/"
+            f"{smoke.DAEMON_PACKAGE_NAME}-{TEST_DAEMON_PACKAGE_VERSION}.tgz"
+        ):
             self.send_response(self.daemon_package_status)
             self.send_header("Content-Type", "application/x-tar")
             self.end_headers()
@@ -75,6 +92,8 @@ class FakeDeploymentServer:
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
     def __enter__(self):
+        self.previous_daemon_release_version = os.environ.get("DAEMON_RELEASE_VERSION")
+        os.environ["DAEMON_RELEASE_VERSION"] = TEST_DAEMON_PACKAGE_VERSION
         self.thread.start()
         return f"http://127.0.0.1:{self.server.server_address[1]}"
 
@@ -82,9 +101,49 @@ class FakeDeploymentServer:
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
+        if self.previous_daemon_release_version is None:
+            os.environ.pop("DAEMON_RELEASE_VERSION", None)
+        else:
+            os.environ["DAEMON_RELEASE_VERSION"] = self.previous_daemon_release_version
 
 
 class PostDeploySmokeTests(unittest.TestCase):
+    def test_package_selection_prefers_explicit_version(self) -> None:
+        selection = smoke.select_daemon_package_version(
+            "9.9.9",
+            artifact_dir=Path("/path/that/does/not/exist"),
+            environ={},
+        )
+
+        self.assertEqual(selection.version, "9.9.9")
+        self.assertEqual(selection.source, "--daemon-package-version")
+        self.assertIsNone(selection.error)
+
+    def test_package_selection_reads_one_generated_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp)
+            package_name = f"{smoke.DAEMON_PACKAGE_NAME}-{TEST_DAEMON_PACKAGE_VERSION}.tgz"
+            (artifact_dir / package_name).write_bytes(b"tgz")
+            (artifact_dir / "release.manifest.json").write_text(
+                json.dumps({"version": TEST_DAEMON_PACKAGE_VERSION, "npmPackage": package_name}),
+                encoding="utf-8",
+            )
+
+            selection = smoke.select_daemon_package_version(artifact_dir=artifact_dir, environ={})
+
+        self.assertEqual(selection.version, TEST_DAEMON_PACKAGE_VERSION)
+        self.assertEqual(selection.source, "release-artifacts")
+
+    def test_package_selection_fails_closed_without_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            selection = smoke.select_daemon_package_version(
+                artifact_dir=Path(tmp),
+                environ={},
+            )
+
+        self.assertIsNone(selection.version)
+        self.assertIn("not configured", selection.error or "")
+
     def test_successful_smoke_with_allow_http(self) -> None:
         with FakeDeploymentServer() as base_url:
             report = smoke.run_smoke(base_url=base_url, allow_http=True, timeout=2)

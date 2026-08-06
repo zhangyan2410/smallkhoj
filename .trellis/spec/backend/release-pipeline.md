@@ -67,7 +67,7 @@ gh pr merge <PR> --squash --match-head-commit <candidate-SHA>
 python3 scripts/production_image_transfer.py \
   --host 124.222.40.40 --user ubuntu \
   --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
-  --remote-dir /opt/smallkhoj-deploy \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
   --platform linux/amd64 \
   --capacity-report <accepted-formal-report.json> \
   --use-vpn-proxy --apply
@@ -77,7 +77,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
   --force-recreate --no-deps --no-build --pull never backend frontend caddy
 
 # Phase 6 — post-deploy smoke (health route is /api/health, NOT /health)
-python3 scripts/post_deploy_smoke.py --base-url http://124.222.40.40 --allow-http --json
+python3 scripts/post_deploy_smoke.py --base-url http://124.222.40.40 --daemon-package-version <published-package-version> --allow-http --json
 ```
 
 Deploy target:
@@ -86,7 +86,8 @@ Deploy target:
 Host:     124.222.40.40  (Tencent Lighthouse lhins-6gznhrts, ap-shanghai)
 User:     ubuntu
 Base URL: http://124.222.40.40   (HTTP:80 today; HTTPS/domain/ICP not yet established)
-Remote:   /opt/smallkhoj-deploy  (image archive)  /  /home/ubuntu/smallkhoj-deploy (release worker)
+Remote:   /home/ubuntu/smallkhoj-deploy (current image archive + bundle parent)
+          /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy (Compose bundle)
 Secrets:  /Volumes/ORICO/smallkhoj-secrets/release-worker.env (external drive; never committed)
 ```
 
@@ -231,7 +232,8 @@ smallkhoj-caddy:local-release
   either variable.
 - Backend `MINIMUM_DAEMON_VERSION` is a separate compatibility policy; lower
   daemon versions get `426`. It must not be derived from the current package
-  version merely to advertise a newer candidate.
+  version merely to advertise a newer candidate, and production Compose must
+  receive it explicitly from `.env.prod`.
 - Production `DAEMON_RELEASE_VERSION` remains an explicit published-artifact
   selection. It may temporarily differ from the source candidate while a
   package is awaiting publication, but it must equal the version in the
@@ -248,6 +250,25 @@ smallkhoj-caddy:local-release
 - The bundled daemon tgz must expose the `aura` bin; `smallkhoj-daemon` is a
   compatibility alias. See the "Compatible Daemon Package Rollout" scenario in
   `deployment-environment-contracts.md`.
+
+#### Daemon-only carrier refresh
+
+- A Daemon-only payload change still requires a new Backend carrier image because
+  the Backend image serves `release-artifacts/smallkhoj-daemon/`.
+- For an existing production database, load/recreate only `backend` with
+  `--force-recreate --no-deps --no-build --pull never`; keep `frontend`, `caddy`,
+  and `db` running.
+- The smoke command must receive the actually published package version through
+  `--daemon-package-version`, `DAEMON_RELEASE_VERSION`, or one unambiguous local
+  generated artifact. There is no hardcoded fallback version.
+- Backend local configuration follows the same boundary: source
+  `package.json.version` is a candidate only and is not advertised unless the
+  matching generated npm tarball is present. Production Compose remains
+  explicitly configured from `.env.prod`.
+- Record old/new package SHA-256, source revision, carrier image revision,
+  Alembic before/after, health, package GET, and WebSocket auth rejection. A
+  same-version replacement is an exception requiring a rollback copy and an
+  npm/npx cache note; version equality alone is not artifact identity.
 
 #### `rtk` is NOT a project build tool
 
@@ -312,9 +333,11 @@ For any change touching the pipeline:
 - UI-facing changes: visible `./twd` evidence with a `REAL_` marker; the
   committed Playwright flow is cross-layer CI, not UI acceptance.
 - Release-level: `python3 scripts/initial_release_foundation_gate.py
-  --base-url <url> --allow-http --json`.
+  --base-url <url> --daemon-package-version <published-package-version>
+  --allow-http --json`.
 - Post-deploy: `python3 scripts/post_deploy_smoke.py --base-url <url>
-  --allow-http --json` plus `/api/health`, `/docs`, `/login`, and daemon WS.
+  --daemon-package-version <published-package-version> --allow-http --json`
+  plus `/api/health`, `/docs`, `/login`, and daemon WS.
 - For image transfer changes: dry-run with `--capacity-report` first; after a
   real transfer, validate `<output-archive>.release-evidence.json` hashes,
   image identities, and tested-tree -> merge-SHA mapping.

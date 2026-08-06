@@ -46,6 +46,13 @@ BETTER_AUTH_SECRET=<set-outside-repo>
 BETTER_AUTH_URL=<public-origin>
 AUTH_BRIDGE_SECRET=<set-outside-repo>
 
+# Daemon compatibility policy and the exact published artifact advertised by
+# onboarding/reconnect. DAEMON_RELEASE_VERSION is intentionally explicit;
+# never rely on a historical Compose default or silently follow a source bump.
+MINIMUM_DAEMON_VERSION=<compatibility-floor>
+DAEMON_RELEASE_VERSION=<published-package-version>
+DAEMON_DOWNLOAD_BASE_URL=https://<public-host>/downloads/smallkhoj-daemon
+
 # Same-origin frontend defaults. Leave empty unless the browser must call another public host.
 NEXT_PUBLIC_API_BASE_URL=
 NEXT_PUBLIC_WS_BASE_URL=

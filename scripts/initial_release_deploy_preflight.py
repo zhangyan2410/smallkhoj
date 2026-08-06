@@ -35,6 +35,8 @@ REQUIRED_ENV_KEYS = (
     "BETTER_AUTH_SECRET",
     "BETTER_AUTH_URL",
     "AUTH_BRIDGE_SECRET",
+    "MINIMUM_DAEMON_VERSION",
+    "DAEMON_RELEASE_VERSION",
 )
 SECRET_ENV_KEYS = {
     "POSTGRES_PASSWORD",
@@ -46,6 +48,7 @@ SECRET_ENV_KEYS = {
     "LLM_API_KEY",
 }
 PLACEHOLDER_PREFIXES = ("<", "TODO", "CHANGE_ME", "REPLACE_ME")
+STABLE_SEMVER_RE = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 
 
 @dataclass(frozen=True)
@@ -416,6 +419,26 @@ def check_env_file(env_file: Path) -> list[CheckResult]:
             "Deployment env file contains required production values.",
             sanitize_env_details(env, REQUIRED_ENV_KEYS),
         ))
+
+    for key, check_name, reason_code, reason in (
+        (
+            "MINIMUM_DAEMON_VERSION",
+            "env.daemonMinimumVersion",
+            "DEPLOY_PREFLIGHT_DAEMON_MINIMUM_VERSION_INVALID",
+            "MINIMUM_DAEMON_VERSION must be a stable semantic version compatibility floor.",
+        ),
+        (
+            "DAEMON_RELEASE_VERSION",
+            "env.daemonReleaseVersion",
+            "DEPLOY_PREFLIGHT_DAEMON_RELEASE_VERSION_INVALID",
+            "DAEMON_RELEASE_VERSION must be a stable semantic version selected from a published artifact.",
+        ),
+    ):
+        value = env.get(key, "").strip()
+        if value and not STABLE_SEMVER_RE.fullmatch(value):
+            checks.append(failed(check_name, reason_code, reason))
+        elif value:
+            checks.append(passed(check_name, f"{key} is a stable semantic version."))
 
     site = env.get("SMALLKHOJ_SITE_ADDRESS", "").strip()
     cors_raw = env.get("BACKEND_CORS_ORIGINS", "")

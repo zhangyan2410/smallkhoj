@@ -8,9 +8,11 @@ import base64
 import http.client
 import json
 import os
+import re
 import socket
 import ssl
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -28,7 +30,9 @@ from scripts.initial_release_deploy_preflight import (  # noqa: E402
 
 
 READY = "POST_DEPLOY_SMOKE_READY"
-DEFAULT_DAEMON_PACKAGE_VERSION = "0.2.1"
+DAEMON_PACKAGE_NAME = "smallkhoj-smallkhoj-daemon"
+DAEMON_ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "release-artifacts" / "smallkhoj-daemon"
+STABLE_SEMVER_RE = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 
 
 @dataclass(frozen=True)
@@ -54,6 +58,116 @@ class SmokeReport:
     @property
     def ready(self) -> bool:
         return self.failures == 0
+
+
+@dataclass(frozen=True)
+class DaemonPackageSelection:
+    version: str | None
+    source: str | None = None
+    error: str | None = None
+
+
+def _validate_daemon_package_version(value: str, *, source: str) -> str:
+    version = value.strip()
+    if not STABLE_SEMVER_RE.fullmatch(version):
+        raise ValueError(f"Daemon package version from {source} must be a stable semantic version")
+    return version
+
+
+def _artifact_versions(artifact_dir: Path) -> set[str]:
+    """Read the exact package version from locally generated release metadata.
+
+    The production release selection is intentionally not inferred from the
+    source checkout. A generated manifest/tgz is the only automatic fallback;
+    operators can still pass the published version explicitly.
+    """
+
+    versions: set[str] = set()
+    for manifest_path in sorted(artifact_dir.glob("*.manifest.json")):
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"could not read daemon artifact manifest {manifest_path}: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(f"daemon artifact manifest must be an object: {manifest_path}")
+        raw_version = payload.get("version")
+        if not isinstance(raw_version, str):
+            raise ValueError(f"daemon artifact manifest has no version: {manifest_path}")
+        version = _validate_daemon_package_version(raw_version, source=str(manifest_path))
+        npm_package = payload.get("npmPackage")
+        package_name = Path(npm_package).name if isinstance(npm_package, str) else ""
+        expected_name = f"{DAEMON_PACKAGE_NAME}-{version}.tgz"
+        if package_name and package_name != expected_name:
+            raise ValueError(
+                f"daemon artifact manifest package does not match version: {manifest_path}"
+            )
+        if not (artifact_dir / expected_name).is_file():
+            raise ValueError(f"daemon package referenced by manifest is missing: {expected_name}")
+        versions.add(version)
+
+    # Older generated directories may not have a manifest. In that case only
+    # accept a single unambiguous package filename.
+    if not versions:
+        for package_path in sorted(artifact_dir.glob(f"{DAEMON_PACKAGE_NAME}-*.tgz")):
+            match = re.fullmatch(
+                rf"{re.escape(DAEMON_PACKAGE_NAME)}-(?P<version>[^/]+)\.tgz",
+                package_path.name,
+            )
+            if match:
+                versions.add(_validate_daemon_package_version(match.group("version"), source=str(package_path)))
+    return versions
+
+
+def select_daemon_package_version(
+    explicit: str | None = None,
+    *,
+    artifact_dir: Path = DAEMON_ARTIFACT_DIR,
+    environ: Mapping[str, str] | None = None,
+) -> DaemonPackageSelection:
+    """Select the package URL version without maintaining a code literal.
+
+    Precedence is explicit CLI value, `DAEMON_RELEASE_VERSION`, then a single
+    locally generated artifact. If none is available, return an error so smoke
+    cannot accidentally validate an unrelated historical package.
+    """
+
+    env = os.environ if environ is None else environ
+    if explicit and explicit.strip():
+        try:
+            return DaemonPackageSelection(
+                _validate_daemon_package_version(explicit, source="--daemon-package-version"),
+                "--daemon-package-version",
+            )
+        except ValueError as exc:
+            return DaemonPackageSelection(None, "--daemon-package-version", str(exc))
+
+    configured = env.get("DAEMON_RELEASE_VERSION", "").strip()
+    if configured:
+        try:
+            return DaemonPackageSelection(
+                _validate_daemon_package_version(configured, source="DAEMON_RELEASE_VERSION"),
+                "DAEMON_RELEASE_VERSION",
+            )
+        except ValueError as exc:
+            return DaemonPackageSelection(None, "DAEMON_RELEASE_VERSION", str(exc))
+
+    try:
+        versions = _artifact_versions(artifact_dir)
+    except ValueError as exc:
+        return DaemonPackageSelection(None, "release-artifacts", str(exc))
+    if len(versions) == 1:
+        return DaemonPackageSelection(next(iter(versions)), "release-artifacts")
+    if len(versions) > 1:
+        return DaemonPackageSelection(
+            None,
+            "release-artifacts",
+            "multiple daemon package versions were found; pass --daemon-package-version explicitly",
+        )
+    return DaemonPackageSelection(
+        None,
+        None,
+        "Daemon package version is not configured; pass --daemon-package-version or set DAEMON_RELEASE_VERSION",
+    )
 
 
 def passed(name: str, reason: str, details: dict[str, Any] | None = None) -> CheckResult:
@@ -250,8 +364,21 @@ def check_openapi(base_url: str, *, timeout: float) -> CheckResult:
     return failed("http.openapi", "POST_DEPLOY_SMOKE_OPENAPI_UNEXPECTED", "OpenAPI route returned unexpected JSON.", {"status": probe.status})
 
 
-def check_daemon_package(base_url: str, *, timeout: float) -> CheckResult:
-    package_path = f"/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-{DEFAULT_DAEMON_PACKAGE_VERSION}.tgz"
+def check_daemon_package(
+    base_url: str,
+    *,
+    timeout: float,
+    selection: DaemonPackageSelection | None = None,
+) -> CheckResult:
+    selected = selection or select_daemon_package_version()
+    if not selected.version:
+        return failed(
+            "http.daemonPackage",
+            "POST_DEPLOY_SMOKE_DAEMON_PACKAGE_VERSION_MISSING",
+            selected.error or "Daemon package version could not be resolved.",
+            {"source": selected.source, "hint": "pass --daemon-package-version or set DAEMON_RELEASE_VERSION"},
+        )
+    package_path = f"/downloads/smallkhoj-daemon/{DAEMON_PACKAGE_NAME}-{selected.version}.tgz"
     try:
         probe = get_url(urljoin(base_url, package_path), timeout=timeout)
     except Exception as exc:
@@ -270,6 +397,8 @@ def check_daemon_package(base_url: str, *, timeout: float) -> CheckResult:
                 "contentType": probe.content_type,
                 "bytesRead": len(probe.body),
                 "path": package_path,
+                "version": selected.version,
+                "versionSource": selected.source,
             },
         )
     return failed(
@@ -281,6 +410,8 @@ def check_daemon_package(base_url: str, *, timeout: float) -> CheckResult:
             "contentType": probe.content_type,
             "bytesRead": len(probe.body),
             "path": package_path,
+            "version": selected.version,
+            "versionSource": selected.source,
         },
     )
 
@@ -372,9 +503,16 @@ def skipped_http_check(name: str, path: str) -> CheckResult:
     )
 
 
-def run_smoke(*, base_url: str, allow_http: bool = False, timeout: float = 8.0) -> SmokeReport:
+def run_smoke(
+    *,
+    base_url: str,
+    allow_http: bool = False,
+    timeout: float = 8.0,
+    daemon_package_version: str | None = None,
+) -> SmokeReport:
     normalized = normalize_base_url(base_url)
     parsed = urlparse(normalized)
+    daemon_selection = select_daemon_package_version(daemon_package_version)
     checks: list[CheckResult] = [check_url_scheme(parsed, allow_http=allow_http)]
     dns_check = check_dns(parsed)
     checks.append(dns_check)
@@ -414,7 +552,7 @@ def run_smoke(*, base_url: str, allow_http: bool = False, timeout: float = 8.0) 
         check_health(normalized, timeout=timeout),
         check_docs(normalized, timeout=timeout),
         check_openapi(normalized, timeout=timeout),
-        check_daemon_package(normalized, timeout=timeout),
+        check_daemon_package(normalized, timeout=timeout, selection=daemon_selection),
         check_daemon_websocket_auth_route(normalized, timeout=timeout),
     ])
     return SmokeReport(base_url=normalized, checks=checks)
@@ -468,6 +606,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", required=True, help="Public deployment base URL, for example https://smallkhoj.example.com.")
     parser.add_argument("--allow-http", action="store_true", help="Accept HTTP without warning for IP-only local smoke tests.")
     parser.add_argument("--timeout", type=float, default=8.0, help="Per-network-operation timeout in seconds.")
+    parser.add_argument(
+        "--daemon-package-version",
+        help="Published self-hosted Daemon package version to probe. Defaults to DAEMON_RELEASE_VERSION or one local generated artifact.",
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     parser.add_argument("--strict-warnings", action="store_true", help="Return exit code 2 when warnings are present.")
     return parser
@@ -476,7 +618,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        report = run_smoke(base_url=args.base_url, allow_http=args.allow_http, timeout=args.timeout)
+        report = run_smoke(
+            base_url=args.base_url,
+            allow_http=args.allow_http,
+            timeout=args.timeout,
+            daemon_package_version=args.daemon_package_version,
+        )
     except ValueError as exc:
         report = SmokeReport(
             base_url=args.base_url,
