@@ -1,0 +1,345 @@
+{
+  "scenario": "product-chat-reply-claude",
+  "runId": "chat-gate-mshymi19",
+  "traceId": "chat-gate:chat-gate-mshymi19",
+  "status": "warning",
+  "ok": true,
+  "startedAt": "2026-08-06T20:19:57.261Z",
+  "completedAt": "2026-08-06T20:20:02.538Z",
+  "agentId": "47a5dc52-ec6d-432b-af4d-379d325065c8",
+  "agentName": "claudegateagent",
+  "computerId": "2fdd7635-4572-4b3f-b23b-eecd106b6b4c",
+  "daemonId": "569607ab-52c7-4c01-95f1-2b226ad44029",
+  "runtimeProvider": "358a7582-ac8b-4bd6-945c-cbf764047012",
+  "runtimeModel": null,
+  "runtimeKind": "claude_code",
+  "sessionId": "b0e44789-75d0-4c5c-bd99-045baec9da91",
+  "agent": {
+    "id": "47a5dc52-ec6d-432b-af4d-379d325065c8",
+    "name": "claudegateagent",
+    "computerId": "2fdd7635-4572-4b3f-b23b-eecd106b6b4c",
+    "daemonId": "569607ab-52c7-4c01-95f1-2b226ad44029",
+    "computerStatus": "online",
+    "computerDaemonVersion": "0.2.6",
+    "computerActiveDaemonId": "569607ab-52c7-4c01-95f1-2b226ad44029",
+    "computerMachineId": "da352768-64f0-4ce9-9119-c40520c9c8ea",
+    "runtimeProvider": "358a7582-ac8b-4bd6-945c-cbf764047012",
+    "runtimeModel": null,
+    "runtimeKind": "claude_code",
+    "sessionId": "b0e44789-75d0-4c5c-bd99-045baec9da91"
+  },
+  "target": {
+    "kind": "channel",
+    "channelId": "229eb7bf-4f0a-4e07-93d5-ecb12ffa9f19",
+    "channelName": "gate-lab",
+    "replyTarget": "#gate-lab",
+    "visibleAgentIds": [
+      "47a5dc52-ec6d-432b-af4d-379d325065c8"
+    ],
+    "expectedResponderAgentIds": [
+      "47a5dc52-ec6d-432b-af4d-379d325065c8"
+    ],
+    "responderPolicy": "one",
+    "readyForSend": true,
+    "dmId": null,
+    "userMemberId": null,
+    "apiBase": "http://127.0.0.1:18080",
+    "frontendBase": "http://127.0.0.1:3000",
+    "daemonRpcBase": null,
+    "serverId": "30c7a5ab-b4e8-4899-ad36-2c54b19a3b0b"
+  },
+  "installationIdentity": {
+    "ok": true,
+    "failureCode": null,
+    "failureReason": null,
+    "implementationType": "aura-standalone",
+    "installed": true,
+    "online": true,
+    "activeVersion": "0.2.6",
+    "artifactSha256": "181f729a8dcc71fade56a41d5ef4d6de80c4ccc04e35d7143ac3019161da00f6",
+    "statusComputerId": "2fdd7635-4572-4b3f-b23b-eecd106b6b4c",
+    "statusDaemonId": "569607ab-52c7-4c01-95f1-2b226ad44029",
+    "computerId": "2fdd7635-4572-4b3f-b23b-eecd106b6b4c",
+    "computerDaemonId": "569607ab-52c7-4c01-95f1-2b226ad44029",
+    "computerDaemonVersion": "0.2.6",
+    "runtimeKind": "claude_code",
+    "checks": {
+      "standalone": true,
+      "installed": true,
+      "artifact": true,
+      "statusComputer": true,
+      "agentComputer": true,
+      "server": true,
+      "daemon": true,
+      "online": true,
+      "claude": true
+    }
+  },
+  "marker": "REAL_PRODUCT_CLAUDE_GATE_20260807_041957",
+  "expectedAck": "ACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957",
+  "messages": {
+    "userMessageId": "96a4f4ff-ecd2-45c0-ae6f-42c96aaaea24",
+    "replyMessageId": "749cabd2-a297-4056-8ef9-a58f659fe9ed",
+    "replies": [
+      {
+        "id": "749cabd2-a297-4056-8ef9-a58f659fe9ed",
+        "authorId": "47a5dc52-ec6d-432b-af4d-379d325065c8",
+        "targetId": "229eb7bf-4f0a-4e07-93d5-ecb12ffa9f19",
+        "content": "ACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957",
+        "createdAt": "2026-08-06T20:20:00.061138+00:00",
+        "visible": true,
+        "raw": {
+          "id": "749cabd2-a297-4056-8ef9-a58f659fe9ed",
+          "authorId": "47a5dc52-ec6d-432b-af4d-379d325065c8",
+          "targetId": "229eb7bf-4f0a-4e07-93d5-ecb12ffa9f19",
+          "content": "ACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957",
+          "createdAt": "2026-08-06T20:20:00.061138+00:00",
+          "visible": true
+        }
+      }
+    ]
+  },
+  "userMessageId": "96a4f4ff-ecd2-45c0-ae6f-42c96aaaea24",
+  "replyMessageId": "749cabd2-a297-4056-8ef9-a58f659fe9ed",
+  "steps": [
+    {
+      "id": "foundation-preflight",
+      "label": "Foundation preflight",
+      "status": "passed",
+      "evidence": {
+        "source": "foundation-preflight"
+      }
+    },
+    {
+      "id": "installed-aura-bound",
+      "label": "Installed Aura bound to online Computer",
+      "status": "passed",
+      "evidence": {
+        "source": "installed-aura-bound"
+      }
+    },
+    {
+      "id": "chat-target-ready",
+      "label": "Chat target ready",
+      "status": "passed",
+      "evidence": {
+        "source": "chat-target-ready"
+      }
+    },
+    {
+      "id": "user-message-sent",
+      "label": "User message sent",
+      "status": "passed",
+      "evidence": {
+        "source": "user-message-sent"
+      }
+    },
+    {
+      "id": "user-message-persisted",
+      "label": "User message persisted",
+      "status": "passed",
+      "evidence": {
+        "source": "user-message-persisted"
+      }
+    },
+    {
+      "id": "runtime-delivered",
+      "label": "Runtime delivered",
+      "status": "passed",
+      "evidence": {
+        "source": "runtime-delivered"
+      }
+    },
+    {
+      "id": "provider-thinking",
+      "label": "Provider thinking",
+      "status": "passed",
+      "evidence": {
+        "source": "provider-thinking"
+      }
+    },
+    {
+      "id": "tool-output",
+      "label": "Tool output",
+      "status": "passed",
+      "evidence": {
+        "source": "tool-output"
+      }
+    },
+    {
+      "id": "slock-send-observed",
+      "label": "Slock send observed",
+      "status": "passed",
+      "evidence": {
+        "source": "slock-send-observed"
+      }
+    },
+    {
+      "id": "runtime-idle",
+      "label": "Runtime idle",
+      "status": "passed",
+      "evidence": {
+        "source": "runtime-idle"
+      }
+    },
+    {
+      "id": "reply-persisted",
+      "label": "Reply persisted",
+      "status": "passed",
+      "evidence": {
+        "source": "reply-persisted"
+      }
+    },
+    {
+      "id": "reply-visible",
+      "label": "Reply visible",
+      "status": "passed",
+      "evidence": {
+        "source": "reply-visible"
+      }
+    }
+  ],
+  "latency": {
+    "sendToPersistMs": null,
+    "persistToRuntimeDeliveryMs": 67,
+    "deliveryToThinkingMs": 1582,
+    "thinkingToToolMs": 800,
+    "toolToReplyPersistMs": 92,
+    "replyPersistToVisibleMs": 0,
+    "totalSendToVisibleMs": 2541,
+    "runtimeWallClockMs": 3945,
+    "providerDurationApiMs": null,
+    "runtimeIdleAt": "2026-08-06T20:20:01.505135+00:00"
+  },
+  "usage": {
+    "inputTokens": null,
+    "outputTokens": null,
+    "cacheReadTokens": 48640,
+    "durationMs": 3907,
+    "wallClockMs": 3945,
+    "usageSource": "provider-stream-json",
+    "runSpecific": true
+  },
+  "context": null,
+  "runtimeTimeline": [
+    {
+      "kind": "runtime_working",
+      "at": "2026-08-06T20:19:57.587797+00:00",
+      "details": {
+        "target": "#gate-lab",
+        "messageId": "96a4f4ff-ecd2-45c0-ae6f-42c96aaaea24",
+        "sourceChannel": "229eb7bf-4f0a-4e07-93d5-ecb12ffa9f19"
+      }
+    },
+    {
+      "kind": "runtime_thinking",
+      "at": "2026-08-06T20:19:59.169984+00:00",
+      "details": {
+        "thought": "The user is asking me to reply with another ACK confirmation via `aura message send` to the same chat target (#gate-lab).",
+        "protocol": "claude-stream-json",
+        "sessionId": "b0e44789-75d0-4c5c-bd99-045baec9da91",
+        "sourceEvent": "assistant_text"
+      }
+    },
+    {
+      "kind": "runtime_output",
+      "at": "2026-08-06T20:19:59.969517+00:00",
+      "details": {
+        "protocol": "claude-stream-json",
+        "toolName": "Bash",
+        "sourceEvent": "assistant_text",
+        "commandPreview": "aura message send --target \"#gate-lab\" <<'SLOCKMSG'\nACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957\nSLOCKMSG"
+      }
+    },
+    {
+      "kind": "message_sent",
+      "at": "2026-08-06T20:20:00.063052+00:00",
+      "details": {
+        "seq": 12,
+        "target": "#gate-lab",
+        "channel": "#gate-lab",
+        "content": "ACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957",
+        "shortId": "ef62173f",
+        "traceId": "chat-gate:chat-gate-mshymi19",
+        "mentions": [],
+        "parentId": null,
+        "senderId": "47a5dc52-ec6d-432b-af4d-379d325065c8",
+        "threadId": "749cabd2-a297-4056-8ef9-a58f659fe9ed",
+        "messageId": "749cabd2-a297-4056-8ef9-a58f659fe9ed",
+        "messageSeq": 12,
+        "channelType": "public",
+        "messageSnippet": "ACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957"
+      }
+    },
+    {
+      "kind": "runtime_thinking",
+      "at": "2026-08-06T20:20:01.189569+00:00",
+      "details": {
+        "thought": "ACK sent successfully. Waiting for next instruction.",
+        "protocol": "claude-stream-json",
+        "sessionId": "b0e44789-75d0-4c5c-bd99-045baec9da91",
+        "sourceEvent": "assistant_text"
+      }
+    },
+    {
+      "kind": "runtime_idle",
+      "at": "2026-08-06T20:20:01.505135+00:00",
+      "details": {
+        "tokens": {
+          "cacheRead": 48640
+        },
+        "durationMs": 3907,
+        "usageSource": "provider-stream-json",
+        "wallClockMs": 3945
+      }
+    }
+  ],
+  "toolEvidence": [
+    {
+      "toolName": "Bash",
+      "toolId": null,
+      "commandPreview": "aura message send --target \"#gate-lab\" <<'SLOCKMSG'\nACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957\nSLOCKMSG",
+      "isSlockMessageSend": true,
+      "ok": true,
+      "target": "#gate-lab",
+      "replyMessageId": null,
+      "matchingMethod": "fallbackWindow",
+      "raw": {
+        "toolName": "Bash",
+        "toolId": "",
+        "commandPreview": "aura message send --target \"#gate-lab\" <<'SLOCKMSG'\nACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957\nSLOCKMSG",
+        "isSlockMessageSend": true,
+        "ok": true,
+        "target": "#gate-lab",
+        "replyMessageId": "",
+        "matchingMethod": "fallbackWindow"
+      }
+    }
+  ],
+  "replyEvidence": {
+    "replyMessageId": "749cabd2-a297-4056-8ef9-a58f659fe9ed",
+    "authorId": "47a5dc52-ec6d-432b-af4d-379d325065c8",
+    "targetId": "229eb7bf-4f0a-4e07-93d5-ecb12ffa9f19",
+    "expectedTargetId": "229eb7bf-4f0a-4e07-93d5-ecb12ffa9f19",
+    "markerMatch": true,
+    "visible": true,
+    "matchingReplyCount": 1
+  },
+  "audienceEvidence": null,
+  "warnings": [
+    {
+      "category": "context",
+      "code": "CONTEXT_EVIDENCE_MISSING",
+      "message": "Context evidence is missing."
+    }
+  ],
+  "failure": null,
+  "summary": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0,
+    "warning": 0
+  },
+  "schemaVersion": 1,
+  "mode": "product-chat-reply-claude"
+}

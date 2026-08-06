@@ -2,9 +2,9 @@
 
 **交接日期：** 2026-08-07
 **当前分支：** `main`
-**当前结论：** `IN_PROGRESS`。Mac 侧主体实现、managed standalone 安装/Setup、隔离候选上的真实 SmallKhoj + Claude 产品语义 Gate 已完成；Windows x64 实机验收仍未完成，因此本任务不能标记为完成。最新 Gate 证据见 `evidence/live-product-chat-gate-20260807.json`。
+**当前结论：** `IN_PROGRESS`。Mac 侧主体实现、managed standalone 安装/Setup、隔离候选上的真实 SmallKhoj + Claude 产品语义 Gate 已完成；Windows x64 实机验收仍未完成，因此本任务不能标记为完成。最新 Gate 证据见 `evidence/live-product-chat-gate-20260807-reconnect.json`。
 
-> **Latest superseding recheck (2026-08-07):** 下方早期证据保留作历史记录，不能覆盖本段。当前实现已经切换到 managed macOS standalone：安装后的真实 Aura 使用私有 Node、生产依赖和本地 `sidecars/codex-acp/codex-acp`；重复执行同版本安装命令会输出 `already-installed; archive download skipped`，不要求用户手工 `export PATH`。在隔离数据库、当前 worktree backend/frontend 和安装后的 Aura 上，真实 Claude Code 产品语义 Gate 已输出 `PASS product-chat-reply-claude 12/12`；证据和候选身份见 `evidence/live-product-chat-gate-20260807.json`。ACP 0.16.0 对用户配置中的 `model_reasoning_effort="max"` 由启动参数临时兼容为 `xhigh`，不改用户配置；真实 ACP `initialize` 已返回版本 `0.16.0`。Windows builder 现在也会在传入真实 PE sidecar 时打包 `codex-acp.exe`。仍未完成的是 Windows 原生 PE/实机验收；不要把本段 Mac 证据扩写成 Windows PASS。
+> **Latest superseding recheck (2026-08-07):** 下方早期证据保留作历史记录，不能覆盖本段。当前实现已经切换到 managed macOS standalone：安装后的真实 Aura 使用私有 Node、生产依赖和本地 `sidecars/codex-acp/codex-acp`；重复执行同版本安装命令会输出 `already-installed; archive download skipped`，不要求用户手工 `export PATH`。在隔离数据库、当前 worktree backend/frontend 和安装后的 Aura 上，先停止旧隔离 daemon，再用 fresh reconnect ticket 执行安装后的 Aura 顶层连接命令，随后真实 Claude Code 产品语义 Gate 输出 `PASS product-chat-reply-claude 12/12`；最新证据见 `evidence/live-product-chat-gate-20260807-reconnect.json`。ACP 0.16.0 对用户配置中的 `model_reasoning_effort="max"` 由启动参数临时兼容为 `xhigh`，不改用户配置；真实 ACP `initialize` 已返回版本 `0.16.0`。Windows builder 现在也会在传入真实 PE sidecar 时打包 `codex-acp.exe`。仍未完成的是 Windows 原生 PE/实机验收；不要把本段 Mac 证据扩写成 Windows PASS。
 
 本次 Gate 运行时记录的源候选为 `9f37401fa6d004fe5ab98d39344ba4e450a452d9`；Windows agent 拉取后仍必须重新执行 `git rev-parse HEAD`，并用自己的 HEAD 重建和发布产物，不要硬编码 Mac SHA。
 
@@ -55,9 +55,10 @@ PostgreSQL `127.0.0.1:5432`：
 
 - 候选身份：worktree `/Users/code/project/smallkhoj`，测试时 `HEAD=9f37401fa6d004fe5ab98d39344ba4e450a452d9`；隔离 DB 容器 `smallkhoj-gate-db`（host `55433`），backend `http://127.0.0.1:18080`，当前 worktree frontend `http://127.0.0.1:3000`。
 - 安装身份：`/tmp/smallkhoj-aura-gate/bin/aura`，`AURA_INSTALL_ROOT=/tmp/smallkhoj-aura-gate`，版本 `0.2.6`，artifact SHA-256 `181f729a8dcc71fade56a41d5ef4d6de80c4ccc04e35d7143ac3019161da00f6`。
-- 真实对账：Server `30c7a5ab-b4e8-4899-ad36-2c54b19a3b0b`、Computer `2fdd7635-4572-4b3f-b23b-eecd106b6b4c`、daemon `f1b15ec8-619b-42be-9016-40baa3585f24`、Claude Agent `47a5dc52-ec6d-432b-af4d-379d325065c8` 和 channel `gate-lab` 均来自同一候选；安装版本、artifact、Computer、daemon lease、online、runtime kind 全部为 `true`。
-- 唯一 marker `REAL_PRODUCT_CLAUDE_GATE_20260807_0355` 的 human 消息被真实 Claude Code 收到，并在同一 channel 持久化可见 `ACK REAL_PRODUCT_CLAUDE_GATE_20260807_0355`；runtime timeline 含 delivered/thinking/tool-output/`aura message send`/idle。
-- Gate 输出：`PASS product-chat-reply-claude 12/12`；完整脱敏 JSON 在 [`evidence/live-product-chat-gate-20260807.json`](./evidence/live-product-chat-gate-20260807.json)。报告有一个非阻塞 `CONTEXT_EVIDENCE_MISSING` warning，但 `ok=true`、12 个产品语义步骤全部通过。
+- 真实连接命令：停止旧隔离 daemon 后向同一候选申请 fresh reconnect ticket，执行安装后的顶层 `aura --server-url http://127.0.0.1:18080 --api-key <REDACTED_CONNECT_TICKET>`，输出 `[Aura] Connected and running in background`；随后 `aura status --json` 为 `connected=true`、`online=true`。
+- 真实对账：Server `30c7a5ab-b4e8-4899-ad36-2c54b19a3b0b`、Computer `2fdd7635-4572-4b3f-b23b-eecd106b6b4c`、fresh daemon `569607ab-52c7-4c01-95f1-2b226ad44029`、Claude Agent `47a5dc52-ec6d-432b-af4d-379d325065c8` 和 channel `gate-lab` 均来自同一候选；安装版本、artifact、Computer、daemon lease、online、runtime kind 全部为 `true`。
+- 唯一 marker `REAL_PRODUCT_CLAUDE_GATE_20260807_041957` 的 human 消息被真实 Claude Code 收到，并在同一 channel 持久化可见 `ACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957`；runtime timeline 含 delivered/thinking/tool-output/`aura message send`/idle。此次复跑同时验证了产品 Gate 的 Claude 作者绑定和完整 ACK 匹配。
+- Gate 输出：`PASS product-chat-reply-claude 12/12`；完整脱敏 JSON 在 [`evidence/live-product-chat-gate-20260807-reconnect.json`](./evidence/live-product-chat-gate-20260807-reconnect.json)。报告有一个非阻塞 `CONTEXT_EVIDENCE_MISSING` warning，但 `ok=true`、12 个产品语义步骤全部通过。
 
 隔离复跑时若未把 `AURA_INSTALL_ROOT` 传给已安装 launcher，`aura status` 会读取宿主旧
 `~/.smallkhoj/daemon`，Gate 会准确失败为 `AURA_COMPUTER_MISMATCH`。这次先修正测试状态根后

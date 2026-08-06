@@ -32,6 +32,18 @@ Every summary must name the candidate commit, frontend/API URLs, OS/CPU/PowerShe
 
 For browser evidence, record the exact WebDriver `tabId` and `tabUrl`, use `./twd`, and keep the same marker across DOM checks, screenshots, API reconciliation, and trace output. A stale tab, static screenshot, or typecheck result cannot prove a real-host acceptance gate.
 
+## Latest product Gate evidence
+
+The latest real product-semantic run is the fresh-reconnect candidate at source
+revision `9f37401fa6d004fe5ab98d39344ba4e450a452d9`. It used the installed
+managed-standalone Aura, the isolated SmallKhoj backend/frontend, and a real
+Claude Code workspace; the report also requires the selected Claude author and
+the complete expected ACK (not just a marker substring). The redacted report is
+`live-product-chat-gate-20260807-reconnect.json` (`PASS product-chat-reply-claude
+12/12`). This is the current Mac runtime evidence. It does not satisfy the
+Windows PE/PowerShell/ACL/upgrade/rollback acceptance in
+`../windows-acceptance.md`.
+
 ## Historical UI candidate and current artifact evidence
 
 The original 2026-08-06 UI/runtime run used historical candidate `4d02667139a2`, backend
@@ -63,11 +75,11 @@ reviewable assertions.
 
 The corresponding `computers.png` screenshot remains local-only because repository policy intentionally ignores evidence image blobs. Windows-side evidence must use a fresh marker and redact all connect/machine credentials before handoff.
 
-The current source/release candidate is `0b6222202921001e88d6aec159410ad54543edb6`.
-Its `darwin-arm64` 0.2.6 artifact was rebuilt locally and served from the current worktree
+The historical carrier-only source/release candidate was `0b6222202921001e88d6aec159410ad54543edb6`.
+Its `darwin-arm64` 0.2.6 artifact was rebuilt locally and served from the worktree
 FastAPI StaticFiles mount at `http://localhost:8000` with lifespan disabled. That carrier-only
 process proved HTTP 200, manifest/source revision, checksum, isolated install, Setup idempotence,
-and fake-upstream Connect/register/heartbeat. The same candidate also fixes the real Unix PATH
+and fake-upstream Connect/register/heartbeat. That historical candidate also fixes the real Unix PATH
 handoff between Install and Setup; see `macos-install-path-fix-8000_20260807002251.md`. It did
 not run database lifespan and is not a real backend Online/cloud acceptance. The earlier 26a
 artifact evidence remains historical and is linked above.

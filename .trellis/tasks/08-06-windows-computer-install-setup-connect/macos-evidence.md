@@ -1,6 +1,6 @@
 # Mac 侧证据与限制记录
 
-> **Latest superseding recheck (2026-08-07):** 本文件较早的 2026-08-06 记录保留作历史候选证据。当前主路径已是 managed standalone：真实安装命令无需手工 `export PATH`，第二次同版本执行跳过大归档；安装后的 Aura 包含私有 Node、生产依赖和本地 ACP sidecar。当前运行时 focused checks 为 16/16，builder/installer 为 15/15，Integration Gate 合同为 58/58；真实安装后的隔离 fake-server Setup → Connect → register → `status --json online=true` 通过；同一隔离候选上的真实 SmallKhoj + Claude 产品语义 Gate 已输出 `PASS product-chat-reply-claude 12/12`，完整证据见 `evidence/live-product-chat-gate-20260807.json`。ACP 0.16.0 真实 `initialize` 通过，且对用户 `model_reasoning_effort="max"` 使用不修改配置的 `-c model_reasoning_effort=xhigh` 兼容覆盖。Windows 原生 PE/实机门槛仍未完成。
+> **Latest superseding recheck (2026-08-07):** 本文件较早的 2026-08-06 记录保留作历史候选证据。当前主路径已是 managed standalone：真实安装命令无需手工 `export PATH`，第二次同版本执行跳过大归档；安装后的 Aura 包含私有 Node、生产依赖和本地 ACP sidecar。当前运行时 focused checks 为 16/16，builder/installer 为 15/15，Integration Gate 合同为 58/58；停止旧隔离 daemon 后，fresh reconnect ticket + 安装后的 Aura 顶层连接命令真实重连并重新 Online，同一候选上的真实 SmallKhoj + Claude 产品语义 Gate 输出 `PASS product-chat-reply-claude 12/12`，最新证据见 `evidence/live-product-chat-gate-20260807-reconnect.json`。ACP 0.16.0 真实 `initialize` 通过，且对用户 `model_reasoning_effort="max"` 使用不修改配置的 `-c model_reasoning_effort=xhigh` 兼容覆盖。Windows 原生 PE/实机门槛仍未完成。
 
 **日期：** 2026-08-07
 **当前 Gate 源候选 commit：** `9f37401fa6d004fe5ab98d39344ba4e450a452d9`（`main`，Gate 运行时）
@@ -22,10 +22,10 @@
 | frontend typecheck / targeted ESLint | PASS |
 | frontend production build | PASS（使用非开发临时 public API key 与本地构建值，未写入仓库） |
 | `status --json` CLI 回归 | PASS，2/2；stdout 为单一 JSON，停止状态 exit 1 |
-| Unix Install → PATH handoff regression | PASS；backend command 12/12、distribution builder 8/8；真实命令证据见 `evidence/macos-install-path-fix-8000_20260807002251.md` |
+| Unix Install → PATH handoff regression（历史候选兼容回归） | PASS；backend command 12/12、distribution builder 8/8；真实命令证据见 `evidence/macos-install-path-fix-8000_20260807002251.md` |
 | `git diff --check` | PASS |
 
-| 真实产品语义 Gate（同一隔离候选、安装后的 Aura、真实 Claude Code） | PASS，`product-chat-reply-claude 12/12`；结果见 `evidence/live-product-chat-gate-20260807.json` |
+| 真实产品语义 Gate（同一隔离候选、安装后的 Aura、真实 Claude Code） | PASS，`product-chat-reply-claude 12/12`；最新重连结果见 `evidence/live-product-chat-gate-20260807-reconnect.json` |
 
 此前直接使用本机默认 credential 跑 runtime suite 时出现的 502，根因是用户状态目录中的旧 server endpoint 指向已失效临时端口，导致 fake-upstream 测试被重定向；不是历史候选 backend `:8000` 未启动。历史候选隔离套件为 305/305；当前 main 已重新跑到 307/307，详细诊断见 [daemon-runtime-recheck.md](./evidence/daemon-runtime-recheck.md)。
 
@@ -39,9 +39,10 @@ backend `http://127.0.0.1:18080`、当前 worktree frontend `http://127.0.0.1:30
 `AURA_INSTALL_ROOT=/tmp/smallkhoj-aura-gate` 显式绑定，避免读到宿主旧状态。
 
 - artifact：`0.2.6`，SHA-256 `181f729a8dcc71fade56a41d5ef4d6de80c4ccc04e35d7143ac3019161da00f6`；manifest `gitCommit=9f37401fa6d004fe5ab98d39344ba4e450a452d9`。
-- 身份：Server `30c7a5ab-b4e8-4899-ad36-2c54b19a3b0b`、Computer `2fdd7635-4572-4b3f-b23b-eecd106b6b4c`、daemon `f1b15ec8-619b-42be-9016-40baa3585f24`、Claude Agent `47a5dc52-ec6d-432b-af4d-379d325065c8`、channel `gate-lab`。
-- marker `REAL_PRODUCT_CLAUDE_GATE_20260807_0355` 的 human 消息被真实 Claude Code 处理；同一 channel 持久化并可见 `ACK REAL_PRODUCT_CLAUDE_GATE_20260807_0355`。Activity 含 runtime delivery、provider thinking、tool output、`aura message send`、runtime idle。
-- 终端结果：`PASS product-chat-reply-claude 12/12`。完整脱敏报告在 [`evidence/live-product-chat-gate-20260807.json`](./evidence/live-product-chat-gate-20260807.json)；报告 `ok=true`，仅有非阻塞的 `CONTEXT_EVIDENCE_MISSING` warning。
+- 真实连接：停止旧隔离 daemon 后，用 fresh reconnect ticket 执行安装后的顶层 `aura --server-url http://127.0.0.1:18080 --api-key <REDACTED_CONNECT_TICKET>`，输出 `Connected and running in background`；`aura status --json` 显示 `connected=true`、`online=true`。
+- 身份：Server `30c7a5ab-b4e8-4899-ad36-2c54b19a3b0b`、Computer `2fdd7635-4572-4b3f-b23b-eecd106b6b4c`、fresh daemon `569607ab-52c7-4c01-95f1-2b226ad44029`、Claude Agent `47a5dc52-ec6d-432b-af4d-379d325065c8`、channel `gate-lab`。
+- marker `REAL_PRODUCT_CLAUDE_GATE_20260807_041957` 的 human 消息被真实 Claude Code 处理；同一 channel 持久化并可见 `ACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957`。Activity 含 runtime delivery、provider thinking、tool output、`aura message send`、runtime idle；Gate 同时验证了选定 Claude 作者和完整 ACK 匹配。
+- 终端结果：`PASS product-chat-reply-claude 12/12`。完整脱敏报告在 [`evidence/live-product-chat-gate-20260807-reconnect.json`](./evidence/live-product-chat-gate-20260807-reconnect.json)；报告 `ok=true`，仅有非阻塞的 `CONTEXT_EVIDENCE_MISSING` warning。
 
 这证明 Mac 侧安装后的 Aura 已经能连接真实 SmallKhoj 候选并完成真实 Claude 回复；它不替代
 Windows 的 PE、PowerShell、ACL、升级/回滚和实机验收。复跑时必须保留候选 API、Server、

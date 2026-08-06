@@ -45,8 +45,9 @@ export function buildChatGateReport(input = {}) {
   const expectedAck = stringOrNull(input.expectedAck) ?? marker;
   const messages = normalizeMessages(input.messages);
   const replies = messages.replies;
-  const relevantReplies = replies.filter((reply) => isReplyForScenario(reply, target, scenario));
-  const matchingReplies = relevantReplies.filter((reply) => replyMatchesAck(reply, expectedAck, marker));
+  const selectedAgentId = selectedProductAgentId(input, target);
+  const relevantReplies = replies.filter((reply) => isReplyForScenario(reply, target, scenario, selectedAgentId));
+  const matchingReplies = relevantReplies.filter((reply) => replyMatchesAck(reply, expectedAck, marker, scenario));
   const selectedReply = matchingReplies[0] ?? relevantReplies[0] ?? null;
   const slockSendEvidence = normalizeToolEvidence(input.toolEvidence)
     .find((tool) => tool.isSlockMessageSend === true || isSlockMessageSendCommand(tool.commandPreview));
@@ -198,8 +199,10 @@ export function classifyChatFailure(input = {}) {
     return failure('provider', 'PROVIDER_THINKING_TIMEOUT', 'Provider/runtime did not reach a terminal idle result.');
   }
 
-  const relevantReplies = messages.replies.filter((reply) => isReplyForScenario(reply, target, scenario));
-  if (messages.replies.length === 0 || relevantReplies.length === 0) {
+  const targetReplies = messages.replies.filter((reply) => replyTargetMatches(reply, target, scenario));
+  const selectedAgentId = selectedProductAgentId(input, target);
+  const relevantReplies = targetReplies.filter((reply) => isReplyForScenario(reply, target, scenario, selectedAgentId));
+  if (messages.replies.length === 0 || targetReplies.length === 0) {
     if (messages.replies.length === 0) {
       return failure('reply', 'AGENT_REPLY_MISSING', 'No agent-authored reply was persisted in the same target.');
     }
@@ -207,8 +210,20 @@ export function classifyChatFailure(input = {}) {
       ? failure('dm_target', 'DM_REPLY_TARGET_MISMATCH', 'DM reply appeared in the wrong peer conversation.')
       : failure('reply', 'REPLY_MARKER_MISMATCH', 'Reply was persisted in the wrong target.');
   }
-  const matchingReplies = relevantReplies.filter((reply) => replyMatchesAck(reply, expectedAck, marker));
+  if (scenario === 'product-chat-reply-claude' && relevantReplies.length === 0) {
+    return failure(
+      'reply',
+      'CLAUDE_REPLY_AUTHOR_MISMATCH',
+      selectedAgentId
+        ? `Claude reply in the target was not authored by the selected agent ${selectedAgentId}.`
+        : 'The selected Claude agent identity is missing from the product reply evidence.',
+    );
+  }
+  const matchingReplies = relevantReplies.filter((reply) => replyMatchesAck(reply, expectedAck, marker, scenario));
   if (matchingReplies.length === 0) {
+    if (scenario === 'product-chat-reply-claude') {
+      return failure('reply', 'CLAUDE_REPLY_ACK_MISMATCH', 'Claude reply did not contain the complete expected acknowledgement.');
+    }
     return scenario === 'chat-reply-dm' && target.kind === 'dm'
       ? failure('dm_target', 'DM_REPLY_TARGET_MISMATCH', 'DM reply target or marker did not match.')
       : failure('reply', 'REPLY_MARKER_MISMATCH', 'Reply was present but author, target, order, or marker did not match.');
@@ -376,6 +391,8 @@ function failingStepForCode(code) {
     case 'CHANNEL_EXPECTED_REPLY_MISSING':
     case 'CHANNEL_DUPLICATE_REPLY_POLICY_VIOLATION':
     case 'DM_REPLY_TARGET_MISMATCH':
+    case 'CLAUDE_REPLY_AUTHOR_MISMATCH':
+    case 'CLAUDE_REPLY_ACK_MISMATCH':
       return 'reply-persisted';
     case 'REPLY_VISIBILITY_MISSING':
       return 'reply-visible';
@@ -453,14 +470,34 @@ function normalizeInstallationIdentity(value) {
   };
 }
 
-function isReplyForScenario(reply, target, scenario) {
+function replyTargetMatches(reply, target, scenario) {
   if (!reply || typeof reply !== 'object') return false;
   if (scenario === 'chat-reply-dm') return reply.targetId === target.dmId;
   return reply.targetId === target.channelId;
 }
 
-function replyMatchesAck(reply, expectedAck, marker) {
+function isReplyForScenario(reply, target, scenario, selectedAgentId = null) {
+  if (!replyTargetMatches(reply, target, scenario)) return false;
+  if (scenario !== 'product-chat-reply-claude') return true;
+  const expectedAgentIds = arrayOfStrings(target.expectedResponderAgentIds);
+  if (!selectedAgentId || (expectedAgentIds.length > 0 && !expectedAgentIds.includes(selectedAgentId))) {
+    return false;
+  }
+  return reply.authorId === selectedAgentId;
+}
+
+function selectedProductAgentId(input, target) {
+  return stringOrNull(input?.agent?.id ?? input?.agentId)
+    ?? arrayOfStrings(target?.expectedResponderAgentIds)[0]
+    ?? null;
+}
+
+function replyMatchesAck(reply, expectedAck, marker, scenario = null) {
   const content = String(reply?.content ?? '');
+  if (scenario === 'product-chat-reply-claude') {
+    const expected = stringOrNull(expectedAck) ?? stringOrNull(marker);
+    return Boolean(expected && content.includes(expected));
+  }
   const matchesAck = expectedAck ? content.includes(expectedAck) : true;
   const matchesMarker = marker ? content.includes(marker) : true;
   return matchesAck || matchesMarker;
@@ -472,7 +509,7 @@ function buildReplyEvidence({ selectedReply, matchingReplies, target, expectedAc
     authorId: selectedReply?.authorId ?? null,
     targetId: selectedReply?.targetId ?? null,
     expectedTargetId: scenario === 'chat-reply-dm' ? target.dmId ?? null : target.channelId ?? null,
-    markerMatch: selectedReply ? replyMatchesAck(selectedReply, expectedAck, marker) : false,
+    markerMatch: selectedReply ? replyMatchesAck(selectedReply, expectedAck, marker, scenario) : false,
     visible: matchingReplies.some((reply) => reply.visible === true),
     matchingReplyCount: matchingReplies.length,
   };

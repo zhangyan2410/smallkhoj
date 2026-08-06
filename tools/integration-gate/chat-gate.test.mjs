@@ -158,6 +158,48 @@ test('product chat gate binds installation identity before accepting runtime evi
   assert.equal(report.steps.find((step) => step.id === 'installed-aura-bound')?.status, 'passed');
 });
 
+test('product chat gate rejects a visible marker reply from a different agent', () => {
+  const report = buildChatGateReport(baseInput({
+    scenario: 'product-chat-reply-claude',
+    installationIdentity: PRODUCT_IDENTITY,
+    messages: {
+      userMessageId: 'msg-user-1',
+      replies: [{
+        id: 'msg-reply-wrong-agent',
+        authorId: 'agent-2',
+        targetId: 'channel-1',
+        content: EXPECTED_ACK,
+        visible: true,
+      }],
+    },
+  }));
+
+  assert.equal(report.ok, false);
+  assert.equal(report.failure.code, 'CLAUDE_REPLY_AUTHOR_MISMATCH');
+  assert.equal(report.steps.find((step) => step.id === 'reply-persisted')?.status, 'failed');
+});
+
+test('product chat gate requires the complete expected acknowledgement, not only the marker', () => {
+  const report = buildChatGateReport(baseInput({
+    scenario: 'product-chat-reply-claude',
+    installationIdentity: PRODUCT_IDENTITY,
+    messages: {
+      userMessageId: 'msg-user-1',
+      replies: [{
+        id: 'msg-reply-marker-only',
+        authorId: 'agent-1',
+        targetId: 'channel-1',
+        content: MARKER,
+        visible: true,
+      }],
+    },
+  }));
+
+  assert.equal(report.ok, false);
+  assert.equal(report.failure.code, 'CLAUDE_REPLY_ACK_MISMATCH');
+  assert.equal(report.replyEvidence.markerMatch, false);
+});
+
 test('product chat gate fails closed on missing Aura identity before chat evidence', () => {
   const report = buildChatGateReport(baseInput({
     scenario: 'product-chat-reply-claude',

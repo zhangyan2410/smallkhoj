@@ -95,6 +95,6 @@ labelled by candidate in `evidence/live-runtime-report.md`; the current daemon a
 also installed from the worktree carrier and exercised through fake-upstream Connect/register/
 heartbeat. Neither evidence set is a Windows PE or real SmallKhoj Online acceptance.
 
-Phase 5 remains open on both acceptance lanes. macOS must first land Ensure/private runtime/ACP/lifecycle changes and pass the exact installed-artifact Connect + Claude reply Integration Gate. A Windows x64 host must still provide real PE `node.exe`/`aura.exe`, publish the matching release manifest, and execute the install/setup/connect/reconnect/upgrade/rollback/conflict matrix. Keep `task.json.status` as `in_progress` until both real-host gates are complete; neither platform substitutes for the other.
+Phase 5 的 Mac acceptance 已在当前隔离候选完成：Ensure/private runtime/ACP、fresh reconnect、Online/heartbeat，以及安装后 Aura 驱动的 Claude reply Integration Gate 均已通过，证据见 `macos-evidence.md` 和 `evidence/live-product-chat-gate-20260807-reconnect.json`。Windows x64 host 仍必须提供真实 PE `node.exe`/`aura.exe`/`codex-acp.exe`、发布匹配 manifest，并执行 install/setup/connect/reconnect/upgrade/rollback/conflict 矩阵。Keep `task.json.status` as `in_progress` until the Windows real-host gate is complete; Mac evidence does not substitute for Windows acceptance.
 
 See `handoff.md` for the boundary and `windows-acceptance.md` for the exact continuation checklist.
