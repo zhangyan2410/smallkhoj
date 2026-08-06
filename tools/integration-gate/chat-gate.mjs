@@ -134,7 +134,12 @@ export function buildChatGateReport(input = {}) {
 }
 
 export function isSlockMessageSendCommand(commandPreview) {
-  return /(?:^|[\s"'`])(?:\S*\/)?slock(?:\.(?:cmd|ps1))?\s+message\s+send\b/i.test(String(commandPreview ?? ''));
+  // The current runtime contract uses the product-owned `aura` CLI. Keep
+  // accepting the historical `slock` executable so old runtimes and stored
+  // activity evidence remain compatible, but require the same message-send
+  // subcommand for either executable. The path separator branch covers both
+  // Unix absolute paths and Windows `.cmd`/`.exe` launchers.
+  return /(?:^|[\s"'`])(?:\S*[/\\])?(?:slock|aura)(?:\.(?:cmd|ps1|exe))?\s+message\s+send\b/i.test(String(commandPreview ?? ''));
 }
 
 export function classifyChatFailure(input = {}) {
@@ -184,10 +189,10 @@ export function classifyChatFailure(input = {}) {
   }
   const slockSend = tools.find((tool) => tool.isSlockMessageSend === true || isSlockMessageSendCommand(tool.commandPreview));
   if (!slockSend) {
-    return failure('tool', 'SLOCK_SEND_MISSING', 'No slock message send evidence was observed.');
+    return failure('tool', 'SLOCK_SEND_MISSING', 'No Aura/Slock message send evidence was observed.');
   }
   if (slockSend.ok === false) {
-    return failure('tool', 'SLOCK_SEND_FAILED', 'slock message send failed or returned no usable reply id.');
+    return failure('tool', 'SLOCK_SEND_FAILED', 'Aura/Slock message send failed or returned no usable reply id.');
   }
   if (!delivery.runtimeIdle) {
     return failure('provider', 'PROVIDER_THINKING_TIMEOUT', 'Provider/runtime did not reach a terminal idle result.');

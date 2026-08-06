@@ -5,6 +5,7 @@ import {
   buildChatGateReport,
   classifyChatFailure,
   formatChatGateSummary,
+  isSlockMessageSendCommand,
 } from './chat-gate.mjs';
 
 const MARKER = 'CHAT-GATE:test-marker';
@@ -117,6 +118,32 @@ test('buildChatGateReport passes controlled channel only with persisted visible 
   assert.equal(report.steps.find((step) => step.id === 'slock-send-observed')?.status, 'passed');
   assert.equal(report.replyEvidence.visible, true);
   assert.equal(report.warnings.length, 0);
+});
+
+test('message-send evidence accepts the product Aura CLI and Windows launchers', () => {
+  assert.equal(isSlockMessageSendCommand('aura message send --target "#gate-lab"'), true);
+  assert.equal(isSlockMessageSendCommand('/tmp/aura message send --target #gate-lab'), true);
+  assert.equal(isSlockMessageSendCommand('C:\\Users\\gate\\aura.exe message send --target #gate-lab'), true);
+  assert.equal(isSlockMessageSendCommand('slock message send --target #gate-lab'), true);
+  assert.equal(isSlockMessageSendCommand('aura server info'), false);
+});
+
+test('product chat gate passes when the real runtime reports Aura message send', () => {
+  const report = buildChatGateReport(baseInput({
+    scenario: 'product-chat-reply-claude',
+    installationIdentity: PRODUCT_IDENTITY,
+    toolEvidence: [{
+      toolName: 'Bash',
+      commandPreview: 'aura message send --target "#gate-lab"',
+      ok: true,
+      target: '#gate-lab',
+      replyMessageId: 'msg-reply-1',
+    }],
+  }));
+
+  assert.equal(report.ok, true);
+  assert.equal(report.failure, null);
+  assert.equal(report.steps.find((step) => step.id === 'slock-send-observed')?.status, 'passed');
 });
 
 test('product chat gate binds installation identity before accepting runtime evidence', () => {

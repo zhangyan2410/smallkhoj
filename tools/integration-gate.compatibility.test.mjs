@@ -10,6 +10,7 @@ const EXPECTED_MODES = [
   'chat-reply-channel-base',
   'chat-reply-channel-group',
   'chat-reply-dm',
+  'product-chat-reply-claude',
   'collab-channel-v1',
   'collab-channel-v2',
   'collab-channel-v3',

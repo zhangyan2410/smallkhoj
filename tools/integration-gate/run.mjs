@@ -895,7 +895,7 @@ async function sendChatMarker({ apiBase, headers, channelName, traceId, marker, 
       traceId,
       content: [
         `[integration-chat-gate ${marker}]`,
-        '请只通过 slock message send 在同一个聊天目标回复以下确认文本：',
+        '请只通过 aura message send（旧版可使用 slock message send）在同一个聊天目标回复以下确认文本：',
         expectedAck,
       ].join('\n'),
     }),

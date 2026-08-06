@@ -1,14 +1,12 @@
 # Windows Computer 三阶段安装与连接：交接说明
 
-**交接日期：** 2026-08-06  
-**当前分支：** `main`  
-**当前结论：** `IN_PROGRESS`。Mac 侧主体实现、当前 `main` 的 daemon 产物下载/安装/Setup 验证和隔离后的 daemon 回归已完成；Windows x64 实机验收仍未完成，因此本任务不能标记为完成。实时证据见 `evidence/live-runtime-report.md`、`evidence/daemon-runtime-recheck.md`、`evidence/macos-install-real-8000_20260806234756.md` 和 `evidence/macos-install-path-fix-8000_20260807002251.md`。
+**交接日期：** 2026-08-07
+**当前分支：** `main`
+**当前结论：** `IN_PROGRESS`。Mac 侧主体实现、managed standalone 安装/Setup、隔离候选上的真实 SmallKhoj + Claude 产品语义 Gate 已完成；Windows x64 实机验收仍未完成，因此本任务不能标记为完成。最新 Gate 证据见 `evidence/live-product-chat-gate-20260807.json`。
 
-> **Latest superseding recheck (2026-08-07):** 下方早期证据保留作历史记录，不能覆盖本段。当前实现已经切换到 managed macOS standalone：安装后的真实 `/Users/lee/.local/bin/aura` 使用私有 Node、生产依赖和本地 `sidecars/codex-acp/codex-acp`；重复执行用户原始 `curl | bash` 命令会输出 `already-installed; archive download skipped`，不要求 `export PATH`。当前 focused checks、真实安装器和隔离 fake-server Connect 均通过。ACP 0.16.0 对用户配置中的 `model_reasoning_effort="max"` 由启动参数临时兼容为 `xhigh`，不改用户配置；真实 ACP `initialize` 已返回版本 `0.16.0`。Windows builder 现在也会在传入真实 PE sidecar 时打包 `codex-acp.exe`。仍未通过的只有同一候选的真实 SmallKhoj + Claude 产品语义 Gate，以及 Windows 原生 PE/实机验收；不要把本段的 fake-server 证据写成云端 Online PASS。
+> **Latest superseding recheck (2026-08-07):** 下方早期证据保留作历史记录，不能覆盖本段。当前实现已经切换到 managed macOS standalone：安装后的真实 Aura 使用私有 Node、生产依赖和本地 `sidecars/codex-acp/codex-acp`；重复执行同版本安装命令会输出 `already-installed; archive download skipped`，不要求用户手工 `export PATH`。在隔离数据库、当前 worktree backend/frontend 和安装后的 Aura 上，真实 Claude Code 产品语义 Gate 已输出 `PASS product-chat-reply-claude 12/12`；证据和候选身份见 `evidence/live-product-chat-gate-20260807.json`。ACP 0.16.0 对用户配置中的 `model_reasoning_effort="max"` 由启动参数临时兼容为 `xhigh`，不改用户配置；真实 ACP `initialize` 已返回版本 `0.16.0`。Windows builder 现在也会在传入真实 PE sidecar 时打包 `codex-acp.exe`。仍未完成的是 Windows 原生 PE/实机验收；不要把本段 Mac 证据扩写成 Windows PASS。
 
-当前源候选必须以交接时实际执行的 `git rev-parse HEAD` 为准。此前 UI/runtime 报告里的
-`4d02667139a2`、`0b6222202921001e88d6aec159410ad54543edb6` 和
-`082616e3a84eef3c7437ff70d016b1a176d8cd53` 都是历史候选，不应被 Windows 侧硬编码。
+本次 Gate 运行时记录的源候选为 `9f37401fa6d004fe5ab98d39344ba4e450a452d9`；Windows agent 拉取后仍必须重新执行 `git rev-parse HEAD`，并用自己的 HEAD 重建和发布产物，不要硬编码 Mac SHA。
 
 distribution builder 要求 `sourceRevision` 等于当前 HEAD；Windows agent 必须在拉取后重新
 构建并记录自己的 HEAD 和 artifact SHA，不要复用历史 Mac 产物 SHA。
@@ -38,6 +36,7 @@ distribution builder 要求 `sourceRevision` 等于当前 HEAD；Windows agent �
 | frontend full tests / typecheck / ESLint | PASS（273/273；onboarding/i18n 窄测 6/6；typecheck PASS；0 errors，1 个既有 warning） |
 | frontend production build | PASS（使用本地临时构建变量；仅有 Better Auth base URL warning） |
 | `aura status --json` CLI contract | PASS（stdout 为单个 JSON；停止状态仍 exit 1；回归 2/2） |
+| 真实产品语义 Integration Gate（隔离候选，安装后的 Aura + Claude Code） | PASS，`product-chat-reply-claude 12/12`；同一 channel marker/ACK、`aura message send`、Online lease 和 artifact identity 全部对账通过 |
 | `git diff --check` | PASS |
 
 历史 UI/runtime 候选曾通过 backend `/docs`、frontend `/`、Integration Gate 51/51 和
@@ -49,12 +48,28 @@ WebDriver `tabId=1617513010`；这些报告中的服务身份必须按历史候�
 
 路径测试曾在 Mac 上用 `platform: "win32"` + POSIX 临时目录生成过 4 个反斜杠文件；`paths.ts` 已修复，异常文件已删除，并新增断言防止再次污染 checkout。
 
+## 最新真实产品语义 Gate（Mac 隔离候选）
+
+本段是当前 Mac 侧最重要的运行证据；它不是 fake server，也不写共享宿主
+PostgreSQL `127.0.0.1:5432`：
+
+- 候选身份：worktree `/Users/code/project/smallkhoj`，测试时 `HEAD=9f37401fa6d004fe5ab98d39344ba4e450a452d9`；隔离 DB 容器 `smallkhoj-gate-db`（host `55433`），backend `http://127.0.0.1:18080`，当前 worktree frontend `http://127.0.0.1:3000`。
+- 安装身份：`/tmp/smallkhoj-aura-gate/bin/aura`，`AURA_INSTALL_ROOT=/tmp/smallkhoj-aura-gate`，版本 `0.2.6`，artifact SHA-256 `181f729a8dcc71fade56a41d5ef4d6de80c4ccc04e35d7143ac3019161da00f6`。
+- 真实对账：Server `30c7a5ab-b4e8-4899-ad36-2c54b19a3b0b`、Computer `2fdd7635-4572-4b3f-b23b-eecd106b6b4c`、daemon `f1b15ec8-619b-42be-9016-40baa3585f24`、Claude Agent `47a5dc52-ec6d-432b-af4d-379d325065c8` 和 channel `gate-lab` 均来自同一候选；安装版本、artifact、Computer、daemon lease、online、runtime kind 全部为 `true`。
+- 唯一 marker `REAL_PRODUCT_CLAUDE_GATE_20260807_0355` 的 human 消息被真实 Claude Code 收到，并在同一 channel 持久化可见 `ACK REAL_PRODUCT_CLAUDE_GATE_20260807_0355`；runtime timeline 含 delivered/thinking/tool-output/`aura message send`/idle。
+- Gate 输出：`PASS product-chat-reply-claude 12/12`；完整脱敏 JSON 在 [`evidence/live-product-chat-gate-20260807.json`](./evidence/live-product-chat-gate-20260807.json)。报告有一个非阻塞 `CONTEXT_EVIDENCE_MISSING` warning，但 `ok=true`、12 个产品语义步骤全部通过。
+
+隔离复跑时若未把 `AURA_INSTALL_ROOT` 传给已安装 launcher，`aura status` 会读取宿主旧
+`~/.smallkhoj/daemon`，Gate 会准确失败为 `AURA_COMPUTER_MISMATCH`。这次先修正测试状态根后
+重新执行并得到上述 PASS；Windows 侧运行真实安装器时应使用默认用户状态根，并在证据中记录
+launcher/config root，避免把不同候选的身份混在一起。
+
 ## 历史安装器证据（保留，不作为最新结论）
 
 以下段落记录的是早期 `node-npx`/PATH-export 候选。最新 managed standalone 结果以本文件顶部
 的 superseding recheck 为准；Windows 侧不要据此复现旧的 `export PATH` 命令。
 
-使用当前 commit 构建的 `darwin-arm64` 0.2.6 产物已放入本机
+使用历史候选 commit 构建的 `darwin-arm64` 0.2.6 产物已放入本机
 `release-artifacts/smallkhoj-daemon/`，并由 backend 的 StaticFiles 路由实际提供。manifest
 记录：`sourceRevision=0b6222202921001e88d6aec159410ad54543edb6`、archive SHA-256
 `8fbd0052d5e0de6fee286266f7bac657d29b43302c99bdb2a60fd1f0c62a859a`。marker
@@ -110,16 +125,15 @@ backend `:8000` 的代码失败。使用隔离的 `AURA_INSTALL_ROOT`、
 日志里的 `No such file or directory` 来自负向测试
 `agent/daemon/aaa-daemon/test/daemon-runtime.test.mjs:1522`：测试显式启动一个
 会在创建 session 前打印该字符串并以 127 退出的假 ACP 子进程，断言 daemon
-不得把它标记为 ready。它不是默认生产启动路径，因此 Mac 侧 307/307 回归没有
-证明产品缺少这个包。
+不得把它标记为 ready；它不是默认 Mac standalone 启动失败的证据。
 
-但这揭示了 Windows 发布的真实前提：`agent/daemon/aaa-daemon/src/runtime/codex-acp-runtime.ts`
-默认通过 `npx -y @zed-industries/codex-acp@0.16.0` 动态解析；该包不在 daemon
-`package.json` / lockfile 或发行 tgz 的 `files` 中。已有 nested-npx selector 清理
-及 Windows `npx.cmd`/注册表 PATH fallback，但没有专用离线缓存或 preflight。Windows
-若首次运行无网络、npm cache 未预热、registry 不可达或 PATH 解析异常，仍可能真实
-得到 exit 127/启动失败。Windows 验收必须记录 Node/npm/npx、registry/cache、PATH
-和 ACP 启动 stderr，并决定“安装时预热”或“明确离线策略”，不能把该风险写成已解决。
+当前 managed standalone 已把 ACP 0.16.0 作为 release-owned sidecar 放在
+`sidecars/codex-acp/codex-acp`，通过绝对路径优先启动；sidecar 缺失时
+`codexAcpReadiness()` 会 fail-closed，真实 ACP `initialize` 和本次 Claude 产品 Gate
+均已通过。开发/兼容入口仍允许 npx fallback，但不属于安装后的 Aura 产品路径。Windows
+发布必须提供真实 PE `codex-acp.exe`，并在无网络/无 npx 的干净主机上记录
+`aura doctor`、registry/cache、PATH 和 ACP stderr；如果 sidecar 缺失，应报告可操作错误，
+不能把 Codex 宣传为 ready。
 
 ### 3. `status --json` 曾混入人类文本（已修复）
 
