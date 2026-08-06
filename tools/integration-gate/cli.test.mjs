@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -67,6 +67,125 @@ test('integration gate CLI rejects an unsupported runtime before network access'
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /^CONFIG_ERROR UNSUPPORTED_RUNTIME runtime="unsupported-runtime"\n$/);
   assert.doesNotMatch(result.stderr, /ECONNREFUSED|fetch failed/);
+});
+
+test('product chat gate fails closed before creating a target when Aura identity is missing', async () => {
+  const server = await startServer((req, res) => {
+    if (req.url === '/control/integration') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Foundation Gate</h1>');
+      return;
+    }
+    if (req.url === '/api/v1/computers') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        computers: [{
+          id: 'computer-1',
+          serverId: 'server-1',
+          status: 'online',
+          activeDaemonId: 'daemon-1',
+          daemonLeaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+          agentWorkspaces: [{
+            agentId: 'agent-1',
+            agentName: 'Claude Agent',
+            status: 'running',
+            runtime: 'claude_code',
+            sessionId: 'session-1',
+          }],
+        }],
+      }));
+      return;
+    }
+    res.writeHead(404);
+    res.end('not found');
+  });
+
+  try {
+    const result = await runCli([
+      '--mode', 'product-chat-reply-claude',
+      '--api-base', server.url,
+      '--frontend-base', server.url,
+      '--account-token', 'test-session',
+      '--channel', 'gate-lab',
+      '--expected-daemon-version', '0.2.6',
+      '--expected-artifact-sha256', 'a'.repeat(64),
+      '--json',
+    ]);
+
+    assert.equal(result.code, 1);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.failure.code, 'AURA_STATUS_REQUIRED');
+    assert.equal(report.steps.find((step) => step.id === 'installed-aura-bound')?.status, 'failed');
+    assert.equal(server.requests.some((request) => request.method === 'POST'), false);
+  } finally {
+    await server.close();
+  }
+});
+
+test('product chat gate accepts a valid status document even when status exits 1 for offline Aura', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'smallkhoj-gate-aura-offline-'));
+  const auraCommand = join(root, 'aura');
+  writeFileSync(auraCommand, [
+    '#!/bin/sh',
+    `printf '%s\\n' '${JSON.stringify({
+      implementationType: 'aura-standalone',
+      installed: true,
+      activeVersion: '0.2.6',
+      artifactSha256: 'a'.repeat(64),
+      computerId: 'computer-1',
+      serverId: 'server-1',
+      daemonId: 'daemon-1',
+      online: false,
+      connected: false,
+    })}'`,
+    'exit 1',
+    '',
+  ].join('\n'));
+  chmodSync(auraCommand, 0o755);
+  const server = await startServer((req, res) => {
+    if (req.url === '/control/integration') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Foundation Gate</h1>');
+      return;
+    }
+    if (req.url === '/api/v1/computers') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        computers: [{
+          id: 'computer-1',
+          serverId: 'server-1',
+          status: 'offline',
+          activeDaemonId: 'daemon-1',
+          daemonLeaseExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+          agentWorkspaces: [{ agentId: 'agent-1', status: 'running', runtime: 'claude_code' }],
+        }],
+      }));
+      return;
+    }
+    res.writeHead(404);
+    res.end('not found');
+  });
+
+  try {
+    const result = await runCli([
+      '--mode', 'product-chat-reply-claude',
+      '--api-base', server.url,
+      '--frontend-base', server.url,
+      '--account-token', 'test-session',
+      '--channel', 'gate-lab',
+      '--aura-command', auraCommand,
+      '--expected-daemon-version', '0.2.6',
+      '--expected-artifact-sha256', 'a'.repeat(64),
+      '--json',
+    ]);
+    assert.equal(result.code, 1);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.failure.code, 'AURA_NOT_ONLINE');
+    assert.equal(report.installationIdentity.checks.online, false);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('integration gate CLI returns compact pass output for foundation-ready snapshot', async () => {

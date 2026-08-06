@@ -4,6 +4,7 @@ export const CHAT_GATE_SCENARIOS = [
   'chat-reply-channel-base',
   'chat-reply-channel-group',
   'chat-reply-dm',
+  'product-chat-reply-claude',
 ];
 
 export const CHAT_GATE_STEP_IDS = [
@@ -20,6 +21,8 @@ export const CHAT_GATE_STEP_IDS = [
   'reply-visible',
 ];
 
+const PRODUCT_INSTALLATION_STEP_ID = 'installed-aura-bound';
+
 const STEP_LABELS = {
   'foundation-preflight': 'Foundation preflight',
   'chat-target-ready': 'Chat target ready',
@@ -32,6 +35,7 @@ const STEP_LABELS = {
   'runtime-idle': 'Runtime idle',
   'reply-persisted': 'Reply persisted',
   'reply-visible': 'Reply visible',
+  [PRODUCT_INSTALLATION_STEP_ID]: 'Installed Aura bound to online Computer',
 };
 
 export function buildChatGateReport(input = {}) {
@@ -47,6 +51,7 @@ export function buildChatGateReport(input = {}) {
   const slockSendEvidence = normalizeToolEvidence(input.toolEvidence)
     .find((tool) => tool.isSlockMessageSend === true || isSlockMessageSendCommand(tool.commandPreview));
   const delivery = normalizeDelivery(input.delivery);
+  const installationIdentity = normalizeInstallationIdentity(input.installationIdentity);
   const warnings = buildWarnings(input);
   const failure = classifyChatFailure({
     ...input,
@@ -62,6 +67,7 @@ export function buildChatGateReport(input = {}) {
       matchingReplies,
     },
     delivery,
+    installationIdentity,
     toolEvidence: normalizeToolEvidence(input.toolEvidence),
   });
   const steps = buildSteps({
@@ -74,6 +80,7 @@ export function buildChatGateReport(input = {}) {
     selectedReply,
     matchingReplies,
     failure,
+    installationIdentity,
   });
   const failedSteps = steps.filter((step) => step.status === 'failed');
   const ok = !failure && failedSteps.length === 0;
@@ -97,6 +104,7 @@ export function buildChatGateReport(input = {}) {
     sessionId: stringOrNull(input.agent?.sessionId ?? input.sessionId) ?? null,
     agent: input.agent ?? null,
     target,
+    installationIdentity,
     marker,
     expectedAck,
     messages: {
@@ -142,6 +150,13 @@ export function classifyChatFailure(input = {}) {
 
   if (!input.foundation?.ok) {
     return failure('foundation', 'RUNTIME_NOT_RUNNING', 'Foundation readiness is missing or failed.');
+  }
+  if (scenario === 'product-chat-reply-claude' && input.installationIdentity?.ok !== true) {
+    return failure(
+      'installation',
+      input.installationIdentity?.failureCode ?? 'AURA_INSTALLATION_IDENTITY_MISSING',
+      input.installationIdentity?.failureReason ?? 'Installed Aura identity is not proven to be the online Computer runtime.',
+    );
   }
   if (!targetReady(target, scenario)) {
     return scenario === 'chat-reply-dm'
@@ -224,11 +239,26 @@ function buildSteps({
   selectedReply,
   matchingReplies,
   failure,
+  installationIdentity,
 }) {
-  return CHAT_GATE_STEP_IDS.map((id) => {
+  const stepIds = scenario === 'product-chat-reply-claude'
+    ? ['foundation-preflight', PRODUCT_INSTALLATION_STEP_ID, ...CHAT_GATE_STEP_IDS.slice(1)]
+    : CHAT_GATE_STEP_IDS;
+  return stepIds.map((id) => {
     const failed = failingStepForCode(failure?.code) === id;
     if (failed) {
       return step(id, 'failed', evidenceForStep(id), failure);
+    }
+    if (
+      scenario === 'product-chat-reply-claude'
+      && installationIdentity?.ok !== true
+      && id !== 'foundation-preflight'
+      && id !== PRODUCT_INSTALLATION_STEP_ID
+    ) {
+      // Do not let stale/prefilled chat evidence look successful when the
+      // installed Aura identity was never proven. The product gate is
+      // intentionally fail-closed at this boundary.
+      return step(id, 'pending', evidenceForStep(id));
     }
     const status = stepPassed(id, {
       input,
@@ -239,6 +269,7 @@ function buildSteps({
       slockSendEvidence,
       selectedReply,
       matchingReplies,
+      installationIdentity: input.installationIdentity,
     }) ? 'passed' : 'pending';
     return step(id, status, evidenceForStep(id));
   });
@@ -258,6 +289,8 @@ function stepPassed(id, context) {
   switch (id) {
     case 'foundation-preflight':
       return input.foundation?.ok === true;
+    case PRODUCT_INSTALLATION_STEP_ID:
+      return input.installationIdentity?.ok === true;
     case 'chat-target-ready':
       return targetReady(target, scenario);
     case 'user-message-sent':
@@ -300,6 +333,20 @@ function failingStepForCode(code) {
   switch (code) {
     case 'RUNTIME_NOT_RUNNING':
       return 'foundation-preflight';
+    case 'AURA_STATUS_REQUIRED':
+    case 'AURA_RELEASE_EXPECTATION_REQUIRED':
+    case 'AURA_INSTALLATION_IDENTITY_MISSING':
+    case 'AURA_STATUS_EXECUTION_FAILED':
+    case 'AURA_STATUS_INVALID_JSON':
+    case 'AURA_NOT_STANDALONE':
+    case 'AURA_NOT_INSTALLED':
+    case 'AURA_NOT_ONLINE':
+    case 'AURA_COMPUTER_MISMATCH':
+    case 'AURA_DAEMON_MISMATCH':
+    case 'AURA_VERSION_MISMATCH':
+    case 'AURA_ARTIFACT_IDENTITY_MISSING':
+    case 'CLAUDE_RUNTIME_MISMATCH':
+      return PRODUCT_INSTALLATION_STEP_ID;
     case 'DM_TARGET_RESOLUTION_FAILED':
     case 'CHANNEL_AUDIENCE_AMBIGUOUS':
     case 'CHAT_MESSAGE_SEND_FAILED':
@@ -378,6 +425,27 @@ function targetReady(target, scenario) {
     return target.kind === 'channel-group' && Boolean(target.channelId && target.replyTarget);
   }
   return target.kind === 'channel' && Boolean(target.channelId && target.replyTarget);
+}
+
+function normalizeInstallationIdentity(value) {
+  if (!value || typeof value !== 'object') return null;
+  return {
+    ok: value.ok === true,
+    failureCode: stringOrNull(value.failureCode),
+    failureReason: stringOrNull(value.failureReason),
+    implementationType: stringOrNull(value.implementationType),
+    installed: value.installed === true,
+    online: value.online === true,
+    activeVersion: stringOrNull(value.activeVersion),
+    artifactSha256: stringOrNull(value.artifactSha256),
+    statusComputerId: stringOrNull(value.statusComputerId),
+    statusDaemonId: stringOrNull(value.statusDaemonId),
+    computerId: stringOrNull(value.computerId),
+    computerDaemonId: stringOrNull(value.computerDaemonId),
+    computerDaemonVersion: stringOrNull(value.computerDaemonVersion),
+    runtimeKind: stringOrNull(value.runtimeKind),
+    checks: value.checks && typeof value.checks === 'object' ? value.checks : {},
+  };
 }
 
 function isReplyForScenario(reply, target, scenario) {

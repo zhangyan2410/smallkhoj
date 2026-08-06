@@ -12,8 +12,10 @@ This is one end-to-end implementation session. The phases below are ordered chec
 
 1. Extend the daemon distribution builder to stage a Windows x64 standalone layout containing `aura.exe`, private Node runtime, `dist`, production dependencies, N-API/WASM resources, manifest, and checksums.
 2. Generate an `install.ps1` that detects native architecture, downloads an immutable manifest/artifact, verifies SHA-256 and version, stages into `%LOCALAPPDATA%\\Aura\\versions`, updates the user PATH, and switches the active launcher atomically.
-3. Preserve the existing Unix archive/install path and internal `smallkhoj-daemon` artifact naming.
-4. Add a Windows build/release job (or equivalent local reproducible command) and publish artifacts through the existing `/downloads/smallkhoj-daemon` cloud/static boundary.
+3. Extend the macOS release to `darwin-arm64` and `darwin-x64` managed standalone layouts containing a private Node runtime, `dist`, production dependencies, pinned local Codex ACP entry, manifest, and sidecars. Keep internal `smallkhoj-daemon` artifact naming and npx only as compatibility/development output.
+4. Replace the fixed Unix installer with a manifest-driven Ensure installer: UI-pinned or latest-compatible version selection, Rosetta-safe architecture detection, same-artifact zero-download reuse, integrity repair, upgrade/no-downgrade, offline reuse, atomic version/active/launcher promotion, and fail-closed current-shell command discovery.
+5. Add executable installer integration tests with a temporary HOME/PATH and counted fake HTTP carrier. Cover first install, repeated same-version archive request count zero, corruption repair, upgrade, no-downgrade, offline reuse, failed staging rollback, and PATH/profile idempotence.
+6. Add Windows/macOS build/release jobs (or equivalent reproducible commands) and publish artifacts through the existing `/downloads/smallkhoj-daemon` cloud/static boundary.
 
 Risk checkpoint: if Node runtime packaging, native modules, or WASM cannot be made reliable, stop and revise the design before touching onboarding UI.
 
@@ -23,14 +25,16 @@ Risk checkpoint: if Node runtime packaging, native modules, or WASM cannot be ma
 2. Implement idempotent `aura setup`: create/read config, generate/reuse machine ID, detect existing process/config/legacy state, write user ACL-protected credential paths, and support explicit reset/regenerate.
 3. Implement version inspection, immutable artifact selection, no-downgrade default, and staged upgrade/rollback behavior.
 4. Implement reconnect process/lease handling: graceful stop only for a stale local daemon with expired remote lease; no force kill; clear conflict on active lease.
-5. Keep runtime providers external and report unavailable providers without failing daemon installation.
+5. Implement `aura restart`, expanded `status`, and read-only `doctor`. Stop waits for exit, stale PID is handled explicitly, restart waits for local health, and a missing credential never falls back to prototype identity or creates remote state.
+6. Launch Codex ACP from the verified local release path instead of production-time nested npx. Keep other runtime providers external and report unavailable providers without failing core daemon installation.
 
 ## Phase 3 — Backend command and ticket contract
 
 1. Add immutable release metadata (version, platform, URL, SHA-256, minimum version) to the download/release response.
 2. Split preview/setup metadata from Connect ticket generation. Opening the dialog, changing tabs, or rendering any phase card must be ticket-free; create `sk_connect_` only from the explicit Connect/“generate command” or Reconnect action, preserving the five-minute TTL and existing server conflict checks. Return `expiresAt` only from that ticket-generating response.
 3. Return platform-structured Install/Setup/Connect commands with explicit shell labels. Keep the old Unix `command` field during compatibility rollout.
-4. Add tests for Windows vs Unix commands, ticket timing, expiry/regeneration, version metadata, and reconnect name/machine-ID behavior.
+4. Pin the backend-advertised published version in the macOS Install command, remove PATH export/source instructions, and generate Setup/Connect commands against the stable launcher.
+5. Add tests for Windows vs Unix commands, ticket timing, expiry/regeneration, version metadata, no-export launcher commands, and reconnect name/machine-ID behavior.
 
 ## Phase 4 — Computers UI and i18n
 
@@ -48,11 +52,13 @@ Layout, component layering, state matrix, i18n keys, `data-testid` hooks, and `.
 
 ### Local/macOS/Linux
 
-- Run the focused backend command-generation/ticket tests.
-- Run daemon TypeScript build and targeted unit tests.
-- Run frontend type/lint checks and focused component tests.
-- Use `./twd` to assert the selected platform tab, hidden opposite commands, Chinese default copy, and Online/failure evidence.
-- Verify existing Unix npx connect/reconnect commands remain unchanged.
+- Run the focused backend command-generation/ticket tests, distribution installer integration tests, daemon TypeScript build, lifecycle/ACP tests, and Integration Gate contract suite.
+- Execute the exact product `curl .../install.sh | SMALLKHOJ_DAEMON_VERSION=<version> sh` command against an identified carrier with an isolated install/state root; rerun it and prove the archive request count stays zero for the same complete artifact.
+- In the same test environment, prove bare `aura --version`, `aura status`, and `aura doctor` resolve without manual PATH commands; run Setup twice and prove identity reuse.
+- Generate a fresh Connect ticket from the same candidate, run the installed `aura` Connect command, and prove register + heartbeat Online.
+- Add a `tools/integration-gate` product-semantic mode/evidence contract that sends a unique marker to a real Claude Code Agent and passes only when the persisted visible reply and Aura/slock send evidence are both correlated to the same Server/Computer/Agent/Channel candidate.
+- Run that Gate against the installed artifact and require PASS. Browser evidence is not required for this additional gate; API/trace/Gate evidence is required. Fake upstream tests do not satisfy it.
+- Keep the existing Unix npx connect/reconnect tests as compatibility coverage, not as macOS product acceptance.
 
 ### Windows x64 real host (required)
 
@@ -75,11 +81,11 @@ Layout, component layering, state matrix, i18n keys, `data-testid` hooks, and `.
 
 ## Completion gate
 
-Do not run `task.py start` until `prd.md`, this design, and this execution plan are reviewed. Do not report completion until the Windows x64 real-host gate and focused macOS/Linux regression checks both pass.
+Do not run `task.py start` until `prd.md`, this design, and this execution plan are reviewed. Do not report macOS implementation complete until the exact real command chain and Claude Code product-semantic Integration Gate pass. Do not report the overall cross-platform task complete until the Windows x64 real-host gate also passes.
 
 ## Execution status — 2026-08-06
 
-The Mac-side implementation and automated gates are complete for the current checkout. The following phases have landed: structured ticket-free preview and explicit Connect/Reconnect ticket actions (Phase 3), platform-aware Aura paths/setup and status (Phase 2), Windows ZIP/PowerShell installer generation with fail-closed artifact requirements (Phase 1), and the mutually exclusive three-phase Computers UI plus i18n/spec updates (Phase 4).
+The earlier Mac-side implementation and automated gates proved the fixed archive/download path, Setup identity, fake-upstream Connect, and UI contract, but they are superseded as completion evidence by the managed standalone/Ensure requirements added after real user testing. Structured ticket-free preview, platform-aware paths/setup/status, Windows ZIP/PowerShell generation, and the three-phase UI remain useful landed foundations.
 
 Mac-side focused automated verification is recorded in `macos-evidence.md`. The earlier
 `HTTP_502`/timeout came from a stale host credential redirecting fake-upstream tests; it was
@@ -89,6 +95,6 @@ labelled by candidate in `evidence/live-runtime-report.md`; the current daemon a
 also installed from the worktree carrier and exercised through fake-upstream Connect/register/
 heartbeat. Neither evidence set is a Windows PE or real SmallKhoj Online acceptance.
 
-Phase 5 remains open. A Windows x64 host must provide a real PE `node.exe`/`aura.exe`, publish the matching release manifest, execute the install/setup/connect/reconnect/upgrade/rollback/conflict matrix, and commit redacted evidence under `evidence/`. Keep `task.json.status` as `in_progress` until that real-host gate is complete; Mac-side evidence cannot substitute for it.
+Phase 5 remains open on both acceptance lanes. macOS must first land Ensure/private runtime/ACP/lifecycle changes and pass the exact installed-artifact Connect + Claude reply Integration Gate. A Windows x64 host must still provide real PE `node.exe`/`aura.exe`, publish the matching release manifest, and execute the install/setup/connect/reconnect/upgrade/rollback/conflict matrix. Keep `task.json.status` as `in_progress` until both real-host gates are complete; neither platform substitutes for the other.
 
 See `handoff.md` for the boundary and `windows-acceptance.md` for the exact continuation checklist.

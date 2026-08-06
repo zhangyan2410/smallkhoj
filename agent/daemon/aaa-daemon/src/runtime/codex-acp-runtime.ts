@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events';
-import { mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+import { homedir } from 'os';
 import type { PromptResponse, SessionNotification, SessionUpdate } from '@agentclientprotocol/sdk';
 import type { Credential } from '../types.js';
 import { buildSlockSystemPrompt, type ClaudeRuntimeOptions } from './claude-runtime.js';
@@ -8,7 +10,10 @@ import { buildCodexPrompt, buildCodexRuntimeEnv } from './codex-runtime.js';
 import { CodexAcpBridge, resolveNpxCommand, translateAcpUpdate } from './codex-acp-bridge.js';
 import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
 
-const DEFAULT_CODEX_ACP_PACKAGE = '@zed-industries/codex-acp@0.16.0';
+export const DEFAULT_CODEX_ACP_PACKAGE = '@zed-industries/codex-acp@0.16.0';
+export const CODEX_ACP_VERSION = '0.16.0';
+
+const CODEX_ACP_REASONING_COMPATIBILITY_ARGS = ['-c', 'model_reasoning_effort=xhigh'];
 
 export interface CodexAcpRuntimeOptions {
   credential: Credential;
@@ -27,11 +32,92 @@ export type CodexAcpRuntimeExitEvent = RuntimeExitEvent;
 export type CodexAcpStreamEvent = RuntimeStreamEvent;
 type PendingUserMessage = { text: string; options?: RuntimeSendOptions };
 
+/**
+ * Resolve the release-owned ACP executable before considering npx.  Managed
+ * Aura artifacts set AURA_RELEASE_ROOT from their launcher, while tests and
+ * embedding callers can provide AURA_CODEX_ACP_PATH explicitly.  Returning an
+ * absolute path is important: child-process PATH inheritance is not reliable
+ * for a daemon started from a copied Connect command.
+ */
+export function resolveBundledCodexAcpPath(
+  env: NodeJS.ProcessEnv = process.env,
+  releaseRoot = env.AURA_RELEASE_ROOT?.trim(),
+): string | undefined {
+  const explicit = env.AURA_CODEX_ACP_PATH?.trim();
+  const moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+  const candidates = [
+    explicit,
+    releaseRoot ? join(releaseRoot, 'sidecars', 'codex-acp', process.platform === 'win32' ? 'codex-acp.exe' : 'codex-acp') : undefined,
+    join(moduleRoot, 'sidecars', 'codex-acp', process.platform === 'win32' ? 'codex-acp.exe' : 'codex-acp'),
+  ].filter((value): value is string => Boolean(value));
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
+export function codexAcpReadiness(
+  env: NodeJS.ProcessEnv = process.env,
+  releaseRoot = env.AURA_RELEASE_ROOT?.trim(),
+): { available: boolean; path?: string; reason?: string } {
+  const bundled = resolveBundledCodexAcpPath(env, releaseRoot);
+  if (bundled) {
+    const compatibilityArgs = codexAcpCompatibilityArgs(env);
+    return {
+      available: true,
+      path: bundled,
+      reason: compatibilityArgs.length > 0
+        ? `Aura will pass model_reasoning_effort=xhigh to ACP ${CODEX_ACP_VERSION} because the user config requests the newer max value.`
+        : undefined,
+    };
+  }
+  if (env.AURA_STANDALONE === '1') {
+    return {
+      available: false,
+      reason: `Codex ACP ${CODEX_ACP_VERSION} is not present in the Aura release (expected sidecars/codex-acp/${process.platform === 'win32' ? 'codex-acp.exe' : 'codex-acp'}). Reinstall a complete artifact or set AURA_CODEX_ACP_PATH for an explicitly managed binary.`,
+    };
+  }
+  return {
+    available: false,
+    reason: `Codex ACP ${CODEX_ACP_VERSION} is unavailable locally; development mode may fall back to npx.`,
+  };
+}
+
+/**
+ * Codex CLI releases newer than ACP 0.16.0 accept `max` as a reasoning
+ * effort, while the pinned ACP binary only accepts up to `xhigh`.  Keep the
+ * user's global config untouched and apply a narrow launch-time override when
+ * that exact incompatible value is present.
+ */
+export function codexAcpCompatibilityArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  const codexHome = env.CODEX_HOME?.trim()
+    || (process.platform === 'win32' ? env.USERPROFILE?.trim() : env.HOME?.trim())
+    || homedir();
+  const configPath = join(codexHome, '.codex', 'config.toml');
+  const directConfigPath = env.CODEX_HOME?.trim() ? join(codexHome, 'config.toml') : undefined;
+  const candidates = [directConfigPath, configPath].filter((value): value is string => Boolean(value));
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue;
+    try {
+      const config = readFileSync(candidate, 'utf-8');
+      if (/^\s*model_reasoning_effort\s*=\s*["']max["']\s*(?:#.*)?$/m.test(config)) {
+        return [...CODEX_ACP_REASONING_COMPATIBILITY_ARGS];
+      }
+    } catch {
+      // A config read failure should not make Claude-only installations fail;
+      // ACP will report its own actionable parse/auth error if it is selected.
+    }
+  }
+  return [];
+}
+
 export function resolveCodexAcpLaunchCommand(options: Pick<CodexAcpRuntimeOptions, 'command' | 'commandArgs' | 'baseEnv'> = {}): { command: string; args: string[] } {
-  const command = options.command?.trim() || resolveNpxCommand(options.baseEnv);
+  const baseEnv = options.baseEnv ?? process.env;
+  const command = options.command?.trim() || resolveNpxCommand(baseEnv);
   const commandArgs = options.commandArgs?.filter((arg) => arg.trim().length > 0);
   if (commandArgs && commandArgs.length > 0) {
     return { command, args: commandArgs };
+  }
+  const bundled = resolveBundledCodexAcpPath(baseEnv);
+  if (bundled && (isNpxCommand(command) || command === bundled)) {
+    return { command: bundled, args: codexAcpCompatibilityArgs(baseEnv) };
   }
   if (isNpxCommand(command)) {
     return { command, args: ['-y', DEFAULT_CODEX_ACP_PACKAGE] };

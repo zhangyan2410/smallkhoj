@@ -23,7 +23,7 @@ import { ClientHandler } from './client-handler.js';
 import { SessionManager } from './session-manager.js';
 import { type SlockWrapperResult, writeSlockWrapper } from '../runtime/slock-wrapper.js';
 import { ClaudeRuntimeDriver, getContentBlocks } from '../runtime/claude-runtime.js';
-import { CodexAcpRuntimeDriver } from '../runtime/codex-acp-runtime.js';
+import { CodexAcpRuntimeDriver, codexAcpReadiness } from '../runtime/codex-acp-runtime.js';
 import { OpenCodeServerRuntimeDriver } from '../runtime/opencode-server-runtime.js';
 import { PiRuntimeDriver, resolveBundledPiLayout } from '../runtime/pi-runtime.js';
 import type { ManagedRuntimeDriver } from '../runtime/runtime-driver.js';
@@ -54,6 +54,11 @@ import {
 } from '../runtime/runtime-provider.js';
 import { DAEMON_VERSION } from '../version.js';
 import { daemonPaths } from '../platform/paths.js';
+import {
+  redactManagedDaemonError,
+  writeManagedDaemonState,
+  type ManagedDaemonStatus,
+} from '../platform/daemon-state.js';
 
 interface LogEntry {
   timestamp: string;
@@ -333,6 +338,37 @@ export class DaemonCore extends EventEmitter {
   getProxyToken(): string | null { return this.proxyToken; }
   getSessionManager(): SessionManager { return this.sessionManager; }
   getLogBuffer(): LogEntry[] { return [...this.logBuffer]; }
+
+  private managedLifecycleEnabled(): boolean {
+    return process.env.AURA_STANDALONE === '1';
+  }
+
+  private writeManagedLifecycleState(
+    status: ManagedDaemonStatus,
+    details: {
+      activeDaemonId?: string;
+      lastHeartbeatAt?: string;
+      leaseExpiresAt?: string;
+      lastError?: unknown;
+    } = {},
+  ): void {
+    if (!this.managedLifecycleEnabled()) return;
+    writeManagedDaemonState({
+      status,
+      pid: process.pid,
+      daemonId: this.daemonId,
+      activeDaemonId: details.activeDaemonId,
+      serverId: this.credential?.serverId,
+      computerId: this.credential?.computerId,
+      machineId: this.credential?.machineId ?? this.machineId ?? undefined,
+      daemonVersion: DAEMON_VERSION,
+      lastHeartbeatAt: details.lastHeartbeatAt,
+      leaseExpiresAt: details.leaseExpiresAt,
+      lastError: details.lastError === undefined
+        ? undefined
+        : redactManagedDaemonError(details.lastError),
+    });
+  }
 
   deliverRuntimeMessage(input: unknown, source = 'daemon'): boolean {
     const runtimeControlCommand = parseDaemonRuntimeControlCommand(input);
@@ -688,6 +724,7 @@ export class DaemonCore extends EventEmitter {
     console.log(`[Daemon] Starting aaa-daemon v${DAEMON_VERSION}...`);
     this.log(`Starting aaa-daemon v${DAEMON_VERSION}`, 'info');
     this.stopping = false;
+    this.writeManagedLifecycleState('starting');
 
     // 1. Load credential
     this.credential = await this.loadCredential();
@@ -726,7 +763,12 @@ export class DaemonCore extends EventEmitter {
     }
     this.daemonRegistrationEnabled = this.shouldRegisterDaemonLifecycle();
     if (this.daemonRegistrationEnabled) {
-      await this.registerDaemonLifecycle('register');
+      const registered = await this.registerDaemonLifecycle('register');
+      if (!registered && this.managedLifecycleEnabled()) {
+        this.proxy.stop();
+        this.removePidFile();
+        throw new Error('Aura could not confirm daemon registration with the server');
+      }
       this.startDaemonHeartbeat();
     }
 
@@ -828,6 +870,7 @@ export class DaemonCore extends EventEmitter {
     await this.mcpBridge?.stop();
     this.proxy.stop();
     this.removePidFile();
+    this.writeManagedLifecycleState('offline');
 
     console.log('[Daemon] Stopped');
     this.log('Stopped', 'info');
@@ -854,12 +897,18 @@ export class DaemonCore extends EventEmitter {
       try {
         const raw = readFileSync(credPath, 'utf-8');
         const data = JSON.parse(raw);
+        const token = typeof data.token === 'string'
+          ? data.token.trim()
+          : typeof data.apiKey === 'string'
+            ? data.apiKey.trim()
+            : '';
+        if (!token) return null;
         return {
           agentId: data.agent_id || data.agentId || this.config.agentId,
           serverId: data.server_id || data.serverId || 'unknown',
           computerId: data.computer_id || data.computerId,
           machineId: data.machine_id || data.machineId,
-          token: data.token || data.apiKey || '',
+          token,
           serverUrl: data.server_url || data.serverUrl || this.config.serverUrl,
           wsUrl: data.ws_url || data.wsUrl || this.config.wsUrl,
         };
@@ -868,16 +917,34 @@ export class DaemonCore extends EventEmitter {
       }
     }
 
-    // Fallback: use env / config values for prototype
-    return {
-      agentId: this.config.agentId || process.env.SLOCK_AGENT_ID || 'prototype-agent',
-      serverId: process.env.SLOCK_SERVER_ID || 'prototype',
-      computerId: process.env.SLOCK_COMPUTER_ID,
-      machineId: process.env.SLOCK_MACHINE_ID,
-      token: process.env.SLOCK_AGENT_TOKEN || process.env.ANTHROPIC_AUTH_TOKEN || 'prototype-token',
-      serverUrl: this.config.serverUrl,
-      wsUrl: this.config.wsUrl,
-    };
+    // A managed Aura restart must never silently turn a missing credential
+    // into a fake remote identity.  Development harnesses may opt into the
+    // historical prototype behavior explicitly, but a normal standalone
+    // install fails closed and reports "installed, not connected" to the CLI.
+    const explicitToken = process.env.SLOCK_AGENT_TOKEN?.trim();
+    if (explicitToken) {
+      return {
+        agentId: this.config.agentId || process.env.SLOCK_AGENT_ID || '',
+        serverId: process.env.SLOCK_SERVER_ID || 'unknown',
+        computerId: process.env.SLOCK_COMPUTER_ID,
+        machineId: process.env.SLOCK_MACHINE_ID,
+        token: explicitToken,
+        serverUrl: this.config.serverUrl,
+        wsUrl: this.config.wsUrl,
+      };
+    }
+    if (process.env.SMALLKHOJ_ALLOW_PROTOTYPE_CREDENTIAL === '1') {
+      return {
+        agentId: this.config.agentId || process.env.SLOCK_AGENT_ID || 'prototype-agent',
+        serverId: process.env.SLOCK_SERVER_ID || 'prototype',
+        computerId: process.env.SLOCK_COMPUTER_ID,
+        machineId: process.env.SLOCK_MACHINE_ID,
+        token: 'prototype-token',
+        serverUrl: this.config.serverUrl,
+        wsUrl: this.config.wsUrl,
+      };
+    }
+    return null;
   }
 
   private machineIdPath(): string {
@@ -1014,6 +1081,18 @@ export class DaemonCore extends EventEmitter {
       return;
     }
     const runtimeProvider = runtimeConfig.runtimeProvider ?? this.config.runtimeProvider;
+    if (runtimeType === 'codex' && process.env.AURA_STANDALONE === '1') {
+      const readiness = codexAcpReadiness(process.env);
+      if (!readiness.available && !runtimeConfig.runtimeCommand && !this.config.runtimeCommand) {
+        this.log(readiness.reason ?? 'Codex ACP sidecar is unavailable', 'warn');
+        return;
+      }
+      if (readiness.path && (!runtimeConfig.runtimeCommand || isNpxLikeCommand(runtimeConfig.runtimeCommand))) {
+        // Ignore an inherited npx hint in a managed artifact.  The release
+        // owned absolute binary is the only supported production path.
+        runtimeConfig = { ...runtimeConfig, runtimeCommand: readiness.path, runtimeCommandArgs: [] };
+      }
+    }
     const runtimeConfigCommand = runtimeType === 'codex'
       ? codexAcpRuntimeCommand(runtimeConfig.runtimeCommand, runtimeConfig.runtimeCommandArgs, 'control')
       : runtimeConfig.runtimeCommand;
@@ -1939,8 +2018,8 @@ export class DaemonCore extends EventEmitter {
     return false;
   }
 
-  private async registerDaemonLifecycle(kind: 'register' | 'heartbeat'): Promise<void> {
-    if (!this.credential || !this.daemonRegistrationEnabled) return;
+  private async registerDaemonLifecycle(kind: 'register' | 'heartbeat'): Promise<boolean> {
+    if (!this.credential || !this.daemonRegistrationEnabled) return false;
     const serverUrl = this.credential.serverUrl || this.config.serverUrl;
     const endpoint = kind === 'register' ? '/internal/agent-api/daemon/register' : '/internal/agent-api/daemon/heartbeat';
     const configRuntime = normalizeDaemonRuntimeType(this.config.runtime);
@@ -1987,16 +2066,34 @@ export class DaemonCore extends EventEmitter {
       });
       if (!response.ok) {
         const text = await response.text().catch(() => '');
-        this.log(`Daemon ${kind} failed: ${response.status} ${text.slice(0, 200)}`, 'warn');
-        return;
+        const error = `Daemon ${kind} failed: ${response.status} ${text.slice(0, 200)}`;
+        this.log(error, 'warn');
+        this.writeManagedLifecycleState('error', { lastError: error });
+        return false;
       }
-      const payload = await response.json().catch(() => null) as { controlCommands?: unknown[] } | null;
+      const payload = await response.json().catch(() => null) as {
+        computer?: {
+          activeDaemonId?: string;
+          daemonLeaseExpiresAt?: string;
+          lastHeartbeatAt?: string;
+        };
+        controlCommands?: unknown[];
+      } | null;
       for (const command of payload?.controlCommands ?? []) {
         this.deliverRuntimeMessage(command, `daemon-${kind}`);
       }
+      this.writeManagedLifecycleState('online', {
+        activeDaemonId: payload?.computer?.activeDaemonId ?? this.daemonId,
+        lastHeartbeatAt: payload?.computer?.lastHeartbeatAt ?? new Date().toISOString(),
+        leaseExpiresAt: payload?.computer?.daemonLeaseExpiresAt,
+      });
       this.log(`Daemon ${kind} synced to ${serverUrl}`, 'debug');
+      return true;
     } catch (err) {
-      this.log(`Daemon ${kind} failed: ${(err as Error).message}`, 'warn');
+      const error = `Daemon ${kind} failed: ${(err as Error).message}`;
+      this.log(error, 'warn');
+      this.writeManagedLifecycleState('error', { lastError: error });
+      return false;
     }
   }
 
@@ -2835,6 +2932,11 @@ function isCodexAcpLaunchCommand(command: string, commandArgs: string[] | undefi
   if (/^codex-acp(\.(cmd|ps1|bat))?$/.test(commandName)) return true;
   if (/^node(\.exe)?$/.test(commandName) && commandArgs && commandArgs.length > 0) return true;
   return false;
+}
+
+function isNpxLikeCommand(command: string): boolean {
+  const commandName = (command.split(/[\\/]/).pop() ?? command).toLowerCase();
+  return /^npx(\.cmd)?$/.test(commandName);
 }
 
 function requiresDetectedRuntimeCommand(runtime: DaemonRuntimeImplementation): boolean {

@@ -15,11 +15,28 @@ import { Command } from 'commander';
 import { DaemonCore, defaultDaemonWorkspaceRoot } from '../daemon/daemon.js';
 import { attach, isDaemonRunning, startDaemon } from '../attach/attach.js';
 import type { DaemonConfig } from '../types.js';
-import { readFileSync } from 'fs';
+import {
+  accessSync,
+  closeSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+} from 'fs';
+import { spawn } from 'child_process';
+import { dirname, join } from 'path';
 import { runReadOnlySmoke } from './smoke.js';
 import { DAEMON_VERSION } from '../version.js';
 import { daemonPaths, detectWindowsArchitecture } from '../platform/paths.js';
 import { readSetup, runSetup } from '../platform/setup.js';
+import { codexAcpReadiness } from '../runtime/codex-acp-runtime.js';
+import {
+  clearManagedDaemonState,
+  readManagedDaemonState,
+  redactManagedDaemonError,
+  writeManagedDaemonState,
+} from '../platform/daemon-state.js';
 
 const program = new Command();
 
@@ -93,6 +110,316 @@ function detectImplementationType(): 'aura-standalone' | 'node-npx' {
   return 'node-npx';
 }
 
+type JsonRecord = Record<string, unknown>;
+
+function readJsonRecord(path: string): JsonRecord | null {
+  if (!existsSync(path)) return null;
+  try {
+    const value = JSON.parse(readFileSync(path, 'utf-8'));
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function activeReleaseInfo(env: NodeJS.ProcessEnv = process.env): {
+  activePath?: string;
+  version?: string;
+  platform?: string;
+  artifactSha256?: string;
+  manifest?: JsonRecord | null;
+} {
+  const paths = daemonPaths(env);
+  const active = readJsonRecord(join(paths.installRoot, 'active.json'));
+  if (!active) return {};
+  const activePath = stringValue(active.path);
+  return {
+    activePath,
+    version: stringValue(active.version),
+    platform: stringValue(active.platform),
+    artifactSha256: stringValue(active.artifactSha256),
+    manifest: activePath ? readJsonRecord(join(activePath, 'manifest.json')) : null,
+  };
+}
+
+function readCredentialMetadata(path: string): {
+  present: boolean;
+  valid: boolean;
+  token?: string;
+  serverUrl?: string;
+  serverId?: string;
+  computerId?: string;
+  machineId?: string;
+  agentId?: string;
+} {
+  const value = readJsonRecord(path);
+  if (!value) return { present: existsSync(path), valid: false };
+  const token = stringValue(value.token) || stringValue(value.apiKey);
+  return {
+    present: true,
+    valid: Boolean(token),
+    token,
+    serverUrl: stringValue(value.server_url) || stringValue(value.serverUrl),
+    serverId: stringValue(value.server_id) || stringValue(value.serverId),
+    computerId: stringValue(value.computer_id) || stringValue(value.computerId),
+    machineId: stringValue(value.machine_id) || stringValue(value.machineId),
+    agentId: stringValue(value.agent_id) || stringValue(value.agentId),
+  };
+}
+
+function pathIsExecutable(path: string | undefined): boolean {
+  if (!path) return false;
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function activePrivateNodePath(activePath?: string): string | undefined {
+  if (!activePath) return undefined;
+  const candidate = join(activePath, process.platform === 'win32' ? 'node.exe' : 'node');
+  return pathIsExecutable(candidate) ? candidate : undefined;
+}
+
+function activeAcpPath(activePath?: string): string | undefined {
+  const readiness = codexAcpReadiness({
+    ...process.env,
+    AURA_RELEASE_ROOT: activePath || process.env.AURA_RELEASE_ROOT,
+  }, activePath || process.env.AURA_RELEASE_ROOT);
+  return readiness.path;
+}
+
+function setupSummary(paths = daemonPaths()): {
+  setup: ReturnType<typeof readSetup>;
+  credential: ReturnType<typeof readCredentialMetadata>;
+  machineIdPresent: boolean;
+} {
+  const setup = readSetup(paths);
+  const credential = readCredentialMetadata(paths.credentialPath);
+  let machineIdPresent = false;
+  try {
+    machineIdPresent = existsSync(paths.machineIdPath) && Boolean(readFileSync(paths.machineIdPath, 'utf-8').trim());
+  } catch {
+    // A permission or transient filesystem error is reported as an incomplete
+    // Setup state rather than crashing `status`/`doctor`.
+    machineIdPresent = false;
+  }
+  return { setup, credential, machineIdPresent };
+}
+
+async function waitForProcessExit(pid: number, timeoutMs = 5000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
+type ManagedLaunchOptions = {
+  serverUrl: string;
+  connectToken?: string;
+  machineToken?: string;
+};
+
+async function launchManagedDaemon(options: ManagedLaunchOptions): Promise<number> {
+  const paths = daemonPaths();
+  if (isDaemonRunning(paths.pidPath)) {
+    throw new Error(`Aura daemon is already running (PID ${readFileSync(paths.pidPath, 'utf-8').trim()}); use aura status or stop before connecting again.`);
+  }
+
+  clearManagedDaemonState(paths.statePath);
+  mkdirSync(dirname(paths.logPath), { recursive: true });
+  const logFd = openSync(paths.logPath, 'a', 0o600);
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    AURA_STANDALONE: '1',
+    AURA_SERVER_URL: options.serverUrl,
+    SLOCK_AGENT_CREDENTIAL: paths.credentialPath,
+  };
+  delete childEnv.SLOCK_CONNECT_TOKEN;
+  delete childEnv.SLOCK_AGENT_TOKEN;
+  if (options.connectToken) childEnv.SLOCK_CONNECT_TOKEN = options.connectToken;
+  if (options.machineToken) childEnv.SLOCK_AGENT_TOKEN = options.machineToken;
+
+  const child = spawn(process.execPath, [
+    process.argv[1],
+    'start',
+    '--foreground',
+    '--server', options.serverUrl,
+    '--ws', 'auto',
+    '--proxy-port', '0',
+    '--pid-file', paths.pidPath,
+    '--log-file', paths.logPath,
+    '--workspace', paths.workspaceRoot,
+    '--register-daemon',
+  ], {
+    detached: true,
+    stdio: ['ignore', logFd, logFd],
+    env: childEnv,
+  });
+  closeSync(logFd);
+  child.unref();
+
+  const childPid = child.pid;
+  if (!childPid) throw new Error('Aura daemon process could not be started');
+  // Keep the exit event in a mutable object so TypeScript does not narrow the
+  // captured variable to `never` across the asynchronous listener/loop.
+  const childExit: { value: { code: number | null; signal: NodeJS.Signals | null } | null } = { value: null };
+  child.once('exit', (code, signal) => {
+    childExit.value = { code, signal };
+  });
+  const timeoutMs = Number(process.env.AURA_CONNECT_TIMEOUT_MS || 20_000);
+  const deadline = Date.now() + (Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 20_000);
+  while (Date.now() < deadline) {
+    const state = readManagedDaemonState(paths.statePath);
+    if (state?.status === 'online' && state.pid === childPid) {
+      console.log(`[Aura] Connected and running in background (PID ${childPid}). You can close this terminal.`);
+      return childPid;
+    }
+    if (state?.status === 'error') {
+      throw new Error(state.lastError || 'Aura daemon registration failed; see aura doctor and the Aura log.');
+    }
+    if (childExit.value) {
+      const detail = childExit.value.signal ? `signal ${childExit.value.signal}` : `exit ${childExit.value.code}`;
+      throw new Error(`Aura daemon exited before it became online (${detail}); see ${paths.logPath}.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  try { process.kill(childPid, 'SIGTERM'); } catch { /* already exited */ }
+  const message = `Timed out waiting for Aura to register with the server; see ${paths.logPath}.`;
+  try {
+    writeManagedDaemonState({
+      status: 'error',
+      pid: childPid,
+      daemonVersion: DAEMON_VERSION,
+      lastError: message,
+    }, paths.statePath);
+  } catch {
+    // Preserve the actionable timeout even if the state directory is no
+    // longer writable while the child is shutting down.
+  }
+  throw new Error(message);
+}
+
+async function runRestart(): Promise<void> {
+  const paths = daemonPaths();
+  const { setup, credential } = setupSummary(paths);
+  if (!credential.valid) {
+    console.error('[Aura] Installed/setup state is present, but this computer is not connected. Run the Connect command from the web page first.');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (isDaemonRunning(paths.pidPath)) {
+    try {
+      const pid = Number.parseInt(readFileSync(paths.pidPath, 'utf-8').trim(), 10);
+      if (Number.isFinite(pid)) process.kill(pid, 'SIGTERM');
+      if (!(await waitForProcessExit(pid))) {
+        console.error(`[Aura] Existing daemon (PID ${pid}) did not stop gracefully; refusing to force-kill it.`);
+        process.exitCode = 1;
+        return;
+      }
+    } catch (error) {
+      console.error('[Aura] Could not stop the existing daemon:', (error as Error).message);
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  const serverUrl = credential.serverUrl || setup?.serverUrl || process.env.AURA_SERVER_URL || 'http://localhost:8000';
+  await launchManagedDaemon({ serverUrl, machineToken: credential.token });
+}
+
+function buildStatusPayload(): JsonRecord {
+  const paths = daemonPaths();
+  const running = isDaemonRunning(paths.pidPath);
+  const active = activeReleaseInfo();
+  const summary = setupSummary(paths);
+  const daemonState = readManagedDaemonState(paths.statePath);
+  const implementationType = detectImplementationType();
+  const online = Boolean(
+    summary.credential.valid
+      && running
+      && daemonState?.status === 'online'
+      && daemonState.pid === Number.parseInt(readFileSync(paths.pidPath, 'utf-8').trim(), 10),
+  );
+  return {
+    running,
+    implementation: implementationType,
+    implementationType,
+    platform: process.platform,
+    architecture: process.platform === 'win32' ? detectWindowsArchitecture() : process.arch,
+    daemonVersion: DAEMON_VERSION,
+    installed: Boolean(active.activePath && active.version),
+    activeVersion: active.version ?? null,
+    activePlatform: active.platform ?? null,
+    artifactSha256: active.artifactSha256 ?? null,
+    setup: Boolean(summary.setup && summary.machineIdPresent),
+    credentialPresent: summary.credential.present,
+    credentialValid: summary.credential.valid,
+    connected: online,
+    online,
+    serverId: summary.credential.serverId ?? daemonState?.serverId ?? null,
+    computerId: summary.credential.computerId ?? daemonState?.computerId ?? null,
+    daemonId: daemonState?.daemonId ?? null,
+    daemonState: daemonState ?? null,
+    paths,
+    runtimeInventory: {
+      privateNode: activePrivateNodePath(active.activePath) ?? null,
+      codexAcp: activeAcpPath(active.activePath) ?? null,
+    },
+    lastError: daemonState?.lastError ?? null,
+  };
+}
+
+function printDoctor(json: boolean): number {
+  const payload = buildStatusPayload();
+  const paths = payload.paths as JsonRecord;
+  const activePath = stringValue((activeReleaseInfo()).activePath);
+  const acp = codexAcpReadiness({
+    ...process.env,
+    AURA_RELEASE_ROOT: activePath || process.env.AURA_RELEASE_ROOT,
+  }, activePath || process.env.AURA_RELEASE_ROOT);
+  const checks = {
+    platformSupported: payload.architecture !== 'unknown',
+    activePointer: Boolean(payload.installed && activePath),
+    launcherExecutable: pathIsExecutable(process.env.AURA_RELEASE_ROOT ? join(dirname(process.argv[1]), 'aura') : undefined)
+      || Boolean(process.env.AURA_STANDALONE),
+    privateNode: Boolean(payload.runtimeInventory && (payload.runtimeInventory as JsonRecord).privateNode) || payload.implementation !== 'aura-standalone',
+    codexAcp: acp.available,
+    pathDiscovery: Boolean(process.env.PATH?.split(process.platform === 'win32' ? ';' : ':').some((entry) => entry && pathIsExecutable(join(entry, process.platform === 'win32' ? 'aura.exe' : 'aura')))),
+    setup: Boolean(payload.setup),
+    credential: Boolean(payload.credentialPresent && payload.credentialValid),
+    online: payload.online === true,
+  };
+  const result = { ...payload, checks, codexAcpReason: acp.reason ?? null };
+  if (json) {
+    console.log(JSON.stringify(result));
+  } else {
+    console.log(`[Aura] ${payload.installed ? `installed ${payload.activeVersion}` : 'not installed'} (${payload.implementation})`);
+    console.log(`[Aura] Setup: ${payload.setup ? 'ready' : 'not initialized'}; credential: ${payload.credentialValid ? 'saved' : 'missing'}; online: ${payload.online ? 'yes' : 'no'}; daemon: ${payload.running ? 'running' : 'stopped'}`);
+    console.log(`[Aura] Private Node: ${checks.privateNode ? 'ready' : 'missing'}`);
+    console.log(`[Aura] Codex ACP: ${acp.available ? acp.path : acp.reason}`);
+    if (!checks.pathDiscovery) console.log('[Aura] Launcher is not discoverable in the current PATH. Re-run the installer from a shell with a writable user bin directory already on PATH.');
+  }
+  // ACP is optional; only core installation/setup/credential failures fail the
+  // doctor command.  This lets Claude-only installations remain healthy while
+  // still explaining the exact Codex child-process problem.
+  return checks.platformSupported && checks.activePointer && checks.privateNode ? 0 : 1;
+}
+
 async function runStart(options: StartOptions): Promise<void> {
   const foreground = options.foreground || Boolean(options.machineToken || options.connectToken);
 
@@ -159,6 +486,20 @@ async function runStart(options: StartOptions): Promise<void> {
     console.log('[Daemon] Running. Press Ctrl+C to stop.');
     await new Promise(() => {});
   } catch (err) {
+    if (process.env.AURA_STANDALONE === '1') {
+      try {
+        writeManagedDaemonState({
+          status: 'error',
+          pid: process.pid,
+          daemonId: undefined,
+          daemonVersion: DAEMON_VERSION,
+          lastError: redactManagedDaemonError(err),
+        }, daemonPaths().statePath);
+      } catch {
+        // Preserve the original startup error if the diagnostic state itself
+        // cannot be written.
+      }
+    }
     console.error('[Daemon] Failed to start:', (err as Error).message);
     process.exit(1);
   }
@@ -177,6 +518,16 @@ async function runProductConnect(options: ProductConnectOptions): Promise<void> 
 
   const paths = daemonPaths();
   const setup = readSetup(paths);
+  if (process.env.AURA_STANDALONE === '1' && !setup) {
+    throw new Error('Aura is installed but Setup is missing. Run `aura setup --name <computer-name> --server-url <url>` first.');
+  }
+  if (process.env.AURA_STANDALONE === '1') {
+    await launchManagedDaemon({
+      serverUrl: options.serverUrl || setup?.serverUrl || process.env.AURA_SERVER_URL || 'http://localhost:8000',
+      ...tokenOptions,
+    });
+    return;
+  }
   await runStart({
     server: options.serverUrl || setup?.serverUrl || 'http://localhost:8000',
     ws: 'auto',
@@ -219,6 +570,18 @@ program
     } catch (error) {
       console.error('[Aura] Setup failed:', (error as Error).message);
       process.exit(1);
+    }
+  });
+
+program
+  .command('restart')
+  .description('Gracefully restart the installed Aura daemon using its saved machine credential')
+  .action(async () => {
+    try {
+      await runRestart();
+    } catch (error) {
+      console.error('[Aura] Restart failed:', (error as Error).message);
+      process.exitCode = 1;
     }
   });
 
@@ -315,17 +678,11 @@ program
   .option('--json', 'Print machine-readable implementation and path metadata')
   .action((options) => {
     const running = isDaemonRunning(options.pidFile);
-    const paths = daemonPaths();
+    const payload = buildStatusPayload();
+    // Respect an explicitly injected PID file in tests and legacy scripts.
+    payload.running = running;
     if (options.json) {
-      const implementationType = detectImplementationType();
-      console.log(JSON.stringify({
-        running,
-        implementation: implementationType,
-        implementationType,
-        platform: process.platform,
-        architecture: process.platform === 'win32' ? detectWindowsArchitecture() : process.arch,
-        paths,
-      }));
+      console.log(JSON.stringify(payload));
 
       // ``--json`` is a machine-readable contract.  Do not append the
       // human-oriented status line below to stdout, otherwise consumers cannot
@@ -347,6 +704,14 @@ program
       console.log('Daemon is not running');
       process.exit(1);
     }
+  });
+
+program
+  .command('doctor')
+  .description('Run read-only Aura installation, runtime, and connection diagnostics')
+  .option('--json', 'Print machine-readable diagnostics')
+  .action((options) => {
+    process.exitCode = printDoctor(Boolean(options.json));
   });
 
 // ── stop ─────────────────────────────────────────────────────

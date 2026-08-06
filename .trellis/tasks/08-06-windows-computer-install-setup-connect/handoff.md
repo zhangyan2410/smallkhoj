@@ -4,14 +4,14 @@
 **当前分支：** `main`  
 **当前结论：** `IN_PROGRESS`。Mac 侧主体实现、当前 `main` 的 daemon 产物下载/安装/Setup 验证和隔离后的 daemon 回归已完成；Windows x64 实机验收仍未完成，因此本任务不能标记为完成。实时证据见 `evidence/live-runtime-report.md`、`evidence/daemon-runtime-recheck.md`、`evidence/macos-install-real-8000_20260806234756.md` 和 `evidence/macos-install-path-fix-8000_20260807002251.md`。
 
-当前源候选是 `0b6222202921001e88d6aec159410ad54543edb6`。此前 UI/runtime 报告里出现的
-`4d02667139a2` 是历史候选，不应被 Windows 侧当作当前提交；可读性 UI 最后一轮来自其后的
-`082616e3a84eef3c7437ff70d016b1a176d8cd53`。
+> **Latest superseding recheck (2026-08-07):** 下方早期证据保留作历史记录，不能覆盖本段。当前实现已经切换到 managed macOS standalone：安装后的真实 `/Users/lee/.local/bin/aura` 使用私有 Node、生产依赖和本地 `sidecars/codex-acp/codex-acp`；重复执行用户原始 `curl | bash` 命令会输出 `already-installed; archive download skipped`，不要求 `export PATH`。当前 focused checks、真实安装器和隔离 fake-server Connect 均通过。ACP 0.16.0 对用户配置中的 `model_reasoning_effort="max"` 由启动参数临时兼容为 `xhigh`，不改用户配置；真实 ACP `initialize` 已返回版本 `0.16.0`。Windows builder 现在也会在传入真实 PE sidecar 时打包 `codex-acp.exe`。仍未通过的只有同一候选的真实 SmallKhoj + Claude 产品语义 Gate，以及 Windows 原生 PE/实机验收；不要把本段的 fake-server 证据写成云端 Online PASS。
 
-这里的 SHA 指最新 Mac 安装产物实际使用的源码提交；此前的 26a artifact 只保留作历史
-回归证据。本次交接文档可以随后形成一个 docs-only
-提交，因此 Windows agent 必须以拉取后实际的 `git rev-parse HEAD` 作为自己的构建和证据
-`sourceRevision`（distribution builder 要求该值等于当前 HEAD），不要硬编码上面的 Mac 产物 SHA。
+当前源候选必须以交接时实际执行的 `git rev-parse HEAD` 为准。此前 UI/runtime 报告里的
+`4d02667139a2`、`0b6222202921001e88d6aec159410ad54543edb6` 和
+`082616e3a84eef3c7437ff70d016b1a176d8cd53` 都是历史候选，不应被 Windows 侧硬编码。
+
+distribution builder 要求 `sourceRevision` 等于当前 HEAD；Windows agent 必须在拉取后重新
+构建并记录自己的 HEAD 和 artifact SHA，不要复用历史 Mac 产物 SHA。
 
 ## 已落地的主体实现
 
@@ -49,7 +49,10 @@ WebDriver `tabId=1617513010`；这些报告中的服务身份必须按历史候�
 
 路径测试曾在 Mac 上用 `platform: "win32"` + POSIX 临时目录生成过 4 个反斜杠文件；`paths.ts` 已修复，异常文件已删除，并新增断言防止再次污染 checkout。
 
-## 当前 main 的真实安装器验证
+## 历史安装器证据（保留，不作为最新结论）
+
+以下段落记录的是早期 `node-npx`/PATH-export 候选。最新 managed standalone 结果以本文件顶部
+的 superseding recheck 为准；Windows 侧不要据此复现旧的 `export PATH` 命令。
 
 使用当前 commit 构建的 `darwin-arm64` 0.2.6 产物已放入本机
 `release-artifacts/smallkhoj-daemon/`，并由 backend 的 StaticFiles 路由实际提供。manifest
@@ -90,7 +93,7 @@ Windows 侧在证据完成前不要把 `task.json.status` 改成 `completed`，�
 - 本地自动化没有替代 Windows 实机门槛；任何 `.exe`、PATH、ACL、升级/回滚和进程/lease 结论都必须来自 Windows 主机输出。
 - Connect 命令含一次性敏感 ticket。证据只保留脱敏命令（例如把 token 替换为 `<REDACTED_CONNECT_TICKET>`），不要把原始 token 写进截图、URL、日志或提交。
 
-## 运行中值得关注的问题（已核对，不要误判）
+## 运行中值得关注的问题（历史记录与最新处置）
 
 ### 1. daemon 首次 502 / timeout
 
@@ -102,7 +105,7 @@ backend `:8000` 的代码失败。使用隔离的 `AURA_INSTALL_ROOT`、
 `SLOCK_AGENT_CREDENTIAL`、`AAA_DAEMON_MACHINE_ID_FILE` 后，daemon 全量回归为
 307/307 PASS；以后复跑必须保持隔离。
 
-### 2. `@zed-industries/codex-acp@0.16.0` 的 exit 127
+### 2. `@zed-industries/codex-acp@0.16.0` 的 exit 127（历史观察；当前路径已修复）
 
 日志里的 `No such file or directory` 来自负向测试
 `agent/daemon/aaa-daemon/test/daemon-runtime.test.mjs:1522`：测试显式启动一个

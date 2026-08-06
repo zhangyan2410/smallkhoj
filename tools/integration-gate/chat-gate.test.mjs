@@ -10,6 +10,21 @@ import {
 const MARKER = 'CHAT-GATE:test-marker';
 const EXPECTED_ACK = `ACK ${MARKER}`;
 
+const PRODUCT_IDENTITY = {
+  ok: true,
+  implementationType: 'aura-standalone',
+  installed: true,
+  online: true,
+  activeVersion: '0.2.6',
+  artifactSha256: 'a'.repeat(64),
+  statusComputerId: 'computer-1',
+  statusDaemonId: 'daemon-1',
+  computerId: 'computer-1',
+  computerDaemonId: 'daemon-1',
+  computerDaemonVersion: '0.2.6',
+  runtimeKind: 'claude_code',
+};
+
 function baseInput(overrides = {}) {
   return {
     scenario: 'chat-reply-channel-base',
@@ -102,6 +117,44 @@ test('buildChatGateReport passes controlled channel only with persisted visible 
   assert.equal(report.steps.find((step) => step.id === 'slock-send-observed')?.status, 'passed');
   assert.equal(report.replyEvidence.visible, true);
   assert.equal(report.warnings.length, 0);
+});
+
+test('product chat gate binds installation identity before accepting runtime evidence', () => {
+  const report = buildChatGateReport(baseInput({
+    scenario: 'product-chat-reply-claude',
+    installationIdentity: PRODUCT_IDENTITY,
+  }));
+
+  assert.equal(report.ok, true);
+  assert.equal(report.status, 'passed');
+  assert.equal(report.steps.length, 12);
+  assert.equal(report.steps.find((step) => step.id === 'installed-aura-bound')?.status, 'passed');
+});
+
+test('product chat gate fails closed on missing Aura identity before chat evidence', () => {
+  const report = buildChatGateReport(baseInput({
+    scenario: 'product-chat-reply-claude',
+  }));
+
+  assert.equal(report.ok, false);
+  assert.equal(report.failure.code, 'AURA_INSTALLATION_IDENTITY_MISSING');
+  assert.equal(report.steps.find((step) => step.id === 'installed-aura-bound')?.status, 'failed');
+  assert.equal(report.steps.find((step) => step.id === 'user-message-sent')?.status, 'pending');
+});
+
+test('product release expectation failure maps to the installed Aura step', () => {
+  const report = buildChatGateReport(baseInput({
+    scenario: 'product-chat-reply-claude',
+    installationIdentity: {
+      ...PRODUCT_IDENTITY,
+      ok: false,
+      failureCode: 'AURA_RELEASE_EXPECTATION_REQUIRED',
+      failureReason: 'release identity missing',
+    },
+  }));
+
+  assert.equal(report.failure.code, 'AURA_RELEASE_EXPECTATION_REQUIRED');
+  assert.equal(report.steps.find((step) => step.id === 'installed-aura-bound')?.status, 'failed');
 });
 
 test('runtime idle without a persisted visible reply fails as AGENT_REPLY_MISSING', () => {

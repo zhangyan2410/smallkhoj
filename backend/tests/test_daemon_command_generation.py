@@ -90,10 +90,12 @@ def test_daemon_install_metadata_is_domain_aware():
     assert metadata["downloadBaseUrl"] == "https://smallkhoj.example.com/downloads/smallkhoj-daemon"
     assert metadata["installCommand"] == (
         "curl -fsSL https://smallkhoj.example.com/downloads/smallkhoj-daemon/install.sh "
-        "| SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL=https://smallkhoj.example.com/downloads/smallkhoj-daemon bash "
-        '&& export PATH="$HOME/.smallkhoj/bin:$PATH"'
+        "| SMALLKHOJ_DAEMON_VERSION=0.2.6 "
+        "SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL=https://smallkhoj.example.com/downloads/smallkhoj-daemon bash"
     )
     assert metadata["commandName"] == "aura"
+    assert metadata["version"] == "0.2.6"
+    assert "export PATH" not in metadata["installCommand"]
     assert "localhost" not in metadata["installCommand"]
 
 
@@ -156,7 +158,7 @@ def test_platform_action_contains_fresh_connect_commands_for_both_shells():
     unix = payload["unix"]
     assert windows["connect"]["command"].startswith("aura --server-url 'https://smallkhoj.example.com'")
     assert "--api-key 'sk_connect_test'" in windows["connect"]["command"]
-    assert unix["connect"]["command"].startswith("npx -y --package ")
+    assert unix["connect"]["command"].startswith("aura --server-url ")
     assert "--api-key sk_connect_test" in unix["connect"]["command"]
 
 

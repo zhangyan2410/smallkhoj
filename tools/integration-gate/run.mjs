@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 
 import {
   buildFoundationGateReport,
@@ -40,7 +41,7 @@ if (args.help) {
     'Usage: node tools/integration-gate/run.mjs [options]',
     '',
     'Options:',
-    '  --mode <mode>            foundation-only (default), chat-reply-channel-base, chat-reply-channel-group, chat-reply-dm, collab-channel-v1, collab-channel-v2, collab-channel-v3',
+    '  --mode <mode>            foundation-only (default), chat-reply-channel-base, chat-reply-channel-group, chat-reply-dm, product-chat-reply-claude, collab-channel-v1, collab-channel-v2, collab-channel-v3',
     '  --runtime <runtime>      all (default), claude_code, codex, opencode, pi; applies to foundation-only',
     '  --api-base <url>          Backend API base (default: http://localhost:8000)',
     '  --frontend-base <url>     Frontend base (default: http://127.0.0.1:3000)',
@@ -68,6 +69,9 @@ if (args.help) {
     '  --daemon-rpc-base <url>   Local daemon proxy base for POST /internal/daemon/jsonrpc',
     '  --runtime-agent-id <id>   Agent id whose managed runtime should receive runtime_control',
     '  --runtime-control-timeout-ms <n>  Runtime-control result wait timeout (default: 30000)',
+    '  --aura-command <path>     Absolute installed Aura launcher for product-chat-reply-claude',
+    '  --expected-daemon-version <version>  Published version expected by product-chat-reply-claude',
+    '  --expected-artifact-sha256 <sha256>  Published artifact identity expected by product-chat-reply-claude',
     '  --limit-error <text>      Known provider/context/quota error text to classify',
     '  --result-out <path>       Persist full gate report JSON for control UI consumption',
     '  --result-dir <path>       Atomic gate report store (default: .runtime/integration-gate)',
@@ -104,7 +108,7 @@ const [frontendOnline, computersSnapshot] = await Promise.all([
   fetchComputers(apiBase, publicKey, accountToken, serverId),
 ]);
 
-if (mode.startsWith('chat-reply-')) {
+if (mode.startsWith('chat-reply-') || mode === 'product-chat-reply-claude') {
   const chatReport = await runChatReplyGate({
     args,
     mode,
@@ -285,6 +289,12 @@ function parseArgs(argv) {
       parsed.runtimeAgentId = requiredValue(argv, index += 1, arg);
     } else if (arg === '--runtime-control-timeout-ms') {
       parsed.runtimeControlTimeoutMs = positiveNumberArg(argv, index += 1, arg);
+    } else if (arg === '--aura-command') {
+      parsed.auraCommand = requiredValue(argv, index += 1, arg);
+    } else if (arg === '--expected-daemon-version') {
+      parsed.expectedDaemonVersion = requiredValue(argv, index += 1, arg);
+    } else if (arg === '--expected-artifact-sha256') {
+      parsed.expectedArtifactSha256 = requiredValue(argv, index += 1, arg);
     } else if (arg === '--limit-error') {
       parsed.limitError = requiredValue(argv, index += 1, arg);
     } else if (arg === '--result-out') {
@@ -333,11 +343,51 @@ async function runChatReplyGate({
   const headers = publicHeaders(publicKey, accountToken, serverId);
   const replyTimeoutMs = args.replyTimeoutMs ?? 180_000;
   const pollIntervalMs = args.pollIntervalMs ?? 1_500;
-  let target = await prepareChatTarget({ mode, args, apiBase, headers, agent });
+  const installationIdentity = mode === 'product-chat-reply-claude'
+    ? inspectInstalledAura({
+      auraCommand: args.auraCommand,
+      expectedDaemonVersion: args.expectedDaemonVersion,
+      expectedArtifactSha256: args.expectedArtifactSha256,
+      serverId,
+      agent,
+      computers: computersSnapshot.computers,
+    })
+    : null;
+  // Keep the identity preflight strictly read-only.  In particular, do not
+  // create/resolve a DM or channel target before the installed Aura launcher
+  // has been proven to be the online Computer selected by the API snapshot.
+  let target = mode === 'chat-reply-dm'
+    ? {
+      kind: 'dm',
+      dmId: args.channelId ?? null,
+      channelId: args.channelId ?? null,
+      channelName: args.channel ?? null,
+      userMemberId: args.userMemberId ?? null,
+      agentMemberId: agent?.id ?? null,
+      replyTarget: null,
+      resolved: Boolean(args.channelId),
+      readyForSend: false,
+    }
+    : {
+      kind: mode === 'chat-reply-channel-group' ? 'channel-group' : 'channel',
+      channelId: args.channelId ?? null,
+      channelName: args.channel ?? null,
+      replyTarget: args.channel ? `#${String(args.channel).replace(/^#/, '')}` : null,
+      visibleAgentIds: [],
+      expectedResponderAgentIds: splitCsv(args.expectedAgentIds) ?? (agent?.id ? [agent.id] : []),
+      responderPolicy: args.responderPolicy ?? 'one',
+      readyForSend: false,
+    };
   let sentMessage = null;
   let latestMessages = [];
   let latestActivity = [];
   let sendError = null;
+
+  if (mode === 'product-chat-reply-claude' && !installationIdentity?.ok) {
+    return buildReport();
+  }
+
+  target = await prepareChatTarget({ mode, args, apiBase, headers, agent });
 
   if (target.readyForSend) {
     try {
@@ -427,12 +477,17 @@ async function runChatReplyGate({
         name: agent.name,
         computerId: agent.computerId,
         daemonId: agent.daemonId,
+        computerStatus: agent.computerStatus,
+        computerDaemonVersion: agent.computerDaemonVersion,
+        computerActiveDaemonId: agent.computerActiveDaemonId,
+        computerMachineId: agent.computerMachineId,
         runtimeProvider: agent.runtimeProvider,
         runtimeModel: agent.runtimeModel,
         runtimeKind: agent.runtimeKind,
         sessionId: agent.sessionId,
       } : null,
       target,
+      installationIdentity,
       marker,
       expectedAck,
       messages: {
@@ -648,7 +703,13 @@ function selectRuntimeAgent(computers, requestedAgentId) {
         name: workspace.agentName,
         status: workspace.status,
         computerId: computer.id,
-        daemonId: computer.daemonId,
+        daemonId: computer.daemonId ?? computer.activeDaemonId,
+        computerStatus: computer.status,
+        computerDaemonVersion: computer.daemonVersion,
+        computerActiveDaemonId: computer.activeDaemonId ?? computer.daemonId,
+        computerMachineId: computer.machineId,
+        computerLeaseExpiresAt: computer.daemonLeaseExpiresAt,
+        computerLastHeartbeatAt: computer.lastHeartbeatAt,
         runtimeProvider: workspace.runtimeProvider,
         runtimeModel: workspace.runtimeModel,
         runtimeKind: workspace.runtime,
@@ -656,6 +717,119 @@ function selectRuntimeAgent(computers, requestedAgentId) {
       }));
   });
   return candidates.find((candidate) => candidate.status === 'running') ?? candidates[0] ?? null;
+}
+
+function inspectInstalledAura({
+  auraCommand,
+  expectedDaemonVersion,
+  expectedArtifactSha256,
+  serverId,
+  agent,
+  computers,
+}) {
+  const fail = (failureCode, failureReason, extra = {}) => ({
+    ok: false,
+    failureCode,
+    failureReason,
+    ...extra,
+  });
+  if (!auraCommand || !isAbsolute(auraCommand)) {
+    return fail('AURA_STATUS_REQUIRED', 'Product gate requires an absolute installed Aura launcher via --aura-command.');
+  }
+  if (!expectedDaemonVersion || !expectedArtifactSha256) {
+    return fail('AURA_RELEASE_EXPECTATION_REQUIRED', 'Product gate requires the published daemon version and artifact SHA-256.');
+  }
+  if (!/^[0-9a-f]{64}$/i.test(expectedArtifactSha256)) {
+    return fail('AURA_ARTIFACT_IDENTITY_MISSING', 'Expected artifact SHA-256 is not a 64-character hexadecimal identity.');
+  }
+  const result = spawnSync(auraCommand, ['status', '--json'], {
+    encoding: 'utf8',
+    timeout: 8_000,
+    env: { ...process.env },
+  });
+  if (result.error || result.status === null) {
+    return fail('AURA_STATUS_EXECUTION_FAILED', `Installed Aura status could not be executed: ${result.error?.message ?? 'timeout'}.`);
+  }
+  let status;
+  try {
+    status = JSON.parse(String(result.stdout ?? '').trim());
+  } catch {
+    const detail = String(result.stderr ?? '').trim().replace(/\s+/g, ' ').slice(0, 240);
+    return fail(
+      result.status === 0 ? 'AURA_STATUS_INVALID_JSON' : 'AURA_STATUS_EXECUTION_FAILED',
+      result.status === 0
+        ? 'Installed Aura status did not return one JSON document.'
+        : `Installed Aura status exited with code ${result.status}${detail ? `: ${detail}` : '.'}`,
+    );
+  }
+  if (!status || typeof status !== 'object' || Array.isArray(status)) {
+    return fail('AURA_STATUS_INVALID_JSON', 'Installed Aura status must be a JSON object.');
+  }
+  const computer = agent?.computerId
+    ? computers.find((item) => item.id === agent.computerId)
+    : null;
+  const statusDaemonId = status.daemonId ?? status.daemonState?.daemonId ?? null;
+  const computerDaemonId = computer?.activeDaemonId ?? computer?.daemonId ?? null;
+  const leaseExpiresAt = Date.parse(computer?.daemonLeaseExpiresAt ?? '');
+  const checks = {
+    standalone: status.implementationType === 'aura-standalone',
+    installed: status.installed === true && status.activeVersion === expectedDaemonVersion,
+    artifact: String(status.artifactSha256 ?? '').toLowerCase() === expectedArtifactSha256.toLowerCase(),
+    statusComputer: Boolean(status.computerId && computer?.id && status.computerId === computer.id),
+    agentComputer: Boolean(agent?.computerId && computer?.id && agent.computerId === computer.id),
+    server: status.serverId === serverId && computer?.serverId === serverId,
+    daemon: Boolean(statusDaemonId && computerDaemonId && statusDaemonId === computerDaemonId),
+    online: status.online === true
+      && status.connected === true
+      && ['online', 'active'].includes(String(computer?.status ?? '').toLowerCase())
+      && Number.isFinite(leaseExpiresAt)
+      && leaseExpiresAt > Date.now(),
+    claude: agent?.runtimeKind === 'claude_code',
+  };
+  let failureCode = null;
+  let failureReason = null;
+  if (!checks.standalone) {
+    failureCode = 'AURA_NOT_STANDALONE';
+    failureReason = 'The supplied launcher is not the managed Aura standalone implementation.';
+  } else if (!checks.installed) {
+    failureCode = 'AURA_VERSION_MISMATCH';
+    failureReason = `Installed Aura version does not match the published ${expectedDaemonVersion}.`;
+  } else if (!checks.artifact) {
+    failureCode = 'AURA_ARTIFACT_IDENTITY_MISSING';
+    failureReason = 'Installed Aura artifact SHA-256 does not match the published release identity.';
+  } else if (!checks.statusComputer || !checks.agentComputer) {
+    failureCode = 'AURA_COMPUTER_MISMATCH';
+    failureReason = 'Local Aura status, selected Agent, and server Computer are not the same identity.';
+  } else if (!checks.server) {
+    failureCode = 'AURA_COMPUTER_MISMATCH';
+    failureReason = 'Local Aura and the selected Computer belong to different Server tenants.';
+  } else if (!checks.daemon) {
+    failureCode = 'AURA_DAEMON_MISMATCH';
+    failureReason = 'The running Aura daemon identity does not match the server lease.';
+  } else if (!checks.online) {
+    failureCode = 'AURA_NOT_ONLINE';
+    failureReason = 'Aura status or the server Computer lease is not online.';
+  } else if (!checks.claude) {
+    failureCode = 'CLAUDE_RUNTIME_MISMATCH';
+    failureReason = 'The selected Agent is not the Claude Code runtime required by this gate.';
+  }
+  return {
+    ok: !failureCode,
+    failureCode,
+    failureReason,
+    implementationType: status.implementationType ?? null,
+    installed: status.installed === true,
+    online: status.online === true,
+    activeVersion: status.activeVersion ?? null,
+    artifactSha256: status.artifactSha256 ?? null,
+    statusComputerId: status.computerId ?? null,
+    statusDaemonId,
+    computerId: computer?.id ?? null,
+    computerDaemonId,
+    computerDaemonVersion: computer?.daemonVersion ?? null,
+    runtimeKind: agent?.runtimeKind ?? null,
+    checks,
+  };
 }
 
 async function prepareChatTarget({ mode, args, apiBase, headers, agent }) {

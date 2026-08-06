@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { writeSlockWrapper } from '../dist/runtime/slock-wrapper.js';
-import { CodexAcpRuntimeDriver, buildCodexAcpSlockPrompt, resolveCodexAcpLaunchCommand } from '../dist/runtime/codex-acp-runtime.js';
+import { CodexAcpRuntimeDriver, buildCodexAcpSlockPrompt, codexAcpCompatibilityArgs, resolveCodexAcpLaunchCommand } from '../dist/runtime/codex-acp-runtime.js';
 import { buildCodexRuntimeEnv, buildCodexSlockPrompt } from '../dist/runtime/codex-runtime.js';
 
 function waitFor(predicate, timeoutMs = 5_000) {
@@ -185,6 +185,29 @@ test('codex acp runtime keeps package args when daemon config supplies empty run
   const launch = resolveCodexAcpLaunchCommand({ commandArgs: [] });
   assert.match(launch.command, /^npx(\.cmd)?$/);
   assert.deepEqual(launch.args, ['-y', '@zed-industries/codex-acp@0.16.0']);
+});
+
+test('pinned ACP overrides newer max reasoning config without mutating user config', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-codex-acp-compat-'));
+  const releaseRoot = join(root, 'release');
+  const sidecar = join(releaseRoot, 'sidecars', 'codex-acp', 'codex-acp');
+  const codexHome = join(root, 'codex-home');
+  mkdirSync(join(releaseRoot, 'sidecars', 'codex-acp'), { recursive: true });
+  mkdirSync(codexHome, { recursive: true });
+  writeFileSync(sidecar, 'binary');
+  const config = 'model = "gpt-5.6-sol"\nmodel_reasoning_effort = "max"\n';
+  writeFileSync(join(codexHome, 'config.toml'), config);
+  const env = { AURA_RELEASE_ROOT: releaseRoot, CODEX_HOME: codexHome, PATH: '' };
+  try {
+    assert.deepEqual(codexAcpCompatibilityArgs(env), ['-c', 'model_reasoning_effort=xhigh']);
+    assert.deepEqual(resolveCodexAcpLaunchCommand({ command: 'npx', commandArgs: [], baseEnv: env }), {
+      command: sidecar,
+      args: ['-c', 'model_reasoning_effort=xhigh'],
+    });
+    assert.equal(readFileSync(join(codexHome, 'config.toml'), 'utf8'), config);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('codex prompts use only the PATH-injected aura collaboration command', () => {

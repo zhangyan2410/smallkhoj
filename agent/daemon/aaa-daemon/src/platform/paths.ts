@@ -68,6 +68,7 @@ export interface DaemonPaths {
   credentialPath: string;
   machineIdPath: string;
   pidPath: string;
+  statePath: string;
   logPath: string;
   workspaceRoot: string;
 }
@@ -89,10 +90,9 @@ export function daemonPaths(
   const machineIdPath =
     env.AAA_DAEMON_MACHINE_ID_FILE?.trim()
     || env.SLOCK_MACHINE_ID_FILE?.trim()
-    || (platformValue === 'win32'
-      ? pathJoin(platformValue, daemonRoot, 'machine-id')
-      : pathJoin(platformValue, home, '.slock', 'aaa-daemon', 'machine-id'));
+    || pathJoin(platformValue, daemonRoot, 'machine-id');
   const pidPath = env.AURA_PID_FILE?.trim() || pathJoin(platformValue, daemonRoot, 'aura.pid');
+  const statePath = env.AURA_STATE_FILE?.trim() || pathJoin(platformValue, daemonRoot, 'daemon-state.json');
   const logPath = env.AURA_LOG_FILE?.trim() || pathJoin(platformValue, daemonRoot, 'aura.log');
   const workspaceRoot =
     env.SMALLKHOJ_DAEMON_WORKSPACE_ROOT?.trim()
@@ -104,6 +104,7 @@ export function daemonPaths(
     credentialPath,
     machineIdPath,
     pidPath,
+    statePath,
     logPath,
     workspaceRoot,
   };

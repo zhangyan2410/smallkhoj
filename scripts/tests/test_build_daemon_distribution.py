@@ -80,13 +80,21 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertIn("SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL", install_script)
             self.assertIn("smallkhoj-daemon-v0.2.0-darwin-arm64.tar.gz", install_script)
             self.assertIn(result.sha256, install_script)
-            self.assertIn('Run now: export PATH=\\"${BIN_DIR}:\\$PATH\\"', install_script)
-            self.assertIn('exec "${VERSION_DIR}/smallkhoj-daemon" "\\$@"', install_script)
-            self.assertIn('exec "${VERSION_DIR}/aura" "\\$@"', install_script)
+            self.assertNotIn("export PATH", install_script)
+            self.assertIn("archive download skipped", install_script)
+            self.assertIn("already-installed", install_script)
+            self.assertIn("active.json", install_script)
+            self.assertIn('exec "\\$VERSION_DIR/aura" "\\$@"', install_script)
             self.assertNotIn("ln -sfn", install_script)
 
             with tarfile.open(result.artifact, "r:gz") as tar:
-                names = set(tar.getnames())
+                member_names = tar.getnames()
+                self.assertEqual(
+                    len(member_names),
+                    len(set(member_names)),
+                    "Unix release archives must not contain duplicate members",
+                )
+                names = set(member_names)
 
             prefix = "smallkhoj-daemon-v0.2.0-darwin-arm64"
             self.assertIn(f"{prefix}/smallkhoj-daemon", names)
@@ -100,6 +108,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
                 manifest["sourceRevision"],
                 "0123456789abcdef0123456789abcdef01234567",
             )
+            self.assertEqual(manifest["minimumDaemonVersion"], "0.2.0")
             self.assertEqual(
                 set(manifest["files"]),
                 {
@@ -112,6 +121,30 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             for filename, expected_sha256 in manifest["files"].items():
                 actual = hashlib.sha256((output_dir / filename).read_bytes()).hexdigest()
                 self.assertEqual(actual, expected_sha256)
+
+    def test_minimum_daemon_version_can_be_pinned_independently(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_daemon_tree(root, version="0.3.0")
+            result = builder.build_distribution(
+                root=root,
+                output_dir=root / "artifacts",
+                target_platform="darwin-arm64",
+                skip_build=True,
+                install_production_deps=False,
+                source_revision="0123456789abcdef0123456789abcdef01234567",
+                minimum_daemon_version="0.2.0",
+            )
+
+            outer = json.loads(result.manifest.read_text(encoding="utf-8"))
+            self.assertEqual(outer["minimumDaemonVersion"], "0.2.0")
+            with tarfile.open(result.artifact, "r:gz") as tar:
+                manifest_member = tar.extractfile(
+                    "smallkhoj-daemon-v0.3.0-darwin-arm64/manifest.json"
+                )
+                assert manifest_member is not None
+                inner = json.loads(manifest_member.read().decode("utf-8"))
+            self.assertEqual(inner["minimumDaemonVersion"], "0.2.0")
 
     def test_clean_output_removes_stale_ignored_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -244,6 +277,8 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             runtime = root / "windows-runtime"
             write_minimal_pe(runtime / "node.exe")
             write_minimal_pe(runtime / "aura.exe")
+            codex_acp = root / "codex-acp.exe"
+            write_minimal_pe(codex_acp)
             result = builder.build_distribution(
                 root=root,
                 output_dir=output_dir,
@@ -253,6 +288,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
                 source_revision="0123456789abcdef0123456789abcdef01234567",
                 clean_output_dir=True,
                 windows_runtime_dir=runtime,
+                codex_acp_binary=codex_acp,
             )
 
             self.assertEqual(result.artifact.name, "smallkhoj-daemon-v0.2.0-win32-x64.zip")
@@ -271,11 +307,17 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             with zipfile.ZipFile(result.artifact) as archive:
                 names = set(archive.namelist())
                 aura_cmd = archive.read("smallkhoj-daemon-v0.2.0-win32-x64/aura.cmd").decode("ascii")
+                manifest = json.loads(archive.read("smallkhoj-daemon-v0.2.0-win32-x64/manifest.json"))
             prefix = "smallkhoj-daemon-v0.2.0-win32-x64"
             self.assertIn(f"{prefix}/aura.exe", names)
             self.assertIn(f"{prefix}/node.exe", names)
             self.assertIn(f"{prefix}/aura.cmd", names)
             self.assertIn(f"{prefix}/manifest.json", names)
+            self.assertIn(f"{prefix}/sidecars/codex-acp/codex-acp.exe", names)
+            self.assertEqual(
+                manifest["runtimeInventory"]["codexAcp"]["entrypoint"],
+                "sidecars/codex-acp/codex-acp.exe",
+            )
             self.assertIn("AURA_STANDALONE=1", aura_cmd)
 
     def test_windows_build_rejects_non_pe_runtime(self) -> None:
@@ -309,6 +351,57 @@ class BuildDaemonDistributionTests(unittest.TestCase):
                     skip_build=True,
                     install_production_deps=False,
                     source_revision="0123456789abcdef0123456789abcdef01234567",
+                )
+
+    def test_unix_release_can_bundle_private_node_and_codex_acp_sidecar(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_daemon_tree(root)
+            node_runtime = root / "node"
+            codex_acp = root / "codex-acp"
+            node_runtime.write_text("#!/bin/sh\n", encoding="utf-8")
+            codex_acp.write_text("#!/bin/sh\n", encoding="utf-8")
+            result = builder.build_distribution(
+                root=root,
+                output_dir=root / "artifacts",
+                target_platform="darwin-arm64",
+                skip_build=True,
+                install_production_deps=False,
+                source_revision="0123456789abcdef0123456789abcdef01234567",
+                node_runtime=node_runtime,
+                codex_acp_binary=codex_acp,
+            )
+            with tarfile.open(result.artifact, "r:gz") as tar:
+                names = set(tar.getnames())
+                manifest = json.loads(tar.extractfile(
+                    "smallkhoj-daemon-v0.2.0-darwin-arm64/manifest.json"
+                ).read())
+            prefix = "smallkhoj-daemon-v0.2.0-darwin-arm64"
+            self.assertIn(f"{prefix}/node", names)
+            self.assertIn(f"{prefix}/sidecars/codex-acp/codex-acp", names)
+            self.assertTrue(manifest["standalone"])
+            self.assertEqual(manifest["runtimeInventory"]["codexAcp"]["version"], "0.16.0")
+
+    def test_standalone_build_rejects_missing_production_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_daemon_tree(root)
+            package_path = root / "agent" / "daemon" / "aaa-daemon" / "package.json"
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            package["dependencies"] = {"commander": "^12.0.0"}
+            package_path.write_text(json.dumps(package), encoding="utf-8")
+            node_runtime = root / "node"
+            node_runtime.write_text("#!/bin/sh\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "missing production dependencies"):
+                builder.build_distribution(
+                    root=root,
+                    output_dir=root / "artifacts",
+                    target_platform="darwin-arm64",
+                    skip_build=True,
+                    install_production_deps=False,
+                    source_revision="0123456789abcdef0123456789abcdef01234567",
+                    node_runtime=node_runtime,
                 )
 
 

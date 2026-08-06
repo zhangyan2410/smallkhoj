@@ -287,14 +287,21 @@ def _daemon_download_base_url(server_url: str) -> str:
 def _daemon_install_metadata(server_url: str) -> dict[str, str]:
     download_base_url = _daemon_download_base_url(server_url)
     install_script_url = f"{download_base_url}/install.sh"
+    release_version = settings.daemon_release_version.strip()
+    version_assignment = (
+        f"SMALLKHOJ_DAEMON_VERSION={shlex.quote(release_version)} "
+        if release_version
+        else ""
+    )
     return {
         "commandName": DAEMON_CLI_COMMAND,
         "downloadBaseUrl": download_base_url,
         "installScriptUrl": install_script_url,
+        "version": release_version,
         "installCommand": (
             f"curl -fsSL {shlex.quote(install_script_url)} "
-            f"| SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL={shlex.quote(download_base_url)} bash "
-            '&& export PATH="$HOME/.smallkhoj/bin:$PATH"'
+            f"| {version_assignment}"
+            f"SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL={shlex.quote(download_base_url)} bash"
         ),
     }
 
@@ -345,7 +352,14 @@ def _release_artifact_metadata(server_url: str, target_platform: str) -> dict[st
             continue
         if str(payload.get("version", "")).strip() != version:
             continue
-        if str(payload.get("platform", "")).strip() != target_platform:
+        manifest_platform = str(payload.get("platform", "")).strip()
+        if target_platform == DAEMON_UNIX_PLATFORM:
+            # The public Unix tab covers both macOS and Linux. Prefer a native
+            # macOS artifact for the current product path, then any published
+            # Unix artifact, while retaining the actual platform in metadata.
+            if not (manifest_platform.startswith("darwin-") or manifest_platform.startswith("linux-")):
+                continue
+        elif manifest_platform != target_platform:
             continue
         artifact_value = payload.get("artifact")
         artifact_name = Path(artifact_value).name if isinstance(artifact_value, str) else ""
@@ -355,6 +369,16 @@ def _release_artifact_metadata(server_url: str, target_platform: str) -> dict[st
             {
                 "artifactUrl": f"{base_url}/{artifact_name}",
                 "sha256": payload.get("sha256"),
+                # Keep the installer, UI, and backend on the same immutable
+                # compatibility floor.  Older manifests may not carry this
+                # field, so retain the deployment setting as a safe fallback.
+                "minimumDaemonVersion": (
+                    str(payload.get("minimumDaemonVersion")).strip()
+                    if isinstance(payload.get("minimumDaemonVersion"), str)
+                    and payload.get("minimumDaemonVersion").strip()
+                    else settings.minimum_daemon_version.strip() or None
+                ),
+                "platform": manifest_platform,
                 "available": True,
                 "manifestUrl": f"{base_url}/{manifest_path.name}",
             }
@@ -365,7 +389,8 @@ def _release_artifact_metadata(server_url: str, target_platform: str) -> dict[st
     # still advertise the deterministic URL for diagnostics, but keep the
     # availability bit false so clients render a recoverable warning.
     suffix = "zip" if target_platform.startswith("win32-") else "tar.gz"
-    result["artifactUrl"] = f"{base_url}/{DAEMON_DOWNLOAD_PATH.rsplit('/', 1)[-1]}-v{version}-{target_platform}.{suffix}"
+    advertised_platform = target_platform if target_platform != DAEMON_UNIX_PLATFORM else "darwin-arm64"
+    result["artifactUrl"] = f"{base_url}/{DAEMON_DOWNLOAD_PATH.rsplit('/', 1)[-1]}-v{version}-{advertised_platform}.{suffix}"
     return result
 
 
@@ -401,6 +426,21 @@ def _windows_connect_command(connect_token: str, server_url: str, server_label: 
     return _with_server_comment(command, server_label)
 
 
+def _unix_aura_connect_command(connect_token: str, server_url: str, server_label: str | None = None) -> str:
+    """Managed macOS/Linux Connect command using the installed Aura launcher."""
+
+    command = " ".join(
+        [
+            DAEMON_CLI_COMMAND,
+            "--server-url",
+            shlex.quote(server_url),
+            "--api-key",
+            shlex.quote(connect_token),
+        ]
+    )
+    return _with_server_comment(command, server_label)
+
+
 def _platform_command_payload(
     server_url: str,
     *,
@@ -418,7 +458,7 @@ def _platform_command_payload(
     unix_install = _daemon_install_metadata(server_url)
     try:
         unix_connect = (
-            _computer_connect_command(connect_token, server_url, server_label)
+            _unix_aura_connect_command(connect_token, server_url, server_label)
             if connect_token
             else None
         )

@@ -1,5 +1,7 @@
 # Mac 侧证据与限制记录
 
+> **Latest superseding recheck (2026-08-07):** 本文件较早的 2026-08-06 记录保留作历史候选证据。当前主路径已是 managed standalone：真实安装命令无需手工 `export PATH`，第二次同版本执行跳过大归档；安装后的 Aura 包含私有 Node、生产依赖和本地 ACP sidecar。当前运行时 focused checks 为 16/16，builder/installer 为 15/15，Integration Gate 合同为 30/30；真实安装后的隔离 fake-server Setup → Connect → register → `status --json online=true` 通过。ACP 0.16.0 真实 `initialize` 通过，且对用户 `model_reasoning_effort="max"` 使用不修改配置的 `-c model_reasoning_effort=xhigh` 兼容覆盖。真实 SmallKhoj Online + Claude 产品语义 Gate 仍因候选身份/隔离数据库未建立而未执行，Windows 原生 PE/实机门槛仍未完成。
+
 **日期：** 2026-08-06  
 **当前源候选 commit：** `0b6222202921001e88d6aec159410ad54543edb6`（`main`）
 **历史 UI/runtime 候选：** `4d02667139a2`；可读性 UI 最后一轮来自
