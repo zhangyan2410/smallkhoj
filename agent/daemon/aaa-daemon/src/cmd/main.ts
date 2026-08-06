@@ -326,6 +326,14 @@ program
         architecture: process.platform === 'win32' ? detectWindowsArchitecture() : process.arch,
         paths,
       }));
+
+      // ``--json`` is a machine-readable contract.  Do not append the
+      // human-oriented status line below to stdout, otherwise consumers cannot
+      // parse the command output as one JSON document.  Preserve the existing
+      // exit-code semantics so shell scripts can still distinguish a stopped
+      // daemon (1) from a running one (0).
+      process.exitCode = running ? 0 : 1;
+      return;
     }
     if (running) {
       try {
