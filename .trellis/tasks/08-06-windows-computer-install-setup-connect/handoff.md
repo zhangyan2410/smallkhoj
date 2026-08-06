@@ -2,13 +2,14 @@
 
 **交接日期：** 2026-08-06  
 **当前分支：** `main`  
-**当前结论：** `IN_PROGRESS`。Mac 侧主体实现、当前 `main` 的 daemon 产物下载/安装/Setup 验证和隔离后的 daemon 回归已完成；Windows x64 实机验收仍未完成，因此本任务不能标记为完成。实时证据见 `evidence/live-runtime-report.md`、`evidence/daemon-runtime-recheck.md` 和 `evidence/macos-install-real-8000_20260806234756.md`。
+**当前结论：** `IN_PROGRESS`。Mac 侧主体实现、当前 `main` 的 daemon 产物下载/安装/Setup 验证和隔离后的 daemon 回归已完成；Windows x64 实机验收仍未完成，因此本任务不能标记为完成。实时证据见 `evidence/live-runtime-report.md`、`evidence/daemon-runtime-recheck.md`、`evidence/macos-install-real-8000_20260806234756.md` 和 `evidence/macos-install-path-fix-8000_20260807002251.md`。
 
-当前源候选是 `26a506cfb464c5a3e43d1775918ee1b6e356fe57`。此前 UI/runtime 报告里出现的
+当前源候选是 `0b6222202921001e88d6aec159410ad54543edb6`。此前 UI/runtime 报告里出现的
 `4d02667139a2` 是历史候选，不应被 Windows 侧当作当前提交；可读性 UI 最后一轮来自其后的
 `082616e3a84eef3c7437ff70d016b1a176d8cd53`。
 
-这里的 SHA 指 Mac 安装产物实际使用的源码提交；本次交接文档可以随后形成一个 docs-only
+这里的 SHA 指最新 Mac 安装产物实际使用的源码提交；此前的 26a artifact 只保留作历史
+回归证据。本次交接文档可以随后形成一个 docs-only
 提交，因此 Windows agent 必须以拉取后实际的 `git rev-parse HEAD` 作为自己的构建和证据
 `sourceRevision`（distribution builder 要求该值等于当前 HEAD），不要硬编码上面的 Mac 产物 SHA。
 
@@ -41,7 +42,7 @@
 
 历史 UI/runtime 候选曾通过 backend `/docs`、frontend `/`、Integration Gate 51/51 和
 WebDriver `tabId=1617513010`；这些报告中的服务身份必须按历史候选阅读。当前 `main` 另用
-当前 worktree 的 FastAPI `backend/main.py`（`uvicorn main:app --lifespan off`，PID 52761，cwd
+当前 worktree 的 FastAPI `backend/main.py`（`uvicorn main:app --lifespan off`，PID 69302，cwd
 `/Users/code/project/smallkhoj/backend`）在 `http://127.0.0.1:8000` 提供 carrier 路由，并完成了
 真实安装器验证；`--lifespan off` 只用于下载/安装测试，不代表数据库 API、注册或 Online 通过。
 前端可读性/locale 最终证据见 `evidence/computers-readable-final-{zh,en}-eval.json` 与对应 PNG。
@@ -52,11 +53,11 @@ WebDriver `tabId=1617513010`；这些报告中的服务身份必须按历史候�
 
 使用当前 commit 构建的 `darwin-arm64` 0.2.6 产物已放入本机
 `release-artifacts/smallkhoj-daemon/`，并由 backend 的 StaticFiles 路由实际提供。manifest
-记录：`sourceRevision=26a506cfb464c5a3e43d1775918ee1b6e356fe57`、archive SHA-256
-`1974beb83bcbeaa7c097d1080bf163534890091c74fb3e2bae43ef8a096b8a6f`。marker
-`REAL_macos-daemon-install-8000_20260806234756` 的隔离证据包括：
+记录：`sourceRevision=0b6222202921001e88d6aec159410ad54543edb6`、archive SHA-256
+`8fbd0052d5e0de6fee286266f7bac657d29b43302c99bdb2a60fd1f0c62a859a`。marker
+`REAL_macos-daemon-path-fix-8000_20260807002251` 的真实证据包括：
 
-- `curl -fsSL http://localhost:8000/downloads/smallkhoj-daemon/install.sh | ... bash` 形状真实执行，install/manifest/archive 均 HTTP 200，installer 内置 checksum 校验通过；
+- 用户原始 `curl -fsSL ... | ... bash` 形状真实执行，install/manifest/archive 均 HTTP 200，installer 内置 checksum 校验通过；修复后的产品命令在同一终端追加 `&& export PATH="$HOME/.smallkhoj/bin:$PATH"`；
 - `/tmp/.../bin/aura --version` 输出 `0.2.6`，版本目录含 `aura`、`smallkhoj-daemon`、`dist`、`node_modules` 和 manifest；
 - 两次 `aura setup` 复用同一 machine ID，未创建 credential；
 - `aura status --json` 输出可直接 `JSON.parse` 的单一 JSON 文档，`implementationType=node-npx`、`darwin/arm64` 和路径均落在临时 root，daemon 未运行时 exit 1 是预期状态码。

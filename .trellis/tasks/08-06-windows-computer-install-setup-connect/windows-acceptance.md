@@ -17,7 +17,7 @@ git pull --ff-only origin main
 git rev-parse HEAD
 ```
 
-当前 Mac 侧源候选为 `26a506cfb464c5a3e43d1775918ee1b6e356fe57`；如果 `main` 已有更新，
+当前 Mac 侧最新源候选为 `0b6222202921001e88d6aec159410ad54543edb6`；如果 `main` 已有更新，
 以实际 `git rev-parse HEAD` 为准，并把该 SHA 写入所有证据。Mac 只重建并验证了
 `darwin-arm64` Node-backed archive；Windows 必须自行构建真实 `win32-x64` PE（`aura.exe`
 和私有 `node.exe`），不能把 Mac archive、源码 `dist` 或静态截图当作 Windows 产物。

@@ -25,6 +25,7 @@ Mac-only install/setup evidence uses the same candidate marker and a separate pr
 ```text
 macos-install-real-8000_20260806234756.md
 macos-setup-real-8000_20260806234756.md
+macos-install-path-fix-8000_20260807002251.md
 ```
 
 Every summary must name the candidate commit, frontend/API URLs, OS/CPU/PowerShell or macOS/Node versions, command exit codes, and PASS/BLOCKED status. Replace all `sk_connect_` and `sk_machine_` values with `<REDACTED_...>` before copying files here. Do not store browser cookies, database dumps, private keys, or raw server credentials.
@@ -62,13 +63,14 @@ reviewable assertions.
 
 The corresponding `computers.png` screenshot remains local-only because repository policy intentionally ignores evidence image blobs. Windows-side evidence must use a fresh marker and redact all connect/machine credentials before handoff.
 
-The current source/release candidate is `26a506cfb464c5a3e43d1775918ee1b6e356fe57`.
+The current source/release candidate is `0b6222202921001e88d6aec159410ad54543edb6`.
 Its `darwin-arm64` 0.2.6 artifact was rebuilt locally and served from the current worktree
 FastAPI StaticFiles mount at `http://localhost:8000` with lifespan disabled. That carrier-only
 process proved HTTP 200, manifest/source revision, checksum, isolated install, Setup idempotence,
-and fake-upstream Connect/register/heartbeat. It did not run database lifespan and is not a real
-backend Online/cloud acceptance. See `macos-install-real-8000_20260806234756.md` and
-`macos-setup-real-8000_20260806234756.md`.
+and fake-upstream Connect/register/heartbeat. The same candidate also fixes the real Unix PATH
+handoff between Install and Setup; see `macos-install-path-fix-8000_20260807002251.md`. It did
+not run database lifespan and is not a real backend Online/cloud acceptance. The earlier 26a
+artifact evidence remains historical and is linked above.
 
 `release-artifacts/` is gitignored generated output. The roughly 191 MB archive must not be
 committed; Windows must rebuild and publish a real `win32-x64` PE artifact after fetching the

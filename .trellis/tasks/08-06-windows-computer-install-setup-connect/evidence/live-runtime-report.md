@@ -1,9 +1,9 @@
 # Live runtime acceptance (2026-08-06)
 
 This is the historical UI/runtime report for candidate `4d02667139a2`. The current source candidate
-is `26a506cfb464c5a3e43d1775918ee1b6e356fe57`; current artifact/carrier and install/Connect evidence
-are appended in `macos-install-real-8000_20260806234756.md` and
-`macos-setup-real-8000_20260806234756.md`. The original collector context was repo
+for the latest installer/PATH fix is `0b6222202921001e88d6aec159410ad54543edb6`; the earlier
+26a artifact/carrier and install/Connect evidence remain historical. The latest real command
+evidence is appended in `macos-install-path-fix-8000_20260807002251.md`; the original collector context was repo
 `/Users/code/project/smallkhoj`, branch `main`, 3 worktrees; host PostgreSQL 127.0.0.1:5432 PID 805.
 Safety contract treated host 5432 as protected and did not migrate/stamp/cleanup it.
 

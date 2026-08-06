@@ -1,7 +1,7 @@
 # Mac 侧证据与限制记录
 
 **日期：** 2026-08-06  
-**当前源候选 commit：** `26a506cfb464c5a3e43d1775918ee1b6e356fe57`（`main`）
+**当前源候选 commit：** `0b6222202921001e88d6aec159410ad54543edb6`（`main`）
 **历史 UI/runtime 候选：** `4d02667139a2`；可读性 UI 最后一轮来自
 `082616e3a84eef3c7437ff70d016b1a176d8cd53`。历史报告中的候选值不代表当前产物身份。
 
@@ -20,6 +20,7 @@
 | frontend typecheck / targeted ESLint | PASS |
 | frontend production build | PASS（使用非开发临时 public API key 与本地构建值，未写入仓库） |
 | `status --json` CLI 回归 | PASS，2/2；stdout 为单一 JSON，停止状态 exit 1 |
+| Unix Install → PATH handoff regression | PASS；backend command 12/12、distribution builder 8/8；真实命令证据见 `evidence/macos-install-path-fix-8000_20260807002251.md` |
 | `git diff --check` | PASS |
 
 此前直接使用本机默认 credential 跑 runtime suite 时出现的 502，根因是用户状态目录中的旧 server endpoint 指向已失效临时端口，导致 fake-upstream 测试被重定向；不是历史候选 backend `:8000` 未启动。历史候选隔离套件为 305/305；当前 main 已重新跑到 307/307，详细诊断见 [daemon-runtime-recheck.md](./evidence/daemon-runtime-recheck.md)。
@@ -59,28 +60,30 @@ Integration Gate 为 51/51；同一历史候选服务和 tab 的完整命令/输
 
 ## 当前 main 的真实下载/安装证据
 
-当前 commit `26a506cfb464c5a3e43d1775918ee1b6e356fe57` 重新构建了
+当前 commit `0b6222202921001e88d6aec159410ad54543edb6` 重新构建了
 `darwin-arm64` 0.2.6，并将生成物放入 gitignored 的
 `release-artifacts/smallkhoj-daemon/`。当前 FastAPI carrier 由
-`uvicorn main:app --host 127.0.0.1 --port 8000 --lifespan off` 启动（PID 52761，cwd
+`uvicorn main:app --host 127.0.0.1 --port 8000 --lifespan off` 启动（PID 69302，cwd
 `/Users/code/project/smallkhoj/backend`）；`/docs`、install script、manifest 和 archive
 均从该 worktree 的 StaticFiles mount 返回 HTTP 200。它没有执行 lifespan/数据库初始化，
 所以只证明下载 carrier，不证明完整 backend API 或 Online/heartbeat。
 
-marker `REAL_macos-daemon-install-8000_20260806234756` 真实执行了用户形状的
+marker `REAL_macos-daemon-path-fix-8000_20260807002251` 真实执行了用户形状的
 `curl -fsSL http://localhost:8000/downloads/smallkhoj-daemon/install.sh | ... bash`，并在
-临时 HOME/daemon/bin/runtime root 下验证：
+真实 `/Users/lee/.smallkhoj` 安装根和隔离 runtime root 下验证：
 
 - `aura --version` 为 `0.2.6`；版本目录含 launcher、`dist`、`node_modules`、manifest；
-- manifest `sourceRevision=26a506cfb464c5a3e43d1775918ee1b6e356fe57`，archive SHA-256
-  `1974beb83bcbeaa7c097d1080bf163534890091c74fb3e2bae43ef8a096b8a6f`，通过 installer 的
+- manifest `sourceRevision=0b6222202921001e88d6aec159410ad54543edb6`，archive SHA-256
+  `8fbd0052d5e0de6fee286266f7bac657d29b43302c99bdb2a60fd1f0c62a859a`，通过 installer 的
   下载校验；
+- 原始安装命令退出 `0` 但裸 `aura` 不在 PATH；修复后的 UI 命令追加 `&& export PATH="$HOME/.smallkhoj/bin:$PATH"`，同一终端 `command -v aura` 和 `aura --version` 均通过；
 - 两次 Setup 复用同一 machine ID，未创建 credential；
 - `status --json` 可直接解析为单 JSON，返回 `implementationType=node-npx`、`darwin/arm64`
   和隔离路径，daemon 未运行时 exit 1（预期）。
 - 同一个安装出来的 launcher 对随机端口 fake upstream 完成 connect ticket → machine token → register → heartbeat(`online`)，并确认 machine ID 复用；这是协议层证据，不是云端 Online。
 
-完整脱敏命令与输出见 [macos-install-real-8000_20260806234756.md](./evidence/macos-install-real-8000_20260806234756.md)
+完整脱敏命令与输出见 [macos-install-path-fix-8000_20260807002251.md](./evidence/macos-install-path-fix-8000_20260807002251.md)、
+[macos-install-real-8000_20260806234756.md](./evidence/macos-install-real-8000_20260806234756.md)
 和 [macos-setup-real-8000_20260806234756.md](./evidence/macos-setup-real-8000_20260806234756.md)。
 
 ## Mac 上明确未执行的项目

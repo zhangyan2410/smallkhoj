@@ -21,13 +21,13 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "Mac-side implementation at current source candidate 26a506cfb464c5a3e43d1775918ee1b6e356fe57, current-worktree FastAPI carrier download/install/Setup evidence, installed-artifact fake-upstream Connect/register/heartbeat, final Chinese/English UI evidence, and isolated daemon runtime regression (307/307) are complete. The carrier process used lifespan off and therefore does not prove real backend Online or shared-DB behavior. Windows x64 real-host acceptance remains open. The ACP 127 log was confirmed as a deliberate negative test; runtime npx/offline-cache/PATH risk remains for Windows. release-artifacts is gitignored generated output and must not be committed. See handoff.md, windows-acceptance.md, macos-evidence.md, and evidence/.",
+  "notes": "Mac-side implementation at current source candidate 0b6222202921001e88d6aec159410ad54543edb6, current-worktree FastAPI carrier download/install/Setup evidence, installed-artifact fake-upstream Connect/register/heartbeat, Unix Install-to-Setup PATH handoff fix, final Chinese/English UI evidence, and isolated daemon runtime regression (307/307) are complete. The carrier process used lifespan off and therefore does not prove real backend Online or shared-DB behavior. Windows x64 real-host acceptance remains open. The ACP 127 log was confirmed as a deliberate negative test; runtime npx/offline-cache/PATH risk remains for Windows. release-artifacts is gitignored generated output and must not be committed. See handoff.md, windows-acceptance.md, macos-evidence.md, and evidence/.",
   "meta": {
     "macAutomated": "full_pass_with_isolated_runtime_state_307_of_307",
     "macRealEvidence": "candidate_pass_tab_1617513010",
-    "macInstallEvidence": "REAL_macos-daemon-install-8000_20260806234756",
+    "macInstallEvidence": "REAL_macos-daemon-path-fix-8000_20260807002251",
     "macConnectEvidence": "fake_upstream_connect_register_heartbeat",
-    "artifactSourceRevision": "26a506cfb464c5a3e43d1775918ee1b6e356fe57",
+    "artifactSourceRevision": "0b6222202921001e88d6aec159410ad54543edb6",
     "windowsRealAcceptance": "pending",
     "evidenceDir": "evidence/"
   }
