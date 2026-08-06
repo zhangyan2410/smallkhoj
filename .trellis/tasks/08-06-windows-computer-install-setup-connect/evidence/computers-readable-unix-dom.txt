@@ -1,0 +1,90 @@
+
+
+
+Z
+
+
+Z
+
+zy-ean
+账号
+
+
+当前 Server · 拥有者
+zy-ean退出登录
+
+
+
+
+
+
+SmallKhoj
+电脑
+Daemon 接入、重连命令、已检测运行时和智能体工作区状态。
+成员任务
+[SELECT #locale-select name=locale ="zh-CN"]
+
+
+
+电脑
+
+
+0 台电脑0 在线添加电脑
+
+暂无电脑
+
+
+
+已注册 0在线 0运行中工作区 0
+
+
+
+选择查看详情
+先生成连接命令注册第一台 daemon。
+
+
+运行时快照
+来自已连接控制面的实时计数。
+
+
+已注册
+0
+
+在线
+0
+
+运行中工作区
+0
+
+
+
+连接新电脑
+三步把这台电脑接入 SmallKhoj：安装 Aura → 初始化本机 → 连接服务器。
+
+
+电脑名称
+[INPUT #computer-name name=name type=text "my-computer"]
+
+
+WindowsmacOS / Linux
+
+
+
+
+❶Install（安装）终端 Terminal
+curl -fsSL http://localhost:8000/downloads/smallkhoj-daemon/install.sh | SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL=http://localhost:8000/downloads/smallkhoj-daemon bash
+打开「终端」(Terminal)，粘贴命令后回车。
+看到安装成功输出版本号即完成；失败会给出原因，可重试。
+
+
+❷Setup（初始化）终端 Terminal
+aura setup --name 'my-computer' --server-url http://localhost:8000
+在同一个窗口继续粘贴执行；只写本机配置和身份，不会连接服务器。
+输出 machine ID 和配置路径即完成；重复执行安全。
+
+
+❸Connect（连接）终端 Terminal生成连接命令
+点击下方按钮生成一次性连接命令（生成后 5 分钟内有效）。
+粘贴执行后，状态区会在几秒内显示「已连接」。
+
+完成命令后，这里会显示连接结果。✕

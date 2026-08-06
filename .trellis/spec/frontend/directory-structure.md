@@ -64,7 +64,9 @@ frontend/
 │
 ├── messages/                     # i18n strings (en.json etc.)
 └── public/                       # static assets
-    └── rail-water-texture.png    #   the water material for the icon rail
+    └── rail-water-texture.png    #   LEGACY: unreferenced since the rail became a
+                                  #   paper binding spine (see product-ui-style.md);
+                                  #   safe to delete in a cleanup pass
 ```
 
 ---

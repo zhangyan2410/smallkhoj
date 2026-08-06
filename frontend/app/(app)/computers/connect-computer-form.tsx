@@ -109,8 +109,9 @@ function CopyCommandButton({
   return (
     <Button
       type="button"
-      size="icon-xs"
+      size="icon-lg"
       variant="outline"
+      className="sk-onboarding-copy"
       data-testid={`copy-command-${phase}`}
       aria-label={`${t("onboarding.copy")} ${phaseLabel(phase, t)} (${shellLabel(platform, t)})`}
       title={`${t("onboarding.copy")} ${phaseLabel(phase, t)}`}
@@ -127,7 +128,7 @@ function CopyCommandButton({
     >
       {copied ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
       {copied ? (
-        <span data-testid="copy-feedback" aria-live="polite" className="text-[10px] font-medium text-success">
+        <span data-testid="copy-feedback" aria-live="polite" className="text-xs font-semibold text-success">
           {t("onboarding.copied")}
         </span>
       ) : null}
@@ -150,6 +151,7 @@ function TicketActionButton({
     <Button
       type="submit"
       size="sm"
+      className="sk-onboarding-action"
       data-testid={expired ? "regenerate-ticket-button" : "generate-ticket-button"}
       aria-busy={pending}
       onClick={onGenerate}
@@ -192,26 +194,26 @@ function PhaseCard({
       material="drying"
       data-testid={`phase-card-${phase}`}
       data-region={`phase-${phase}`}
-      className="space-y-2 p-3"
+      className="space-y-3 p-4"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
           <span
             aria-hidden="true"
-            className={isConnect && !ticket ? "border-2 border-[var(--cinnabar)] px-1.5 py-0.5 text-xs text-[var(--cinnabar)]" : "border-2 border-[var(--ink)] px-1.5 py-0.5 text-xs"}
+            className={isConnect && !ticket ? "border-2 border-[var(--cinnabar)] px-2 py-1 text-sm font-bold leading-none text-[var(--cinnabar)]" : "border-2 border-[var(--ink)] px-2 py-1 text-sm font-bold leading-none"}
           >
             {number}
           </span>
-          <span className="text-sm font-medium text-foreground">{title}</span>
+          <span className="sk-onboarding-phase-title">{title}</span>
         </div>
-        <span className="border border-[var(--ink)] px-1.5 py-0.5 font-mono text-[10px] uppercase text-muted-foreground">
+        <span className="sk-onboarding-shell-label border border-[var(--ink)] px-2 py-1 font-mono uppercase">
           {shellLabel(platform, t)}
         </span>
       </div>
 
       {platform === "windows" && !available && phase === "install" ? (
-        <Panel variant="flat" className="flex items-start gap-2 p-2 text-xs text-warning">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        <Panel variant="flat" className="sk-onboarding-warning flex items-start gap-2.5 p-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{t("onboarding.windowsUnavailable")}</span>
         </Panel>
       ) : null}
@@ -219,12 +221,12 @@ function PhaseCard({
       {canShowCommand ? (
         <AttachmentSheet
           kind="proof"
-          className="flex items-start gap-2 p-2"
+          className="flex items-start gap-3 p-3"
           data-testid={isConnect ? "daemon-connect-command" : undefined}
         >
           <code
             data-testid={`phase-command-${phase}`}
-            className="min-w-0 flex-1 whitespace-pre-wrap break-all text-xs"
+            className="sk-onboarding-command min-w-0 flex-1 whitespace-pre-wrap break-all font-mono"
           >
             {renderedCommand}
           </code>
@@ -238,14 +240,14 @@ function PhaseCard({
 
       {isConnect && ticket && expired ? (
         <>
-          <Panel variant="flat" className="p-2 text-xs text-warning">
+          <Panel variant="flat" className="sk-onboarding-warning p-3">
             {t("onboarding.expiredNotice")}
           </Panel>
           <TicketActionButton expired onGenerate={onGenerate} t={t} />
         </>
       ) : null}
 
-      <p className="text-xs text-muted-foreground">
+      <p className="sk-onboarding-help">
         {phase === "install"
           ? platform === "windows"
             ? t("onboarding.installGuideWindows")
@@ -254,7 +256,7 @@ function PhaseCard({
             ? t("onboarding.setupGuide")
             : t("onboarding.connectGuide")}
       </p>
-      <p className="text-xs text-muted-foreground">
+      <p className="sk-onboarding-help">
         {phase === "install"
           ? t("onboarding.installExpect")
           : phase === "setup"
@@ -366,11 +368,11 @@ function PlatformOnboarding({
   const expired = Boolean(credential && isExpired(credential.expiresAt, now))
 
   return (
-    <div data-region="computer-onboarding" className="space-y-3">
+    <div data-region="computer-onboarding" className="sk-computer-onboarding space-y-4">
       {!reconnectOnly ? (
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
-            <label htmlFor="computer-name" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+        <div className="min-w-0 w-full">
+          <div className="min-w-0 w-full">
+            <label htmlFor="computer-name" className="sk-onboarding-label mb-2 block">
               {t("computerName")}
             </label>
             <Input
@@ -380,7 +382,7 @@ function PlatformOnboarding({
               onChange={(event) => setName(event.target.value)}
               placeholder="my-computer"
               autoFocus={!credential}
-              className="max-w-xs"
+              className="sk-onboarding-name-input h-11 w-full max-w-none text-base"
             />
           </div>
         </div>
@@ -391,11 +393,11 @@ function PlatformOnboarding({
         onValueChange={(value) => setPlatform(value as OnboardingPlatform)}
         data-testid="platform-tabs"
       >
-        <TabsList>
-          <TabsTrigger value="windows" data-testid="platform-tab-windows">
+        <TabsList className="gap-3">
+          <TabsTrigger value="windows" className="sk-onboarding-tab" data-testid="platform-tab-windows">
             {t("onboarding.platformWindows")}
           </TabsTrigger>
-          <TabsTrigger value="unix" data-testid="platform-tab-unix">
+          <TabsTrigger value="unix" className="sk-onboarding-tab" data-testid="platform-tab-unix">
             {t("onboarding.platformUnix")}
           </TabsTrigger>
         </TabsList>
@@ -427,7 +429,7 @@ function PlatformOnboarding({
         ) : error ? (
           <Panel variant="flat" className="sk-cat-danger p-3 text-sm">{error}</Panel>
         ) : credential && !expired ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="sk-onboarding-status flex items-center gap-2">
             <StatusPill status="pending" label={t("pendingConnection")} />
             <span>{t("onboarding.pendingHint", { name: credential.name })}</span>
           </div>
@@ -436,7 +438,7 @@ function PlatformOnboarding({
             {t("onboarding.timeoutHint")}
           </Panel>
         ) : (
-          <p className="text-xs text-muted-foreground">{t("onboarding.statusIdle")}</p>
+          <p className="sk-onboarding-idle">{t("onboarding.statusIdle")}</p>
         )}
       </div>
 
@@ -462,11 +464,11 @@ export function ConnectComputerForm(props: Omit<ConnectComputerFormProps, "initi
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Terminal className="size-4" />
+        <CardTitle className="sk-onboarding-dialog-title flex items-center gap-2">
+          <Terminal className="size-5" />
           {t("connectNew")}
         </CardTitle>
-        <CardDescription>{t("onboarding.dialogDesc")}</CardDescription>
+        <CardDescription className="sk-onboarding-dialog-description">{t("onboarding.dialogDesc")}</CardDescription>
       </CardHeader>
       <CardContent>
         <ConnectStepsBody {...props} />
@@ -521,13 +523,13 @@ export function ConnectComputerDialog({
 
       {activeDialog === "steps" ? (
         <Dialog open onOpenChange={(open) => !open && setOpenDialog("none")}>
-          <DialogContent data-testid="connect-computer-dialog" className="max-w-2xl">
+          <DialogContent data-testid="connect-computer-dialog" className="max-h-[94vh] w-[min(94vw,56rem)] max-w-4xl overflow-x-hidden overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Terminal className="size-4" />
+              <DialogTitle className="sk-onboarding-dialog-title flex items-center gap-2">
+                <Terminal className="size-5" />
                 {t("connectNew")}
               </DialogTitle>
-              <DialogDescription>{t("onboarding.dialogDesc")}</DialogDescription>
+              <DialogDescription className="sk-onboarding-dialog-description">{t("onboarding.dialogDesc")}</DialogDescription>
             </DialogHeader>
             <ConnectStepsBody
               action={action}
@@ -583,22 +585,22 @@ export function ReconnectCommandCard({
   const rendered = connect ? { ...connect, command: connect.command } : null
 
   return (
-    <InkframeObjectSurface material="drying" data-inkframe-mobile-role="computer-reconnect-command" data-region="computer-reconnect" className="min-w-0 space-y-3 overflow-x-hidden p-3">
+    <InkframeObjectSurface material="drying" data-inkframe-mobile-role="computer-reconnect-command" data-region="computer-reconnect" className="sk-computer-onboarding min-w-0 space-y-4 overflow-x-hidden p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm font-medium text-foreground">{t("reconnectCommand")}</div>
-        <div className="text-xs text-muted-foreground">{t("useOn", { name: computerName })}</div>
+        <div className="sk-onboarding-phase-title">{t("reconnectCommand")}</div>
+        <div className="sk-onboarding-help">{t("useOn", { name: computerName })}</div>
       </div>
       <Tabs value={platform} onValueChange={(value) => setPlatform(value as OnboardingPlatform)} data-testid="reconnect-platform-tabs">
         <TabsList>
-          <TabsTrigger value="windows" data-testid="platform-tab-windows">{t("onboarding.platformWindows")}</TabsTrigger>
-          <TabsTrigger value="unix" data-testid="platform-tab-unix">{t("onboarding.platformUnix")}</TabsTrigger>
+          <TabsTrigger value="windows" className="sk-onboarding-tab" data-testid="platform-tab-windows">{t("onboarding.platformWindows")}</TabsTrigger>
+          <TabsTrigger value="unix" className="sk-onboarding-tab" data-testid="platform-tab-unix">{t("onboarding.platformUnix")}</TabsTrigger>
         </TabsList>
         <TabsContent value={platform}>
           {selected.available === false && platform === "windows" ? (
-            <Panel variant="flat" className="p-2 text-xs text-warning">{t("onboarding.windowsUnavailable")}</Panel>
+            <Panel variant="flat" className="sk-onboarding-warning p-3">{t("onboarding.windowsUnavailable")}</Panel>
           ) : rendered?.command ? (
-            <AttachmentSheet kind="proof" className="flex items-start gap-2 p-2">
-              <code data-testid="reconnect-command" className="min-w-0 flex-1 whitespace-pre-wrap break-all text-xs">{rendered.command}</code>
+            <AttachmentSheet kind="proof" className="flex items-start gap-3 p-3">
+              <code data-testid="reconnect-command" className="sk-onboarding-command min-w-0 flex-1 whitespace-pre-wrap break-all font-mono">{rendered.command}</code>
               <CopyCommandButton command={rendered.command} phase="connect" platform={platform} t={t} />
             </AttachmentSheet>
           ) : null}

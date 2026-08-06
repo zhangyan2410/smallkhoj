@@ -16,7 +16,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 |-------|-------------|--------|
 | [Directory Structure](./directory-structure.md) | Three-layer model, import rules, where new code goes | Active |
 | [Component Guidelines](./component-guidelines.md) | Three-layer component model, single-source rule, forbidden patterns | Active |
-| [Product UI Style](./product-ui-style.md) | Handcraft ink-border language, water+sand identity, color tokens | Active |
+| [Product UI Style](./product-ui-style.md) | Dry-paper object-desk identity, handcraft ink-border language, theme system, color tokens | Active |
 | [Hook Guidelines](./hook-guidelines.md) | SSR-safe hooks, reusable client behavior, route-local contexts | Active |
 | [State Management](./state-management.md) | Server state, URL state, local UI state, durable preferences | Active |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns, browser evidence gates | Active |

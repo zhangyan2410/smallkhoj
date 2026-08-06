@@ -1,0 +1,26 @@
+{
+  "candidate": "main (current worktree)",
+  "tabId": "1617513010",
+  "tabUrl": "http://127.0.0.1:3000/computers",
+  "locale": "zh-CN",
+  "selectedPlatform": "macOS / Linux",
+  "dialog": {
+    "width": 896,
+    "clientWidth": 877,
+    "overflowX": "hidden",
+    "overflowY": "auto"
+  },
+  "computerNameField": {
+    "label": "电脑名称",
+    "width": 829,
+    "height": 44,
+    "fontSize": "16px"
+  },
+  "onboardingCopy": {
+    "phase": "安装",
+    "shell": "终端",
+    "guide": "打开「终端」，粘贴命令后回车。"
+  },
+  "ticketInPreview": false,
+  "screenshot": "computers-readable-final-zh.png"
+}

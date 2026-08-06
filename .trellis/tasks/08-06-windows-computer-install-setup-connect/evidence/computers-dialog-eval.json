@@ -1,0 +1,1 @@
+{"ok": true, "tabId": "1617513010", "result": {"dialog": true, "tabId": "1617513010", "tabUrl": "http://127.0.0.1:3000/computers", "tabs": [{"label": "Windows", "selected": "false"}, {"label": "macOS / Linux", "selected": "true"}], "text": true, "tickets": ["生成连接命令"]}}

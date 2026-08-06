@@ -1,123 +1,92 @@
 # Product UI Style
 
-> SmallKhoj frontend visual identity: "sunlight through mid-ocean water + warm sand",
-> expressed with a handcraft ink-border language. This spec overrides any older note
-> that said "avoid black borders / brutalism" — that guidance predates the Croodles
-> avatar + raft-style decision below.
+> SmallKhoj frontend visual identity: **dry xuan-paper object desk** (Inkframe language).
+> Revised 2026-08 to match the shipped code (`globals.css`, `theme-switcher.tsx`,
+> `app-rail.tsx`) and the completed `06-30-ink-wash-theme-exploration` decisions.
+> Where this file disagrees with `DESIGN.md`, this file wins; update `DESIGN.md` to match.
+> Where this file disagrees with the code, the code is examined first — either the code
+> is debt listed in §Known Debt, or this spec is wrong and must be fixed in the same PR.
 
 ---
 
 ## Visual Identity
 
-SmallKhoj reads as a **calm, handcrafted** product workspace with three signature
-materials:
+SmallKhoj reads as a **bright working desk** with three signature materials:
 
-1. **Water (the icon rail)** — a real generated water texture (`rail-water-texture.png`)
-   with sunlight-shaft + caustic ripples. The rail is the only place water appears.
-2. **Warm sand (list column + main area)** — `--sand` / `--sand-deep` / `--sand-card`.
-   Calm, warm, the canvas for content.
-3. **Ink handcraft borders** — `--ink` (`#111827`), shared with the Croodles avatar
-   stroke. Straight corners, 2px hard borders, offset hard shadows. This is the
-   "made by hand, not by template" signal.
+1. **Dry xuan paper (the desk)** — `--paper` `#f6f1e2` with the faint fiber/grid
+   `--desk-paper-bg`. Warm off-white with a mineral undertone; never pure white,
+   never pink, never a full-page wet ink wash.
+2. **Warm soot ink (structure)** — `--ink` `oklch(0.205 0.028 78)`. All text and all
+   2px hard borders share this ink. Straight corners, offset hard shadows. This is
+   the "made by hand, not by template" signal, unified with the Croodles avatar stroke.
+3. **Cinnabar seal (restraint accent)** — `--cinnabar` `oklch(0.50 0.17 32)`.
+   Reserved for seals, review stamps, and critical emphasis. Never a page tint.
 
-The brand accent is **mid-sea blue** (`--primary`, hue ~210) — used sparingly on
-primary buttons, links, focus rings. Never purple (hue 250-265 is forbidden).
+The product surface has three layers, and each layer has different freedom:
 
-### Future theme: water-ink / Shui-mo
-
-The user clarified that the desired monochrome direction is **not black-and-white**.
-It should be a deliberate **water-ink (水墨) product theme**: rice paper, layered
-ink wash, handmade edges, and a small amount of seal/mineral accent. This is a
-future frontend implementation direction, not an accidental fallback for missing
-tokens.
-
-Design intent:
-
-- The app should still feel like a practical work tool. Ink-wash is the material
-  language, not a decorative landing-page treatment.
-- The physical scene is a handmade operating desk: xuan-paper surface, damp ink
-  settling into paper fibers, blue-black text, and one restrained cinnabar seal
-  accent for important state.
-- Preserve the current handcraft frame language. Square ink borders and hard
-  offset shadows can remain, but the surfaces around them should feel like paper
-  and wash, not plain gray UI.
-- Use real or generated bitmap texture for paper/ink material if texture is
-  needed. Do not fake it with sketchy SVG doodles, diagonal stripes, or gradient
-  blobs.
-
-Required palette qualities:
-
-- **Paper base:** warm xuan-paper off-white with a faint green/yellow mineral
-  undertone; never pure white.
-- **Ink text:** deep blue-black or soot ink; never browser black as the only
-  identity.
-- **Ink wash surfaces:** several low-chroma wash layers for sidebars, selected
-  rows, hover, and panels. These should vary by lightness and chroma, not by
-  generic grayscale steps.
-- **Cinnabar accent:** restrained red/orange-red for critical emphasis, current
-  selection accents, or confirmation marks. Use sparingly, like a seal stamp.
-- **Mineral accent:** muted blue-green or green-gray may support runtime/member
-  categories. It should feel like mineral pigment beside ink, not SaaS teal.
-
-Implementation contract for the future frontend agent:
-
-- Add the theme as an explicit class such as `.theme-ink` and persist selection
-  with `localStorage.theme = "ink"` or an equivalent user preference.
-- Keep the existing water+sand identity available unless the product decision is
-  to replace the default theme. Do not silently overwrite the default with an
-  incomplete grayscale theme.
-- Override the same tokens used by the app today: `--background`,
-  `--foreground`, `--card`, `--sand`, `--sand-deep`, `--sand-card`, `--paper`,
-  `--paper-ink`, `--sand-ink`, `--sand-muted`, `--sand-border`, `--ink`,
-  `--primary`, `--ring`, `--accent-*`, and status tokens.
-- Define project utility selectors in the `@layer components` design-system
-  block, not as loose selectors that Tailwind/Next may omit from the compiled
-  sheet.
-- The icon rail may use an ink-wash material variant, or the existing water
-  texture may be toned into ink wash with a deliberate CSS treatment. It should
-  not look like a broken/disabled water image.
-- Text contrast remains product-grade: body text >= 4.5:1 and important labels
-  readable on all wash surfaces.
-- Browser evidence must include the real app in the ink theme, with the server
-  switcher/list/detail surfaces visible enough to prove it is not just token
-  replacement.
-
-Forbidden interpretations:
-
-- Do not implement the theme as plain black text on white background.
-- Do not implement it as a generic dark mode, desaturated grayscale, or missing
-  CSS fallback.
-- Do not cover the UI with decorative ink splashes that reduce scanability.
-- Do not introduce purple-blue gradients, glass panels, soft SaaS shadows, or
-  round-card redesigns under the name "artistic".
+| Layer | Content | Freedom |
+|---|---|---|
+| Desk environment | global background (`--desk-paper-bg`) | none — clean, bright, no state color, no wet ink |
+| Working sheets | shell, list column, main area, sidebars (`--sheet-paper-bg`) | subtle paper depth only; square and stable |
+| Hand objects | messages, evidence, review stamps, task tickets, attachments, runtime material | personality lives here: short slips may tilt, stamps act, hover may lift a sheet |
 
 ### What this replaces
-Earlier guidance said "do not copy Slock's black-border brutalist style." That is
-**superseded**: SmallKhoj now intentionally uses ink-black hard borders as its
-signature, aligned with the Croodles avatar family. The rule that still holds:
-no glassmorphism, no gradient text, no neon glow, no soft SaaS shadows.
+
+- The 2026-06 "sunlight through water + sand" direction (mid-sea blue light-first
+  with glow halos) is **superseded**; `--primary` keeps a restrained mid-sea blue
+  only as a legacy brand accent on primary buttons/links/focus.
+- The water-texture icon rail (`rail-water-texture.png`) is **removed**. The rail is
+  now a paper binding spine (`.sk-rail-bg`: `--sand-deep`/`--paper` mix, ink edge,
+  stitch line). No water imagery anywhere in the app chrome.
+- The old "future `.theme-ink` / `localStorage.theme='ink'`" contract never shipped
+  and is void; the real theme contract is below.
+
+---
+
+## Theme System (actual implementation)
+
+`components/theme-switcher.tsx` offers three themes, persisted via `localStorage.theme`:
+
+| Theme | `<html>` class | localStorage | Character |
+|---|---|---|---|
+| `water` (default) | none | `null` (key removed) | Default desk: dry paper + ink + full B/C six-hue accent system |
+| `dark` | `.dark` | `"dark"` | Blue-gray dark (not pure black); brand hue 215 lifted one step |
+| `shuimo` | `.shuimo` | `"shuimo"` | Bright sheng-xuan paper + warm soot ink + cinnabar; accents stay readable as low-chroma "color through ink" (indigo 255 / dai-purple 290 / cinnabar 32 / moss 150 / amber 74) |
+
+Rules:
+
+- SSR snapshot is always `water`; hydration-safe switching uses
+  `useSyncExternalStore`. Do not add theme reads inside effects.
+- Naming debt is acknowledged: the default theme is called `water` for historical
+  reasons while its content is the paper desk. Renaming is a compatibility change
+  (switcher + storage migration + settings copy) — do it completely or not at all.
+- `.shuimo` must keep accent hues **distinguishable** (the "color through ink"
+  rule). Pressing all six accents to plain ink was tried and reverted; do not
+  reintroduce it.
 
 ---
 
 ## Border Language (handcraft ink-border)
 
-This is the core visual rule. Every framed element follows it.
+Verified against `components/ui/{card,button,input,dialog}.tsx` — this is the
+current code, not an aspiration.
 
-| Element | Border | Radius | Shadow | Source |
-|---|---|---|---|---|
-| Card / dialog / modal panel | `2px solid var(--ink)` | `0` (square) | `2px 2px 0 var(--ink)` (hard offset) | `<Card>`, `.sk-panel-raised` |
-| Info block / message bubble | `2px solid var(--ink)` | `0` | none (dense, no noise) | `<Panel>`, `.sk-panel` |
-| Button | `2px solid var(--ink)` | `0` | none; `hover` adds hard shadow | `<Button>` |
-| Input / Select / Textarea | `2px solid var(--ink)` | `0` | none; `focus` border → `--ring` (mid-sea blue) | `<Input>`, `<Select>`, `<Textarea>` |
-| Status pill | `1px solid var(--ink)` | `0` | none; filled status color bg | `<StatusPill>`, `.sk-status-*` |
-| Small dot / status indicator | — | `rounded-full` (allowed) | none | `dotClass()` |
+| Element | Border | Radius | Shadow |
+|---|---|---|---|
+| Card / dialog / modal panel | `2px solid var(--ink)` | `0` (square) | `2px 2px 0 var(--ink)` hard offset (`sk-hard-shadow`) |
+| Info block / message bubble | `2px solid var(--ink)` | `0` | none (`.sk-panel`) |
+| Button | `2px solid var(--ink)` | `0` | none; hover adds hard shadow / 1px lift |
+| Input / Select / Textarea | `2px solid var(--ink)` | `0` | `focus` border → `--ring` |
+| Status pill | `1px solid var(--ink)` | `0` | none; filled status color bg |
+| Small dot / status indicator | — | `rounded-full` (allowed) | none |
 
 **Principles**:
-- Square corners everywhere except tiny dots.
-- Borders express structure; do NOT pair border + soft shadow (the old "ghost-card").
-- Hard shadows are offset-only (no blur) — they read as "paper cutout", not "floating glass".
-- Avatar stroke (`#111827`, 3.5px in Croodles) and UI borders (`#111827`, 2px) share
-  the same ink — this is the unified visual signature.
+- Square corners everywhere except tiny dots. Rotation is a local property of
+  hand-placed micro objects (short chat slips, stamps, tape) — never of sheets.
+- Hard shadows are offset-only (no blur) — "paper cutout", not "floating glass".
+- `--radius: 0.875rem` remains in `:root` only as shadcn compatibility residue.
+  Product atoms are `rounded-none`; new code must not build rounded containers
+  from `--radius`.
 
 ### Forbidden border/shadow patterns
 - `rounded-lg` / `rounded-xl` / `rounded-md` on containers (use `rounded-none`).
@@ -132,67 +101,118 @@ This is the core visual rule. Every framed element follows it.
 
 All colors are tokens in `globals.css`. Never hardcode a color in a component or page.
 
-| Role | Token | Notes |
-|---|---|---|
-| Brand / primary | `--primary` (mid-sea blue ~210) | buttons, links, focus |
-| Handcraft border | `--ink` (`#111827`) | all borders |
-| Page background | `--sand` | main area, chat |
-| List column | `--sand-deep` | three-column Col 1 |
-| Card surface | `--sand-card` / `--card` | raised content |
-| Text | `--foreground` / `--sand-ink` / `--muted-foreground` | |
-| Status success | `--success` / `--success-fg` | |
-| Status warning | `--warning` / `--warning-fg` | |
-| Status info | `--info` / `--info-fg` | (same hue family as primary) |
-| Status danger | `--danger` / `--danger-fg` | |
+### Core surface tokens
 
-Status colors flow through `badgeClass()` / `dotClass()` / `StatusPill` only.
-See `component-guidelines.md` for the single-source rule.
+| Role | Token | Current value | Notes |
+|---|---|---|---|
+| Paper / page background | `--paper`, `--background` | `#f6f1e2` | xuan paper |
+| Cool paper field | `--paper-cool`, `--sand` | `#f1efe8` | list column / main field |
+| Paper shadow | `--paper-deep`, `--sand-deep` | `#e2dac7` | sidebar / depth |
+| Ink text + borders | `--ink`, `--foreground`, `--paper-ink`, `--sand-ink` | `oklch(0.205 0.028 78)` | warm soot ink |
+| Muted ink text | `--sand-muted` | `oklch(0.43 0.026 78)` | ≥4.5:1 on paper |
+| Brand accent (legacy, restrained) | `--primary` | `oklch(0.62 0.13 215)` | primary buttons, links, focus |
+| Seal accent | `--cinnabar` | `oklch(0.50 0.17 32)` | seals/critical only |
+| Material accents | `--moss`, `--amber` | `oklch(0.48 0.088 150)`, `oklch(0.66 0.12 74)` | restrained material/status |
+| Desk backgrounds | `--desk-paper-bg`, `--sheet-paper-bg`, `--slip-paper-bg` | composite gradients | shell surfaces must consume these |
+
+### Status colors
+
+`--success` / `--warning` / `--info` / `--danger` (+ `-fg` pairs). They flow
+through `badgeClass()` / `dotClass()` / `StatusPill` only. See
+`component-guidelines.md` for the single-source rule.
+
+### Category colors
+
+`--cat-info/success/warning/danger/neutral` (+ `-fg`) are for classification
+labels (RuntimeChip etc.): light tint + deep text + ink edge. Category ≠ status.
 
 ### Accent system (B/C dual-tone)
 
-Functional/section colors use a **dual-tone** accent system. Each hue has two
-variants so any usage is contrast-safe:
+Functional/section colors use a **dual-tone** system. Each hue has two variants:
 
-- **solid** (C, storybook) — high-saturation, paired with white text.
-  Active tabs, active nav, selected items, primary chips.
-- **soft** (B, watercolor) — low-saturation tint, paired with dark text.
-  Inactive tabs, section backgrounds, count badges, role labels.
+- **solid** (C) — high-saturation, paired with light text. Active tabs, active
+  nav ticks, selected items, primary chips.
+- **soft** (B) — low-saturation tint, paired with dark text. Inactive tabs,
+  section backgrounds, count badges, role labels.
 
-Tokens in `globals.css`: `--accent-<hue>`, `--accent-<hue>-fg`,
-`--accent-<hue>-soft`, `--accent-<hue>-soft-fg`. Utility classes
-`.sk-accent-<hue>{,-soft}`, `.text-accent-<hue>`, `.border-accent-<hue>`
-are defined in the `@layer components` design-system block with `!important`
-where they must override atom defaults. Do not rely on plain CSS selectors
-outside Tailwind layers for these project utility names; Next/Tailwind v4 dev
-builds can omit them from the generated sheet, which makes the app look like
-the theme disappeared even though the tokens still exist.
+Utility classes `.sk-accent-<hue>{,-soft}`, `.text-accent-<hue}`,
+`.border-accent-<hue>` live in the `@layer components` design-system block with
+`!important` where they must override atom defaults — plain selectors outside
+Tailwind layers can be omitted from the compiled sheet.
 
-| Hue | solid | soft | Semantic use |
+| Hue | solid (light) | soft (light) | Semantic use |
 |---|---|---|---|
-| blue | C `#1e6fb8` | B mist `#5b9bc9` | chat, links, primary action |
-| rose | C red `#d63838` | B rose `#d98a9e` | tasks, safety, saved, danger-emphasis |
-| mint | — | B `#6fb89a` | members, runtime, memory |
-| green | C `#2fa84f` | — | computers, files |
-| purple | C `#6b4ba0` | B lav `#8a9bc9` | control, activity |
-| yellow | C `#f2c12e` | — | accents only (no gold/amber) |
+| blue | `oklch(0.52 0.15 251)` | `oklch(0.78 0.11 241)` | chat, search, links |
+| rose | `oklch(0.58 0.21 26)` | `oklch(0.80 0.11 3)` | tasks, safety, saved |
+| mint | `oklch(0.56 0.15 166)` | `oklch(0.80 0.10 166)` | members, activity |
+| green | `oklch(0.62 0.18 148)` | `oklch(0.86 0.10 148)` | computers, files |
+| purple | `oklch(0.50 0.15 299)` | `oklch(0.78 0.09 269)` | control |
+| yellow | `oklch(0.83 0.17 89)` | `oklch(0.90 0.10 90)` | accents only (no gold/amber section color) |
 
-Functional assignments (so nav color = function color):
-- **icon rail**: chat=blue, tasks=rose, members=mint, computers=green,
-  control=purple, activity=mint (`.sk-rail-active-<accent>`).
+Functional assignments (nav color = function color):
+- **icon rail ticks**: search/chat=blue, tasks=rose, members=mint,
+  computers=green, control=purple, activity=mint (`sk-rail-active-<accent>`).
 - **chat tabs**: chat=blue, tasks=rose, memory=mint, files=green, activity=purple.
 - **chat sidebar sections**: 关注=rose, 频道=blue, 私信=mint, 运行中=purple.
 
 Rules:
 - Don't mix `sk-cat-*` (category) with `sk-accent-*` (function) on the same role.
-- Yellow is accent-only (highlight/warning tint); never a section/nav color.
-- No amber/gold. The `cat-warning`/`--warning` status tokens cover warm states.
-- To recolor the whole app, change only the `--accent-*` tokens.
+- Yellow is accent-only; never a section/nav color. No amber/gold.
+- To recolor the app, change only the `--accent-*` tokens.
+
+### The purple rule, corrected
+
+The old "purple hues 250-265 forbidden" rule described the **rejected purple-blue
+gradient brand theme** and is no longer accurate as a blanket ban. Current rule:
+
+- **Forbidden**: purple-blue as *brand identity* — gradients, glass, glow, or a
+  hue-250-265 wash as page/surface identity (the old rejected theme).
+- **Allowed**: purple as a *functional accent* in the B/C system above (control
+  surfaces, hue 299 solid / 269 soft), and the readable dai-purple in `.shuimo`.
+- **Still forbidden**: purple in the **agent identity palette**
+  (`--agent-color-1..6` stay in hue 155-230 + coral; avatar identity must not
+  collide with the retired brand).
+- `--accent-blue` at hue 251 sits at the edge of the old forbidden band but is an
+  accepted functional accent; keep it clearly separated from `--primary` (215) so
+  brand and function never read as the same color.
 
 ### Forbidden colors
-- Purple/blue-violet hues 250-265 (the old theme; user rejected).
+- Purple/blue-violet as brand identity or gradient (see above).
 - Tailwind palette literals: `bg-emerald-500`, `bg-amber-50`, `text-sky-700`,
-  `border-rose-200`, etc. Use status tokens.
-- `bg-white` as a surface (too cold against sand). Use `--sand-card`.
+  `border-rose-200`, etc. Use tokens.
+- `bg-white` as a surface (too cold against paper). Use `--sand-card`/`--paper`.
+- Pure `#000` text — ink is the only near-black.
+
+---
+
+## Object Language
+
+The desk is populated by object metaphors; components map to tangible desk
+objects, not generic cards. The full taxonomy, alignment grammar (anchor /
+primary / meta / state / actions / evidence slots), and page object matrix live
+in `.trellis/tasks/archive/2026-07/06-30-ink-wash-theme-exploration/design.md` —
+treat it as the object-language appendix of this spec.
+
+Core mappings:
+
+- chat message = paper slip (`MessagePaper`); short slips may tilt, long stay square
+- message actions = small desk tools clustered with the message, not pushed to the row edge
+- task = task ticket (`TaskMaterialSurface`); evidence = attached proof sheet (`EvidenceSurface`)
+- review = cinnabar stamp (`ReviewStamp`); memory = fixed note (`MemoryFixedNote`)
+- member identity = name tag + avatar prefab (`AvatarObject`, default frame `identity-thin`)
+- computer/runtime = inkstone/tool base; connect command = proof/instruction sheet
+  (`AttachmentSheet` + `ObjectField`)
+
+Shared primitives expose `data-slot` (component contract) and `data-object`
+(product object class). Browser evidence compares like with like through these
+attributes. Object language belongs in shared primitives and `globals.css`
+utilities — never route-local hand-rolled cards.
+
+Avatar rules (from the same task): one `AvatarObject` prefab for humans and
+agents with different frame/content variants; the top-right status dot must
+never be covered by frame decoration (folds go left-top); cinnabar stamps are
+review objects, not identity decoration; avoid "square frame + separate round
+face ball" as the default look.
 
 ---
 
@@ -201,9 +221,9 @@ Rules:
 ### Three-column "Slack" mode (list-detail pages)
 Pages with a list+detail structure (Tasks, Members, Computers, Chat) use
 `<ProductShell list={...}>`:
-- **Col 0 — icon rail** (water material, fixed `w-14`)
+- **Col 0 — tool spine** (`.sk-rail`, fixed `w-14`, paper binding-spine material)
 - **Col 1 — list column** (`bg-sand-deep`, resizable via `useResizablePanel`, width in localStorage)
-- **Col 2 — main area** (`bg-sand`)
+- **Col 2 — main area** (paper field)
 - **Col 3 — optional right sidebar** (detail/stats, `bg-sand-deep/60`)
 
 ### Single-column dashboard mode
@@ -234,6 +254,8 @@ Pages without a list (Home, Control, Settings, Daemon) omit the `list` prop.
 - Distinguish user-visible work (messages, assigned tasks) from telemetry (events, status).
 - Runtime state labels: Working/Thinking/Output/Idle are activity; messages/tasks are work.
 - Never let self-authored runtime activity look like a new inbound message.
+- `/daemon` and `/control` are internal operator pages: they are excluded from the
+  object-desk product-language pass and must not be used as style acceptance evidence.
 
 ---
 
@@ -247,8 +269,51 @@ Pages without a list (Home, Control, Settings, Daemon) omit the `list` prop.
 
 ---
 
+## Known Debt & Improvement Directions
+
+This section lists verified gaps between spec and code, plus recommended
+directions. Items here are **not yet rules** — they become rules when a task
+lands them.
+
+1. **Theme naming drift** — default theme is called `water` but is the paper
+   desk. Recommended: rename to `desk` (or `paper`) with a full storage
+   migration, or accept the name and document it (done here). Pick one in the
+   next theme-touching task.
+2. **Rail active accent is too weak** — `sk-rail-active-{blue,rose,mint,green,purple}`
+   currently differ only in the 3px `::before` tick and a 76%-ink-mixed shadow
+   tint; at a glance all active items read as the same ink tile. The planning
+   task `08-04-frontend-beautification` targets this. Recommended: fill the
+   active tile with the hue's **soft** variant and keep the ink border + solid
+   tick — enough hue recognition without breaking the ink signature.
+3. **Shadcn residue tokens are off-palette** — `:root` still carries water-era
+   blue-grays that leak into atoms: `--popover: oklch(1 0 0)` (pure white),
+   `--muted-foreground: oklch(0.55 0.03 225)` (blue-gray vs warm ink),
+   `--border`/`--input: oklch(0.91 0.015 220)` (light blue-gray vs ink).
+   Recommended: repoint these to paper/ink derivatives (`--popover` → `--paper`,
+   `--muted-foreground` → `--sand-muted`, `--border` → `--sand-border`) so atoms
+   that consume shadcn defaults stop drifting cool.
+4. **`--radius` legacy** — `0.875rem` survives for shadcn internals while the
+   product language is square. Keep the token, but lint against new rounded
+   containers; do not let radius grow back via component libraries.
+5. **Popover/dropdown surfaces** — pure-white popovers on a paper desk read as
+   foreign objects. With debt #3 fixed, popovers become paper sheets with ink
+   borders and hard shadows, matching dialogs.
+6. **Shuimo accent aliasing** — `.shuimo` aliases `--accent-green` to
+   `var(--moss)` while mint and green collapse onto the same hue family;
+   members/activity (mint) and computers (green) become hard to distinguish.
+   Recommended: separate them (moss ≈ 150 for one, a deeper pine ≈ 165-170 for
+   the other) at low chroma to preserve the ink-wash feel.
+7. **Dual maintenance of accent blocks** — accents are defined per theme
+   (`:root`, `.dark`, `.shuimo`) by hand. When adding a hue, update all three
+   blocks in the same commit; a missing block silently falls back to the wrong
+   theme's color. Consider a comment checklist at each block head.
+
+---
+
 ## Evidence Expectations
 
 For browser-facing work, final evidence shows the actual visible product surface,
 not only curl/DB rows. Use `project-webdriver-cli` (`./twd`) for the browser portion;
-cross-check API/DB/trace only when those layers matter.
+cross-check API/DB/trace only when those layers matter. Evidence must show the
+real app (list/detail surfaces visible enough to prove it is not just token
+replacement).

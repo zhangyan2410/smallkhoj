@@ -1,0 +1,21 @@
+{
+  "candidate": "main (current worktree)",
+  "tabId": "1617513010",
+  "tabUrl": "http://127.0.0.1:3000/computers",
+  "locale": "en",
+  "selectedPlatform": "macOS / Linux",
+  "dialog": true,
+  "computerNameField": {
+    "label": "Computer Name",
+    "width": 829,
+    "height": 44,
+    "fontSize": "16px"
+  },
+  "onboardingCopy": {
+    "phase": "Install",
+    "shell": "Terminal",
+    "guide": "Open Terminal, paste the command, and press Enter."
+  },
+  "ticketInPreview": false,
+  "screenshot": "computers-readable-final-en.png"
+}

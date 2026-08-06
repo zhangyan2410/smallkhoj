@@ -3,7 +3,7 @@
 /**
  * 主题切换器（三主题：water / dark / shuimo）。
  *
- * 机制（见 .trellis/tasks/06-30-ink-wash-theme-exploration/prd.md）：
+ * 机制（见 .trellis/tasks/archive/2026-07/06-30-ink-wash-theme-exploration/prd.md）：
  * - water = 不加任何 html class（默认）。
  * - dark / shuimo = 在 <html> 上加对应 class。
  * - 持久化走 localStorage.theme，取值 'dark' | 'shuimo' | null(=water)。

@@ -21,10 +21,10 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "Mac-side implementation and automated verification are complete. Windows x64 real-host acceptance and same-candidate Mac browser/runtime evidence remain open; see handoff.md, windows-acceptance.md, and macos-evidence.md.",
+  "notes": "Mac-side implementation, current-worktree service startup, Integration Gate (51/51), final Chinese/English UI evidence, and isolated daemon runtime regression (305/305) are complete. Windows x64 real-host acceptance remains open. The ACP 127 log was confirmed as a deliberate negative test; runtime npx/offline-cache/PATH risk remains for Windows. See handoff.md, windows-acceptance.md, macos-evidence.md, and evidence/.",
   "meta": {
-    "macAutomated": "focused_pass_runtime_suite_blocked",
-    "macRealEvidence": "blocked_candidate_identity",
+    "macAutomated": "full_pass_with_isolated_runtime_state",
+    "macRealEvidence": "candidate_pass_tab_1617513010",
     "windowsRealAcceptance": "pending",
     "evidenceDir": "evidence/"
   }

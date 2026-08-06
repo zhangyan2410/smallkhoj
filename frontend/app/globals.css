@@ -44,15 +44,18 @@
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  /* Per DESIGN.md: radius capped at 1.4× base. Larger radii are an AI
-     tell — the brief specifies 12-16px content cards and ≤20px dialogs. */
+  /* Per DESIGN.md / product-ui-style.md: --radius is shadcn compatibility
+     residue only. Product atoms are rounded-none (ink-border language);
+     keep these multipliers capped at 1.4× and do not grow new rounded
+     containers from them. */
   --radius-xl: calc(var(--radius) * 1.2);
   --radius-2xl: calc(var(--radius) * 1.4);
   --radius-3xl: calc(var(--radius) * 1.4);
   --radius-4xl: calc(var(--radius) * 1.4);
-  /* Gradients — REMOVED per DESIGN.md: no purple, no gradient text.
-     Solid mid-sea blue + soft glow halo is the only allowed treatment. */
-  /* Agent identity palette — water + sand + adjacent cool/warm hues only.
+  /* Gradients — REMOVED per DESIGN.md: no purple-blue gradient brand, no
+     gradient text. Solid tokens + hard offset shadows are the only allowed
+     treatment. */
+  /* Agent identity palette — sea/paper-adjacent hues only.
      No purple (260+). Range kept narrow around the design system hue band. */
   --agent-color-1: oklch(0.62 0.12 215);  /* mid-sea blue (default) */
   --agent-color-2: oklch(0.58 0.10 200);  /* turquoise */
@@ -107,9 +110,9 @@
   --sidebar-ring: oklch(0.72 0.10 200);
 
   /*
-   * 暖沙色系（用于三栏布局的列表栏 Col1 + 主区 Col2）。
-   * 色相来自 zy-think 色彩提取（hue 60-120 的暖沙区）。
-   * rail 仍用水材质；列表栏/主区用暖沙，呼应「水 + 沙」冷暖分工。
+   * 暖沙/宣纸色系（用于三栏布局的列表栏 Col1 + 主区 Col2）。
+   * 来自 Inkframe 干纸桌面的 paper/paper-cool/paper-deep 三档。
+   * rail 为纸质装订脊（.sk-rail，见 product-ui-style.md），列表栏/主区用纸面层次。
    */
   --sand-deep: #e2dac7;                   /* engine dry-paper shadow */
   --sand: #f1efe8;                        /* lab dry-paper field */
@@ -224,8 +227,8 @@
 }
 
 .dark {
-  /* Dark mode (second theme per DESIGN.md) — same mid-sea blue band, lifted for dark bg.
-     No purple, no gradient text. Brand color stays at hue 215 (just brighter). */
+  /* Dark mode（三主题之一，per DESIGN.md / product-ui-style.md）— 蓝灰深底非纯黑，
+     品牌色 hue 215 提亮一档。无紫蓝渐变品牌、无渐变文字。 */
   --ink: oklch(0.21 0.03 264);            /* 深色模式墨色描边（与 light 同色，保证视觉签名一致）*/
   --background: oklch(0.21 0.025 225);
   --foreground: oklch(0.95 0.012 220);
@@ -1978,5 +1981,117 @@
   }
   .markdown-body em {
     @apply italic;
+  }
+}
+
+/*
+ * Computer onboarding readability pass.
+ *
+ * This flow is an operator handoff, not metadata chrome: instructions and
+ * commands must remain legible at a glance. Keep the copy on the foreground
+ * ink ramp and use a small, explicit rem scale instead of the global muted
+ * 12px defaults that are appropriate for dense tables.
+ */
+.sk-computer-onboarding {
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.sk-onboarding-dialog-title {
+  color: var(--foreground);
+  font-size: 1.25rem;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.sk-onboarding-dialog-description {
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.sk-computer-onboarding .sk-onboarding-label {
+  color: var(--foreground);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.sk-computer-onboarding .sk-onboarding-name-input {
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.sk-computer-onboarding .sk-onboarding-name-input::placeholder {
+  color: color-mix(in oklch, var(--foreground) 62%, transparent);
+  opacity: 1;
+}
+
+.sk-computer-onboarding .sk-onboarding-phase-title {
+  color: var(--foreground);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.sk-computer-onboarding .sk-onboarding-shell-label {
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+}
+
+.sk-computer-onboarding .sk-onboarding-command {
+  color: var(--foreground);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.sk-computer-onboarding .sk-onboarding-help,
+.sk-computer-onboarding .sk-onboarding-status,
+.sk-computer-onboarding .sk-onboarding-idle {
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.sk-computer-onboarding .sk-onboarding-warning {
+  color: var(--warning-fg);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.sk-computer-onboarding .sk-onboarding-tab {
+  min-height: 2.75rem;
+  padding-inline: 1rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.sk-computer-onboarding .sk-onboarding-action {
+  min-height: 2.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.sk-computer-onboarding .sk-onboarding-copy {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .sk-computer-onboarding .sk-onboarding-shell-label {
+    letter-spacing: 0.03em;
+  }
+
+  .sk-computer-onboarding .sk-onboarding-command {
+    overflow-wrap: anywhere;
   }
 }
