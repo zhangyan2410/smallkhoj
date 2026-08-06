@@ -57,7 +57,7 @@ PostgreSQL `127.0.0.1:5432`：
 - 安装身份：`/tmp/smallkhoj-aura-gate/bin/aura`，`AURA_INSTALL_ROOT=/tmp/smallkhoj-aura-gate`，版本 `0.2.6`，artifact SHA-256 `181f729a8dcc71fade56a41d5ef4d6de80c4ccc04e35d7143ac3019161da00f6`。
 - 真实连接命令：停止旧隔离 daemon 后向同一候选申请 fresh reconnect ticket，执行安装后的顶层 `aura --server-url http://127.0.0.1:18080 --api-key <REDACTED_CONNECT_TICKET>`，输出 `[Aura] Connected and running in background`；随后 `aura status --json` 为 `connected=true`、`online=true`。
 - 真实对账：Server `30c7a5ab-b4e8-4899-ad36-2c54b19a3b0b`、Computer `2fdd7635-4572-4b3f-b23b-eecd106b6b4c`、fresh daemon `569607ab-52c7-4c01-95f1-2b226ad44029`、Claude Agent `47a5dc52-ec6d-432b-af4d-379d325065c8` 和 channel `gate-lab` 均来自同一候选；安装版本、artifact、Computer、daemon lease、online、runtime kind 全部为 `true`。
-- 唯一 marker `REAL_PRODUCT_CLAUDE_GATE_20260807_041957` 的 human 消息被真实 Claude Code 收到，并在同一 channel 持久化可见 `ACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957`；runtime timeline 含 delivered/thinking/tool-output/`aura message send`/idle。此次复跑同时验证了产品 Gate 的 Claude 作者绑定和完整 ACK 匹配。
+- 唯一 marker `REAL_PRODUCT_CLAUDE_GATE_20260807_042628` 的 human 消息被真实 Claude Code 收到，并在同一 channel 持久化可见 `ACK REAL_PRODUCT_CLAUDE_GATE_20260807_042628`；runtime timeline 含 delivered/thinking/tool-output/`aura message send`/idle。此次复跑同时验证了产品 Gate 的 Claude 作者、完整 ACK 和 message-send 目标绑定。
 - Gate 输出：`PASS product-chat-reply-claude 12/12`；完整脱敏 JSON 在 [`evidence/live-product-chat-gate-20260807-reconnect.json`](./evidence/live-product-chat-gate-20260807-reconnect.json)。报告有一个非阻塞 `CONTEXT_EVIDENCE_MISSING` warning，但 `ok=true`、12 个产品语义步骤全部通过。
 
 隔离复跑时若未把 `AURA_INSTALL_ROOT` 传给已安装 launcher，`aura status` 会读取宿主旧

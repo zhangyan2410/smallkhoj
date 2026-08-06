@@ -49,8 +49,8 @@ export function buildChatGateReport(input = {}) {
   const relevantReplies = replies.filter((reply) => isReplyForScenario(reply, target, scenario, selectedAgentId));
   const matchingReplies = relevantReplies.filter((reply) => replyMatchesAck(reply, expectedAck, marker, scenario));
   const selectedReply = matchingReplies[0] ?? relevantReplies[0] ?? null;
-  const slockSendEvidence = normalizeToolEvidence(input.toolEvidence)
-    .find((tool) => tool.isSlockMessageSend === true || isSlockMessageSendCommand(tool.commandPreview));
+  const normalizedToolEvidence = normalizeToolEvidence(input.toolEvidence);
+  const slockSendEvidence = selectSlockSendEvidence(normalizedToolEvidence, target, scenario, input);
   const delivery = normalizeDelivery(input.delivery);
   const installationIdentity = normalizeInstallationIdentity(input.installationIdentity);
   const warnings = buildWarnings(input);
@@ -69,7 +69,7 @@ export function buildChatGateReport(input = {}) {
     },
     delivery,
     installationIdentity,
-    toolEvidence: normalizeToolEvidence(input.toolEvidence),
+    toolEvidence: normalizedToolEvidence,
   });
   const steps = buildSteps({
     input,
@@ -120,7 +120,7 @@ export function buildChatGateReport(input = {}) {
     usage: normalizeUsage(input.usage),
     context: normalizeContext(input.context),
     runtimeTimeline: Array.isArray(delivery.timeline) ? delivery.timeline : [],
-    toolEvidence: normalizeToolEvidence(input.toolEvidence),
+    toolEvidence: normalizedToolEvidence,
     replyEvidence: buildReplyEvidence({ selectedReply, matchingReplies, target, expectedAck, marker, scenario }),
     audienceEvidence: buildAudienceEvidence(target, replies),
     warnings,
@@ -188,7 +188,14 @@ export function classifyChatFailure(input = {}) {
   if (tools.length === 0 && delivery.runtimeIdle) {
     return failure('tool', 'TOOL_CALL_MISSING', 'Runtime completed without tool evidence.');
   }
-  const slockSend = tools.find((tool) => tool.isSlockMessageSend === true || isSlockMessageSendCommand(tool.commandPreview));
+  const slockCandidates = tools.filter((tool) => tool.isSlockMessageSend === true || isSlockMessageSendCommand(tool.commandPreview));
+  if (slockCandidates.length === 0) {
+    return failure('tool', 'SLOCK_SEND_MISSING', 'No Aura/Slock message send evidence was observed.');
+  }
+  const slockSend = selectSlockSendEvidence(slockCandidates, target, scenario, input);
+  if (!slockSend && scenario === 'product-chat-reply-claude') {
+    return failure('tool', 'SLOCK_SEND_TARGET_MISMATCH', 'Aura/Slock message send evidence did not target the selected product chat.');
+  }
   if (!slockSend) {
     return failure('tool', 'SLOCK_SEND_MISSING', 'No Aura/Slock message send evidence was observed.');
   }
@@ -382,6 +389,7 @@ function failingStepForCode(code) {
       return 'tool-output';
     case 'SLOCK_SEND_MISSING':
     case 'SLOCK_SEND_FAILED':
+    case 'SLOCK_SEND_TARGET_MISMATCH':
       return 'slock-send-observed';
     case 'PROVIDER_THINKING_TIMEOUT':
       return 'runtime-idle';
@@ -490,6 +498,37 @@ function selectedProductAgentId(input, target) {
   return stringOrNull(input?.agent?.id ?? input?.agentId)
     ?? arrayOfStrings(target?.expectedResponderAgentIds)[0]
     ?? null;
+}
+
+function selectSlockSendEvidence(tools, target, scenario, input) {
+  const candidates = Array.isArray(tools)
+    ? tools.filter((tool) => tool?.isSlockMessageSend === true || isSlockMessageSendCommand(tool?.commandPreview))
+    : [];
+  if (scenario !== 'product-chat-reply-claude') return candidates[0] ?? null;
+  return candidates.find((tool) => productToolEvidenceMatches(tool, target, input)) ?? null;
+}
+
+function productToolEvidenceMatches(tool, target, input) {
+  const observedTarget = normalizeMessageTarget(tool?.target);
+  const expectedTargets = [target?.replyTarget, target?.channelName, target?.channelId]
+    .map(normalizeMessageTarget)
+    .filter(Boolean);
+  if (!observedTarget || expectedTargets.length === 0 || !expectedTargets.includes(observedTarget)) {
+    return false;
+  }
+  const selectedAgentId = selectedProductAgentId(input, target);
+  const evidenceAgentId = stringOrNull(tool?.agentId);
+  return !evidenceAgentId || !selectedAgentId || evidenceAgentId === selectedAgentId;
+}
+
+function normalizeMessageTarget(value) {
+  const normalized = stringOrNull(value);
+  if (!normalized) return null;
+  return normalized
+    .replace(/^#/, '')
+    .replace(/^channel:/i, '')
+    .trim()
+    .toLowerCase();
 }
 
 function replyMatchesAck(reply, expectedAck, marker, scenario = null) {
@@ -604,6 +643,9 @@ function normalizeToolEvidence(toolEvidence) {
   return toolEvidence.map((tool) => ({
     toolName: stringOrNull(tool.toolName ?? tool.name),
     toolId: stringOrNull(tool.toolId ?? tool.id),
+    agentId: stringOrNull(tool.agentId),
+    traceId: stringOrNull(tool.traceId),
+    marker: stringOrNull(tool.marker),
     commandPreview: stringOrNull(tool.commandPreview ?? tool.command),
     isSlockMessageSend: tool.isSlockMessageSend === true,
     ok: tool.ok,

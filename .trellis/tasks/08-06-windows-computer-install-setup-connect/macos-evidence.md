@@ -41,7 +41,7 @@ backend `http://127.0.0.1:18080`、当前 worktree frontend `http://127.0.0.1:30
 - artifact：`0.2.6`，SHA-256 `181f729a8dcc71fade56a41d5ef4d6de80c4ccc04e35d7143ac3019161da00f6`；manifest `gitCommit=9f37401fa6d004fe5ab98d39344ba4e450a452d9`。
 - 真实连接：停止旧隔离 daemon 后，用 fresh reconnect ticket 执行安装后的顶层 `aura --server-url http://127.0.0.1:18080 --api-key <REDACTED_CONNECT_TICKET>`，输出 `Connected and running in background`；`aura status --json` 显示 `connected=true`、`online=true`。
 - 身份：Server `30c7a5ab-b4e8-4899-ad36-2c54b19a3b0b`、Computer `2fdd7635-4572-4b3f-b23b-eecd106b6b4c`、fresh daemon `569607ab-52c7-4c01-95f1-2b226ad44029`、Claude Agent `47a5dc52-ec6d-432b-af4d-379d325065c8`、channel `gate-lab`。
-- marker `REAL_PRODUCT_CLAUDE_GATE_20260807_041957` 的 human 消息被真实 Claude Code 处理；同一 channel 持久化并可见 `ACK REAL_PRODUCT_CLAUDE_GATE_20260807_041957`。Activity 含 runtime delivery、provider thinking、tool output、`aura message send`、runtime idle；Gate 同时验证了选定 Claude 作者和完整 ACK 匹配。
+- marker `REAL_PRODUCT_CLAUDE_GATE_20260807_042628` 的 human 消息被真实 Claude Code 处理；同一 channel 持久化并可见 `ACK REAL_PRODUCT_CLAUDE_GATE_20260807_042628`。Activity 含 runtime delivery、provider thinking、tool output、`aura message send`、runtime idle；Gate 同时验证了选定 Claude 作者、完整 ACK 和 message-send 目标绑定。
 - 终端结果：`PASS product-chat-reply-claude 12/12`。完整脱敏报告在 [`evidence/live-product-chat-gate-20260807-reconnect.json`](./evidence/live-product-chat-gate-20260807-reconnect.json)；报告 `ok=true`，仅有非阻塞的 `CONTEXT_EVIDENCE_MISSING` warning。
 
 这证明 Mac 侧安装后的 Aura 已经能连接真实 SmallKhoj 候选并完成真实 Claude 回复；它不替代

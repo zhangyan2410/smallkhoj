@@ -21,10 +21,10 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "Mac-side implementation and acceptance are complete for artifact source candidate 9f37401fa6d004fe5ab98d39344ba4e450a452d9: managed standalone Ensure/Setup, fresh reconnect with the installed Aura command, real SmallKhoj Online/heartbeat, and the Claude Code product-semantic Integration Gate all passed on one isolated candidate. Marker REAL_PRODUCT_CLAUDE_GATE_20260807_041957 produced a same-channel visible ACK through aura message send, with selected-agent and complete-ACK checks; see evidence/live-product-chat-gate-20260807-reconnect.json. Windows x64 real-host acceptance remains open, so task status stays in_progress. release-artifacts is gitignored generated output and must not be committed. See handoff.md, windows-acceptance.md, macos-evidence.md, and evidence/.",
+  "notes": "Mac-side implementation and acceptance are complete for artifact source candidate 9f37401fa6d004fe5ab98d39344ba4e450a452d9: managed standalone Ensure/Setup, fresh reconnect with the installed Aura command, real SmallKhoj Online/heartbeat, and the Claude Code product-semantic Integration Gate all passed on one isolated candidate. Marker REAL_PRODUCT_CLAUDE_GATE_20260807_042628 produced a same-channel visible ACK through aura message send, with selected-agent, complete-ACK, and message-send target checks; see evidence/live-product-chat-gate-20260807-reconnect.json. Windows x64 real-host acceptance remains open, so task status stays in_progress. release-artifacts is gitignored generated output and must not be committed. See handoff.md, windows-acceptance.md, macos-evidence.md, and evidence/.",
   "meta": {
     "macAutomated": "full_pass_with_isolated_runtime_state_307_of_307",
-    "macRealEvidence": "REAL_PRODUCT_CLAUDE_GATE_20260807_041957",
+    "macRealEvidence": "REAL_PRODUCT_CLAUDE_GATE_20260807_042628",
     "macInstallEvidence": "managed_standalone_0.2.6_sha256_181f729a8dcc71fade56a41d5ef4d6de80c4ccc04e35d7143ac3019161da00f6",
     "macConnectEvidence": "fresh_reconnect_online_product_gate_12_of_12",
     "macProductGateEvidence": "evidence/live-product-chat-gate-20260807-reconnect.json",

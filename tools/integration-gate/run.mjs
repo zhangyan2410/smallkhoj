@@ -1180,6 +1180,9 @@ function reduceRuntimeActivity(activity, { traceId, marker, userMessageId }) {
       return {
         toolName: details.toolName ?? details.name ?? 'runtime_output',
         toolId: details.toolId ?? details.id,
+        agentId: item.agentId ?? details.agentId ?? null,
+        traceId: details.traceId ?? traceId ?? null,
+        marker: details.marker ?? marker ?? null,
         commandPreview,
         isSlockMessageSend: isSlockMessageSendCommand(commandPreview),
         ok: details.ok !== false,

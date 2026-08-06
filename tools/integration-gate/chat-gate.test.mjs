@@ -200,6 +200,24 @@ test('product chat gate requires the complete expected acknowledgement, not only
   assert.equal(report.replyEvidence.markerMatch, false);
 });
 
+test('product chat gate rejects Aura message-send evidence aimed at another target', () => {
+  const report = buildChatGateReport(baseInput({
+    scenario: 'product-chat-reply-claude',
+    installationIdentity: PRODUCT_IDENTITY,
+    toolEvidence: [{
+      toolName: 'Bash',
+      commandPreview: 'aura message send --target "#other-channel"',
+      isSlockMessageSend: true,
+      ok: true,
+      target: '#other-channel',
+    }],
+  }));
+
+  assert.equal(report.ok, false);
+  assert.equal(report.failure.code, 'SLOCK_SEND_TARGET_MISMATCH');
+  assert.equal(report.steps.find((step) => step.id === 'slock-send-observed')?.status, 'failed');
+});
+
 test('product chat gate fails closed on missing Aura identity before chat evidence', () => {
   const report = buildChatGateReport(baseInput({
     scenario: 'product-chat-reply-claude',
