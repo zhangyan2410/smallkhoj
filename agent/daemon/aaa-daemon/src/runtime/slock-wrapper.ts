@@ -1,3 +1,4 @@
+import { spawnSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, realpathSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join, resolve } from 'path';
@@ -157,5 +158,48 @@ export function seedMemoryFile(workspacePath: string): string {
 }
 
 export function prependPathEnv(wrapperDir: string, basePath = process.env.PATH ?? ''): string {
+  // On Windows the daemon is often launched via `npx`/a connect ticket, and the
+  // resulting long-lived process can end up with an empty or stripped PATH (the
+  // spawned runtime then cannot resolve `claude.cmd`/`codex.cmd`/etc.). When the
+  // inherited basePath is missing, fall back to the persisted user+machine PATH
+  // from the registry so spawned runtimes can still find system commands.
+  if (process.platform === 'win32' && !basePath.trim()) {
+    const registryPath = resolveWindowsRegistryPath();
+    if (registryPath) basePath = registryPath;
+  }
   return `${wrapperDir}${process.platform === 'win32' ? ';' : ':'}${basePath}`;
+}
+
+let cachedRegistryPath: string | null | undefined;
+
+/**
+ * Read the persisted Windows PATH (user + machine) from the registry.
+ * Used as a fallback when the daemon process inherited an empty PATH (common with
+ * `npx`/connect-ticket launches), so spawned runtimes and command resolution
+ * (`resolveNpxCommand`, etc.) can still find system commands. Result is cached for
+ * the process lifetime. Returns null on non-Windows or if unavailable.
+ */
+export function resolveWindowsRegistryPath(): string | null {
+  if (process.platform !== 'win32') return null;
+  if (cachedRegistryPath !== undefined) return cachedRegistryPath;
+  cachedRegistryPath = null;
+  try {
+    // Use PowerShell's [Environment]::GetEnvironmentVariable, which returns .NET
+    // strings (UTF-16, code-page safe — important for non-ASCII usernames) and
+    // expands REG_EXPAND_SZ references like %APPDATA% automatically. This matters
+    // because npm stores its global bin as %APPDATA%\npm on default installs, and a
+    // Chinese-username machine would corrupt that path under reg.exe's GBK output.
+    const script = "$u=[Environment]::GetEnvironmentVariable('Path','User');$m=[Environment]::GetEnvironmentVariable('Path','Machine');($m+';'+$u)";
+    const powershell = join(process.env.SYSTEMROOT ?? process.env.WINDIR ?? 'C:\\Windows', 'System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    const result = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
+      encoding: 'utf-8',
+      windowsHide: true,
+    });
+    if (result.status !== 0) return cachedRegistryPath;
+    const combined = (result.stdout ?? '').trim();
+    cachedRegistryPath = combined || null;
+  } catch {
+    cachedRegistryPath = null;
+  }
+  return cachedRegistryPath;
 }

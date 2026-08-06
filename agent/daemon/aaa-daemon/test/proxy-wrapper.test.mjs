@@ -125,6 +125,23 @@ test('writeSlockWrapper writes wrappers and proxy token', () => {
   }
 });
 
+test('prependPathEnv restores a usable PATH on Windows when the inherited basePath is empty', () => {
+  // Regression: the daemon is launched via `npx`/connect ticket and its process may
+  // inherit an empty PATH. prependPathEnv must fall back to the persisted registry
+  // PATH so spawned runtimes can still resolve claude.cmd/codex.cmd/etc.
+  if (process.platform !== 'win32') {
+    assert.ok(prependPathEnv('/w', '').startsWith('/w'));
+    return;
+  }
+  const restored = prependPathEnv('C:\\fake-wrapper', '');
+  // wrapperDir is always prepended.
+  assert.ok(restored.startsWith('C:\\fake-wrapper;'));
+  // The registry fallback (user+machine PATH) is non-trivial and includes the
+  // standard npm global bin where claude.cmd lives on Windows.
+  assert.ok(restored.length > 'C:\\fake-wrapper;'.length, 'fallback PATH must not be empty');
+  assert.match(restored, /Roaming[\\/]npm/i, 'fallback PATH should include the npm global bin');
+});
+
 test('PATH-injected collaboration aliases resolve the same workspace agent CLI', () => {
   const root = mkdtempSync(join(tmpdir(), 'aaa-aura-path-'));
   try {

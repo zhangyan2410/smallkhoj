@@ -156,3 +156,17 @@ test('codex acp command builder resolves npx.cmd on Windows PATH', () => {
     rmSync(pathDir, { recursive: true, force: true });
   }
 });
+
+test('resolveNpxCommand restores npx.cmd on Windows when the inherited PATH is empty', () => {
+  // Regression: the daemon is launched via `npx`/connect ticket and its process may
+  // inherit an empty PATH. Without the registry fallback, resolveNpxCommand returns
+  // bare `npx` (no extension), which Windows cannot CreateProcess without a shell
+  // (spawn ENOENT). It must fall back to the persisted registry PATH and resolve
+  // npx.cmd.
+  if (process.platform !== 'win32') {
+    assert.equal(resolveNpxCommand({ PATH: '' }, 'win32'), 'npx');
+    return;
+  }
+  const resolved = resolveNpxCommand({ PATH: '' }, 'win32');
+  assert.equal(resolved, 'npx.cmd', 'empty daemon PATH should still resolve npx.cmd via the registry fallback');
+});

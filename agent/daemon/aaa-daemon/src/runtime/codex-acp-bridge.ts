@@ -17,6 +17,7 @@ import {
   type SessionUpdate,
 } from '@agentclientprotocol/sdk';
 import { runtimeCommandSpawnSpec, runtimeProcessSpawnOptions, signalRuntimeProcessTree } from './process-tree.js';
+import { resolveWindowsRegistryPath } from './slock-wrapper.js';
 
 export interface CodexAcpCommandOptions {
   command?: string;
@@ -46,7 +47,15 @@ export function resolveNpxCommand(
   platform: NodeJS.Platform = process.platform,
 ): string {
   if (platform !== 'win32') return 'npx';
-  return commandAppearsOnPath('npx.cmd', env.PATH ?? '') ? 'npx.cmd' : 'npx';
+  // The daemon process may have inherited an empty PATH (npx/connect-ticket launch).
+  // Fall back to the persisted registry PATH so we resolve `npx.cmd` (the real shim)
+  // instead of bare `npx`, which Windows cannot CreateProcess without a shell.
+  let pathValue = env.PATH ?? '';
+  if (!pathValue.trim()) {
+    const registryPath = resolveWindowsRegistryPath();
+    if (registryPath) pathValue = registryPath;
+  }
+  return commandAppearsOnPath('npx.cmd', pathValue) ? 'npx.cmd' : 'npx';
 }
 
 function commandAppearsOnPath(command: string, pathValue: string): boolean {

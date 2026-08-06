@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Credential } from '../types.js';
 import { channelMembershipPromptRules } from './channel-context.js';
@@ -494,9 +494,49 @@ export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeD
     ];
 
     const spawnSpec = runtimeCommandSpawnSpec(command, args);
+    const spawnEnv = buildClaudeRuntimeEnv(this.options, this.options.baseEnv ?? process.env);
+    // [DIAG] Windows claude startup probe — emit diagnostics before spawn so daemon/logs captures them.
+    // Remove once the Windows claude.cmd startup failure is resolved.
+    if (process.platform === 'win32') {
+      const pathValue = spawnEnv.PATH ?? '';
+      const pathDelimiter = ';';
+      const claudeOnPath = (() => {
+        for (const dir of pathValue.split(pathDelimiter)) {
+          if (!dir) continue;
+          for (const candidate of [command, 'claude.cmd', 'claude.exe']) {
+            if (candidate && !candidate.includes('\\') && !candidate.includes('/')) {
+              try {
+                if (existsSync(join(dir, candidate))) return { dir, candidate };
+              } catch { /* ignore */ }
+            }
+          }
+        }
+        return null;
+      })();
+      const workspaceExists = existsSync(this.options.workspacePath);
+      const inheritedPath = (this.options.baseEnv ?? process.env).PATH ?? '';
+      this.emit('line', { stream: 'stderr', line: JSON.stringify({
+        diag: 'claude-spawn-windows',
+        platform: process.platform,
+        command,
+        commandCharCodes: [...command].map((c) => c.charCodeAt(0)),
+        argsCount: spawnSpec.args.length,
+        shell: spawnSpec.shell,
+        spawnCommand: spawnSpec.command,
+        cwd: this.options.workspacePath,
+        cwdExists: workspaceExists,
+        inheritedPathLength: inheritedPath.length,
+        inheritedPathHasRoamingNpm: /Roaming[\\/]npm/i.test(inheritedPath),
+        pathLength: pathValue.length,
+        pathHasRoamingNpm: /Roaming[\\/]npm/i.test(pathValue),
+        pathFallbackApplied: inheritedPath.trim() === '' && pathValue.length > inheritedPath.length + 1,
+        claudeResolvesTo: claudeOnPath,
+        pathHead: pathValue.split(pathDelimiter).slice(0, 8),
+      }) });
+    }
     const child = spawn(spawnSpec.command, spawnSpec.args, runtimeProcessSpawnOptions({
       cwd: this.options.workspacePath,
-      env: buildClaudeRuntimeEnv(this.options, this.options.baseEnv ?? process.env),
+      env: spawnEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: spawnSpec.shell,
     }));

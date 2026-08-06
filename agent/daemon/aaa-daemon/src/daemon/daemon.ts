@@ -1026,6 +1026,11 @@ export class DaemonCore extends EventEmitter {
     };
     const runtimeAllowWrites = runtimeConfig.allowWrites === true || this.config.allowWrites === true;
     const baseEnv = { ...process.env };
+    // [DIAG] Windows claude startup probe — confirm whether the daemon process itself has an empty PATH.
+    // Remove once the Windows claude.cmd startup failure is resolved.
+    if (process.platform === 'win32') {
+      this.log(`[DIAG] daemon process.env.PATH length=${(process.env.PATH ?? '').length} hasRoamingNpm=${/Roaming[\\/]npm/i.test(process.env.PATH ?? '')} baseEnv.PATH length=${(baseEnv.PATH ?? '').length}`, 'warn');
+    }
     if (runtimeAllowWrites) {
       baseEnv.SLOCK_ALLOW_WRITES = '1';
     }
