@@ -20,16 +20,26 @@ Store only reviewable, redacted evidence. Suggested files:
 <marker>-summary.md
 ```
 
+Mac-only install/setup evidence uses the same candidate marker and a separate prefix:
+
+```text
+macos-install-real-8000_20260806234756.md
+macos-setup-real-8000_20260806234756.md
+```
+
 Every summary must name the candidate commit, frontend/API URLs, OS/CPU/PowerShell or macOS/Node versions, command exit codes, and PASS/BLOCKED status. Replace all `sk_connect_` and `sk_machine_` values with `<REDACTED_...>` before copying files here. Do not store browser cookies, database dumps, private keys, or raw server credentials.
 
 For browser evidence, record the exact WebDriver `tabId` and `tabUrl`, use `./twd`, and keep the same marker across DOM checks, screenshots, API reconciliation, and trace output. A stale tab, static screenshot, or typecheck result cannot prove a real-host acceptance gate.
 
-## Current Mac candidate evidence
+## Historical UI candidate and current artifact evidence
 
-The 2026-08-06 Mac run used candidate `4d02667139a2`, backend `http://127.0.0.1:8000`, frontend `http://127.0.0.1:3000`, and WebDriver `tabId=1617513010` at `/computers`:
+The original 2026-08-06 UI/runtime run used historical candidate `4d02667139a2`, backend
+`http://127.0.0.1:8000`, frontend `http://127.0.0.1:3000`, and WebDriver
+`tabId=1617513010` at `/computers`. Its service identity and PASS results are retained for UI
+context only; they do not identify the current release artifact:
 
 - `live-runtime-report.md` — service identity, Integration Gate 51/51, and browser acceptance summary;
-- `daemon-runtime-recheck.md` — isolated full daemon suite (305/305) and diagnosis of the stale-credential 502;
+- `daemon-runtime-recheck.md` — historical 305/305 suite, current 307/307 recheck, and diagnosis of the stale-credential 502;
 - `computers-dom.json` / `computers-eval.json` — initial same-tab DOM and marker evaluation;
 - `computers-dialog-dom.txt` / `computers-dialog-eval.json` — dialog-open DOM/eval on the same tab;
 - `computers-windows-dom.txt` / `computers-windows-eval.json` — Windows-tab fail-closed DOM/eval on the same tab.
@@ -51,3 +61,15 @@ repository ignore policy excludes image blobs; the JSON eval files are the
 reviewable assertions.
 
 The corresponding `computers.png` screenshot remains local-only because repository policy intentionally ignores evidence image blobs. Windows-side evidence must use a fresh marker and redact all connect/machine credentials before handoff.
+
+The current source/release candidate is `26a506cfb464c5a3e43d1775918ee1b6e356fe57`.
+Its `darwin-arm64` 0.2.6 artifact was rebuilt locally and served from the current worktree
+FastAPI StaticFiles mount at `http://localhost:8000` with lifespan disabled. That carrier-only
+process proved HTTP 200, manifest/source revision, checksum, isolated install, Setup idempotence,
+and fake-upstream Connect/register/heartbeat. It did not run database lifespan and is not a real
+backend Online/cloud acceptance. See `macos-install-real-8000_20260806234756.md` and
+`macos-setup-real-8000_20260806234756.md`.
+
+`release-artifacts/` is gitignored generated output. The roughly 191 MB archive must not be
+committed; Windows must rebuild and publish a real `win32-x64` PE artifact after fetching the
+current `main`.

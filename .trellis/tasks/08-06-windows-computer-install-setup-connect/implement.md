@@ -81,8 +81,14 @@ Do not run `task.py start` until `prd.md`, this design, and this execution plan 
 
 The Mac-side implementation and automated gates are complete for the current checkout. The following phases have landed: structured ticket-free preview and explicit Connect/Reconnect ticket actions (Phase 3), platform-aware Aura paths/setup and status (Phase 2), Windows ZIP/PowerShell installer generation with fail-closed artifact requirements (Phase 1), and the mutually exclusive three-phase Computers UI plus i18n/spec updates (Phase 4).
 
-Mac-side focused automated verification is recorded in `macos-evidence.md`. The daemon runtime integration suite is additionally blocked by the unavailable local backend (`HTTP_502`/timeout); the real browser/runtime gate is `BLOCKED_CANDIDATE_IDENTITY` because the collector found no healthy frontend/backend candidate for this worktree. No stale WebDriver tab was promoted to evidence.
+Mac-side focused automated verification is recorded in `macos-evidence.md`. The earlier
+`HTTP_502`/timeout came from a stale host credential redirecting fake-upstream tests; it was
+reproduced as a state-isolation issue and cleared by rerunning with isolated Aura/credential
+paths (current daemon suite: 307/307). The historical browser/runtime evidence is explicitly
+labelled by candidate in `evidence/live-runtime-report.md`; the current daemon artifact was
+also installed from the worktree carrier and exercised through fake-upstream Connect/register/
+heartbeat. Neither evidence set is a Windows PE or real SmallKhoj Online acceptance.
 
-Phase 5 remains open. A Windows x64 host must provide a real PE `node.exe`/`aura.exe`, publish the matching release manifest, execute the install/setup/connect/reconnect/upgrade/rollback/conflict matrix, and commit redacted evidence under `evidence/`. Mac real UI/runtime evidence must also be rerun on a proven candidate before the task can move to `completed`.
+Phase 5 remains open. A Windows x64 host must provide a real PE `node.exe`/`aura.exe`, publish the matching release manifest, execute the install/setup/connect/reconnect/upgrade/rollback/conflict matrix, and commit redacted evidence under `evidence/`. Keep `task.json.status` as `in_progress` until that real-host gate is complete; Mac-side evidence cannot substitute for it.
 
 See `handoff.md` for the boundary and `windows-acceptance.md` for the exact continuation checklist.

@@ -6,6 +6,30 @@
 REAL_windows-computer-install-setup-connect_<YYYYMMDDHHMMSS>
 ```
 
+## 当前 main 与 Mac 交接前提
+
+Windows agent 开始前先拉取并记录：
+
+```powershell
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+git rev-parse HEAD
+```
+
+当前 Mac 侧源候选为 `26a506cfb464c5a3e43d1775918ee1b6e356fe57`；如果 `main` 已有更新，
+以实际 `git rev-parse HEAD` 为准，并把该 SHA 写入所有证据。Mac 只重建并验证了
+`darwin-arm64` Node-backed archive；Windows 必须自行构建真实 `win32-x64` PE（`aura.exe`
+和私有 `node.exe`），不能把 Mac archive、源码 `dist` 或静态截图当作 Windows 产物。
+
+注意：交接文档本身可能在 Mac 产物源码提交之后追加一个 docs-only commit；这不会改变
+Mac archive 的 provenance，但 Windows builder 的 `--source-revision` 仍必须填写拉取后
+当前 HEAD，而不是复制 Mac archive 的旧 SHA。
+
+`release-artifacts/smallkhoj-daemon/` 是 gitignored 的生成/部署输入。约 191 MB 的 archive
+不要提交 Git/PR；构建完成后把 ZIP、`install.ps1`、manifest 和 checksum 发布到实际 backend
+镜像的 `/downloads/smallkhoj-daemon` carrier，再在同一候选上验证 HTTP 下载。
+
 ## 0. 记录候选身份（先做，失败则停止）
 
 在 PowerShell 保存以下输出（删去用户名、URL 中的 token 和机器标识后提交）：
@@ -29,6 +53,7 @@ $env:Path -split ';' | Out-File "$marker-preflight.txt" -Append
 - Windows 侧提供真实 PE 格式 `node.exe` 和 `aura.exe`；Mac 不生成或替代它们。
 - 运行 distribution builder 的 `--platform win32-x64`，产出 ZIP、`.sha256`、`.manifest.json` 和 `install.ps1`。
 - 将这些文件发布到后端静态目录 `release-artifacts/smallkhoj-daemon` 对应的 `/downloads/smallkhoj-daemon`，并确认 manifest 的 `version`/`platform`/`sha256` 与 ZIP 一致。
+- 发布 carrier 前后都记录 `sourceRevision`、archive SHA-256、backend 进程/image 身份和实际 URL；临时 Python 静态服务器只能证明文件可下载，不能作为 backend/Online 证据。
 - 发布前先用测试账号确认 Windows preview 的 `available=true`；没有 manifest 时应明确显示 unavailable warning，不能输出可复制的残缺 Windows 命令。
 
 ## 2. 安装（Install）
@@ -58,6 +83,7 @@ aura status --json
 - [ ] 首次输出 machine ID；关闭并重新打开 PowerShell 后再次 Setup 保留同一 machine ID 和名称。
 - [ ] `credential.json` 只在 Connect 成功后写入 machine token，且 ACL 仅限当前用户（记录 ACL 摘要，不提交 token）。
 - [ ] `aura status --json` 能区分 `implementationType`、平台、架构和状态目录。
+- [ ] `aura status --json` stdout 是单个可解析 JSON 文档；daemon 未运行时允许 exit code 1，但不得把 `Daemon is not running` 追加到 stdout（当前 main 已修复并有回归测试）。
 - [ ] 复制/克隆场景只通过显式 `--reset` 换 machine ID；普通升级/重连不换 ID。
 
 ## 4. 首次 Connect / Online

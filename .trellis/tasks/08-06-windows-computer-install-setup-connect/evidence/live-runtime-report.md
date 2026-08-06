@@ -1,10 +1,15 @@
 # Live runtime acceptance (2026-08-06)
 
-Collector context: repo `/Users/code/project/smallkhoj`, branch `main`, HEAD `4d02667139a2`, 3 worktrees; initial listeners had no 3000/8000/38190/38191, host PostgreSQL 127.0.0.1:5432 PID 805. Safety contract treated host 5432 as protected and did not migrate/stamp/cleanup it.
+This is the historical UI/runtime report for candidate `4d02667139a2`. The current source candidate
+is `26a506cfb464c5a3e43d1775918ee1b6e356fe57`; current artifact/carrier and install/Connect evidence
+are appended in `macos-install-real-8000_20260806234756.md` and
+`macos-setup-real-8000_20260806234756.md`. The original collector context was repo
+`/Users/code/project/smallkhoj`, branch `main`, 3 worktrees; host PostgreSQL 127.0.0.1:5432 PID 805.
+Safety contract treated host 5432 as protected and did not migrate/stamp/cleanup it.
 
 ## Candidate identity
 
-Started current worktree directly after `./dev.sh restart` processes exited under non-interactive shell. Backend command `AUTH_BRIDGE_SECRET=... uv run python main.py` from `/Users/code/project/smallkhoj/backend`; PID 19042 (cwd `/Users/code/project/smallkhoj/backend`) with child 19045. Frontend `npm run dev` from `/Users/code/project/smallkhoj/frontend`; after the readability CSS refresh, npm parent/Next PIDs are 37305/37311. URLs: `http://127.0.0.1:8000/docs`, `http://127.0.0.1:3000/`.
+Started the historical candidate directly after `./dev.sh restart` processes exited under non-interactive shell. Backend command `AUTH_BRIDGE_SECRET=... uv run python main.py` from `/Users/code/project/smallkhoj/backend`; PID 19042 (cwd `/Users/code/project/smallkhoj/backend`) with child 19045. Frontend `npm run dev` from `/Users/code/project/smallkhoj/frontend`; after the readability CSS refresh, npm parent/Next PIDs are 37305/37311. URLs: `http://127.0.0.1:8000/docs`, `http://127.0.0.1:3000/`.
 
 ## Tests
 
@@ -17,7 +22,7 @@ pre-existing `payloadString` unused warning.
 
 With the candidate backend/frontend running, the daemon suite was rerun with an isolated temporary Aura state directory so a stale user credential could not redirect the fake-upstream tests:
 
-`cd agent/daemon/aaa-daemon && npm run build && node --test --test-concurrency=1 test/*.test.mjs`: PASS, 305 tests, 0 failures, 0 cancelled. The detailed rerun and the initial stale-credential 502 diagnosis are in [daemon-runtime-recheck.md](./daemon-runtime-recheck.md).
+`cd agent/daemon/aaa-daemon && npm run build && node --test --test-concurrency=1 test/*.test.mjs`: historical PASS, 305 tests, 0 failures, 0 cancelled. The current 307/307 recheck and the initial stale-credential 502 diagnosis are in [daemon-runtime-recheck.md](./daemon-runtime-recheck.md).
 
 Production frontend build also passed with a non-development temporary public API
 key and local build-only auth/database values; the key was not committed.
@@ -38,8 +43,8 @@ The same tab was then reopened with the onboarding dialog visible and captured a
 
 Snapshot shows Chinese default copy, Windows and macOS / Linux tabs, Install/Setup/Connect sections. Eval lists only `Windows` and `macOS / Linux` platform tabs and the unselected platform command is absent from visible DOM. Initial preview contains no ticket; Connect remains “生成连接命令”.
 
-## Limits
+## Limits and current artifact handoff
 
-No Windows hardware/runtime was available; Windows manifest unavailable/fail-closed and actual Windows command execution remain unexecuted. Ticket issuance/expiry/reconnect interaction was not exercised because it requires creating a daemon registration and would write runtime data; no shared DB test writes were performed intentionally.
+No Windows hardware/runtime was available; Windows manifest unavailable/fail-closed and actual Windows command execution remain unexecuted. This historical browser report did not exercise ticket issuance/expiry/reconnect. The current installed artifact did exercise a fake-upstream Connect/register/heartbeat in the companion setup evidence, but that does not prove real SmallKhoj Online or cloud behavior. No shared DB test writes were performed intentionally.
 
 The earlier ACP 127 string is documented in `daemon-runtime-recheck.md`: it is a deliberate negative child-exit test, while the production default dynamically resolves `@zed-industries/codex-acp@0.16.0` through npx. The package is not bundled, so Windows offline/cache/PATH behavior remains a real acceptance item rather than a Mac blocker.
