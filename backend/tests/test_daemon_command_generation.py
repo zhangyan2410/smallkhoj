@@ -90,7 +90,8 @@ def test_daemon_install_metadata_is_domain_aware():
     assert metadata["downloadBaseUrl"] == "https://smallkhoj.example.com/downloads/smallkhoj-daemon"
     assert metadata["installCommand"] == (
         "curl -fsSL https://smallkhoj.example.com/downloads/smallkhoj-daemon/install.sh "
-        "| SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL=https://smallkhoj.example.com/downloads/smallkhoj-daemon bash"
+        "| SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL=https://smallkhoj.example.com/downloads/smallkhoj-daemon bash "
+        '&& export PATH="$HOME/.smallkhoj/bin:$PATH"'
     )
     assert metadata["commandName"] == "aura"
     assert "localhost" not in metadata["installCommand"]

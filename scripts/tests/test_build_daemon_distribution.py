@@ -80,6 +80,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertIn("SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL", install_script)
             self.assertIn("smallkhoj-daemon-v0.2.0-darwin-arm64.tar.gz", install_script)
             self.assertIn(result.sha256, install_script)
+            self.assertIn('Run now: export PATH=\\"${BIN_DIR}:\\$PATH\\"', install_script)
             self.assertIn('exec "${VERSION_DIR}/smallkhoj-daemon" "\\$@"', install_script)
             self.assertIn('exec "${VERSION_DIR}/aura" "\\$@"', install_script)
             self.assertNotIn("ln -sfn", install_script)

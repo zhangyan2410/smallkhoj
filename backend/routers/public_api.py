@@ -293,7 +293,8 @@ def _daemon_install_metadata(server_url: str) -> dict[str, str]:
         "installScriptUrl": install_script_url,
         "installCommand": (
             f"curl -fsSL {shlex.quote(install_script_url)} "
-            f"| SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL={shlex.quote(download_base_url)} bash"
+            f"| SMALLKHOJ_DAEMON_DOWNLOAD_BASE_URL={shlex.quote(download_base_url)} bash "
+            '&& export PATH="$HOME/.smallkhoj/bin:$PATH"'
         ),
     }
 
