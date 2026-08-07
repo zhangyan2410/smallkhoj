@@ -51,6 +51,16 @@ def write_minimal_pe(path: Path) -> None:
 
 
 class BuildDaemonDistributionTests(unittest.TestCase):
+    def test_windows_dependency_install_targets_runtime_platform(self) -> None:
+        self.assertEqual(
+            builder.production_dependency_install_args("win32-x64"),
+            ["npm", "install", "--omit=dev", "--silent", "--platform", "win32", "--arch", "x64"],
+        )
+        self.assertEqual(
+            builder.production_dependency_install_args("darwin-arm64"),
+            ["npm", "install", "--omit=dev", "--silent"],
+        )
+
     def test_build_distribution_creates_versioned_platform_artifact(self) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)

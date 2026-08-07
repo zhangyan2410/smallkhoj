@@ -545,6 +545,10 @@ Default local archive path if not overridden:
 - Prefer an ORICO path for large local archives to avoid system disk pressure.
 - Choose `--platform` from the actual server architecture. The current Lighthouse Docker image target has been validated as `linux/amd64` unless a new host probe says otherwise.
 - `--use-vpn-proxy` passes Docker build proxy args for `http://host.docker.internal:7897`.
+- `--skip-daemon-build` reuses a prebuilt daemon artifact directory (for example
+  a win32-x64 ZIP assembled from official PE inputs) while still building the
+  backend, frontend, and Caddy carrier images. It must not be combined with
+  `--skip-build`.
 - Server env files and secrets are never baked into the image archive and never committed.
 - Before a real `production_image_transfer.py` build, export `PUBLIC_API_KEY` in the caller environment and place the same value in the server-side `.env.prod`. The frontend step uses `--secret id=public_api_key,env=PUBLIC_API_KEY`; dry-run/JSON command plans contain only that reference and never the value.
 - Production image build contexts must be a clean Git candidate: staged, unstaged, and untracked files are all release blockers. The revision written to `org.opencontainers.image.revision` must equal the checked-out `HEAD`; an operator-supplied revision is validation input, not permission to relabel a different filesystem snapshot.

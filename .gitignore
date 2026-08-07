@@ -23,6 +23,9 @@ zy-think/.obsidian/
 *.tsbuildinfo
 toremove/
 release-artifacts/
+/aura-build-runtime/
+/codex-acp.exe
+/node.zip
 
 # Trellis evidence screenshots are local validation artifacts; keep text notes, ignore image blobs.
 .trellis/tasks/**/evidence/*.png

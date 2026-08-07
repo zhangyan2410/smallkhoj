@@ -56,6 +56,7 @@ class TransferOptions:
     frontend_image: str = DEFAULT_FRONTEND_IMAGE
     caddy_image: str = DEFAULT_CADDY_IMAGE
     skip_build: bool = False
+    skip_daemon_build: bool = False
     platform: str | None = None
     use_vpn_proxy: bool = False
     proxy_url: str = DEFAULT_PROXY_URL
@@ -560,19 +561,21 @@ def build_steps(options: TransferOptions) -> list[PlanStep]:
     proxy_args = build_proxy_args(options)
     platform_args = build_platform_args(options)
     revision_args = source_revision_args(options)
-    return [
-        PlanStep("build-daemon-release-artifacts", [
-            sys.executable,
-            "scripts/build_daemon_distribution.py",
-            "--root",
-            ".",
-            "--output-dir",
-            str(DAEMON_RELEASE_ARTIFACT_DIR),
-            "--source-revision",
-            options.source_revision.strip().lower(),
-            "--clean-output-dir",
-            "--json",
-        ]),
+    steps: list[PlanStep] = []
+    if not options.skip_daemon_build:
+        steps.append(PlanStep("build-daemon-release-artifacts", [
+                sys.executable,
+                "scripts/build_daemon_distribution.py",
+                "--root",
+                ".",
+                "--output-dir",
+                str(DAEMON_RELEASE_ARTIFACT_DIR),
+                "--source-revision",
+                options.source_revision.strip().lower(),
+                "--clean-output-dir",
+                "--json",
+            ]))
+    steps.extend([
         PlanStep("build-backend-image", [
             "docker",
             "build",
@@ -614,7 +617,8 @@ def build_steps(options: TransferOptions) -> list[PlanStep]:
             options.caddy_image,
             "./deploy/caddy",
         ]),
-    ]
+    ])
+    return steps
 
 
 def build_plan(options: TransferOptions) -> CommandPlan:
@@ -704,6 +708,13 @@ def execute_transfer(
         if capacity
         else {"type": "task-scoped", "taskId": validate_task_scope(root, task_id or ""), "capacityClaim": "not-asserted"}
     )
+    # The carrier image serves these exact artifacts. Validate externally
+    # prepared Windows input before any Docker/SSH side effects; the normal
+    # builder path is revalidated after it runs below.
+    validate_daemon_release_artifacts(
+        root / DAEMON_RELEASE_ARTIFACT_DIR,
+        candidate.head,
+    )
     plan = build_plan(options)
     identities: dict[str, ImageIdentity] | None = None
     archive_path = resolve_transfer_output(options.output_archive, root)
@@ -722,11 +733,10 @@ def execute_transfer(
             candidate = validate_release_candidate(root, options.source_revision)
             if capacity_report:
                 capacity = validate_capacity_report(capacity_report.resolve(), candidate.tree)
-            if not options.skip_build:
-                validate_daemon_release_artifacts(
-                    root / DAEMON_RELEASE_ARTIFACT_DIR,
-                    candidate.head,
-                )
+            validate_daemon_release_artifacts(
+                root / DAEMON_RELEASE_ARTIFACT_DIR,
+                candidate.head,
+            )
             identities = inspect_candidate_images(options, candidate.head)
 
         return_code = run_step(step, root=root)
@@ -803,7 +813,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backend-image", default=DEFAULT_BACKEND_IMAGE, help=f"Backend image tag. Default: {DEFAULT_BACKEND_IMAGE}")
     parser.add_argument("--frontend-image", default=DEFAULT_FRONTEND_IMAGE, help=f"Frontend image tag. Default: {DEFAULT_FRONTEND_IMAGE}")
     parser.add_argument("--caddy-image", default=DEFAULT_CADDY_IMAGE, help=f"Caddy image tag. Default: {DEFAULT_CADDY_IMAGE}")
-    parser.add_argument("--skip-build", action="store_true", help="Skip docker build and only save/upload/load existing local images.")
+    parser.add_argument("--skip-build", action="store_true", help="Skip daemon and Docker image builds; only save/upload/load existing local images.")
+    parser.add_argument(
+        "--skip-daemon-build",
+        action="store_true",
+        help="Reuse a prebuilt daemon artifact directory while still building the backend, frontend, and Caddy images.",
+    )
     parser.add_argument("--platform", help="Docker build target platform, for example linux/amd64 or linux/arm64. Omit to use the local Docker default.")
     parser.add_argument("--use-vpn-proxy", action="store_true", help=f"Add Docker build proxy args for the local VPN proxy. Default proxy: {DEFAULT_PROXY_URL}")
     parser.add_argument("--proxy-url", default=DEFAULT_PROXY_URL, help=f"Docker build-container proxy URL. Default: {DEFAULT_PROXY_URL}")
@@ -877,6 +892,7 @@ def options_from_args(
         frontend_image=args.frontend_image,
         caddy_image=args.caddy_image,
         skip_build=args.skip_build,
+        skip_daemon_build=args.skip_daemon_build,
         platform=args.platform,
         use_vpn_proxy=args.use_vpn_proxy,
         proxy_url=args.proxy_url,
@@ -908,6 +924,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.task_scoped and not args.task_id:
         print(
             "release validation failed: --task-scoped requires --task-id",
+            file=sys.stderr,
+        )
+        return 2
+    if args.skip_build and args.skip_daemon_build:
+        print(
+            "release validation failed: --skip-build and --skip-daemon-build cannot be combined",
             file=sys.stderr,
         )
         return 2

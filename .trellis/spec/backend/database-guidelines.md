@@ -1347,6 +1347,7 @@ POSTGRES_PASSWORD=<set-outside-repo>
   - `--frontend-image <tag>`
   - `--caddy-image <tag>`
   - `--skip-build`
+  - `--skip-daemon-build`
   - `--platform <docker-platform>`
   - `--use-vpn-proxy`
   - `--proxy-url <url>`

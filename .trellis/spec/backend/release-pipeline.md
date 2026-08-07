@@ -74,12 +74,14 @@ python3 scripts/production_image_transfer.py \
   --use-vpn-proxy
 
 # Functional deployment for one active Trellis task (capacityClaim=not-asserted):
+# Add --skip-daemon-build when release-artifacts/smallkhoj-daemon was prepared
+# from externally procured win32-x64 PE inputs on this same clean candidate.
 python3 scripts/production_image_transfer.py \
   --host 124.222.40.40 --user ubuntu \
   --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
   --remote-dir /home/ubuntu/smallkhoj-deploy \
   --platform linux/amd64 \
-  --task-scoped --task-id <task-id> \
+  --task-scoped --task-id <task-id> --skip-daemon-build \
   --use-vpn-proxy
 
 # Phase 5 — app-only deploy (NEVER include `db` in the deploy command)
@@ -188,6 +190,10 @@ smallkhoj-caddy:local-release
   `--task-scoped --task-id <task-id>` for a functional task deployment. A
   stale/failed/forged formal report, a missing task, or a candidate-tree
   mismatch is a blocker.
+- `--skip-daemon-build` is the single-machine Windows carrier path: it reuses a
+  prebuilt, checksum-validated daemon artifact directory while still building
+  the backend/frontend/Caddy images. It must not be combined with
+  `--skip-build`.
 - On success, atomically persist schema-versioned JSON release evidence
   (`<output-archive>.release-evidence.json`): binds tested candidate HEAD/tree,
   merge HEAD/tree, deployment scope (and formal profile + report path/hash when

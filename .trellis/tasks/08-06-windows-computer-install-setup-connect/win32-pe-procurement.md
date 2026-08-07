@@ -92,6 +92,20 @@ python scripts/build_daemon_distribution.py \
 - `smallkhoj-daemon-v0.2.6-win32-x64.zip`(含 aura.exe/node.exe/dist/node_modules/sidecars/codex-acp/codex-acp.exe/manifest.json/package.json)
 - `.sha256` / `.manifest.json` / `install.ps1` / `.tgz`
 
+artifact 已准备好后，不要让 image transfer 的默认 daemon build 清空它；在同一个
+干净候选上使用 `--skip-daemon-build`，它会复用并校验该目录，同时重新构建
+Linux/amd64 的 backend/frontend/Caddy carrier：
+
+```bash
+python scripts/production_image_transfer.py \
+  --host 124.222.40.40 --user ubuntu \
+  --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
+  --platform linux/amd64 \
+  --task-scoped --task-id windows-computer-install-setup-connect \
+  --skip-daemon-build --use-vpn-proxy
+```
+
 ## 5. 校验(builder 内置 PE 头检查)
 
 builder 的 `require_pe_executable` 会对 3 个输入校验 MZ + PE\0\0 头;Mac Mach-O 改名 `.exe` 会被拒。所以:

@@ -28,8 +28,9 @@ def init_git_repo(root: Path) -> tuple[str, str]:
         cwd=root,
         check=True,
     )
+    (root / ".gitignore").write_text("release-artifacts/\n", encoding="utf-8")
     (root / "tracked.txt").write_text("candidate\n", encoding="utf-8")
-    subprocess.run(["git", "add", "tracked.txt"], cwd=root, check=True)
+    subprocess.run(["git", "add", ".gitignore", "tracked.txt"], cwd=root, check=True)
     subprocess.run(
         ["git", "commit", "-q", "-m", "candidate"],
         cwd=root,
@@ -88,6 +89,24 @@ def write_task_metadata(root: Path, task_id: str) -> None:
     task_dir.mkdir(parents=True, exist_ok=True)
     (task_dir / "task.json").write_text(
         json.dumps({"id": task_id, "status": "in_progress"}),
+        encoding="utf-8",
+    )
+
+
+def write_daemon_artifacts(root: Path, revision: str) -> None:
+    artifact_dir = root / "release-artifacts" / "smallkhoj-daemon"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    package = artifact_dir / "smallkhoj-smallkhoj-daemon-0.2.6.tgz"
+    package.write_bytes(b"candidate daemon package")
+    manifest = artifact_dir / "smallkhoj-daemon-v0.2.6-linux-x64.tar.gz.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "sourceRevision": revision,
+                "npmPackage": package.name,
+                "files": {package.name: transfer.sha256_file(package)},
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -189,6 +208,21 @@ class ProductionImageTransferTests(unittest.TestCase):
             "upload-image-archive",
             "load-image-archive",
         ])
+
+    def test_skip_daemon_build_keeps_docker_builds_and_reuses_artifacts(self) -> None:
+        options = transfer.TransferOptions(
+            host="203.0.113.10",
+            source_revision=SOURCE_REVISION,
+            output_archive=Path("/tmp/smallkhoj-images.tar"),
+            skip_daemon_build=True,
+        )
+
+        labels = [step.label for step in transfer.build_plan(options).steps]
+
+        self.assertNotIn("build-daemon-release-artifacts", labels)
+        self.assertIn("build-backend-image", labels)
+        self.assertIn("build-frontend-image", labels)
+        self.assertIn("build-caddy-image", labels)
 
     def test_vpn_proxy_adds_docker_build_proxy_args(self) -> None:
         options = transfer.TransferOptions(
@@ -445,6 +479,7 @@ class ProductionImageTransferTests(unittest.TestCase):
             tree = subprocess.run(
                 ["git", "rev-parse", "HEAD^{tree}"], cwd=root, check=True, capture_output=True, text=True
             ).stdout.strip()
+            write_daemon_artifacts(root, head)
             archive = workspace / "images.tar"
             evidence_path = workspace / "release-evidence.json"
             options = transfer.TransferOptions(
@@ -729,6 +764,7 @@ class ProductionImageTransferTests(unittest.TestCase):
             ).stdout.strip()
             self.assertNotEqual(tested_head, merge_head)
             self.assertEqual(tested_tree, merge_tree)
+            write_daemon_artifacts(root, merge_head)
 
             report = workspace / "formal-capacity.json"
             write_capacity_report(

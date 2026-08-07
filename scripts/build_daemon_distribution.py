@@ -92,6 +92,28 @@ def run_command(args: list[str], *, cwd: Path, timeout: int = 120) -> None:
         raise RuntimeError(f"Command failed with exit code {completed.returncode}: {' '.join(args)}")
 
 
+def production_dependency_install_args(target_platform: str) -> list[str]:
+    """Install production dependencies for the artifact's runtime platform.
+
+    npm otherwise resolves optional native packages for the host running the
+    builder.  That would put Darwin clipboard bindings into a Windows ZIP when
+    the release is assembled on a Mac.  npm's target selectors let the single
+    cross-platform builder resolve the correct optional package set instead.
+    """
+
+    args = ["npm", "install", "--omit=dev", "--silent"]
+    if target_platform.startswith(WINDOWS_PLATFORM_PREFIX):
+        arch = {
+            "win32-x64": "x64",
+            "win32-arm64": "arm64",
+            "win32-x86": "ia32",
+        }.get(target_platform)
+        if arch is None:
+            raise ValueError(f"unsupported Windows target platform: {target_platform}")
+        args.extend(["--platform", "win32", "--arch", arch])
+    return args
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -1072,7 +1094,11 @@ def build_distribution(
             codex_acp_entrypoint=codex_acp_entrypoint,
         )
         if install_production_deps:
-            run_command(["npm", "install", "--omit=dev", "--silent"], cwd=staging_dir, timeout=180)
+            run_command(
+                production_dependency_install_args(platform_value),
+                cwd=staging_dir,
+                timeout=180,
+            )
         if platform_value.startswith(WINDOWS_PLATFORM_PREFIX) or private_node:
             validate_standalone_dependencies(staging_dir)
         artifact = create_archive(
