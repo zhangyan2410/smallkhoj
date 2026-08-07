@@ -54,7 +54,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
     def test_windows_dependency_install_targets_runtime_platform(self) -> None:
         self.assertEqual(
             builder.production_dependency_install_args("win32-x64"),
-            ["npm", "install", "--omit=dev", "--silent", "--platform", "win32", "--arch", "x64"],
+            ["npm", "install", "--omit=dev", "--silent", "--os", "win32", "--cpu", "x64"],
         )
         self.assertEqual(
             builder.production_dependency_install_args("darwin-arm64"),

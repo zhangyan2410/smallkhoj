@@ -110,7 +110,7 @@ def production_dependency_install_args(target_platform: str) -> list[str]:
         }.get(target_platform)
         if arch is None:
             raise ValueError(f"unsupported Windows target platform: {target_platform}")
-        args.extend(["--platform", "win32", "--arch", arch])
+        args.extend(["--os", "win32", "--cpu", arch])
     return args
 
 
