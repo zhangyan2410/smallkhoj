@@ -166,8 +166,11 @@ def test_powershell_quote_doubles_embedded_single_quotes():
     assert public_api._powershell_quote("a'b") == "'a''b'"
 
 
-def test_windows_release_metadata_fails_closed_without_published_manifest(monkeypatch):
+def test_windows_release_metadata_fails_closed_without_published_manifest(monkeypatch, tmp_path):
     monkeypatch.setattr(public_api.settings, "daemon_release_version", "0.2.6")
+    # Redirect the artifact lookup at an empty tmp_path so the fail-closed path
+    # is exercised regardless of whether a real manifest is published on disk.
+    monkeypatch.setattr(public_api, "DAEMON_ARTIFACT_DIR", tmp_path)
     metadata = public_api._release_artifact_metadata(
         "https://smallkhoj.example.com",
         public_api.DAEMON_WINDOWS_PLATFORM,

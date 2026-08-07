@@ -52,7 +52,7 @@ def write_minimal_pe(path: Path) -> None:
 
 class BuildDaemonDistributionTests(unittest.TestCase):
     def test_build_distribution_creates_versioned_platform_artifact(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root)
             output_dir = root / "artifacts"
@@ -123,7 +123,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
                 self.assertEqual(actual, expected_sha256)
 
     def test_minimum_daemon_version_can_be_pinned_independently(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root, version="0.3.0")
             result = builder.build_distribution(
@@ -147,7 +147,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertEqual(inner["minimumDaemonVersion"], "0.2.0")
 
     def test_clean_output_removes_stale_ignored_artifacts(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root)
             output_dir = root / "artifacts"
@@ -166,7 +166,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertFalse((output_dir / "stale-secret.txt").exists())
 
     def test_real_build_cleans_ignored_dist_and_uses_locked_install(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root)
             daemon_dir = root / builder.DAEMON_RELATIVE_DIR
@@ -218,7 +218,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             )
 
     def test_clean_output_rejects_directory_outside_project_root(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as out:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp, tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as out:
             root = Path(tmp)
             make_daemon_tree(root)
 
@@ -236,7 +236,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
                 )
 
     def test_report_payload_is_machine_readable(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root, version="0.3.0")
 
@@ -258,7 +258,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             json.dumps(payload)
 
     def test_windows_build_requires_native_runtime_and_emits_powershell_installer(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root)
             output_dir = root / "artifacts"
@@ -324,7 +324,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertIn("AURA_STANDALONE=1", aura_cmd)
 
     def test_windows_build_rejects_non_pe_runtime(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root)
             runtime = root / "windows-runtime"
@@ -343,7 +343,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
                 )
 
     def test_windows_platform_rejects_unknown_architecture_label(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root)
             with self.assertRaisesRegex(ValueError, "win32-x64"):
@@ -357,7 +357,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
                 )
 
     def test_unix_release_can_bundle_private_node_and_codex_acp_sidecar(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root)
             node_runtime = root / "node"
@@ -386,7 +386,7 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             self.assertEqual(manifest["runtimeInventory"]["codexAcp"]["version"], "0.16.0")
 
     def test_standalone_build_rejects_missing_production_dependencies(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             make_daemon_tree(root)
             package_path = root / "agent" / "daemon" / "aaa-daemon" / "package.json"

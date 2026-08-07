@@ -177,6 +177,10 @@ DAEMON_WINDOWS_PLATFORM = "win32-x64"
 DAEMON_UNIX_PLATFORM = "unix"
 CONNECT_TICKET_TTL_SECONDS = 300
 SESSION_COOKIE_NAME = "smallkhoj_session"
+# Release artifact directory served by the StaticFiles mount. Centralized so
+# tests can redirect it to an empty tmp_path and exercise the fail-closed path
+# without depending on (or being polluted by) the real release-artifacts state.
+DAEMON_ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "release-artifacts" / "smallkhoj-daemon"
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / ".data" / "uploads"
 MAX_UPLOAD_SIZE = settings.upload_max_bytes
 DANGEROUS_MIME_TYPES = {
@@ -341,7 +345,7 @@ def _release_artifact_metadata(server_url: str, target_platform: str) -> dict[st
     if not version:
         return result
 
-    artifact_dir = Path(__file__).resolve().parents[2] / "release-artifacts" / "smallkhoj-daemon"
+    artifact_dir = DAEMON_ARTIFACT_DIR
     manifests = sorted(artifact_dir.glob("*.manifest.json")) if artifact_dir.is_dir() else []
     for manifest_path in manifests:
         try:
