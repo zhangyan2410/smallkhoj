@@ -32,6 +32,7 @@ DAEMON_RELEASE_ARTIFACT_DIR = Path("release-artifacts/smallkhoj-daemon")
 GIT_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 TASK_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,100}$")
 IMAGE_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
+OCI_CONFIG_PATH_PATTERN = re.compile(r"blobs/sha256/([0-9a-f]{64})")
 IMAGE_INSPECT_TEMPLATE = (
     '{"id":{{json .Id}},'
     '"repoTags":{{json .RepoTags}},'
@@ -442,9 +443,16 @@ def validate_saved_image_archive(
             raise ValueError("saved image archive manifest is invalid")
         config = entry.get("Config")
         repo_tags = entry.get("RepoTags")
-        if not isinstance(config, str) or not config.endswith(".json"):
+        if not isinstance(config, str):
             raise ValueError("saved image archive identity is invalid")
-        image_id = f"sha256:{Path(config).name.removesuffix('.json')}"
+        if config.endswith(".json"):
+            digest = Path(config).name.removesuffix(".json")
+        else:
+            oci_match = OCI_CONFIG_PATH_PATTERN.fullmatch(config)
+            if oci_match is None:
+                raise ValueError("saved image archive identity is invalid")
+            digest = oci_match.group(1)
+        image_id = f"sha256:{digest}"
         if IMAGE_ID_PATTERN.fullmatch(image_id) is None:
             raise ValueError("saved image archive identity is invalid")
         if not isinstance(repo_tags, list):

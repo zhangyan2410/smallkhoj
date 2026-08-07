@@ -200,6 +200,59 @@ smallkhoj-caddy:local-release
   applicable), image tag/ID/revision/platform, and archive path/hash. Contains
   no secret values.
 
+### Scenario: Docker save archive format compatibility
+
+#### 1. Scope / Trigger
+
+This applies to every registry-free image transfer that validates the archive
+created by `docker save`, including Apple Silicon/Colima builders and remote
+`docker load` targets.
+
+#### 2. Signatures
+
+- Input: `/tmp/smallkhoj-production-images.tar` (or the configured
+  `--output-archive`) containing Docker `manifest.json` entries.
+- Validator: `validate_saved_image_archive(archive_path, expected_identities)`.
+
+#### 3. Contracts
+
+- The validator must bind every candidate tag to the exact inspected image ID.
+- It must accept both Docker's legacy config form `<digest>.json` and
+  OCI/containerd's form `blobs/sha256/<digest>`.
+- OCI config paths must match `^blobs/sha256/[0-9a-f]{64}$`; malformed or
+  unrelated paths fail closed.
+- Archive identity validation happens before SCP/upload and release evidence
+  persistence.
+
+#### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| Legacy `<digest>.json` config matches inspected ID | Accept |
+| OCI `blobs/sha256/<digest>` config matches inspected ID | Accept |
+| Config path is malformed, duplicated, or points at an unexpected ID | Fail with archive identity error |
+
+#### 5. Good/Base/Bad Cases
+
+- Good: validate the archive produced by the current Docker/Colima runtime,
+  then upload it unchanged.
+- Base: retain legacy-format coverage for older Docker engines.
+- Bad: assume every `Config` member ends in `.json`; this rejects valid OCI
+  archives before transfer.
+
+#### 6. Tests Required
+
+- `scripts/tests/test_production_image_transfer.py` must cover legacy and OCI
+  config paths, exact tag/ID binding, and malformed OCI rejection.
+- A real transfer must pass the archive validator before any SCP side effect.
+
+#### 7. Wrong vs Correct
+
+Wrong: reject `Config: "blobs/sha256/<digest>"` because it lacks `.json`.
+
+Correct: normalize either supported config representation to `sha256:<digest>`
+and compare it with the inspected image identity.
+
 #### Phase 5 — App-only deploy
 
 - The only deploy command is `docker compose ... up -d --force-recreate

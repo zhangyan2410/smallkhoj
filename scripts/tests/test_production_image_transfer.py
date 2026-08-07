@@ -668,6 +668,57 @@ class ProductionImageTransferTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "archive image identities"):
                 transfer.validate_saved_image_archive(archive, tampered)
 
+    def test_saved_oci_archive_is_bound_to_inspected_image_ids_and_tags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "images.tar"
+            identities = {
+                "smallkhoj-backend:local-release": transfer.ImageIdentity(
+                    image_id=f"sha256:{'a' * 64}",
+                    os="linux",
+                    architecture="amd64",
+                    source_revision=SOURCE_REVISION,
+                ),
+                "smallkhoj-frontend:local-release": transfer.ImageIdentity(
+                    image_id=f"sha256:{'b' * 64}",
+                    os="linux",
+                    architecture="amd64",
+                    source_revision=SOURCE_REVISION,
+                ),
+                "smallkhoj-caddy:local-release": transfer.ImageIdentity(
+                    image_id=f"sha256:{'c' * 64}",
+                    os="linux",
+                    architecture="amd64",
+                    source_revision=SOURCE_REVISION,
+                ),
+            }
+            manifest_bytes = json.dumps(
+                [
+                    {
+                        "Config": f"blobs/sha256/{identity.image_id.removeprefix('sha256:')}",
+                        "RepoTags": [tag],
+                        "Layers": [],
+                    }
+                    for tag, identity in identities.items()
+                ]
+            ).encode()
+            with tarfile.open(archive, "w") as bundle:
+                info = tarfile.TarInfo("manifest.json")
+                info.size = len(manifest_bytes)
+                bundle.addfile(info, io.BytesIO(manifest_bytes))
+
+            transfer.validate_saved_image_archive(archive, identities)
+
+            malformed = json.loads(manifest_bytes)
+            malformed[0]["Config"] = "blobs/sha256/not-a-digest"
+            malformed_bytes = json.dumps(malformed).encode()
+            with tarfile.open(archive, "w") as bundle:
+                info = tarfile.TarInfo("manifest.json")
+                info.size = len(malformed_bytes)
+                bundle.addfile(info, io.BytesIO(malformed_bytes))
+
+            with self.assertRaisesRegex(ValueError, "saved image archive identity"):
+                transfer.validate_saved_image_archive(archive, identities)
+
     def test_daemon_release_artifacts_require_same_revision_and_checksums(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             artifact_dir = Path(tmp)
