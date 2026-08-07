@@ -560,3 +560,36 @@ Closed 08-04-repair-codex-opencode-runtime-gates. Activity semantics aligned to 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Finish Windows Computer onboarding and cloud deployment
+
+**Date**: 2026-08-07
+**Task**: Finish Windows Computer onboarding and cloud deployment
+**Branch**: `main`
+
+### Summary
+
+Completed Windows/macOS onboarding acceptance handoff and task-scoped cloud-prod app-only deployment. Rebuilt the win32-x64 carrier and linux/amd64 images from the pushed candidate, fixed Docker OCI docker-save archive validation, transferred and loaded the archive, switched backend/frontend/caddy to local-release without touching db, and passed post-deploy smoke with daemon package 0.2.6. Left the separate release-workflow-entry planning task uncommitted for another agent.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9f2d0ea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
