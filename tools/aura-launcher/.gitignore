@@ -1,0 +1,4 @@
+# Compiled launcher binary — rebuilt via:
+#   GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o aura-launcher.exe .
+# Source (main.go, go.mod) is tracked; the PE is a build artifact.
+*.exe

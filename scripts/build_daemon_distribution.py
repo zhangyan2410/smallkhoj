@@ -64,8 +64,30 @@ def read_package_json(daemon_dir: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def resolve_command(args: list[str]) -> list[str]:
+    """Resolve a bare command name to a real executable path on Windows.
+
+    CreateProcess does not search PATHEXT, so ``npm``/``npx`` (which are
+    ``.cmd`` shims on Windows, not real executables) fail with WinError 2 when
+    invoked without a shell. ``shutil.which`` honors PATHEXT and returns the
+    full ``npm.CMD`` path. On macOS/Linux this is a harmless no-op pass-through
+    because the command is already a real executable.
+    """
+    resolved = list(args)
+    if (
+        sys.platform == "win32"
+        and resolved
+        and os.sep not in resolved[0]
+        and (os.altsep or "/") not in resolved[0]
+    ):
+        located = shutil.which(resolved[0])
+        if located:
+            resolved[0] = located
+    return resolved
+
+
 def run_command(args: list[str], *, cwd: Path, timeout: int = 120) -> None:
-    completed = subprocess.run(args, cwd=cwd, check=False, text=True, timeout=timeout)
+    completed = subprocess.run(resolve_command(args), cwd=cwd, check=False, text=True, timeout=timeout)
     if completed.returncode != 0:
         raise RuntimeError(f"Command failed with exit code {completed.returncode}: {' '.join(args)}")
 
@@ -395,7 +417,7 @@ def create_archive(staging_dir: Path, output_dir: Path, *, version: str, target_
 def create_npm_package(daemon_dir: Path, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     completed = subprocess.run(
-        ["npm", "pack", "--pack-destination", str(output_dir), "--json"],
+        resolve_command(["npm", "pack", "--pack-destination", str(output_dir), "--json"]),
         cwd=daemon_dir,
         check=False,
         capture_output=True,
@@ -784,6 +806,13 @@ def write_windows_install_script(
                 "param([string]$BaseUrl = $env:AURA_DOWNLOAD_BASE_URL)",
                 "$ErrorActionPreference = 'Stop'",
                 "",
+                "# .NET ZipFile is used instead of Expand-Archive because Windows",
+                "# PowerShell 5.1's Expand-Archive cannot reliably extract archives",
+                "# containing many deeply nested node_modules entries (it hits the",
+                "# 260-char MAX_PATH limit and errors mid-extraction). Per-entry",
+                "# ExtractToFile under a short staging path avoids that.",
+                "Add-Type -AssemblyName System.IO.Compression.FileSystem",
+                "",
                 "function Get-AuraArchitecture {",
                 "  $raw = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }",
                 "  switch ($raw.ToUpperInvariant()) {",
@@ -808,29 +837,54 @@ def write_windows_install_script(
                 f"$artifactSha256 = '{sha256.lower()}'",
                 f"$version = '{version}'",
                 f"$rootName = '{root_name}'",
-                "$temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ('aura-install-' + [Guid]::NewGuid().ToString('N'))",
-                "$archivePath = Join-Path $temporaryRoot $artifactName",
-                "$extractPath = Join-Path $temporaryRoot 'extract'",
-                "New-Item -ItemType Directory -Force -Path $temporaryRoot, $extractPath | Out-Null",
+                "$installRoot = Join-Path $env:LOCALAPPDATA 'Aura'",
+                "$versionRoot = Join-Path (Join-Path $installRoot 'versions') ('v' + $version + '-' + $expectedPlatform)",
+                "$binRoot = Join-Path $installRoot 'bin'",
+                "New-Item -ItemType Directory -Force -Path (Split-Path $versionRoot), $binRoot | Out-Null",
+                "# Stage the new version in a SHORT temp path and switch atomically.",
+                "# Staging under LOCALAPPDATA/Aura with a .staging-<guid> suffix plus nested",
+                "# node_modules paths exceeds Windows MAX_PATH (260), so the download is",
+                "# verified against the immutable sha256 and then extracted into a compact",
+                "# temp directory whose final contents are moved onto the version root only",
+                "# after the key files are confirmed present.",
+                "$staging = Join-Path ([IO.Path]::GetTempPath()) ('aura-stage-' + [Guid]::NewGuid().ToString('N').Substring(0,12))",
+                "New-Item -ItemType Directory -Force -Path $staging | Out-Null",
+                "$archivePath = Join-Path ([IO.Path]::GetTempPath()) ($artifactName)",
                 "try {",
                 "  Invoke-WebRequest -UseBasicParsing -Uri ($BaseUrl.TrimEnd('/') + '/' + $artifactName) -OutFile $archivePath",
                 "  $actualSha256 = (Get-FileHash -Algorithm SHA256 -Path $archivePath).Hash.ToLowerInvariant()",
                 "  if ($actualSha256 -ne $artifactSha256) { throw \"SHA-256 verification failed for $artifactName.\" }",
-                "  Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force",
-                "  $source = Join-Path $extractPath $rootName",
-                "  if (-not (Test-Path (Join-Path $source 'aura.exe'))) { throw 'The archive does not contain aura.exe.' }",
-                "  if (-not (Test-Path (Join-Path $source 'node.exe'))) { throw 'The archive does not contain the private node.exe runtime.' }",
-                "  if (-not (Test-Path (Join-Path $source 'manifest.json'))) { throw 'The archive does not contain manifest.json.' }",
-                "  $installRoot = Join-Path $env:LOCALAPPDATA 'Aura'",
-                "  $versionRoot = Join-Path (Join-Path $installRoot 'versions') ('v' + $version + '-' + $expectedPlatform)",
-                "  $binRoot = Join-Path $installRoot 'bin'",
-                "  New-Item -ItemType Directory -Force -Path (Split-Path $versionRoot), $binRoot | Out-Null",
-                "  $staging = $versionRoot + '.staging-' + [Guid]::NewGuid().ToString('N')",
-                "  Copy-Item -LiteralPath $source -Destination $staging -Recurse -Force",
+                "  $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)",
+                "  try {",
+                "    $rootPrefix = $rootName + '/'",
+                "    foreach ($entry in $archive.Entries) {",
+                "      $relative = $entry.FullName",
+                "      if ($relative.StartsWith($rootPrefix)) { $relative = $relative.Substring($rootPrefix.Length) }",
+                "      elseif ($relative -eq $rootName) { continue }",
+                "      # Skip non-runtime declaration files from deep dependency trees",
+                "      # (e.g. @aws-sdk dist-types/dist-es). The daemon only imports runtime",
+                "      # entrypoints; .d.ts/.map and dist-types/dist-es build artifacts are not",
+                "      # needed at run time and some exceed MAX_PATH.",
+                "      if ($relative -match '\\.(d\\.ts|map|flow|coffee)$') { continue }",
+                "      if ($relative -match '/(dist-types|dist-es|__tests__|test|tests|docs?)/') { continue }",
+                "      $destination = Join-Path $staging ($relative -replace '/', '\\')",
+                "      if ($entry.FullName.EndsWith('/')) { New-Item -ItemType Directory -Force -Path $destination | Out-Null; continue }",
+                "      $parent = Split-Path $destination -Parent",
+                "      if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }",
+                "      [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destination, $true)",
+                "    }",
+                "  } finally { $archive.Dispose() }",
+                "  if (-not (Test-Path (Join-Path $staging 'aura.exe'))) { throw 'The archive does not contain aura.exe.' }",
+                "  if (-not (Test-Path (Join-Path $staging 'node.exe'))) { throw 'The archive does not contain the private node.exe runtime.' }",
+                "  if (-not (Test-Path (Join-Path $staging 'manifest.json'))) { throw 'The archive does not contain manifest.json.' }",
                 "  if (Test-Path $versionRoot) { Remove-Item -LiteralPath $versionRoot -Recurse -Force }",
                 "  Move-Item -LiteralPath $staging -Destination $versionRoot",
-                "  $launcherContent = '@echo off`r`nset \"AURA_STANDALONE=1\"`r`n\"' + (Join-Path $versionRoot 'aura.exe') + '\" %*`r`n'",
-                "  Set-Content -LiteralPath (Join-Path $binRoot 'aura.cmd') -Value $launcherContent -Encoding ASCII",
+                "  # Build the bin/aura.cmd shim as an array of lines so Set-Content writes",
+                "  # real CRLF line endings (a single-quoted string with literal backtick-r",
+                "  # backtick-n would be written verbatim and break cmd.exe).",
+                "  $auraExePath = Join-Path $versionRoot 'aura.exe'",
+                "  $launcherLines = @('@echo off', 'set \"AURA_STANDALONE=1\"', ('\"' + $auraExePath + '\" %*'))",
+                "  Set-Content -LiteralPath (Join-Path $binRoot 'aura.cmd') -Value $launcherLines -Encoding ASCII",
                 "  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')",
                 "  $pathParts = @($userPath -split ';' | Where-Object { $_ })",
                 "  if ($pathParts -notcontains $binRoot) { [Environment]::SetEnvironmentVariable('Path', (($pathParts + $binRoot) -join ';'), 'User') }",
@@ -839,12 +893,17 @@ def write_windows_install_script(
                 "  $env:Path = $binRoot + ';' + [string]$env:Path",
                 "  $activePath = Join-Path $installRoot 'active.json'",
                 "  $activeTemp = $activePath + '.tmp-' + [Guid]::NewGuid().ToString('N')",
-                "  @{ version = $version; platform = $expectedPlatform; path = $versionRoot } | ConvertTo-Json | Set-Content -LiteralPath $activeTemp -Encoding UTF8",
+                "  # Write active.json as UTF-8 WITHOUT BOM. PowerShell 5.1's -Encoding UTF8 emits a",
+                "  # BOM that the daemon's JSON.parse(reader) does not strip, which makes aura doctor",
+                "  # fail to resolve the active release (reports not-installed / ACP / Node missing).",
+                "  $activeJson = @{ version = $version; platform = $expectedPlatform; path = $versionRoot } | ConvertTo-Json",
+                "  [IO.File]::WriteAllText($activeTemp, $activeJson, (New-Object Text.UTF8Encoding($false)))",
                 "  Move-Item -LiteralPath $activeTemp -Destination $activePath -Force",
                 "  Write-Output (\"Installed Aura $version ($expectedPlatform) to $versionRoot\")",
                 "  Write-Output (\"Aura is ready in this PowerShell: \" + (Join-Path $binRoot 'aura.cmd'))",
                 "} finally {",
-                "  if (Test-Path $temporaryRoot) { Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue }",
+                "  if (Test-Path $archivePath) { Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue }",
+                "  if (($staging) -and (Test-Path $staging) -and -not (Test-Path $versionRoot)) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }",
                 "}",
                 "",
             ]
