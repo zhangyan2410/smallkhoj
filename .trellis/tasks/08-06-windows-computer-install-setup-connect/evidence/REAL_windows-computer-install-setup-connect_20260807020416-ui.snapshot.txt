@@ -1,0 +1,90 @@
+
+
+
+9
+
+
+9
+
+9999
+Account
+
+
+Current Server · Owner
+9999Sign out
+
+
+
+
+
+
+SmallKhoj
+Computers
+Daemon onboarding, reconnect commands, detected runtimes, and agent workspace status.
+MembersTasks
+[SELECT #locale-select name=locale ="en"]
+
+
+
+Computers
+
+
+0 computers0 OnlineAdd computer
+
+No computers returned
+
+
+
+Registered 0Online 0Running workspaces 0
+
+
+
+select for detail
+Generate a connect command above to register the first daemon.
+
+
+Runtime Snapshot
+Live counts from the connected control plane.
+
+
+Registered
+0
+
+Online
+0
+
+Running workspaces
+0
+
+
+
+Connect New Computer
+Connect this computer in three steps: install Aura, set up locally, then connect to the server.
+
+
+Computer Name
+[INPUT #computer-name name=name type=text "my-computer"]
+
+
+WindowsmacOS / Linux
+
+
+
+
+❶InstallPowerShell
+$env:AURA_DOWNLOAD_BASE_URL='http://localhost:8000/downloads/smallkhoj-daemon'; irm 'http://localhost:8000/downloads/smallkhoj-daemon/install.ps1' | iex
+Press Win + X and choose Terminal, or search for PowerShell in the Start menu; paste and press Enter.
+Done when the installer prints the installed version; failures explain the reason and can be retried.
+
+
+❷SetupPowerShell
+aura setup --name 'my-computer' --server-url 'http://localhost:8000'
+Run it in the same window. It only writes local config and identity — it does not connect yet.
+Done when it prints the machine ID and config path; safe to run again.
+
+
+❸ConnectPowerShellGenerate connect command
+Generate a one-time connect command below (valid for 5 minutes once generated).
+After you run it, the status below shows connected within seconds.
+
+Connection results appear here once you run the commands.✕

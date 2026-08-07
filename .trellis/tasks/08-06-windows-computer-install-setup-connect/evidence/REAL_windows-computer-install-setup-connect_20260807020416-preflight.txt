@@ -1,0 +1,18 @@
+﻿REAL_windows-computer-install-setup-connect_20260807020416 preflight (rebuilt artifact)
+PSVersion: 5.1.18362.1171
+PSEdition: Desktop
+OSVersion: 10.0.18363.0
+Is64BitOS: True
+PROCESSOR_ARCHITECTURE: AMD64
+PROCESSOR_ARCHITEW6432: 
+AuraExistsBefore: False
+AmbientCommands:
+
+Name     Source                          
+----     ------                          
+node.exe C:\Program Files\nodejs\node.exe
+npm.ps1  C:\Program Files\nodejs\npm.ps1 
+npx.ps1  C:\Program Files\nodejs\npx.ps1 
+
+
+

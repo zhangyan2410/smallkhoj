@@ -1,0 +1,9 @@
+﻿# CMD-2 retry: detailed install.ps1 trace via irm|iex
+Time: 2026-08-07T13:13:39.3757909+08:00
+=== run verbatim irm|iex with full error detail ===
+Installed Aura 0.2.6 (win32-x64) to C:\Users\zhangyan.ean\AppData\Local\Aura\versions\v0.2.6-win32-x64
+Aura is ready in this PowerShell: C:\Users\zhangyan.ean\AppData\Local\Aura\bin\aura.cmd
+LASTEXITCODE=
+
+=== result ===
+installed: True

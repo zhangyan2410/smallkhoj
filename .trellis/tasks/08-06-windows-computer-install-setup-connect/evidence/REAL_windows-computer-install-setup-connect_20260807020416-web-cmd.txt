@@ -1,0 +1,14 @@
+# Web-issued Windows commands (copied verbatim from Connect dialog Windows tab)
+# Source: twd eval on http://localhost:3000/computers connect dialog, Windows tab
+# 候选: 本机 worktree (frontend localhost:3000 + backend 127.0.0.1:8000, HEAD 7a68402)
+#
+# === Install (PowerShell) ===
+$env:AURA_DOWNLOAD_BASE_URL='http://localhost:8000/downloads/smallkhoj-daemon'; irm 'http://localhost:8000/downloads/smallkhoj-daemon/install.ps1' | iex
+#
+# === Setup (PowerShell) ===
+aura setup --name 'my-computer' --server-url 'http://localhost:8000'
+#
+# === Connect (PowerShell) — generated on demand via "生成连接命令" button ===
+# preview state shows placeholder (no ticket). After click, form:
+#   aura --server-url 'http://localhost:8000' --api-key '<REDACTED_CONNECT_TICKET>'
+# (ticket value redacted; captured separately at execution time)

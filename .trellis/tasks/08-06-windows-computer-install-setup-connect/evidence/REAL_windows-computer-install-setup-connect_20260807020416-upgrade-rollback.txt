@@ -1,0 +1,64 @@
+# Aura Upgrade / Rollback / Conflict EVIDENCE (Windows x64 real host)
+# Marker: REAL_windows-computer-install-setup-connect_20260807020416-upgrade-rollback
+# Host: Windows 10.0.18363 x64, PS 5.1 Desktop
+# Git HEAD: 7a684028bcdf1b23e566632a7546bc9ad6f17e77
+# Time: 2026-08-07T04:46–04:48 UTC
+#
+# 验收来源: windows-acceptance.md §5 (Reconnect/冲突) + §6 (升级/失败恢复/回滚), PRD R13.4
+# 红线: 不动 main.ts 命令注册 / install.ps1 版本协商逻辑(代码缺口如实记 BLOCKED, 不私改)。
+# --------------------------------------------------------------------------------------------
+
+## §5. Reconnect — PASS ✅
+(详见 -reconnect.txt STEP 3, lease 过期后重连)
+- stop → graceful exit (PID 40100 在 3s 内退出, 无 force-kill, STOP_EXIT=0) ✅
+- lease 仍有效时重连被服务器拒绝: 409 {"detail":"Computer already has an active daemon"}
+  → 这是 §5.3 服务器侧 lease 冲突保护的正确行为 ✅
+- lease 过期(90s)后用新 ticket 重连: RECONNECT2_EXIT=0, "Connected and running in background (PID 40388)"
+- machine-id 复用: ecac8636-3a27-4c23-8e38-e57ca58ec6c4 (MACHINE_ID_REUSED_ON_RECONNECT=True) ✅
+- 新 daemonId: ad9557fa-429b-4aa9-8c87-39b92bb60038 (新会话, 非旧 8054b697, 符合预期) ✅
+- status: connected=true, online=true, daemonState.status=online, 新 heartbeat 04:46:15 ✅
+
+## §5.3 活跃 lease 冲突拒绝 — PARTIAL(服务器侧 PASS, 客户端预检缺)
+- 服务器侧: connect/connect 端点在有 active lease 时返回 409, 客户端正确 surface 为
+  state.status=error + lastError 匹配 409, exit 1. 冲突保护实际生效 ✅
+- 客户端预检缺口: main.ts launchManagedDaemon (line 237) 仅检查本地 pid (isDaemonRunning),
+  不在 connect 前预查远端 activeDaemonId/leaseExpiresAt 来给出 stop/wait/retry 的可操作提示,
+  而是直接发 connect 让服务器拒绝. 功能上阻止了重复启动(服务器兜底), 但 UX 上未提供
+  acceptance §5.3 要求的"停止/等待/重试"显式提示.
+- 判定: 冲突阻止 = PASS(服务器兜底); 客户端可操作提示 = code-missing(记 BLOCKED-client-hint)
+
+## §6.1 升级:旧版本目录保留到新进程健康 — BLOCKED(code-missing) ❌
+证据: release-artifacts/smallkhoj-daemon/install.ps1 line 76:
+  if (Test-Path $versionRoot) { Remove-Item -LiteralPath $versionRoot -Recurse -Force }
+  Move-Item -LiteralPath $staging -Destination $versionRoot
+- 安装器在 stage 新版本成功后, 移动前直接递归删除整个旧版本目录, 没有保留旧版本直到新进程健康.
+- 即"原子切换"部分实现(staging→move→active.json swap), 但"旧版本保留到新进程健康"未实现.
+- PRD/acceptance §6.1 "旧版本目录保留到新进程健康" 无法满足 → BLOCKED(installer-line76)
+
+## §6.2 禁止隐式降级 / 显式 rollback — BLOCKED(code-missing) ❌
+证据:
+- `aura rollback` → 无此命令, 输出通用 usage (rollback_exit=0 但仅打印 help, 未执行回滚)
+- `aura --help` 无 rollback/downgrade/force 任何子命令或选项
+- install.ps1 grep "downgrade|semver|compare.*version|newer|older" = 空集 (无版本比较逻辑)
+- install.ps1 硬编码单一 $version='0.2.6', 无 "revert to last-known-good active pointer" 路径
+- PRD/acceptance §6.2 "本地版本高于服务器版本时默认不降级; 只有显式 rollback/force 才允许降级"
+  与 §6.3 "回滚后 machine ID/配置/credential 不被覆盖" 均无法满足
+- 判定: rollback 命令未实现, 版本比较逻辑未实现 → BLOCKED(no-rollback-command)
+  红线禁止在 main.ts 注册新命令, 故不在本会话实现, 记入 handoff 交 Mac 侧.
+
+## §5.4 stale 进程 graceful stop(停止失败不 force kill) — PASS ✅
+- main.ts runRestart (line 316-343): SIGTERM + waitForProcessExit(pid,5000), 超时则
+  "refusing to force-kill it" + exitCode=1. 已在 reconnect STEP1 实机验证 stop 优雅退出.
+
+## 代码缺口汇总(交 Mac 侧实现, Windows 验收侧如实记 BLOCKED)
+| 验收项 | 判定 | 代码缺口位置 |
+|---|---|---|
+| §5.3 客户端 lease 冲突预检提示 | BLOCKED-client-hint | main.ts:237 仅查本地 pid |
+| §6.1 升级保留旧版本 | BLOCKED(installer-line76) | install.ps1:76 删旧版本 |
+| §6.2 rollback 命令 | BLOCKED(no-rollback-command) | main.ts 无注册 + install.ps1 无版本比较 |
+| §6.3 回滚不覆盖 identity | BLOCKED(依赖 rollback) | 同上 |
+
+## 结论
+- Reconnect / graceful stop / 服务器侧 lease 冲突拒绝 = PASS
+- 升级旧版本保留 / rollback / 客户端冲突预检提示 = BLOCKED(code-missing, 交 Mac 侧)
+- 红线遵守: 未在 main.ts 注册 rollback, 未改 install.ps1 版本协商逻辑。

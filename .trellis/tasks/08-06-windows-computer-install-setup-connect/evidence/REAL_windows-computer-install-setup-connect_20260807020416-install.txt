@@ -1,0 +1,57 @@
+﻿# Aura install EVIDENCE (rebuilt artifact, REAL backend :8000)
+Host: Windows 10.0.18363 x64, PS 5.1 Desktop
+Git HEAD: 7a684028bcdf1b23e566632a7546bc9ad6f17e77
+StartTime: 2026-08-07T12:42:05.1619536+08:00
+=== install.ps1 already executed (disk-verified PASS); re-confirm version dir inventory ===
+VersionRoot: C:\Users\zhangyan.ean\AppData\Local\Aura\versions\v0.2.6-win32-x64
+KeyFiles:
+dist
+node_modules
+sidecars
+aura.cmd
+aura.exe
+manifest.json
+node.exe
+package.json
+README.md
+SidecarCodexAcp: True
+=== active.json ===
+{
+    "path":  "C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\versions\\v0.2.6-win32-x64",
+    "platform":  "win32-x64",
+    "version":  "0.2.6"
+}
+=== bin/aura.cmd ===
+@echo off
+set "AURA_STANDALONE=1"
+"C:\Users\zhangyan.ean\AppData\Local\Aura\versions\v0.2.6-win32-x64\aura.exe" %*
+=== aura --version (via bin shim) ===
+0.2.6
+aura.cmd --version EXIT=0
+=== installed manifest.json (runtimeInventory focus) ===
+{
+  "entrypoint": "aura",
+  "generatedAt": "2026-08-07T02:45:02Z",
+  "gitCommit": "7a684028bcdf1b23e566632a7546bc9ad6f17e77",
+  "minimumDaemonVersion": "0.2.6",
+  "name": "smallkhoj-daemon",
+  "platform": "win32-x64",
+  "requires": {
+    "node": "bundled"
+  },
+  "runtimeInventory": {
+    "codexAcp": {
+      "available": true,
+      "entrypoint": "sidecars/codex-acp/codex-acp.exe",
+      "version": "0.16.0"
+    },
+    "privateNode": true
+  },
+  "standalone": true,
+  "version": "0.2.6"
+}
+=== user PATH contains Aura bin? ===
+C:\Users\zhangyan.ean\AppData\Local\Temp\aa-6543e012\Aura\bin
+C:\Users\zhangyan.ean\AppData\Local\Temp\ab-63ca4236\Aura\bin
+C:\Users\zhangyan.ean\AppData\Local\Aura\bin
+EndTime: 2026-08-07T12:42:05.8440324+08:00

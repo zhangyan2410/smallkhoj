@@ -1,0 +1,52 @@
+﻿# Aura Reconnect / graceful-stop EVIDENCE
+StartTime: 2026-08-07T12:43:54.0841762+08:00
+machine-id before reconnect: ecac8636-3a27-4c23-8e38-e57ca58ec6c4
+daemonId before: 8054b697-9dbd-4912-bf15-ea57d31795ce
+
+=== STEP 1: aura stop (graceful stop test) ===
+Stopping daemon (PID: 40100)...
+Signal sent.
+
+STOP_EXIT=0
+process 40100 still alive after stop: False (False=graceful exit OK)
+status after stop:
+{"running":false,"implementation":"aura-standalone","implementationType":"aura-standalone","platform":"win32","architecture":"x64","daemonVersion":"0.2.6","installed":false,"activeVersion":null,"activePlatform":null,"artifactSha256":null,"setup":true,"credentialPresent":true,"credentialValid":true,"connected":false,"online":false,"serverId":"63f12bb3-f7ea-4863-a87e-1ea852398d58","computerId":"0ac51c42-1651-438f-99ed-1dfba0c32a61","daemonId":"8054b697-9dbd-4912-bf15-ea57d31795ce","daemonState":{"schemaVersion":1,"status":"online","pid":40100,"daemonId":"8054b697-9dbd-4912-bf15-ea57d31795ce","activeDaemonId":"8054b697-9dbd-4912-bf15-ea57d31795ce","serverId":"63f12bb3-f7ea-4863-a87e-1ea852398d58","computerId":"0ac51c42-1651-438f-99ed-1dfba0c32a61","machineId":"ecac8636-3a27-4c23-8e38-e57ca58ec6c4","daemonVersion":"0.2.6","lastHeartbeatAt":"2026-08-07T04:43:50.451919+00:00","leaseExpiresAt":"2026-08-07T04:45:20.451919+00:00","updatedAt":"2026-08-07T04:43:50.461Z"},"paths":{"installRoot":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura","daemonRoot":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon","configPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\config.json","credentialPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\credential.json","machineIdPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\machine-id","pidPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\aura.pid","statePath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\daemon-state.json","logPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\aura.log","workspaceRoot":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\workspaces"},"runtimeInventory":{"privateNode":null,"codexAcp":null},"lastError":null}
+
+STATUS_AFTER_STOP_EXIT=1
+
+=== STEP 2: Reconnect (new ticket, expect reuse machine-id + new daemonId + online) ===
+command: aura --server-url http://127.0.0.1:8000 --api-key <REDACTED_CONNECT_TICKET_2>
+file:///C:/Users/zhangyan.ean/AppData/Local/Aura/versions/v0.2.6-win32-x64/dist/cmd/main.js:206
+            throw new Error(state.lastError || 'Aura daemon registration failed; see aura doctor and the Aura log.');
+                  ^
+System.Management.Automation.RemoteException
+Error: Daemon connect failed: 409 {"detail":"Computer already has an active daemon"}
+    at launchManagedDaemon (file:///C:/Users/zhangyan.ean/AppData/Local/Aura/versions/v0.2.6-win32-x64/dist/cmd/main.js:206:19)
+    at async runProductConnect (file:///C:/Users/zhangyan.ean/AppData/Local/Aura/versions/v0.2.6-win32-x64/dist/cmd/main.js:433:9)
+System.Management.Automation.RemoteException
+Node.js v22.14.0
+
+RECONNECT_EXIT=1
+idAfter = ecac8636-3a27-4c23-8e38-e57ca58ec6c4
+MACHINE_ID_REUSED_ON_RECONNECT=True
+status after reconnect:
+{"running":false,"implementation":"aura-standalone","implementationType":"aura-standalone","platform":"win32","architecture":"x64","daemonVersion":"0.2.6","installed":false,"activeVersion":null,"activePlatform":null,"artifactSha256":null,"setup":true,"credentialPresent":true,"credentialValid":true,"connected":false,"online":false,"serverId":"63f12bb3-f7ea-4863-a87e-1ea852398d58","computerId":"0ac51c42-1651-438f-99ed-1dfba0c32a61","daemonId":null,"daemonState":{"schemaVersion":1,"status":"error","pid":39068,"daemonVersion":"0.2.6","updatedAt":"2026-08-07T04:44:02.284Z","lastError":"Daemon connect failed: 409 {\"detail\":\"Computer already has an active daemon\"}"},"paths":{"installRoot":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura","daemonRoot":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon","configPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\config.json","credentialPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\credential.json","machineIdPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\machine-id","pidPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\aura.pid","statePath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\daemon-state.json","logPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\aura.log","workspaceRoot":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\workspaces"},"runtimeInventory":{"privateNode":null,"codexAcp":null},"lastError":"Daemon connect failed: 409 {\"detail\":\"Computer already has an active daemon\"}"}
+
+STATUS_AFTER_RECONNECT_EXIT=1
+EndTime: 2026-08-07T12:44:04.9913242+08:00
+
+=== STEP 3: Reconnect AFTER lease expiry (90s) 鈥?expect reuse machine-id + online ===
+Time: 2026-08-07T12:46:11.9463943+08:00
+command: aura --server-url http://127.0.0.1:8000 --api-key <REDACTED_CONNECT_TICKET_3>
+[Aura] Connected and running in background (PID 40388). You can close this terminal.
+
+RECONNECT2_EXIT=0
+machine-id after reconnect: ecac8636-3a27-4c23-8e38-e57ca58ec6c4
+MACHINE_ID_REUSED_ON_RECONNECT=True
+new daemonId (was 8054b697 before stop): ad9557fa-429b-4aa9-8c87-39b92bb60038
+daemonState.status: online
+=== status --json (online check) ===
+{"running":true,"implementation":"aura-standalone","implementationType":"aura-standalone","platform":"win32","architecture":"x64","daemonVersion":"0.2.6","installed":false,"activeVersion":null,"activePlatform":null,"artifactSha256":null,"setup":true,"credentialPresent":true,"credentialValid":true,"connected":true,"online":true,"serverId":"63f12bb3-f7ea-4863-a87e-1ea852398d58","computerId":"0ac51c42-1651-438f-99ed-1dfba0c32a61","daemonId":"ad9557fa-429b-4aa9-8c87-39b92bb60038","daemonState":{"schemaVersion":1,"status":"online","pid":40388,"daemonId":"ad9557fa-429b-4aa9-8c87-39b92bb60038","activeDaemonId":"ad9557fa-429b-4aa9-8c87-39b92bb60038","serverId":"63f12bb3-f7ea-4863-a87e-1ea852398d58","computerId":"0ac51c42-1651-438f-99ed-1dfba0c32a61","machineId":"ecac8636-3a27-4c23-8e38-e57ca58ec6c4","daemonVersion":"0.2.6","lastHeartbeatAt":"2026-08-07T04:46:15.868428+00:00","leaseExpiresAt":"2026-08-07T04:47:45.868428+00:00","updatedAt":"2026-08-07T04:46:15.882Z"},"paths":{"installRoot":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura","daemonRoot":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon","configPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\config.json","credentialPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\credential.json","machineIdPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\machine-id","pidPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\aura.pid","statePath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\daemon-state.json","logPath":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\aura.log","workspaceRoot":"C:\\Users\\zhangyan.ean\\AppData\\Local\\Aura\\daemon\\workspaces"},"runtimeInventory":{"privateNode":null,"codexAcp":null},"lastError":null}
+
+STATUS_EXIT=0
+EndTime: 2026-08-07T12:46:18.6136943+08:00

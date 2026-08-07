@@ -1,0 +1,21 @@
+﻿# CMD-3: Web-issued Setup command executed VERBATIM
+Time: 2026-08-07T13:15:15.0815280+08:00
+Source command: aura setup --name 'my-computer' --server-url 'http://localhost:8000'
+=== EXECUTE VERBATIM ===
+[Aura] Setup complete for my-computer
+Machine ID: 3c52e941-af57-4ce0-9f30-51f467616817
+Config: C:\Users\zhangyan.ean\AppData\Local\Aura\daemon\config.json
+Mode: managed
+
+SETUP_EXIT=0
+machine-id: 3c52e941-af57-4ce0-9f30-51f467616817
+config:
+{
+  "name": "my-computer",
+  "serverUrl": "http://localhost:8000",
+  "mode": "managed",
+  "machineId": "3c52e941-af57-4ce0-9f30-51f467616817",
+  "createdAt": "2026-08-07T05:15:17.109Z",
+  "updatedAt": "2026-08-07T05:15:17.109Z"
+}
+credential exists (expect False): False

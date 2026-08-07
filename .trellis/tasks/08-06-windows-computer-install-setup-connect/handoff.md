@@ -100,6 +100,19 @@ launcher/config root，避免把不同候选的身份混在一起。
 
 Windows 侧在证据完成前不要把 `task.json.status` 改成 `completed`，也不要声称“Windows acceptance 通过”。
 
+## Windows 侧执行结果（2026-08-07，candidate HEAD `7a68402`）
+
+Windows x64 真机验收已按 `windows-acceptance.md` §0–7 执行；详见 `evidence/REAL_windows-computer-install-setup-connect_20260807020416-summary.md` 与各分项证据。摘录：
+
+- **PASS（本机 backend:8000 + DB lifespan，非 fake-upstream、非远程云端）**：preflight（干净 `%LOCALAPPDATA%`）、Install（真实 PE `node.exe`/`aura.exe`/`codex-acp.exe` sidecar，22088 条 ZIP）、Setup（machine-id 幂等复用、`--reset` 轮转、credential 不创建、`status --json` 单 JSON rc=1 aura-standalone）、首次 Connect/Online（本机 backend `:8000` + DB lifespan，`sk_connect_`→`sk_machine_`，服务器侧 status=online/activeDaemonId/lastHeartbeat 对账通过）、Reconnect（lease 过期后复用 machine-id + 新 daemonId + online）、graceful stop（SIGTERM 3s 退出、不 force-kill）、doctor（BOM 修复后 ACP/privateNode ready）。
+- **Web UI + 命令端到端验证 PASS（`./twd` 浏览器实测，前后端同候选 localhost:3000+127.0.0.1:8000）**：平台 tabs 互斥（Windows↔macOS/Linux，命令与 shell 标签随切换变化，R9）、三阶段卡片（R8）、ticket 即时生成（preview 无 ticket，点"生成连接命令"才出 `sk_connect_` 命令 + 有效期，R12）、中英文切换（R11）。**核心**：从 Web Windows tab 复制 Install/Setup/Connect 三条命令，在干净环境原样执行 → install→setup→connect(用 Web 生成的 ticket)→ `connected:true/online:true` → 刷新 Web computers 页显示 **"1 台电脑/1 在线" + `my-computer · win32 10.0.18363 x64 · daemon 0.2.6 · 心跳 ... · 在线"** + 重连控制（端到端闭环）。证据 `-web-cmd-{install,setup,connect}.txt`、`-ui-{zh,en,online}.png`。注：首次 `irm|iex` 在 CodexSandbox 偶发"访问被拒绝"，重试恢复（沙箱瞬时拦截，非命令缺陷）。
+- **新发现并修复的 Windows bug**：install.ps1 (PS 5.1) `Set-Content -Encoding UTF8` 给 `active.json` 写了 BOM，daemon `readJsonRecord` (`main.ts:115`) 不去 BOM → `aura doctor` 在 Windows 误报 not-installed/ACP-missing/privateNode-missing。修复：`scripts/build_daemon_distribution.py` install.ps1 生成器改用 `[IO.File]::WriteAllText` + `Utf8Encoding($false)` 写无 BOM。建议 Mac 侧可选在 `readJsonRecord` 加 `.replace(/^\uFEFF/,'')` 防御性容错。
+- **代码改动（含 todo A）**：`public_api.py` 提 `DAEMON_ARTIFACT_DIR` 常量；fail-closed 测试加 `tmp_path`+`monkeypatch`；`test_build_daemon_distribution.py` 11 处 `TemporaryDirectory` 加 `ignore_cleanup_errors=True`；builder 的 active.json BOM 修复。回归 `test_build_daemon_distribution` 11/11、`test_daemon_command_generation` 12/12。
+- **BLOCKED(code-missing，交 Mac 侧实现）**：① `rollback` 命令未注册 + install.ps1 无版本比较/降级检测（红线禁止 Windows 侧在 main.ts 注册命令）；② install.ps1:76 升级时删除旧版本目录，未保留到新进程健康；③ 客户端 connect 前不预查远端 lease 给 stop/wait/retry 提示（服务器 409 兜底已生效）。三项满足前 PRD R13/acceptance §6 不完整。
+- **credential.json ACL（如实记录）**：保护存在（非 world-readable），但为继承父目录 ACL（带 `(I)`），含本机特有的 `CodexSandboxUsers:(RX)` + `SYSTEM/Administrators:(F)` + `zhangyan.ean:(F)`；非严格"仅当前用户"锁定。部署环境差异，非代码缺陷。
+- **红线遵守**：未改 `main.ts` 命令注册、Unix `install.sh`、共享 CLI；未动端口 8000 backend 本身；`release-artifacts/` 未提交（gitignored）；所有 token 脱敏（证据全量扫描无原始 `sk_connect_`/`sk_machine_`/`sk_session_`）。
+- **task.json.status 保持 `in_progress`**（rollback/升级旧版本保留/客户端冲突预检提示三项 BLOCKED 未满足 PRD 完成条件）。
+
 ## 当前已知边界
 
 - 当前 Mac checkout 只有 `darwin-arm64` release manifest；Windows manifest 仍 unavailable，后端 UI 应继续 fail-closed，不能复制残缺 PowerShell 命令。
