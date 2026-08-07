@@ -38,10 +38,10 @@
 | §4 | 首次 Connect/Online(`sk_connect_`→`sk_machine_`、服务器 Online+heartbeat) | **PASS(本机 backend:8000 + DB)** | `-connect.txt` + server 对账 status=online/activeDaemonId/lastHeartbeat |
 | §5.1 | Reconnect(stop→新 ticket→复用 machine-id/online) | PASS | `-reconnect.txt` STEP3 |
 | §5.4 | graceful stop(SIGTERM、3s 退出、不 force-kill) | PASS | `-reconnect.txt` STEP1 |
-| §5.3 | 活跃 lease 冲突拒绝 | PARTIAL | 服务器侧 409 拒绝 PASS;客户端预检提示 code-missing |
-| §6.1 | 升级保留旧版本到新进程健康 | BLOCKED(code-missing) | `-upgrade-rollback.txt` install.ps1:76 |
-| §6.2 | 禁止隐式降级 / 显式 rollback | BLOCKED(code-missing) | `-upgrade-rollback.txt` 无 rollback 命令/无版本比较 |
-| §6.3 | 回滚不覆盖 identity | BLOCKED(依赖 rollback) | 同 §6.2 |
+| §5.3 | 活跃 lease 冲突拒绝 | **PASS**(复测 R-4) | 服务器 409 拒绝 + 客户端结构化 DAEMON_LEASE_ACTIVE + stop/wait/retry;`-retest-mac-followup.txt` |
+| §6.1 | 升级保留旧版本到新进程健康 | **PASS**(复测 R-2) | install.ps1 健康探针 + previous.json + 失败恢复分支;`-retest-mac-followup.txt` |
+| §6.2 | 禁止隐式降级 / 显式 rollback | **PASS**(复测 R-3) | `aura rollback --target-version` + 拒绝隐式降级;`-retest-mac-followup.txt` |
+| §6.3 | 回滚不覆盖 identity | **PASS**(复测 R-3) | rollback 前后 machine-id 一致;`-retest-mac-followup.txt` |
 | §F | doctor / ACP readiness | PASS(BOM 修复后) | `-doctor.txt` pre/post |
 | R8/R9 | 平台 tabs 互斥 + 三阶段命令卡片 | **PASS** | `-ui-zh.png`/`-ui-en.png` + twd DOM |
 | R12 | preview 不创建 ticket、点 Connect 才创建 + expiresAt | **PASS** | twd: preview `hasConnectTicketInCommand:false`,点生成后 `hasTicketCommand:true` |
@@ -68,14 +68,18 @@
 - 说明: 非"严格仅当前用户"锁定,而是继承父目录 ACL(Windows 常见);本机额外有 `CodexSandboxUsers` 是公司沙箱环境特有。设计 §2.3 要求"用户 ACL 保护"——保护存在(非 world-readable),但非独占当前用户。如实记录,不作 PASS 伪装。
 
 ## 阻塞项(交 Mac 侧实现,task.json 保持 in_progress)
-1. **rollback 命令未实现** + install.ps1 无版本比较/降级检测(红线禁止 Windows 侧在 main.ts 注册命令)。
-2. **install.ps1:76 升级时删除旧版本目录**,未保留到新进程健康。
-3. **客户端 lease 冲突预检提示缺失**:connect 前不预查远端 activeDaemonId/lease 给 stop/wait/retry(服务器 409 兜底已生效,UX 提示缺)。
-4. (建议) `readJsonRecord` 加 BOM 容错,防御用户编辑器写入带 BOM 的 JSON 状态文件。
+1. **rollback 命令未实现** + install.ps1 无版本比较/降级检测(红线禁止 Windows 侧在 main.ts 注册命令)。**→ 复测 PASS(Mac 已实现,见 `-retest-mac-followup.txt` R-3)**
+2. **install.ps1:76 升级时删除旧版本目录**,未保留到新进程健康。**→ 复测 PASS(Mac 已实现健康探针 + previous.json + 失败恢复,R-2)**
+3. **客户端 lease 冲突预检提示缺失**:connect 前不预查远端 activeDaemonId/lease 给 stop/wait/retry(服务器 409 兜底已生效,UX 提示缺)。**→ 复测 PASS(Mac 已实现 409 DAEMON_LEASE_ACTIVE + recoveryActions,R-4)**
+4. (建议) `readJsonRecord` 加 BOM 容错,防御用户编辑器写入带 BOM 的 JSON 状态文件。**→ 复测 PASS(Mac 已加 .replace(/^\uFEFF/,''),R-0 测试套 8/8)**
+
+> 首轮 3 项 BLOCKED(code-missing)经 Mac 共享代码续作(commit 29eec25 等)+ Windows 用最新 HEAD 7824a59 重建 PE carrier 复跑,已全部转为 PASS。详见 `-retest-mac-followup.txt`。剩余未完成项为云端发布部署(production_image_transfer + 远端 compose + post-deploy smoke),非 Windows 实机验收范畴。
 
 ## 结论
 - Windows x64 真机 Install/Setup/Connect/Online/Reconnect/graceful-stop/doctor(含 ACP sidecar)= **PASS(本机 backend:8000 + DB,非 fake-upstream)**。
 - **Web 前端 UI 验证 + 命令端到端验证全部 PASS**:平台 tabs 互斥、三阶段卡片、ticket 即时生成(R12)、中英文(R11);用户从 Web 复制命令原样执行 → 接入成功 → Web 显示 Online 闭环通过。
+- **复测(Mac 共享代码续作后)**:rollback / 升级保护 / lease preflight / BOM 容错 在 Windows x64 真机全部 PASS。首轮 3 项 BLOCKED(code-missing)已解除。
+- Windows 实机验收范围内的 PRD R13.4 必测项现已全部 PASS。剩余未完成项为云端发布部署(production_image_transfer + 远端 compose + post-deploy smoke),非 Windows 实机验收范畴。
 - 前后端同候选(本机 3000+8000),非远程云端部署(远程 `124.222.40.40` 未发布 Windows manifest,Windows tab 应 fail-closed)。
 - 升级旧版本保留 / rollback / 客户端冲突预检提示 = **BLOCKED(code-missing, Mac 侧实现)**。
 - 发现并修复一个 Windows 专属 bug(active.json BOM 致 doctor 误报)。
