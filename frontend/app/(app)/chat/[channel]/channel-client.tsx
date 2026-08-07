@@ -47,6 +47,7 @@ import {
   API_BASE,
   BROWSER_API_BASE,
 } from "@/lib/control-plane"
+import { copyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import {
   channelFilesReducer,
   createChannelFilesState,
@@ -1053,10 +1054,11 @@ export function ChannelClient({
   }, [createTaskFromContent, taskMessageIds])
 
   const handleCopyMessage = useCallback(async (message: ChannelMessage) => {
-    try {
-      await navigator.clipboard.writeText(message.content)
-    } catch (e) {
-      console.error("Copy message failed:", e)
+    // useCopyToClipboard falls back to execCommand("copy") on plain-HTTP origins
+    // where navigator.clipboard is undefined.
+    const ok = await copyToClipboard(message.content)
+    if (!ok) {
+      console.error("Copy message failed: clipboard unavailable")
     }
   }, [])
 

@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { Input } from "@/components/ui/input"
 import { Panel } from "@/components/ui/panel"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -99,13 +100,7 @@ function CopyCommandButton({
   platform: OnboardingPlatform
   t: CopyFn
 }) {
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (!copied) return
-    const timer = window.setTimeout(() => setCopied(false), 2000)
-    return () => window.clearTimeout(timer)
-  }, [copied])
+  const { copied, copy } = useCopyToClipboard()
 
   return (
     <Button
@@ -116,15 +111,11 @@ function CopyCommandButton({
       data-testid={`copy-command-${phase}`}
       aria-label={`${t("onboarding.copy")} ${phaseLabel(phase, t)} (${shellLabel(platform, t)})`}
       title={`${t("onboarding.copy")} ${phaseLabel(phase, t)}`}
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(command)
-          setCopied(true)
-        } catch {
-          // Clipboard permissions can be denied in an embedded browser. Keep
-          // the command visible so the user can select it manually.
-          setCopied(false)
-        }
+      onClick={() => {
+        // useCopyToClipboard handles secure-context (navigator.clipboard) and
+        // falls back to execCommand("copy") on plain-HTTP origins where
+        // navigator.clipboard is undefined, so copy works on cloud http:// too.
+        void copy(command)
       }}
     >
       {copied ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}

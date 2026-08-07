@@ -14,6 +14,7 @@ import {
 import { AttachmentSheet, InkframeObjectSurface, ObjectField } from "@/components/inkframe-object-ui"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { apiPost, type ServerInviteResponse } from "@/lib/control-plane"
 
 export type InviteMemberDialogCopy = {
@@ -48,6 +49,7 @@ export function InviteMemberDialog({
   const [joinUrl, setJoinUrl] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [copied, setCopied] = useState(false)
+  const { copy: copyText } = useCopyToClipboard()
   const [error, setError] = useState<string | null>(null)
 
   async function generateInvite(event: React.FormEvent<HTMLFormElement>) {
@@ -73,8 +75,10 @@ export function InviteMemberDialog({
 
   async function copyInviteLink() {
     if (!joinUrl) return
-    await navigator.clipboard.writeText(joinUrl)
-    setCopied(true)
+    // useCopyToClipboard falls back to execCommand("copy") on plain-HTTP origins
+    // where navigator.clipboard is undefined.
+    const ok = await copyText(joinUrl)
+    setCopied(ok)
   }
 
   function handleOpenChange(nextOpen: boolean) {
