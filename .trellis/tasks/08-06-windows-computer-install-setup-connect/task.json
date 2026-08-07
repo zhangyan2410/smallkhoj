@@ -30,10 +30,11 @@
     "macProductGateEvidence": "evidence/live-product-chat-gate-20260807-reconnect.json",
     "artifactSourceRevision": "9f37401fa6d004fe5ab98d39344ba4e450a452d9",
     "windowsRealAcceptance": "pending",
-    "sharedFollowupHead": "143e68e5c93efdc875a73acb3a2fe7d6cbabc8b4",
+    "sharedFollowupCommit": "29eec25b2d78b90a8d29596136de3ad2c93dd7c2",
     "sharedFollowupChecks": "daemon-8-of-8,scripts-15-of-15,backend-74-of-74,frontend-typecheck,integration-gate-61-of-61,diff-check",
     "leasePreflightUiEvidence": "REAL_windows-computer-install-setup-connect_20260807142011",
-    "cloudDeployment": "blocked_dirty_worktree_capacity_report_and_external_secret",
+    "cloudDeployment": "task_scoped_gate_available;blocked_windows_artifact_external_secret_and_dirty_worktree",
+    "capacityGate": "formal_only_for_release_or_capacity_claims",
     "evidenceDir": "evidence/"
   }
 }

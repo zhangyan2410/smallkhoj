@@ -30,6 +30,7 @@ SOURCE_REVISION_LABEL = "org.opencontainers.image.revision"
 FORMAL_CAPACITY_PROFILE_ID = "formal-300-500-30-v1"
 DAEMON_RELEASE_ARTIFACT_DIR = Path("release-artifacts/smallkhoj-daemon")
 GIT_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
+TASK_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,100}$")
 IMAGE_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 IMAGE_INSPECT_TEMPLATE = (
     '{"id":{{json .Id}},'
@@ -242,6 +243,27 @@ def validate_capacity_report(
     )
 
 
+def validate_task_scope(root: Path, task_id: str) -> str:
+    """Validate an explicit task-scoped deploy without making a capacity claim."""
+    normalized = task_id.strip()
+    if TASK_ID_PATTERN.fullmatch(normalized) is None:
+        raise ValueError("task-scoped deployment requires a safe Trellis task id")
+    candidates = [root / ".trellis" / "tasks" / normalized / "task.json"]
+    archive_root = root / ".trellis" / "tasks" / "archive"
+    if archive_root.is_dir():
+        candidates.extend(archive_root.glob(f"*/{normalized}/task.json"))
+    for task_path in candidates:
+        if not task_path.is_file():
+            continue
+        try:
+            payload = json.loads(task_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"task metadata is invalid for {normalized}") from exc
+        if isinstance(payload, dict) and payload.get("id") == normalized:
+            return normalized
+    raise ValueError(f"Trellis task metadata not found for task-scoped deployment: {normalized}")
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -447,18 +469,21 @@ def default_release_evidence_path(archive_path: Path) -> Path:
 
 def build_release_evidence(
     *,
-    tested: CapacityEvidence,
+    tested: CapacityEvidence | None,
+    tested_candidate: GitCandidate,
     merge: GitCandidate,
     identities: dict[str, ImageIdentity],
     archive_path: Path,
     archive_sha256: str,
+    deployment_scope: dict[str, str],
 ) -> dict[str, Any]:
     return {
         "schemaVersion": 1,
         "status": "transferred",
+        "deploymentScope": deployment_scope,
         "testedCandidate": {
-            "head": tested.candidate_head,
-            "tree": tested.candidate_tree,
+            "head": tested_candidate.head,
+            "tree": tested_candidate.tree,
         },
         "mergeCandidate": {
             "head": merge.head,
@@ -468,7 +493,7 @@ def build_release_evidence(
             "path": str(tested.report_path),
             "sha256": tested.report_sha256,
             "profileId": tested.profile_id,
-        },
+        } if tested else None,
         "images": [
             {
                 "tag": tag,
@@ -653,13 +678,32 @@ def run_plan(plan: CommandPlan, *, root: Path | None = None) -> int:
 def execute_transfer(
     options: TransferOptions,
     *,
-    capacity_report: Path,
+    capacity_report: Path | None,
     root: Path,
     release_evidence: Path | None = None,
+    task_id: str | None = None,
 ) -> int:
     root = root.resolve()
     candidate = validate_release_candidate(root, options.source_revision)
-    capacity = validate_capacity_report(capacity_report.resolve(), candidate.tree)
+    if bool(capacity_report) == bool(task_id):
+        raise ValueError(
+            "choose exactly one deployment gate: --capacity-report or --task-scoped with --task-id"
+        )
+    capacity = (
+        validate_capacity_report(capacity_report.resolve(), candidate.tree)
+        if capacity_report
+        else None
+    )
+    tested_candidate = (
+        GitCandidate(capacity.candidate_head, capacity.candidate_tree)
+        if capacity
+        else candidate
+    )
+    deployment_scope = (
+        {"type": "formal-capacity", "profileId": capacity.profile_id}
+        if capacity
+        else {"type": "task-scoped", "taskId": validate_task_scope(root, task_id or ""), "capacityClaim": "not-asserted"}
+    )
     plan = build_plan(options)
     identities: dict[str, ImageIdentity] | None = None
     archive_path = resolve_transfer_output(options.output_archive, root)
@@ -667,7 +711,7 @@ def execute_transfer(
         release_evidence or default_release_evidence_path(options.output_archive),
         root,
     )
-    if evidence_path in {archive_path, capacity.report_path}:
+    if evidence_path == archive_path or (capacity and evidence_path == capacity.report_path):
         raise ValueError(
             "release evidence path must differ from the archive and capacity report"
         )
@@ -676,7 +720,8 @@ def execute_transfer(
     for step in plan.steps:
         if step.label == "save-image-archive":
             candidate = validate_release_candidate(root, options.source_revision)
-            capacity = validate_capacity_report(capacity_report.resolve(), candidate.tree)
+            if capacity_report:
+                capacity = validate_capacity_report(capacity_report.resolve(), candidate.tree)
             if not options.skip_build:
                 validate_daemon_release_artifacts(
                     root / DAEMON_RELEASE_ARTIFACT_DIR,
@@ -705,21 +750,25 @@ def execute_transfer(
                 expected_identities=identities,
             )
             candidate = validate_release_candidate(root, options.source_revision)
-            capacity = validate_capacity_report(capacity_report.resolve(), candidate.tree)
+            if capacity_report:
+                capacity = validate_capacity_report(capacity_report.resolve(), candidate.tree)
 
     if identities is None or archive_sha256 is None:
         raise ValueError("candidate image archive evidence was not captured")
     candidate = validate_release_candidate(root, options.source_revision)
-    capacity = validate_capacity_report(capacity_report.resolve(), candidate.tree)
+    if capacity_report:
+        capacity = validate_capacity_report(capacity_report.resolve(), candidate.tree)
     if sha256_file(archive_path) != archive_sha256:
         raise ValueError("saved image archive changed during transfer")
 
     evidence = build_release_evidence(
         tested=capacity,
+        tested_candidate=tested_candidate,
         merge=candidate,
         identities=identities,
         archive_path=archive_path,
         archive_sha256=archive_sha256,
+        deployment_scope=deployment_scope,
     )
     evidence_sha256 = persist_release_evidence(evidence_path, evidence)
     print(
@@ -765,8 +814,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Accepted formal capacity report whose candidate tree must equal "
-            "the current HEAD tree. Required for a real transfer."
+            "the current HEAD tree. Required for a formal release transfer."
         ),
+    )
+    parser.add_argument(
+        "--task-scoped",
+        action="store_true",
+        help=(
+            "Allow a task-scoped transfer without a formal capacity claim. "
+            "Requires --task-id and remains subject to clean-source/image/archive checks."
+        ),
+    )
+    parser.add_argument(
+        "--task-id",
+        help="Trellis task id recorded in task-scoped release evidence.",
     )
     parser.add_argument(
         "--release-evidence",
@@ -844,9 +905,27 @@ def main(argv: list[str] | None = None) -> int:
         for step in plan.steps:
             print(f"[{step.label}] {shell_join(step.argv)}")
         return 0
-    if args.capacity_report is None:
+    if args.task_scoped and not args.task_id:
         print(
-            "release validation failed: --capacity-report is required for a real transfer",
+            "release validation failed: --task-scoped requires --task-id",
+            file=sys.stderr,
+        )
+        return 2
+    if args.task_id and not args.task_scoped:
+        print(
+            "release validation failed: --task-id requires --task-scoped",
+            file=sys.stderr,
+        )
+        return 2
+    if args.capacity_report is not None and args.task_scoped:
+        print(
+            "release validation failed: choose --capacity-report or --task-scoped, not both",
+            file=sys.stderr,
+        )
+        return 2
+    if args.capacity_report is None and not args.task_scoped:
+        print(
+            "release validation failed: use --capacity-report for a formal release or --task-scoped --task-id for a scoped deploy",
             file=sys.stderr,
         )
         return 2
@@ -856,6 +935,7 @@ def main(argv: list[str] | None = None) -> int:
             capacity_report=args.capacity_report,
             root=root,
             release_evidence=args.release_evidence,
+            task_id=args.task_id if args.task_scoped else None,
         )
     except ValueError as exc:
         print(f"release validation failed: {exc}", file=sys.stderr)

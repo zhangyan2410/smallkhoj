@@ -83,6 +83,15 @@ def write_capacity_report(
     )
 
 
+def write_task_metadata(root: Path, task_id: str) -> None:
+    task_dir = root / ".trellis" / "tasks" / task_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "task.json").write_text(
+        json.dumps({"id": task_id, "status": "in_progress"}),
+        encoding="utf-8",
+    )
+
+
 def image_inspect_payload(tag: str, revision: str = SOURCE_REVISION) -> dict[str, object]:
     service = tag.split(":", 1)[0].rsplit("-", 1)[-1]
     return {
@@ -113,6 +122,8 @@ class ProductionImageTransferTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("--capacity-report", completed.stdout)
+        self.assertIn("--task-scoped", completed.stdout)
+        self.assertIn("--task-id", completed.stdout)
         self.assertIn("--release-evidence", completed.stdout)
 
     def test_default_plan_builds_saves_uploads_and_loads_images(self) -> None:
@@ -406,6 +417,92 @@ class ProductionImageTransferTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "evidence did not validate"):
                 transfer.validate_capacity_report(report_path, SOURCE_TREE)
+
+    def test_task_scope_requires_existing_trellis_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            task_id = "08-06-windows-computer-install-setup-connect"
+            write_task_metadata(root, task_id)
+            self.assertEqual(transfer.validate_task_scope(root, task_id), task_id)
+            with self.assertRaisesRegex(ValueError, "task id"):
+                transfer.validate_task_scope(root, "../unsafe")
+            with self.assertRaisesRegex(ValueError, "metadata not found"):
+                transfer.validate_task_scope(root, "missing-task")
+
+    def test_task_scoped_transfer_records_no_capacity_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            root = workspace / "repo"
+            root.mkdir()
+            head, tree = init_git_repo(root)
+            task_id = "08-06-windows-computer-install-setup-connect"
+            write_task_metadata(root, task_id)
+            subprocess.run(["git", "add", ".trellis"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "task metadata"], cwd=root, check=True)
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True
+            ).stdout.strip()
+            tree = subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"], cwd=root, check=True, capture_output=True, text=True
+            ).stdout.strip()
+            archive = workspace / "images.tar"
+            evidence_path = workspace / "release-evidence.json"
+            options = transfer.TransferOptions(
+                host="203.0.113.10",
+                source_revision=head,
+                output_archive=archive,
+                skip_build=True,
+                platform="linux/amd64",
+            )
+            identities = {
+                tag: transfer.ImageIdentity(
+                    image_id=image_inspect_payload(tag, head)["id"],
+                    os="linux",
+                    architecture="amd64",
+                    source_revision=head,
+                )
+                for tag in transfer.image_tags(options)
+            }
+
+            def run_step(step: transfer.PlanStep, **_: object) -> int:
+                if step.label == "save-image-archive":
+                    manifest_bytes = json.dumps(
+                        [
+                            {
+                                "Config": identity.image_id.removeprefix("sha256:") + ".json",
+                                "RepoTags": [tag],
+                                "Layers": [],
+                            }
+                            for tag, identity in identities.items()
+                        ]
+                    ).encode()
+                    with tarfile.open(archive, "w") as bundle:
+                        info = tarfile.TarInfo("manifest.json")
+                        info.size = len(manifest_bytes)
+                        bundle.addfile(info, io.BytesIO(manifest_bytes))
+                return 0
+
+            with (
+                mock.patch.object(transfer, "inspect_candidate_images", return_value=identities),
+                mock.patch.object(transfer, "run_step", side_effect=run_step),
+                mock.patch("builtins.print"),
+            ):
+                result = transfer.execute_transfer(
+                    options,
+                    capacity_report=None,
+                    root=root,
+                    release_evidence=evidence_path,
+                    task_id=task_id,
+                )
+
+            self.assertEqual(result, 0)
+            payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                payload["deploymentScope"],
+                {"type": "task-scoped", "taskId": task_id, "capacityClaim": "not-asserted"},
+            )
+            self.assertIsNone(payload["capacityReport"])
+            self.assertEqual(payload["testedCandidate"], {"head": head, "tree": tree})
 
     def test_skip_build_image_inspection_binds_revision_platform_tag_and_id(self) -> None:
         options = transfer.TransferOptions(
@@ -811,6 +908,35 @@ class ProductionImageTransferTests(unittest.TestCase):
             self.assertEqual(result, 0)
             rendered = "\n".join(str(call.args[0]) for call in output.call_args_list)
             self.assertNotIn("must-not-appear-in-plan", rendered)
+
+    def test_real_transfer_requires_exactly_one_formal_or_task_scoped_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            head, _ = init_git_repo(root)
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                with mock.patch("builtins.print") as output:
+                    missing = transfer.main([
+                        "--host", "203.0.113.10", "--source-revision", head,
+                    ])
+                    missing_task_id = transfer.main([
+                        "--host", "203.0.113.10", "--source-revision", head,
+                        "--task-scoped",
+                    ])
+                    conflicting = transfer.main([
+                        "--host", "203.0.113.10", "--source-revision", head,
+                        "--task-scoped", "--task-id", "task-id",
+                        "--capacity-report", "capacity.json",
+                    ])
+            finally:
+                os.chdir(old_cwd)
+
+            self.assertEqual((missing, missing_task_id, conflicting), (2, 2, 2))
+            rendered = "\n".join(str(call.args[0]) for call in output.call_args_list)
+            self.assertIn("--capacity-report", rendered)
+            self.assertIn("--task-scoped requires --task-id", rendered)
+            self.assertIn("not both", rendered)
 
 
 if __name__ == "__main__":

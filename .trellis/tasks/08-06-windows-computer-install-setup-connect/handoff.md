@@ -149,7 +149,7 @@ carrier，复跑 Windows §2–§6（尤其真实 rollback、升级失败恢复�
 
 浏览器证据使用同一候选的 backend `http://127.0.0.1:8000`、frontend `http://127.0.0.1:3000` 和 `./twd`，marker 为 `REAL_windows-computer-install-setup-connect_20260807142011`。对已有 active lease 的同名 Computer 打开连接对话框，`[data-testid=connect-status-region]` 可见“这台电脑已有活跃连接。请先停止旧连接，或稍后重试。”，并保存了 snapshot、DOM eval 和截图：`evidence/REAL_windows-computer-install-setup-connect_20260807142011-lease-preflight.{snapshot.txt,eval.json,png}`。该证据只证明本地候选 UI 可见行为，不替代 Windows PE 实机或云端证据。
 
-当前仍保持 `task.json.status=in_progress`。云端发布前置条件尚未满足：工作树含本任务未提交代码及其他任务的未跟踪 `.trellis/tasks/08-06-goose-builtin-runtime/`，没有可用的正式 `formal-300-500-30-v1` capacity report，外部 release secret `/Volumes/ORICO/smallkhoj-secrets/release-worker.env` 也未提供；因此没有执行 `production_image_transfer.py --apply`、远端 compose 或 post-deploy smoke。Windows 侧仍必须用最新 HEAD 重建真实 `win32-x64` PE carrier，复跑 Install/Setup/Connect/Reconnect/升级失败恢复/rollback/lease 提示，并发布匹配 manifest 后才可进入部署流水线。
+当前仍保持 `task.json.status=in_progress`。云端发布前置条件尚未满足：工作树含其他任务的未跟踪 `.trellis/tasks/08-06-goose-builtin-runtime/`，外部 release secret `/Volumes/ORICO/smallkhoj-secrets/release-worker.env` 未提供，Windows 最新 `win32-x64` PE carrier/manifest 也尚未重建发布；因此没有执行 `production_image_transfer.py --apply` 或远端 compose。formal-300-500-30-v1 属于正式 release/容量声明门，不是本任务功能部署的硬性测试时长；本任务可在干净候选上显式使用 `--task-scoped --task-id 08-06-windows-computer-install-setup-connect` 做不作容量声明的功能部署，但仍必须通过镜像/归档完整性、外部 secret、Windows artifact 和 post-deploy smoke。Windows 侧仍必须用最新 HEAD 重建真实 PE carrier，复跑 Install/Setup/Connect/Reconnect/升级失败恢复/rollback/lease 提示，并发布匹配 manifest 后才可进入部署流水线。
 
 ## 运行中值得关注的问题（历史记录与最新处置）
 

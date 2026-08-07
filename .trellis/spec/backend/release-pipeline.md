@@ -129,6 +129,11 @@ smallkhoj-caddy:local-release
 - A short `smoke` run is diagnostic only; `acceptance.passed=true` is reserved
   for the formal profile. Trusting a mutable passing summary without
   recomputation is a release-blocking validation bug.
+- This formal gate applies when the operator is making a release-readiness or
+  capacity claim. A task-scoped functional deployment may opt into
+  `production_image_transfer.py --task-scoped --task-id <task-id>` instead; its
+  release evidence must say `capacityClaim=not-asserted` and it must not be
+  presented as formal capacity or initial-release evidence.
 
 #### Phase 2 — Squash merge
 

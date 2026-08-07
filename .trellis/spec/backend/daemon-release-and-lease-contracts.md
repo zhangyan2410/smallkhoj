@@ -16,6 +16,9 @@ daemon connect 409 handling, or the Computers onboarding status surface.
 ```text
 aura rollback --target-version <installed-semver>
 
+python3 scripts/production_image_transfer.py \
+  --task-scoped --task-id <trellis-task-id> ...
+
 <install-root>/active.json
 <install-root>/previous.json
 <install-root>/versions/v<version>-<platform>/
@@ -71,6 +74,11 @@ Lease conflict detail:
   warning in `connect-status-region`; it must not degrade to a bare `HTTP 409`.
 - `recoveryActions` are ordered identifiers, not executable commands. Clients may
   localize their display text but must preserve the stop -> wait -> retry order.
+- A functional task-scoped image transfer must opt in with both
+  `--task-scoped` and an existing `--task-id`. Its release evidence records
+  `deploymentScope.type=task-scoped` and `capacityClaim=not-asserted`; it cannot
+  be used as formal capacity or initial-release evidence. Formal transfers keep
+  the accepted `--capacity-report` path.
 
 ### 4. Validation & Error Matrix
 
@@ -85,6 +93,7 @@ Lease conflict detail:
 | Connect/Reconnect command sees an active lease | HTTP 409 `DAEMON_LEASE_ACTIVE`; create/consume zero tickets. |
 | Daemon receives structured active-lease 409 | Exit nonzero with stop/wait/fresh-ticket/retry guidance; persist no credential. |
 | UI receives structured active-lease 409 | Show localized message in `connect-status-region`, not `HTTP 409`. |
+| Task-scoped transfer omits/combines its gate flags or references a missing task | Refuse before any SSH/Docker command. |
 
 ### 5. Good/Base/Bad Cases
 

@@ -553,11 +553,12 @@ Default local archive path if not overridden:
   capacity report and require the current merge commit tree to equal the tested
   candidate tree. The image revision label remains the merge commit SHA; preserve the
   tested-tree -> merge-SHA mapping in release evidence.
-- Every real transfer, including `--skip-build`, requires `--capacity-report`.
-  Diagnostic smoke, failed/incomplete evidence, a recomputation/summary mismatch, and
-  a stale report whose candidate tree differs from current `HEAD^{tree}` are release
-  blockers. Dry-run examples also include the flag so copied runbook commands retain
-  the mandatory input.
+- Formal release transfers, including `--skip-build`, require an accepted
+  `--capacity-report` and remain subject to the formal profile checks. A
+  task-scoped functional transfer may instead use the explicit pair
+  `--task-scoped --task-id <task-id>`; it records no capacity claim and cannot
+  satisfy the initial-release or formal-capacity gate. Diagnostic smoke remains
+  useful runtime evidence but must never be relabeled as formal acceptance.
 - Release consumers must recompute schema-v5 capacity failures from the full raw
   report and require the stored `acceptance` object to equal that result exactly.
   Trusting a mutable `acceptance.passed=true` summary without reevaluation is a
@@ -579,7 +580,9 @@ Default local archive path if not overridden:
 | `docker load` succeeds but compose still uses old image tags | Fix `.env.prod` image tag values before starting services. |
 | `docker compose up -d` succeeds but smoke fails | Treat as failed deployment; inspect Caddy/backend/frontend logs. |
 | Proxy/network downloads time out during build | Re-run with `--use-vpn-proxy` or explicit proxy args. |
-| Capacity report is smoke, failed/forged, or stale for a different tree | Block before build/upload; do not reinterpret diagnostic or old evidence as release acceptance. |
+| Formal path receives a smoke, failed/forged, or stale capacity report | Block before build/upload; do not reinterpret diagnostic or old evidence as release acceptance. |
+| Task-scoped path omits `--task-id`, uses an unsafe/missing Trellis task, or also supplies `--capacity-report` | Block before build/upload; choose one explicit deployment gate. |
+| Task-scoped transfer is later presented as formal capacity or initial-release evidence | Reject the claim; its release evidence explicitly says `capacityClaim=not-asserted`. |
 | Tested candidate SHA differs from the squash-merge SHA but both Git trees match | Accept the mapping, label images with the merge SHA, and record both identities in release evidence. |
 | Release evidence cannot be persisted after transfer | Treat the transfer as incomplete release evidence and do not claim release completion. |
 
