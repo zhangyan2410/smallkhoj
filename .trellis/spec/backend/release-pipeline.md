@@ -27,10 +27,10 @@ Pipeline phases (in order):
 
 ```text
 0. Local candidate      clean worktree + make ci green
-1. Capacity gate        formal-300-500-30-v1 passes on the candidate tree
+1. Deployment gate      formal capacity for release claims, or explicit task scope for functional deploys
 2. Squash merge         gh pr merge --squash --match-head-commit <SHA>
 3. Tree equality        origin/main^{tree} == candidate tree
-4. Image build/transfer production_image_transfer.py --apply (registry-free)
+4. Image build/transfer production_image_transfer.py (non-dry-run, registry-free)
 5. App-only deploy      docker compose up -d ... backend frontend caddy
 6. Post-deploy smoke    post_deploy_smoke.py against the public base URL
 7. Health window        10-minute window, sampled every 60s
@@ -64,13 +64,23 @@ make e2e-authenticated        # = verify-e2e-env; cd frontend && bun run e2e
 gh pr merge <PR> --squash --match-head-commit <candidate-SHA>
 
 # Phase 4 — registry-free image build + transfer (requires clean HEAD == SHA)
+# Formal release/capacity claim:
 python3 scripts/production_image_transfer.py \
   --host 124.222.40.40 --user ubuntu \
   --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
   --remote-dir /home/ubuntu/smallkhoj-deploy \
   --platform linux/amd64 \
   --capacity-report <accepted-formal-report.json> \
-  --use-vpn-proxy --apply
+  --use-vpn-proxy
+
+# Functional deployment for one active Trellis task (capacityClaim=not-asserted):
+python3 scripts/production_image_transfer.py \
+  --host 124.222.40.40 --user ubuntu \
+  --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
+  --platform linux/amd64 \
+  --task-scoped --task-id <task-id> \
+  --use-vpn-proxy
 
 # Phase 5 — app-only deploy (NEVER include `db` in the deploy command)
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
@@ -120,11 +130,12 @@ smallkhoj-caddy:local-release
 - `dev.sh` is `local-dev` convenience only and must NOT be used as release
   evidence. See `deployment-environment-contracts.md`.
 
-#### Phase 1 — Capacity gate
+#### Phase 1 — Deployment gate
 
-- Release requires an accepted `formal-300-500-30-v1` report on the candidate
-  tree: 300 steady SSE / 500 peak SSE / 30 active users / 1800s active / 60s
-  peak / 60s cleanup. See `formal-capacity` scenario in
+- A formal release or capacity claim requires an accepted
+  `formal-300-500-30-v1` report on the candidate tree: 300 steady SSE / 500
+  peak SSE / 30 active users / 1800s active / 60s peak / 60s cleanup. See
+  `formal-capacity` scenario in
   `deployment-environment-contracts.md`.
 - A short `smoke` run is diagnostic only; `acceptance.passed=true` is reserved
   for the formal profile. Trusting a mutable passing summary without
@@ -161,8 +172,9 @@ smallkhoj-caddy:local-release
   SSH/SCP upload -> remote `docker load` -> remote `docker compose`. No
   container registry, no CI image push, no `git push`-to-deploy.
 - Precondition: `git status --porcelain` completely empty AND supplied
-  `--source-revision` == current `HEAD` AND formal capacity report candidate
-  tree == current `HEAD^{tree}`.
+  `--source-revision` == current `HEAD`. Formal transfers additionally require
+  the capacity report candidate tree to equal `current HEAD^{tree}`; task-scoped
+  transfers require an existing matching Trellis task and make no capacity claim.
 - Build context must be a clean Git candidate. Staged/unstaged/untracked files
   are release blockers. The `org.opencontainers.image.revision` label must
   equal the checked-out `HEAD`.
@@ -171,13 +183,16 @@ smallkhoj-caddy:local-release
   BuildKit deliberately does NOT include secret content in the cache key, so a
   same-source/different-key rebuild may show `CACHED`; hash-compare the
   production public key SHA-256 against the running backend key before deploy.
-- Every real transfer, including `--skip-build`, requires `--capacity-report`.
-  A stale/failed/forged report or a candidate-tree mismatch is a release
-  blocker.
+- Every real transfer, including `--skip-build`, requires exactly one explicit
+  deployment gate: an accepted `--capacity-report` for a formal release, or
+  `--task-scoped --task-id <task-id>` for a functional task deployment. A
+  stale/failed/forged formal report, a missing task, or a candidate-tree
+  mismatch is a blocker.
 - On success, atomically persist schema-versioned JSON release evidence
   (`<output-archive>.release-evidence.json`): binds tested candidate HEAD/tree,
-  merge HEAD/tree, formal profile + report path/hash, image tag/ID/revision/
-  platform, archive path/hash. Contains no secret values.
+  merge HEAD/tree, deployment scope (and formal profile + report path/hash when
+  applicable), image tag/ID/revision/platform, and archive path/hash. Contains
+  no secret values.
 
 #### Phase 5 — App-only deploy
 
@@ -293,7 +308,7 @@ smallkhoj-caddy:local-release
 | Condition | Expected behavior |
 | --- | --- |
 | Asked "is it deployed/released" after only a localhost check | Invalid evidence; rerun against `local-prod` or `cloud-prod`. A localhost check never proves cloud production works. |
-| `make ci` green but no formal capacity report | Not release-ready; run `formal-300-500-30-v1` on the candidate tree. |
+| `make ci` green but no formal capacity report | Not ready for a formal release/capacity claim; a functional task-scoped deploy may proceed only with `--task-scoped --task-id <task-id>` and must retain `capacityClaim=not-asserted`. |
 | A short `smoke` run labeled as formal capacity | Reject; `acceptance.passed=true` is reserved for the formal profile. |
 | Squash merge succeeded but `origin/main^{tree} != candidate tree` | Block image transfer; rebuild/retest the correct candidate. |
 | `gh pr merge` used with `--delete-branch` | Risk: a branch-delete failure aborts a successful merge; drop the flag. |
