@@ -1070,7 +1070,10 @@ async def test_daemon_connect_rejects_active_same_name_computer_when_machine_id_
         )
 
     assert exc.value.status_code == 409
-    assert exc.value.detail == "Computer already has an active daemon"
+    assert exc.value.detail["reasonCode"] == "DAEMON_LEASE_ACTIVE"
+    assert exc.value.detail["activeDaemonId"] == "daemon-active"
+    assert exc.value.detail["recoveryActions"] == ["stop", "wait", "retry"]
+    assert exc.value.detail["retryAfterSeconds"] > 0
     assert existing.machine_id == "old-local-machine-id"
     assert ticket.consumed_at is None
 

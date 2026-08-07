@@ -120,6 +120,23 @@ Mac 端 build_daemon 已大改（managed standalone + codex-acp sidecar + valida
 ### 待续(本会话未覆盖,移交后续)
 - A(backend/test 丢失修复)、B(重建 win32 产物)、C(重跑 Install+Setup 留最新证据)、E(reconnect/升级/回滚)、F(ACP/doctor)、G(汇总)。
 
+## 主代码续作复核（2026-08-07，Windows 交接后的共享实现）
+
+交接中的 E 项判断已由主代码复核并实现，不能再视为 Windows-only blocker：
+
+- 新增 `aura rollback --target-version <version>`，仅切换已安装且完整的 release pointer；运行中
+  daemon 拒绝切换，Setup、machine-id、credential 保持原样。
+- Unix/Windows installer 都记录 `previous.json`。Windows installer 现在拒绝隐式降级、同版本完整
+  安装跳过归档下载，使用读取 active pointer 的稳定 launcher，并在激活前执行 `aura.exe --version`
+  健康探针；旧 active 版本目录保留用于恢复。
+- Connect preview/command 先做远端 lease preflight，agent connect 的 409 也携带结构化
+  `DAEMON_LEASE_ACTIVE`（过期时间与 stop/wait/retry 动作）；CLI/UI 显示可操作恢复提示，ticket 不
+  在冲突前创建或消费。
+- `readJsonRecord` 对 UTF-8 BOM 做防御性容错，避免 PowerShell 5.1 状态文件让 doctor 误报。
+
+这些是共享源码修复，Windows 主机仍需用拉取后的最新 HEAD 重建真实 `win32-x64` carrier，并复跑
+§2–§6 的 rollback/升级失败恢复/lease 提示证据；本地 Node/Python 回归不能替代该实机门槛。
+
 ## 边界与红线
 
 - **不碰** `agent/daemon/aaa-daemon/src/cmd/main.ts` 命令注册（Mac 已实现 setup/restart/connect/status/doctor/stop）、Unix `install.sh` ensure 逻辑、共享 CLI。我的 install.ps1/run_command 改动是 Windows 兼容补丁，已避开这些区域。

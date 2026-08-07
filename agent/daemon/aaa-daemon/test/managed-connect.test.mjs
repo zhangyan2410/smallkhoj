@@ -225,3 +225,48 @@ test('standalone product connect fails closed when register is rejected', async 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('standalone product connect explains active lease recovery without persisting a credential', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aura-managed-connect-lease-'));
+  const upstream = await startServer(async (req, res) => {
+    const path = new URL(req.url, 'http://upstream.test').pathname;
+    res.setHeader('content-type', 'application/json');
+    if (path === '/internal/agent-api/daemon/connect') {
+      res.statusCode = 409;
+      res.end(JSON.stringify({
+        detail: {
+          reasonCode: 'DAEMON_LEASE_ACTIVE',
+          leaseExpiresAt: '2030-01-01T00:00:00Z',
+          recoveryActions: ['stop', 'wait', 'retry'],
+        },
+      }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+  const env = isolatedEnv(root, upstream.url);
+  const setup = spawnSync(process.execPath, [cliPath, 'setup', '--name', 'managed-lease', '--server-url', upstream.url], { env, encoding: 'utf8' });
+  assert.equal(setup.status, 0, `${setup.stdout}\n${setup.stderr}`);
+  const parent = spawn(process.execPath, [cliPath, '--server-url', upstream.url, '--api-key', 'sk_connect_managed_lease'], { env, encoding: 'utf8' });
+  let stdout = '';
+  let stderr = '';
+  parent.stdout.setEncoding('utf8');
+  parent.stderr.setEncoding('utf8');
+  parent.stdout.on('data', (chunk) => { stdout += chunk; });
+  parent.stderr.on('data', (chunk) => { stderr += chunk; });
+  const exitCode = await new Promise((resolveExit, rejectExit) => {
+    parent.once('error', rejectExit);
+    parent.once('exit', (code) => resolveExit(code));
+  });
+  try {
+    assert.notEqual(exitCode, 0);
+    assert.match(`${stdout}\n${stderr}`, /active lease|aura stop|fresh Connect\/Reconnect|2030-01-01/i);
+    assert.equal(existsSync(env.SLOCK_AGENT_CREDENTIAL), false);
+    const state = JSON.parse(readFileSync(env.AURA_STATE_FILE, 'utf8'));
+    assert.equal(state.status, 'error');
+    assert.match(state.lastError, /active lease|aura stop|fresh Connect\/Reconnect/i);
+  } finally {
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

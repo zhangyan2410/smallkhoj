@@ -375,6 +375,24 @@ def _lease_active(computer: Computer, now: datetime) -> bool:
     )
 
 
+def daemon_lease_conflict_detail(computer: Computer, now: datetime) -> dict[str, object]:
+    """Return a machine-readable, actionable conflict without exposing a token."""
+    expires_at = computer.daemon_lease_expires_at
+    lease_now = _now_for(expires_at) if expires_at is not None else now
+    retry_after = None
+    if expires_at is not None:
+        retry_after = max(1, int((expires_at - lease_now).total_seconds()))
+    return {
+        "reasonCode": "DAEMON_LEASE_ACTIVE",
+        "message": "Computer already has an active daemon; stop it gracefully, wait for the lease to expire, then retry.",
+        "computerId": str(computer.id),
+        "activeDaemonId": computer.active_daemon_id,
+        "leaseExpiresAt": expires_at.isoformat() if expires_at else None,
+        "retryAfterSeconds": retry_after,
+        "recoveryActions": ["stop", "wait", "retry"],
+    }
+
+
 def _daemon_lease_conflicts(computer: Computer, daemon_id: str | None, now: datetime) -> bool:
     return bool(
         daemon_id
@@ -1659,7 +1677,7 @@ async def connect_daemon(
             raise HTTPException(409, f"Computer name {requested_name} already exists")
 
     if computer and _lease_active(computer, now):
-        raise HTTPException(409, "Computer already has an active daemon")
+        raise HTTPException(409, detail=daemon_lease_conflict_detail(computer, now))
 
     if computer is None:
         computer = Computer(

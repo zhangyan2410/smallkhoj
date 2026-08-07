@@ -30,11 +30,23 @@ export type PlatformCommands = {
 
 export type PlatformCommandMap = Record<OnboardingPlatform, PlatformCommands>
 
+export type ConnectPreflight = {
+  ok: boolean
+  reasonCode?: string | null
+  message?: string | null
+  computerId?: string | null
+  activeDaemonId?: string | null
+  leaseExpiresAt?: string | null
+  retryAfterSeconds?: number | null
+  recoveryActions?: string[]
+}
+
 export type OnboardingPreview = {
   name: string
   serverId?: string | null
   serverName?: string | null
   platforms: PlatformCommandMap
+  connectPreflight?: ConnectPreflight | null
   ticket?: { expiresAt?: string | null; ttlSeconds?: number | null } | null
   expiresAt?: string | null
 }

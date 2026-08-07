@@ -578,6 +578,31 @@ def _lease_expired(value: datetime | None) -> bool:
     return value <= now
 
 
+def _daemon_lease_preflight(computer: Computer | None) -> dict[str, object]:
+    """Describe whether a named Computer can accept a new daemon lease."""
+    if computer is None or _lease_expired(computer.daemon_lease_expires_at) or computer.status not in {"online", "active"}:
+        return {"ok": True, "reasonCode": None, "recoveryActions": []}
+    expires_at = computer.daemon_lease_expires_at
+    now = datetime.now(expires_at.tzinfo) if expires_at and expires_at.tzinfo else _utcnow()
+    retry_after = max(1, int((expires_at - now).total_seconds())) if expires_at else None
+    return {
+        "ok": False,
+        "reasonCode": "DAEMON_LEASE_ACTIVE",
+        "message": "This computer has an active daemon lease. Stop the existing daemon gracefully, wait for the lease to expire, then retry.",
+        "computerId": str(computer.id),
+        "activeDaemonId": computer.active_daemon_id,
+        "leaseExpiresAt": expires_at.isoformat() if expires_at else None,
+        "retryAfterSeconds": retry_after,
+        "recoveryActions": ["stop", "wait", "retry"],
+    }
+
+
+def _raise_daemon_lease_preflight(computer: Computer | None) -> None:
+    preflight = _daemon_lease_preflight(computer)
+    if not preflight["ok"]:
+        raise HTTPException(409, detail=preflight)
+
+
 async def verify_public_api_key(request: Request, db: AsyncSession = Depends(get_db)):
     """Validate a public API key transported only in the X-Public-Key header."""
     key = request.headers.get("X-Public-Key")
@@ -4879,6 +4904,10 @@ async def preview_computer_connect_commands(
     body = await request.json()
     name = str(body.get("name") or "my-computer").strip() or "my-computer"
     server_url = str(body.get("serverUrl") or "http://localhost:8000").strip()
+    named_result = await db.execute(
+        select(Computer).where(Computer.server_id == server.id, Computer.name == name)
+    )
+    named_computer = named_result.scalar_one_or_none()
     return {
         "name": name,
         "serverId": str(server.id),
@@ -4888,6 +4917,7 @@ async def preview_computer_connect_commands(
             name=name,
             server_label=server.name,
         ),
+        "connectPreflight": _daemon_lease_preflight(named_computer),
         "ticket": None,
         "expiresAt": None,
     }
@@ -4928,6 +4958,7 @@ async def preview_computer_reconnect_commands(
             name=computer.name,
             server_label=server.name,
         ),
+        "connectPreflight": _daemon_lease_preflight(computer),
         "ticket": None,
         "expiresAt": None,
     }
@@ -4944,6 +4975,11 @@ async def generate_computer_connect_command(
     name = str(body.get("name") or "").strip()
     if not name:
         raise HTTPException(400, "Missing name")
+
+    named_result = await db.execute(
+        select(Computer).where(Computer.server_id == server.id, Computer.name == name)
+    )
+    _raise_daemon_lease_preflight(named_result.scalar_one_or_none())
 
     token = f"sk_connect_{secrets.token_urlsafe(32)}"
     expires_at = _utcnow_aware() + timedelta(seconds=CONNECT_TICKET_TTL_SECONDS)
@@ -4998,6 +5034,8 @@ async def generate_computer_reconnect_command(
     computer = result.scalar_one_or_none()
     if not computer:
         raise HTTPException(404, "Computer not found")
+
+    _raise_daemon_lease_preflight(computer)
 
     token = f"sk_connect_{secrets.token_urlsafe(32)}"
     expires_at = _utcnow_aware() + timedelta(seconds=CONNECT_TICKET_TTL_SECONDS)

@@ -151,6 +151,18 @@ function searchValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
 }
 
+function responseErrorDetail(error: unknown, status: number): string {
+  if (error && typeof error === "object" && "detail" in error) {
+    const detail = (error as { detail?: unknown }).detail
+    if (typeof detail === "string") return detail
+    if (detail && typeof detail === "object" && "message" in detail) {
+      const message = (detail as { message?: unknown }).message
+      if (typeof message === "string" && message.trim()) return message
+    }
+  }
+  return `HTTP ${status}`
+}
+
 function parseCredentialCookie(value?: string) {
   if (!value) return null
   try {
@@ -195,7 +207,7 @@ async function createComputerConnectCommandAction(formData: FormData) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    const detail = responseErrorDetail(error, response.status)
     redirect(`/computers?error=${encodeURIComponent(detail)}`)
   }
 
@@ -234,7 +246,7 @@ async function createComputerReconnectCommandAction(formData: FormData) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    const detail = responseErrorDetail(error, response.status)
     redirect(`/computers?error=${encodeURIComponent(detail)}`)
   }
 

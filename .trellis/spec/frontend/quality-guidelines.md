@@ -240,6 +240,14 @@ The dialog also exposes `platform-tab-windows`, `platform-tab-unix`,
 `generate-ticket-button`/`regenerate-ticket-button`, and
 `connect-status-region` for browser evidence.
 
+Lease preflight is part of the shared onboarding response. When
+`connectPreflight.ok === false`, the status region must render a localized,
+actionable stop/wait/retry warning. Server-action error handling must accept both
+the legacy FastAPI shape `{detail: string}` and the structured shape
+`{detail: {reasonCode: "DAEMON_LEASE_ACTIVE", message, leaseExpiresAt,
+recoveryActions: ["stop", "wait", "retry"]}}`; never collapse the latter to a
+bare `HTTP 409` or expose daemon tokens.
+
 **Tests Required**:
 - Contract tests prove preview/setup requests create no ConnectTicket and
   return `ticket: null`/no expiry; Connect/Reconnect responses create a fresh
@@ -249,7 +257,8 @@ The dialog also exposes `platform-tab-windows`, `platform-tab-unix`,
   regeneration without repeating Setup.
 - `./twd` evidence asserts the Windows tab never displays curl/bash or npx and
   the macOS/Linux tab never displays PowerShell/irm; Online/failure status is
-  visible in `connect-status-region`.
+  visible in `connect-status-region`, including the active-lease recovery warning
+  when preview finds a live lease.
 
 ---
 

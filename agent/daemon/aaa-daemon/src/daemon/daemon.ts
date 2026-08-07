@@ -989,6 +989,22 @@ export class DaemonCore extends EventEmitter {
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');
+      let detail: Record<string, unknown> | null = null;
+      try {
+        const parsed = JSON.parse(text) as { detail?: unknown };
+        if (parsed.detail && typeof parsed.detail === 'object' && !Array.isArray(parsed.detail)) {
+          detail = parsed.detail as Record<string, unknown>;
+        }
+      } catch {
+        // Preserve the raw bounded response below for legacy string errors.
+      }
+      if (response.status === 409 && detail?.reasonCode === 'DAEMON_LEASE_ACTIVE') {
+        const expiresAt = typeof detail.leaseExpiresAt === 'string' ? detail.leaseExpiresAt : 'the lease expiry time';
+        throw new Error(
+          `Daemon connect is blocked by an active lease. Stop the existing daemon gracefully with \`aura stop\`, `
+          + `wait until ${expiresAt}, then generate a fresh Connect/Reconnect command and retry.`,
+        );
+      }
       throw new Error(`Daemon connect failed: ${response.status} ${text.slice(0, 200)}`);
     }
     const data = await response.json() as {

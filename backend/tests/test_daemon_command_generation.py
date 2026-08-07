@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -166,6 +167,23 @@ def test_powershell_quote_doubles_embedded_single_quotes():
     assert public_api._powershell_quote("a'b") == "'a''b'"
 
 
+def test_connect_preflight_reports_active_daemon_recovery_actions():
+    computer = SimpleNamespace(
+        id=uuid.uuid4(),
+        status="online",
+        active_daemon_id="daemon-active",
+        daemon_lease_expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
+    )
+
+    preflight = public_api._daemon_lease_preflight(computer)
+
+    assert preflight["ok"] is False
+    assert preflight["reasonCode"] == "DAEMON_LEASE_ACTIVE"
+    assert preflight["activeDaemonId"] == "daemon-active"
+    assert preflight["recoveryActions"] == ["stop", "wait", "retry"]
+    assert preflight["retryAfterSeconds"] > 0
+
+
 def test_windows_release_metadata_fails_closed_without_published_manifest(monkeypatch, tmp_path):
     monkeypatch.setattr(public_api.settings, "daemon_release_version", "0.2.6")
     # Redirect the artifact lookup at an empty tmp_path so the fail-closed path
@@ -192,6 +210,9 @@ async def test_connect_preview_never_persists_or_returns_ticket(monkeypatch):
     monkeypatch.setattr(public_api, "require_admin_role", lambda _membership: None)
 
     class PreviewDb:
+        async def execute(self, _statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: None)
+
         def add(self, _item):
             raise AssertionError("preview must not add a ConnectTicket")
 
@@ -212,3 +233,38 @@ async def test_connect_preview_never_persists_or_returns_ticket(monkeypatch):
     assert response["expiresAt"] is None
     assert response["name"] == "preview-computer"
     assert response["platforms"]["windows"]["connect"]["command"] is None
+
+
+@pytest.mark.asyncio
+async def test_connect_command_preflight_rejects_active_lease_before_ticket_creation(monkeypatch):
+    server = SimpleNamespace(id=uuid.uuid4(), name="Team Server")
+    computer = SimpleNamespace(
+        id=uuid.uuid4(),
+        status="online",
+        active_daemon_id="daemon-active",
+        daemon_lease_expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
+    )
+
+    async def resolve_context(_db, _request):
+        return SimpleNamespace(server=server, membership=object())
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", resolve_context)
+    monkeypatch.setattr(public_api, "require_admin_role", lambda _membership: None)
+
+    class ConnectDb:
+        async def execute(self, _statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: computer)
+
+        def add(self, _item):
+            raise AssertionError("lease preflight must reject before creating a ConnectTicket")
+
+    class ConnectRequest:
+        async def json(self):
+            return {"name": "active-computer", "serverUrl": "https://smallkhoj.example.com"}
+
+    with pytest.raises(HTTPException) as error:
+        await public_api.generate_computer_connect_command(ConnectRequest(), _auth=None, db=ConnectDb())
+
+    assert error.value.status_code == 409
+    assert error.value.detail["reasonCode"] == "DAEMON_LEASE_ACTIVE"
+    assert error.value.detail["recoveryActions"] == ["stop", "wait", "retry"]

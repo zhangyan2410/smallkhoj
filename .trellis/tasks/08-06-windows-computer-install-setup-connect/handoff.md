@@ -113,6 +113,27 @@ Windows x64 真机验收已按 `windows-acceptance.md` §0–7 执行；详见 `
 - **红线遵守**：未改 `main.ts` 命令注册、Unix `install.sh`、共享 CLI；未动端口 8000 backend 本身；`release-artifacts/` 未提交（gitignored）；所有 token 脱敏（证据全量扫描无原始 `sk_connect_`/`sk_machine_`/`sk_session_`）。
 - **task.json.status 保持 `in_progress`**（rollback/升级旧版本保留/客户端冲突预检提示三项 BLOCKED 未满足 PRD 完成条件）。
 
+## 2026-08-07 shared-code follow-up（当前续作）
+
+重新核对 Windows 交接后确认：上面三项不是 Windows 主机专属实现，而是共享
+daemon/installer/backend/UI 契约的代码缺口；Windows 侧负责真实 PE、PowerShell、PATH、
+ACL 和实机证据，主代码必须提供跨平台行为。当前续作已落地：
+
+- `agent/daemon/aaa-daemon/src/platform/release-state.ts` + `aura rollback --target-version`
+  提供安全的已安装版本切换；运行中的 daemon 会先拒绝，目标版本必须完整，Setup、machine-id
+  和 credential 不被修改。
+- Unix/Windows 生成安装器写入 `previous.json`；Windows 增加 active 版本比较、显式降级保护、
+  同版本无归档下载复用、pointer-aware `aura.cmd`/`aura.ps1`、PE `--version` 健康探针和失败时
+  恢复 staging/旧版本。Windows 旧版本目录不再作为升级副作用删除。
+- Connect preview/command 和 agent connect 409 现在返回 `DAEMON_LEASE_ACTIVE`、租约过期时间及
+  `stop / wait / retry` 恢复动作；daemon CLI 与 Computers UI 都能显示可操作提示，ticket 在冲突
+  前不会被创建/消费。
+- 新增 release-state、Windows installer 生成器、daemon connect、backend preflight/lease 和
+  BOM 容错回归；本地续作验证记录在本会话中，尚未替代最新 Windows 主机复跑或云端发布。
+
+任务仍保持 `in_progress`：完成云端部署前，还需用本次最新 HEAD 重建并发布 Windows manifest/PE
+carrier，复跑 Windows §2–§6（尤其真实 rollback、升级失败恢复和 lease 提示），再执行部署流水线。
+
 ## 当前已知边界
 
 - 当前 Mac checkout 只有 `darwin-arm64` release manifest；Windows manifest 仍 unavailable，后端 UI 应继续 fail-closed，不能复制残缺 PowerShell 命令。
@@ -121,6 +142,14 @@ Windows x64 真机验收已按 `windows-acceptance.md` §0–7 执行；详见 `
 - 初始 preflight/历史 runtime 报告中的旧端口与候选 commit 不代表当前 main；若复跑 daemon suite，应使用隔离的 `AURA_INSTALL_ROOT` / `SLOCK_AGENT_CREDENTIAL`，避免宿主旧 credential 把 fake upstream 重定向到失效端口。
 - 本地自动化没有替代 Windows 实机门槛；任何 `.exe`、PATH、ACL、升级/回滚和进程/lease 结论都必须来自 Windows 主机输出。
 - Connect 命令含一次性敏感 ticket。证据只保留脱敏命令（例如把 token 替换为 `<REDACTED_CONNECT_TICKET>`），不要把原始 token 写进截图、URL、日志或提交。
+
+## 共享代码续作回归与当前候选（2026-08-07）
+
+本次续作候选固定为当前 worktree `/Users/code/project/smallkhoj`、分支 `main`、`HEAD=143e68e5c93efdc875a73acb3a2fe7d6cbabc8b4`。共享代码已通过以下窄回归：daemon build + release/lease/status tests 8/8、distribution builder + Unix installer 15/15、backend daemon command/control 74/74、frontend typecheck，以及 Integration Gate contract suite 61/61。`git diff --check` 通过。
+
+浏览器证据使用同一候选的 backend `http://127.0.0.1:8000`、frontend `http://127.0.0.1:3000` 和 `./twd`，marker 为 `REAL_windows-computer-install-setup-connect_20260807142011`。对已有 active lease 的同名 Computer 打开连接对话框，`[data-testid=connect-status-region]` 可见“这台电脑已有活跃连接。请先停止旧连接，或稍后重试。”，并保存了 snapshot、DOM eval 和截图：`evidence/REAL_windows-computer-install-setup-connect_20260807142011-lease-preflight.{snapshot.txt,eval.json,png}`。该证据只证明本地候选 UI 可见行为，不替代 Windows PE 实机或云端证据。
+
+当前仍保持 `task.json.status=in_progress`。云端发布前置条件尚未满足：工作树含本任务未提交代码及其他任务的未跟踪 `.trellis/tasks/08-06-goose-builtin-runtime/`，没有可用的正式 `formal-300-500-30-v1` capacity report，外部 release secret `/Volumes/ORICO/smallkhoj-secrets/release-worker.env` 也未提供；因此没有执行 `production_image_transfer.py --apply`、远端 compose 或 post-deploy smoke。Windows 侧仍必须用最新 HEAD 重建真实 `win32-x64` PE carrier，复跑 Install/Setup/Connect/Reconnect/升级失败恢复/rollback/lease 提示，并发布匹配 manifest 后才可进入部署流水线。
 
 ## 运行中值得关注的问题（历史记录与最新处置）
 

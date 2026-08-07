@@ -113,14 +113,23 @@ Current Caddy route signatures:
   `release-artifacts/smallkhoj-daemon/`. The source `package.json.version` alone
   must never be turned into a downloadable URL; production still supplies the
   published version explicitly through `.env.prod`.
-- Daemon onboarding commands shown to users must be a single npx command, not a split install/connect workflow:
-  - Default self-hosted shape: `npx -y --package <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz aura --server-url <public-base-url> --api-key <sk_connect_or_sk_machine_token> # <server-name>`
-  - Optional npm-registry shape after publishing: `npx -y --package @smallkhoj/smallkhoj-daemon@latest aura --server-url <public-base-url> --api-key <sk_connect_or_sk_machine_token> # <server-name>`
-  - `--server-url` must come from the public browser origin or configured public API base, never from the internal Docker/backend URL.
-  - `--api-key` is the one-time `sk_connect_...` ticket for first connect or `sk_machine_...` token for reconnect.
-  - The shell comment is required as a human-visible Server identifier. Sanitize it to a single line; it must not affect execution.
-  - `DAEMON_NPX_PACKAGE` may override the default hosted tgz URL for staging or npm-registry release, but the default must work without npm account/auth by serving the tgz from `/downloads/smallkhoj-daemon/`.
-  - The daemon package name must match the npx executable convention: package `@smallkhoj/smallkhoj-daemon`, product bin `aura`, with `smallkhoj-daemon` retained as a compatibility alias.
+- Daemon onboarding commands are structured by platform and phase:
+  - Windows uses standalone PowerShell `install.ps1`, `aura setup`, and an
+    explicit Connect command; the release carries real PE `aura.exe` and private
+    `node.exe`, so the host does not need Node/npm/npx.
+  - macOS/Linux use the managed Aura Ensure installer and stable `aura` launcher;
+    the legacy self-hosted npx tgz command remains a compatibility fallback.
+  - `platforms[platform].install/setup/connect` carries shell labels and phase
+    names. Only the selected platform is rendered in the UI.
+  - `--server-url` must come from the public browser origin or configured public
+    API base, never from the internal Docker/backend URL. `--api-key` is the
+    one-time `sk_connect_...` ticket for first connect or `sk_machine_...` token
+    for reconnect.
+  - Preview/setup metadata is ticket-free. Explicit Connect/Reconnect creates a
+    fresh ticket and returns `expiresAt`; an active lease is rejected before ticket
+    creation with `DAEMON_LEASE_ACTIVE` and `stop`/`wait`/`retry` actions.
+  - The legacy package name and `aura` bin remain available for npx compatibility;
+    standalone installers must not silently fall back to a source path.
 - Secrets and provider credentials must live outside the repository, usually in the server-side env file used by `docker compose --env-file`.
 - The deployed public-client credential has one operator input, `PUBLIC_API_KEY`. Backend runtime reads it directly; frontend production builds receive it only through `--secret id=public_api_key,env=PUBLIC_API_KEY`; Compose bridges it to `NEXT_PUBLIC_API_KEY` for the frontend container. Do not put it in build args, CLI plan JSON, URLs, logs, screenshots, or error details.
 - `NEXT_PUBLIC_*` values are compiled into the browser bundle. Rotating `PUBLIC_API_KEY` therefore requires rebuilding the frontend image and restarting backend/frontend with the same value; changing only container runtime env leaves an old browser bundle.
@@ -150,9 +159,12 @@ Current Caddy route signatures:
 | Browser throws the production public-key error even though the Next process has local/public env | Inspect the client adapter for dynamic `process.env` passing; restore explicit `process.env.NEXT_PUBLIC_*` reads without weakening fail-closed validation. |
 | Production frontend build is given `NEXT_PUBLIC_API_KEY` only as a build arg | Invalid production invocation; build args are accepted only for explicit `local-dev`. |
 | Chat WebSocket URL contains `api_key` or another reusable credential | Authentication contract violation; reject the URL path and use the reviewed subprotocol transport. |
-| Computer UI shows separate install and connect commands | Product bug; show only the single npx onboarding command. |
-| Generated daemon command starts with `smallkhoj-daemon connect` or a source-checkout path | Product bug; command is not production-installable. |
-| Default generated command points at `@smallkhoj/smallkhoj-daemon@latest` before npm publishing | Release blocker; leave `DAEMON_NPX_PACKAGE` empty so the command uses the self-hosted tgz URL. |
+| Windows UI shows Unix curl/bash or npx instructions | Product bug; show only the selected Windows PowerShell standalone phases. |
+| Selected platform hides its Install/Setup/Connect phase or renders the other platform's copyable command | Product bug; keep the tabs mutually exclusive and render all three selected phases. |
+| Preview/setup creates a ticket or displays an expiry countdown | Contract violation; return `ticket: null` and no expiry until Connect/Reconnect. |
+| Active lease is discovered during preview or command generation | Return/display `DAEMON_LEASE_ACTIVE` with stop/wait/retry guidance and do not create a ticket. |
+| Generated standalone command starts with a source-checkout path | Product bug; command is not production-installable. |
+| Legacy npx fallback points at `@smallkhoj/smallkhoj-daemon@latest` before npm publishing | Release blocker; leave the registry override empty so compatibility uses the self-hosted tgz URL. |
 | `DAEMON_NPX_PACKAGE` is set to a registry package and `npm view <package>` returns 404 | Release blocker for that override; unset the env or publish the package. |
 | `GET <base>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz` fails | Release blocker; regenerate/upload daemon artifacts. |
 | `npm pack --dry-run --json` includes `.slock`, `.slock-runtimes`, `test/`, local workspaces, or source-checkout artifacts | Release blocker; fix the daemon package `files` allow-list before publishing. |
@@ -180,13 +192,19 @@ For deployment/proxy/auth changes:
 - Verify `/api/health`, `/docs`, `/login`, and daemon WebSocket routing on the chosen environment.
 - Use `./twd` for browser-facing product evidence, not raw Playwright, when verifying repository UI behavior.
 - For daemon onboarding changes:
-  - backend command generation test asserts the single npx shape and no source-checkout launcher path;
-  - daemon CLI test proves `--server-url` + `--api-key` can connect/register;
-  - `npm pack --dry-run --json` proves the package contains only publishable files;
-  - `npx -y ./<daemon-package>.tgz --version` proves the packaged bin is resolvable;
-  - `npx -y <base>/downloads/smallkhoj-daemon/<daemon-package>.tgz --version` proves the hosted tgz is resolvable;
-  - executing a UI-generated command must show backend evidence for tgz download, daemon connect, daemon register, WebSocket accept, and shutdown/disconnect;
-  - `./twd` evidence proves the Computers UI shows only one command block and no install/connect split labels.
+  - backend command-generation tests assert platform/phase structure, preview
+    ticket absence, explicit Connect/Reconnect ticket creation, lease preflight,
+    and the legacy Unix fallback;
+  - daemon CLI tests prove `--server-url` + `--api-key` can connect/register and
+    surface structured lease conflicts without persisting credentials;
+  - installer tests prove the managed artifact/launcher and rollback contracts;
+  - `npm pack --dry-run --json` and the hosted tgz check remain compatibility
+    coverage when the npx fallback is published;
+  - executing a UI-generated command must show backend evidence for the selected
+    platform's install/connect path, daemon register, WebSocket accept, and
+    shutdown/disconnect;
+  - `./twd` evidence proves only the selected platform's phase commands are in
+    the DOM and active-lease guidance is visible in `connect-status-region`.
 
 For cloud deploy evidence:
 
@@ -211,13 +229,16 @@ I validated local-dev only. For release readiness, next run local-prod or cloud-
 #### Wrong
 
 ```text
-Show curl install, install command, and connect command together so advanced users can choose.
+Render PowerShell, curl/bash, and npx commands together, create a ticket while
+the dialog is opening, and return only HTTP 409 when a daemon lease is active.
 ```
 
 #### Correct
 
 ```text
-Show one copyable onboarding command: npx -y --package <public-base-url>/downloads/smallkhoj-daemon/smallkhoj-smallkhoj-daemon-<version>.tgz aura --server-url <public-base-url> --api-key <token> # <server-name>.
+Render the selected platform's Install -> Setup -> Connect phases, keep preview
+ticket-free, and return DAEMON_LEASE_ACTIVE with stop/wait/retry guidance before
+creating a new ticket. Keep npx as an explicit compatibility fallback only.
 ```
 
 ## Scenario: Self-Contained CI Security Scans

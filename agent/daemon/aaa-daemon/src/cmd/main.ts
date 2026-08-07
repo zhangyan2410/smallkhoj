@@ -37,6 +37,10 @@ import {
   redactManagedDaemonError,
   writeManagedDaemonState,
 } from '../platform/daemon-state.js';
+import {
+  readReleasePointer,
+  rollbackRelease,
+} from '../platform/release-state.js';
 
 const program = new Command();
 
@@ -101,6 +105,10 @@ type ProductConnectOptions = {
   apiKey?: string;
 };
 
+type RollbackOptions = {
+  targetVersion: string;
+};
+
 function detectImplementationType(): 'aura-standalone' | 'node-npx' {
   if (process.env.AURA_STANDALONE === '1') return 'aura-standalone';
   const executable = `${process.execPath} ${process.argv[1] || ''}`.toLowerCase();
@@ -115,7 +123,7 @@ type JsonRecord = Record<string, unknown>;
 function readJsonRecord(path: string): JsonRecord | null {
   if (!existsSync(path)) return null;
   try {
-    const value = JSON.parse(readFileSync(path, 'utf-8'));
+    const value = JSON.parse(readFileSync(path, 'utf-8').replace(/^\uFEFF/, ''));
     return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null;
   } catch {
     return null;
@@ -340,6 +348,27 @@ async function runRestart(): Promise<void> {
 
   const serverUrl = credential.serverUrl || setup?.serverUrl || process.env.AURA_SERVER_URL || 'http://localhost:8000';
   await launchManagedDaemon({ serverUrl, machineToken: credential.token });
+}
+
+function runRollback(options: RollbackOptions): void {
+  const paths = daemonPaths();
+  if (isDaemonRunning(paths.pidPath)) {
+    throw new Error('Aura daemon is running; stop it gracefully with `aura stop` before rolling back.');
+  }
+  const previous = readReleasePointer(paths.installRoot);
+  const result = rollbackRelease({
+    installRoot: paths.installRoot,
+    version: options.targetVersion,
+  });
+  if (result.previous.version === result.active.version && result.previous.path === result.active.path) {
+    console.log(`[Aura] Release ${result.active.version} is already active.`);
+    return;
+  }
+  const hadPrevious = previous && previous.version !== result.active.version;
+  console.log(`[Aura] Rolled back Aura from ${result.previous.version} to ${result.active.version}.`);
+  if (hadPrevious) {
+    console.log('[Aura] Setup, machine identity, and credentials were preserved. Run `aura doctor` before reconnecting.');
+  }
 }
 
 function buildStatusPayload(): JsonRecord {
@@ -713,6 +742,12 @@ program
   .action((options) => {
     process.exitCode = printDoctor(Boolean(options.json));
   });
+
+program
+  .command('rollback')
+  .description('Switch to an already-installed Aura release without changing Setup or credentials')
+  .requiredOption('--target-version <version>', 'Installed Aura release version to activate')
+  .action((options: RollbackOptions) => runRollback(options));
 
 // ── stop ─────────────────────────────────────────────────────
 

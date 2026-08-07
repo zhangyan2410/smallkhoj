@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
   mkdtempSync,
+  mkdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -76,6 +77,24 @@ test('status --json keeps running exit code and standalone implementation metada
     const result = runStatus(root, { running: true, standalone: true });
     assert.equal(result.status, 0);
     assertPureStatusJson(result, true, 'aura-standalone');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('status and doctor tolerate a UTF-8 BOM in active.json', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aura-status-bom-'));
+  try {
+    const activePath = join(root, 'versions', 'v0.2.6-darwin-arm64');
+    mkdirSync(join(activePath, 'dist', 'cmd'), { recursive: true });
+    writeFileSync(join(activePath, 'manifest.json'), JSON.stringify({ version: '0.2.6', platform: 'darwin-arm64' }));
+    writeFileSync(join(activePath, 'dist', 'cmd', 'main.js'), '');
+    writeFileSync(join(root, 'active.json'), `\uFEFF${JSON.stringify({ version: '0.2.6', platform: 'darwin-arm64', path: activePath })}`);
+    const result = runStatus(root);
+    assert.equal(result.status, 1);
+    const payload = assertPureStatusJson(result, false, 'node-npx');
+    assert.equal(payload.installed, true);
+    assert.equal(payload.activeVersion, '0.2.6');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

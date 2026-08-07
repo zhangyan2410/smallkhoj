@@ -58,6 +58,13 @@
 
 ## 6. 文件索引
 - Windows 实测证据：`evidence/REAL_windows-computer-install-setup-connect_20260807020416-*`（summary/install/setup/connect/reconnect/upgrade-rollback/doctor/web-cmd-*）
+
+## 续作核验（2026-08-07）
+
+第 4 节记录的是 Windows agent 交接时的代码状态；其三项 code-missing 已由共享主代码续作处理：
+`aura rollback --target-version`、跨平台 `previous.json`/Windows active 版本保护与健康探针、以及
+Connect preview/command + daemon 409 的 `DAEMON_LEASE_ACTIVE` stop/wait/retry 契约。Windows 侧仍需在
+最新 HEAD 重建真实 PE 产物并复跑对应实机证据，云端 carrier/manifest 发布与部署也尚未执行。
 - Windows 会话快照（给下一个 Windows agent）：`windows-agent-handoff.md`
 - 本文件（给 Mac agent）：`mac-handoff-from-windows.md`
 - 正式交接（任务级）：`handoff.md`

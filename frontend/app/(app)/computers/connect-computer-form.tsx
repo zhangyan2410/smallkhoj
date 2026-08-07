@@ -29,6 +29,7 @@ import {
   type OnboardingPhase,
   type OnboardingPlatform,
   type OnboardingPreview,
+  type ConnectPreflight,
   type PhaseCommand,
   type PlatformCommandMap,
 } from "@/lib/computer-onboarding"
@@ -348,6 +349,7 @@ function PlatformOnboarding({
   const [name, setName] = useState(credential?.name || preview?.name || "my-computer")
   const [now, setNow] = useState(() => Date.now())
   const platforms = credential?.platforms || preview?.platforms || fallbackPlatforms(credential)
+  const connectPreflight: ConnectPreflight | null = preview?.connectPreflight || null
 
   useEffect(() => {
     // Browser detection is an initial preference only; users can switch tabs.
@@ -422,7 +424,12 @@ function PlatformOnboarding({
         aria-live="polite"
         className="min-h-10"
       >
-        {connectedComputerName ? (
+        {connectPreflight && !connectPreflight.ok ? (
+          <Panel variant="flat" className="sk-onboarding-warning flex items-start gap-2.5 p-3 text-sm">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>{t("onboarding.conflictActive")}</span>
+          </Panel>
+        ) : connectedComputerName ? (
           <Panel variant="flat" className="sk-cat-success p-3 text-sm">
             {t("connected", { name: connectedComputerName })}
           </Panel>
