@@ -249,11 +249,14 @@ def validate_task_scope(root: Path, task_id: str) -> str:
     normalized = task_id.strip()
     if TASK_ID_PATTERN.fullmatch(normalized) is None:
         raise ValueError("task-scoped deployment requires a safe Trellis task id")
-    candidates = [root / ".trellis" / "tasks" / normalized / "task.json"]
-    archive_root = root / ".trellis" / "tasks" / "archive"
-    if archive_root.is_dir():
-        candidates.extend(archive_root.glob(f"*/{normalized}/task.json"))
-    for task_path in candidates:
+    tasks_root = root / ".trellis" / "tasks"
+    if not tasks_root.is_dir():
+        raise ValueError(f"Trellis task metadata not found for task-scoped deployment: {normalized}")
+    # Trellis task directories may carry a date prefix (for example
+    # ``08-06-windows-computer-install-setup-connect``) while task.json.id is
+    # the stable slug. Resolve by the recorded id instead of assuming the
+    # filesystem directory name is the public task identifier.
+    for task_path in tasks_root.rglob("task.json"):
         if not task_path.is_file():
             continue
         try:

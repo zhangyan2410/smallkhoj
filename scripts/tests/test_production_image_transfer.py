@@ -463,6 +463,19 @@ class ProductionImageTransferTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "metadata not found"):
                 transfer.validate_task_scope(root, "missing-task")
 
+    def test_task_scope_resolves_date_prefixed_directory_by_stable_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            task_id = "windows-computer-install-setup-connect"
+            task_dir = root / ".trellis" / "tasks" / f"08-06-{task_id}"
+            task_dir.mkdir(parents=True)
+            (task_dir / "task.json").write_text(
+                json.dumps({"id": task_id, "status": "in_progress"}),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(transfer.validate_task_scope(root, task_id), task_id)
+
     def test_task_scoped_transfer_records_no_capacity_claim(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
