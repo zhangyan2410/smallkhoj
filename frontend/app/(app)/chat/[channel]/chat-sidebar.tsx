@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { Activity, Bot, Bookmark, Hash } from "lucide-react"
 
 import { AvatarObject, SidebarEntityItem } from "@/components/inkframe-object-ui"
+import { useRealtimeSubscription } from "@/components/realtime-provider"
 import { CreateAgentDialog } from "./create-agent-dialog"
 import { CreateChannelDialog } from "./create-channel-dialog"
 import { useChatData, type DmInfo } from "../chat-data-context"
@@ -49,6 +51,7 @@ function latestSeqEventMatchesEntity(entity: ChatUnreadEntity, detail: ChatLates
 
 export function ChatSidebar() {
   const { channels, dms, allMembers, currentChannelName } = useChatData()
+  const router = useRouter()
   const { store: unreadStore, clearKeys: clearUnreadKeys } = useActivityUnreadStore()
   const [clearedServerReadSeq, setClearedServerReadSeq] = useState<Record<string, number>>({})
   const tChat = useTranslations("chat")
@@ -61,7 +64,28 @@ export function ChatSidebar() {
   // 防回写风暴：已发出（in-flight 或已完成）回写的最高序号。
   const lastCursorWriteSeqRef = useRef(0)
   const cursorWriteInFlightRef = useRef(false)
-
+  // Realtime: keep sidebar (DM online status, Active agents) live without a
+  // full-page reload. Reuses the single shared SSE connection via
+  // useRealtimeSubscription (does NOT open a new stream). Debounced router.refresh()
+  // re-runs the server-component chat layout fetches with full session context.
+  const sidebarRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useRealtimeSubscription(({ event, decision }) => {
+    if (decision.action === "drop") return
+    if (
+      event.type === "member.updated" ||
+      event.type === "member.status.updated" ||
+      event.type === "workspace.updated"
+    ) {
+      if (sidebarRefreshTimerRef.current) return
+      sidebarRefreshTimerRef.current = setTimeout(() => {
+        sidebarRefreshTimerRef.current = null
+        router.refresh()
+      }, 500)
+    }
+  })
+  useEffect(() => () => {
+    if (sidebarRefreshTimerRef.current) clearTimeout(sidebarRefreshTimerRef.current)
+  }, [])
   const activeChannel = channels.find((ch) => ch.name.replace("#", "") === currentChannelName)
   const activeDm = dms.find((dm) => dm.name === currentChannelName)
   const activeEntity = activeChannel ?? activeDm

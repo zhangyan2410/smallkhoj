@@ -1,9 +1,11 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { API_BASE, type AccountSession } from "@/lib/control-plane"
+import { auth } from "@/lib/auth"
 import { clearSessionCookie, serverApiHeaders, setActiveServerCookie } from "@/lib/server-auth"
 
 function safeReturnTo(value: FormDataEntryValue | null) {
@@ -50,8 +52,33 @@ export async function acceptServerInviteAction(formData: FormData) {
   redirect("/members")
 }
 
-export async function logoutAction() {
+// Clear both session layers so the next /login render picks signin mode:
+//   A) better-auth session (DB row + better-auth.session_token cookie) via auth.api.signOut
+//   B) SmallKhoj session (smallkhoj_session / smallkhoj_active_server cookies)
+// Without clearing A, /login sees a live better-auth session and forces the
+// immutable-name "setup" mode, hiding the sign-in entry and locking the user
+// out of logging into a different account. signOut is best-effort: a stale/
+// dirty B cookie must not block A cleanup or the redirect to /login.
+async function clearAllSessions() {
+  try {
+    await auth.api.signOut({ headers: await headers() })
+  } catch {
+    // B already invalid or cookie dirty — fall through to clearing A.
+  }
   await clearSessionCookie()
+}
+
+export async function logoutAction() {
+  await clearAllSessions()
   revalidatePath("/", "layout")
   redirect("/login")
+}
+
+// Escape hatch rendered on the /login setup screen: when a better-auth session
+// is stuck (multi-tab, dirty cookie, expired DB row not yet synced), the user
+// can force-clear both layers and return to a clean sign-in form.
+export async function switchAccountAction() {
+  await clearAllSessions()
+  revalidatePath("/", "layout")
+  redirect("/login?mode=signin")
 }

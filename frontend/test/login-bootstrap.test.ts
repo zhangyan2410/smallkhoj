@@ -29,6 +29,17 @@ test("login keeps immutable Name setup and invite return-to in one retryable sta
   assert.match(source, /mode: mode === "signin" \? "signup" : "signin"/)
 })
 
+test("login setup mode renders a switch-account escape hatch so a stuck better-auth session cannot lock the user out", async () => {
+  const source = await readLoginPage()
+
+  // setup mode must surface a different-account entry, not just the finish-setup form.
+  // The escape-hatch <form> must be a sibling of (not nested inside) the loginAction form,
+  // because the HTML parser drops a nested <form> tag and the submit then hits the wrong action.
+  assert.match(source, /import \{ switchAccountAction \} from "@\/app\/server-actions"/)
+  assert.match(source, /\{mode === "setup" \? \([\s\S]*?<form action=\{switchAccountAction\}/)
+  assert.match(source, /t\("switchAccount"\)/)
+})
+
 test("Chinese-first and English login identity copy cover signup, setup, and return-to", () => {
   const loginKeys = [
     "signUpDescription",
@@ -37,6 +48,7 @@ test("Chinese-first and English login identity copy cover signup, setup, and ret
     "namePlaceholder",
     "returnToHint",
     "finishSetup",
+    "switchAccount",
   ] as const
   const identityKeys = [
     "nameRequired",

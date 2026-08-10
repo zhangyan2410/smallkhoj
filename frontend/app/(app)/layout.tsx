@@ -44,7 +44,7 @@ export default async function AppShellLayout({ children }: { children: ReactNode
         data-slot="workbench-desk"
         data-inkframe-background-owner="product-shell"
         data-inkframe-background-scope="global-desk"
-        className="sk-workbench-desk relative isolate h-screen overflow-hidden text-foreground"
+        className="sk-workbench-desk relative isolate h-screen w-full overflow-hidden text-foreground"
       >
         <InkMaterialRuntimeScript />
         <AppDeskBackground />

@@ -63,6 +63,9 @@ export type Member = {
   workspaceId?: string | null
   backend?: string | null
   runtimeProvider?: string | null
+  /** Agent workspace runtime status (pending_start/running/stopped/...).
+   *  Surfaces "agent starting" state — member.status is only online/offline. */
+  runtimeStatus?: string | null
   permissions?: Record<string, boolean>
   actions?: Record<string, boolean>
 }

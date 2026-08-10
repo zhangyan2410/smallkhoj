@@ -1,10 +1,12 @@
 import { type ReactNode } from "react"
 
 import { AvatarObject, MessagePaper } from "@/components/inkframe-object-ui"
+import { MemberHoverCard } from "@/components/member-hover-card"
 import { MaterialSurface, type MaterialPointerMode, type MaterialSurfaceMode } from "@/components/inkframe/material-surface"
 import { shouldMaterialSurfaceCapturePointer } from "@/components/inkframe/material-surface-lifecycle"
 import type { MaterialResource } from "@/components/inkframe/material-resource"
 import { memberAvatarName, type AvatarMember } from "@/lib/member-avatar"
+import type { Member } from "@/lib/control-plane"
 import { cn } from "@/lib/utils"
 
 type MessageFrameProps = {
@@ -33,6 +35,8 @@ type MessageFrameProps = {
     onResourceChange?: (resource: MaterialResource | null) => void
     onModeChange?: (mode: MaterialSurfaceMode) => void
   }
+  /** When provided, the avatar becomes a clickable button that opens member detail. */
+  onAvatarClick?: () => void
 }
 
 function roleLabel(senderType?: string | null) {
@@ -104,6 +108,7 @@ export function MessageFrame({
   timeVariant = "default",
   roleLabels,
   materialSurface,
+  onAvatarClick,
 }: MessageFrameProps) {
   const role = roleLabel(senderType)
   const visibleRole = role === "assistant" ? (roleLabels?.assistant ?? role) : (roleLabels?.member ?? role)
@@ -125,7 +130,20 @@ export function MessageFrame({
       data-slot="message-frame"
       className={cn("flex w-fit max-w-full min-w-0 items-start gap-3", className)}
     >
-      <AvatarObject member={avatarMember} size={avatarSize} showStatus={showStatus} />
+      <MemberHoverCard member={avatarMember as Member}>
+        {onAvatarClick ? (
+          <button
+            type="button"
+            onClick={onAvatarClick}
+            aria-label={memberAvatarName(member).replace(/^@/, "")}
+            className="cursor-pointer rounded-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--ink)]"
+          >
+            <AvatarObject member={avatarMember} size={avatarSize} showStatus={showStatus} />
+          </button>
+        ) : (
+          <AvatarObject member={avatarMember} size={avatarSize} showStatus={showStatus} />
+        )}
+      </MemberHoverCard>
       <div className={cn("min-w-0 flex-1", bodyClassName)}>
         <div className="sk-message-meta relative z-20 mb-2 flex min-h-8 flex-wrap items-start gap-2 pt-1">
           <div data-slot="message-author" className="flex min-w-0 flex-wrap items-center gap-2 text-sm">

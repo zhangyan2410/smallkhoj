@@ -4,6 +4,7 @@ import Link from "next/link"
 import { LogIn } from "lucide-react"
 import { getTranslations } from "next-intl/server"
 
+import { switchAccountAction } from "@/app/server-actions"
 import { InkframeObjectSurface } from "@/components/inkframe-object-ui"
 import { MemberNameField } from "@/components/member-name-field"
 import { Button } from "@/components/ui/button"
@@ -280,6 +281,18 @@ export default async function LoginPage({
               </p>
             ) : null}
           </form>
+          {mode === "setup" ? (
+            // Escape hatch: a <form> cannot nest inside the loginAction form
+            // (the HTML parser drops the inner <form> tag), so this lives as a
+            // sibling. If the better-auth session that triggered setup mode is
+            // stale/stuck (dirty cookie, expired DB row, multi-tab), let the
+            // user clear it and sign in as a different account.
+            <form action={switchAccountAction} className="text-center">
+              <Button type="submit" variant="link" className="h-auto p-0 text-xs font-medium text-muted-foreground underline underline-offset-2">
+                {t("switchAccount")}
+              </Button>
+            </form>
+          ) : null}
         </CardContent>
       </Card>
     </main>

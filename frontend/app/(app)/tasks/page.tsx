@@ -264,12 +264,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
           )}
         >
           <TaskRouteWorkspace
+            key="task-workspace"
             filters={filters}
             channels={channels}
             agentCount={agents.length}
             sessionToken={sessionToken}
           />
-          <TaskDetailDialog open={Boolean(selectedTaskId)} closeHref={tasksBaseHref}>
+          <TaskDetailDialog key="task-detail-dialog" open={Boolean(selectedTaskId)} closeHref={tasksBaseHref}>
             <TaskRouteDetail
               filters={filters}
               selectedTaskId={selectedTaskId}

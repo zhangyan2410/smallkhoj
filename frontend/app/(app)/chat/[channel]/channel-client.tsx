@@ -28,6 +28,7 @@ import { RuntimeChip } from "@/components/product-ui"
 import { useRealtimeSubscription } from "@/components/realtime-provider"
 import { AgentActivityList } from "@/components/agent-activity-list"
 import { AttachmentSheet, AvatarObject, ChannelDivider, InkframeObjectSurface, MemberNameTag } from "@/components/inkframe-object-ui"
+import { getStatusBucket } from "@/lib/agent-status"
 import { ChannelMemorySurface, MemoryProposalQueue } from "@/components/memory-entry-surface"
 import type { MaterialPointerMode, MaterialSurfaceMode } from "@/components/inkframe/material-surface"
 import type { MaterialResource } from "@/components/inkframe/material-resource"
@@ -68,9 +69,18 @@ import {
 import { chatLatestSeqDetailFromEvent, chatReadCursorRequestForThread, notifyChatLatestSeq } from "@/lib/chat-unread-state"
 import { channelMemberAddPayload } from "@/lib/channel-members"
 import { directMessageAgentHandle, mentionedAgentHandle } from "@/lib/task-assignee"
+import {
+  clampPanelWidth,
+  readStoredPanelWidth,
+  setPersistentPanelWidth,
+  startPanelResize,
+  subscribePanelWidthStore,
+} from "@/lib/panel-width"
 
 import type { ChannelMessage, ThreadData } from "./chat-types"
 import { LazyWidgetLoading, MessageItem, MessageList } from "./message-list"
+import { MemberDetailPanel } from "@/components/member-detail-panel"
+import { MemberHoverCard } from "@/components/member-hover-card"
 import {
   ChatComposer,
   ThreadComposer,
@@ -243,26 +253,6 @@ function createLatencyTraceId(prefix = "chat") {
   return `${prefix}:${Date.now().toString(36)}:${random}`
 }
 
-function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
-  return Math.min(maxWidth, Math.max(minWidth, width))
-}
-
-function readStoredPanelWidth(key: string, defaultWidth: number, minWidth: number, maxWidth: number) {
-  if (typeof window === "undefined") return defaultWidth
-  try {
-    const stored = window.localStorage.getItem(key)
-    const parsed = stored ? Number(stored) : defaultWidth
-    if (!Number.isFinite(parsed)) return defaultWidth
-    return clampPanelWidth(parsed, minWidth, maxWidth)
-  } catch {
-    return defaultWidth
-  }
-}
-
-function subscribePanelWidthStore() {
-  return () => {}
-}
-
 type SavedItem = {
   id: string
   itemType: string
@@ -330,6 +320,7 @@ export function ChannelClient({
   const [channels, setChannels] = useState<ChannelInfo[]>(initialChannels)
   const [dms, setDms] = useState<DmInfo[]>(initialDms)
   const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null)
+  const [detailMemberId, setDetailMemberId] = useState<string | null>(null)
   const [threadUnreadRootIds, setThreadUnreadRootIds] = useState<Set<string>>(() => new Set())
   const [activeMaterialMessageId, setActiveMaterialMessageId] = useState<string | null>(null)
   const [activeMaterialPointerMode, setActiveMaterialPointerMode] = useState<MaterialPointerMode>("draw")
@@ -440,44 +431,6 @@ export function ChannelClient({
     }
   }, [sessionToken])
 
-  function setPersistentPanelWidth(
-    width: number,
-    setWidth: (width: number) => void,
-    key: string,
-    minWidth: number,
-    maxWidth: number,
-  ) {
-    const next = clampPanelWidth(width, minWidth, maxWidth)
-    setWidth(next)
-    window.localStorage.setItem(key, String(next))
-  }
-
-  function startPanelResize(
-    event: React.PointerEvent<HTMLDivElement>,
-    startWidth: number,
-    applyWidth: (width: number) => void,
-    direction: "left-edge" | "right-edge",
-  ) {
-    event.preventDefault()
-    const startX = event.clientX
-    document.body.style.cursor = "col-resize"
-    document.body.style.userSelect = "none"
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const delta = direction === "right-edge" ? moveEvent.clientX - startX : startX - moveEvent.clientX
-      applyWidth(startWidth + delta)
-    }
-    const handlePointerUp = () => {
-      document.body.style.cursor = ""
-      document.body.style.userSelect = ""
-      window.removeEventListener("pointermove", handlePointerMove)
-      window.removeEventListener("pointerup", handlePointerUp)
-    }
-
-    window.addEventListener("pointermove", handlePointerMove)
-    window.addEventListener("pointerup", handlePointerUp, { once: true })
-  }
-
   // Thread resize = ONE drag line between message area and thread. The message
   // area is flex-1 so it automatically shrinks as thread grows; only threadWidth
   // needs to change. The line is the shared boundary the user described.
@@ -511,6 +464,7 @@ export function ChannelClient({
       setChannelId("")
       setActiveThreadId(initialThreadId ?? null)
       setThreadData(null)
+      setDetailMemberId(null)
       const h = apiHeaders(sessionToken, false, activeServerId)
       const msgsRes = await fetch(`${API_BASE}/api/v1/channels/${encodedChannel}/messages?limit=50&threadMode=roots`, { headers: h })
       if (msgsRes.ok) { const d = await msgsRes.json(); if (!cancelled) setMessages(d.messages || []) }
@@ -935,6 +889,8 @@ export function ChannelClient({
   const openThread = useCallback(async (message: ChannelMessage) => {
     const threadId = message.threadId || message.id
     setActiveThreadId(threadId)
+    // Mutually exclusive: opening a thread closes the member-detail panel.
+    setDetailMemberId(null)
     setThreadUnreadRootIds((previous) => {
       if (!previous.has(threadId) && !previous.has(message.id)) return previous
       const next = new Set(previous)
@@ -944,6 +900,14 @@ export function ChannelClient({
     })
     await refreshThread(threadId)
   }, [refreshThread])
+
+  // Avatar click → open member detail panel. Mutually exclusive with thread:
+  // opening detail closes the thread. Re-clicking the same member toggles it off.
+  const handleAvatarClick = useCallback((memberId: string) => {
+    setDetailMemberId((prev) => (prev === memberId ? null : memberId))
+    setActiveThreadId(null)
+    setThreadData(null)
+  }, [])
 
   async function handleAddMember() {
     const memberId = addMemberSelectRef.current?.value
@@ -1163,9 +1127,41 @@ export function ChannelClient({
   const activeRoot = threadData?.thread
   const activeReplies = threadData?.replies ?? (threadData?.messages || []).filter((msg) => msg.parentId)
   const headerDmMember = currentDm ? dmAvatarMember(currentDm) : null
+  // Member detail panel: resolve the selected member from allMembers, falling
+  // back to the channel roster, then the current DM peer (DM agents may not be
+  // in allMembers/members — they come from the DM list's peer field).
+  const detailMember = detailMemberId
+    ? allMembers.find((m) => m.id === detailMemberId)
+      ?? members.find((m) => m.id === detailMemberId)
+      ?? (headerDmMember?.id === detailMemberId ? headerDmMember : null)
+      : null
   const composerPlaceholder = currentDm
     ? tChat("dmComposePlaceholder", { peer: currentTitle.replace(/^DM @/, "") })
     : tChat("composePlaceholder", { channel: currentTitle.replace(/^#/, "") })
+
+  // Agent runtime status banner: surfaces "starting" / "offline" so the user
+  // knows whether the agent can respond before they send a message. runtimeStatus
+  // (workspace.status) is the source of truth for the starting window; member.status
+  // alone is only online/offline.
+  const dmPeer = currentDm?.peer ?? null
+  const dmAgentRuntimeStatus = currentIsDm && dmPeer?.kind === "agent"
+    ? getStatusBucket(dmPeer.runtimeStatus ?? dmPeer.status)
+    : null
+  const dmAgentStatusBanner = dmAgentRuntimeStatus === "STARTING" ? (
+    <div className="shrink-0 border-b px-4 py-2 text-xs text-sand-muted">
+      <InkframeObjectSurface material="dry" className="flex items-center gap-2 px-3 py-2">
+        <span className="size-1.5 animate-pulse rounded-full bg-warning" />
+        <span>{tChat("agentStarting")}</span>
+      </InkframeObjectSurface>
+    </div>
+  ) : dmAgentRuntimeStatus === "OFFLINE" ? (
+    <div className="shrink-0 border-b px-4 py-2 text-xs text-sand-muted">
+      <InkframeObjectSurface material="dry" className="flex items-center gap-2 px-3 py-2">
+        <span className="size-1.5 rounded-full bg-muted-foreground" />
+        <span>{tChat("agentOffline")}</span>
+      </InkframeObjectSurface>
+    </div>
+  ) : null
 
   return (
     <div className="sk-chat-main flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-chat-root data-region="chat-main" data-inkframe-mobile-role="chat-workspace">
@@ -1173,7 +1169,17 @@ export function ChannelClient({
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
               {headerDmMember ? (
-                <AvatarObject member={headerDmMember} size="sm" />
+                <MemberHoverCard member={headerDmMember} align="center">
+                  <button
+                    type="button"
+                    onClick={() => headerDmMember.id && handleAvatarClick(headerDmMember.id)}
+                    className="cursor-pointer rounded-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--ink)]"
+                    aria-label={tChat("viewMemberProfile", { name: headerDmMember.name || "" })}
+                    disabled={!headerDmMember.id}
+                  >
+                    <AvatarObject member={headerDmMember} size="sm" />
+                  </button>
+                </MemberHoverCard>
               ) : (
                 <ChannelDivider kind="channel" active>
                   <Avatar size="sm" name={currentTitle} />
@@ -1513,6 +1519,7 @@ export function ChannelClient({
                   emptyTitle={tChat("noMessages", { channel: currentTitle })}
                   emptyDescription={composerPlaceholder}
                   onOpenThread={openThread}
+                  onAvatarClick={handleAvatarClick}
                   onToggleReaction={toggleReaction}
                   onToggleSaved={toggleSaved}
                   onCreateTask={handleCreateTaskFromMessage}
@@ -1522,6 +1529,8 @@ export function ChannelClient({
                   onActivateMaterial={activateMessageMaterial}
                   onRequestMaterialAction={requestMessageMaterialAction}
                 />
+
+                {dmAgentStatusBanner}
 
                 <ChatComposer
                   key={`channel:${channelName}`}
@@ -1600,6 +1609,7 @@ export function ChannelClient({
                       materialResource={messageMaterialResources[activeRoot.id] ?? null}
                       isMaterialActive={activeMaterialMessageId === activeRoot.id}
                       onOpenThread={openThread}
+                      onAvatarClick={handleAvatarClick}
                       onToggleReaction={toggleReaction}
                       onToggleSaved={toggleSaved}
                       onCreateTask={handleCreateTaskFromMessage}
@@ -1625,6 +1635,7 @@ export function ChannelClient({
                       materialResource={messageMaterialResources[msg.id] ?? null}
                       isMaterialActive={activeMaterialMessageId === msg.id}
                       onOpenThread={openThread}
+                      onAvatarClick={handleAvatarClick}
                       onToggleReaction={toggleReaction}
                       onToggleSaved={toggleSaved}
                       onCreateTask={handleCreateTaskFromMessage}
@@ -1650,6 +1661,13 @@ export function ChannelClient({
                 />
               </div>
             </aside>
+          )}
+
+          {detailMember && (
+            <MemberDetailPanel
+              member={detailMember}
+              onClose={() => setDetailMemberId(null)}
+            />
           )}
 
           {!activeThreadId && showMembers && (
@@ -1713,8 +1731,16 @@ export function ChannelClient({
                       className="group/member"
                     >
                       <MemberNameTag kind={m.kind} status={m.status} className="flex min-w-0 items-center gap-2 px-1.5 py-1 text-sm">
-                        <AvatarObject member={m} size="xs" />
-                        <span className="min-w-0 flex-1 truncate">{memberDisplayName(m)}</span>
+                        <button
+                          type="button"
+                          onClick={() => m.id && handleAvatarClick(m.id)}
+                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-none text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--ink)]"
+                          aria-label={tChat("viewMemberProfile", { name: memberDisplayName(m) })}
+                          disabled={!m.id}
+                        >
+                          <AvatarObject member={m} size="xs" />
+                          <span className="min-w-0 flex-1 truncate">{memberDisplayName(m)}</span>
+                        </button>
                         <span className="shrink-0 text-xs text-sand-muted">{statusLabel(m.status)}</span>
                         {m.kind === "agent" && !currentIsDm && canManageChannelMembers ? (
                           <DestructiveActionDialog<ChannelMemberRemoveResult>

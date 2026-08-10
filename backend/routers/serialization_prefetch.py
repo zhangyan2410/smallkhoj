@@ -17,6 +17,7 @@ UNSET = object()
 @dataclass(frozen=True)
 class MemberSerializationContext:
     workspace_ids: dict[uuid.UUID, str | None]
+    workspace_statuses: dict[uuid.UUID, str]
     computers: dict[uuid.UUID, Computer]
 
 
@@ -46,10 +47,11 @@ async def load_member_serialization_context(
         for member in members
     }
     agent_ids = [member.id for member in members if member.kind == "agent"]
+    workspace_statuses: dict[uuid.UUID, str] = {}
     if agent_ids:
         rows = (
             await db.execute(
-                select(AgentWorkspace.agent_id, AgentWorkspace.id)
+                select(AgentWorkspace.agent_id, AgentWorkspace.id, AgentWorkspace.status)
                 .where(AgentWorkspace.agent_id.in_(agent_ids))
                 .order_by(
                     AgentWorkspace.agent_id,
@@ -59,10 +61,12 @@ async def load_member_serialization_context(
             )
         ).all()
         seen: set[uuid.UUID] = set()
-        for agent_id, workspace_id in rows:
+        for agent_id, workspace_id, workspace_status in rows:
             if agent_id in seen:
                 continue
             workspace_ids[agent_id] = str(workspace_id)
+            if workspace_status:
+                workspace_statuses[agent_id] = workspace_status
             seen.add(agent_id)
 
     computer_ids = {
@@ -81,6 +85,7 @@ async def load_member_serialization_context(
 
     return MemberSerializationContext(
         workspace_ids=workspace_ids,
+        workspace_statuses=workspace_statuses,
         computers=computers,
     )
 
@@ -91,7 +96,7 @@ async def load_message_serialization_context(
 ) -> MessageSerializationContext:
     if not messages:
         return MessageSerializationContext(
-            {}, {}, {}, {}, MemberSerializationContext({}, {})
+            {}, {}, {}, {}, MemberSerializationContext({}, {}, {})
         )
 
     message_ids = [message.id for message in messages]
@@ -154,7 +159,7 @@ async def load_task_serialization_context(
             channels={},
             members={},
             runs={},
-            member_details=MemberSerializationContext({}, {}),
+            member_details=MemberSerializationContext({}, {}, {}),
         )
 
     task_ids = [task.id for task in tasks]

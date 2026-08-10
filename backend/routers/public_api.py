@@ -1682,6 +1682,7 @@ async def _serialize_public_message(
                 sender,
                 _computer=context.member_details.computers.get(sender.computer_id),
                 _workspace_id=context.member_details.workspace_ids.get(sender.id),
+                _workspace_status=context.member_details.workspace_statuses.get(sender.id),
             )
             if sender else None
         )
@@ -1957,6 +1958,7 @@ async def _serialize_task(
                 creator,
                 _computer=context.member_details.computers.get(creator.computer_id),
                 _workspace_id=context.member_details.workspace_ids.get(creator.id),
+                _workspace_status=context.member_details.workspace_statuses.get(creator.id),
             )
             if creator else None
         )
@@ -1966,6 +1968,7 @@ async def _serialize_task(
                 assignee,
                 _computer=context.member_details.computers.get(assignee.computer_id),
                 _workspace_id=context.member_details.workspace_ids.get(assignee.id),
+                _workspace_status=context.member_details.workspace_statuses.get(assignee.id),
             )
             if assignee else None
         )

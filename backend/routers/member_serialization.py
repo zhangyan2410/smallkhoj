@@ -1,5 +1,6 @@
 """Shared member serialization helpers for public and agent APIs."""
 
+import uuid
 from datetime import datetime
 from typing import cast
 
@@ -62,12 +63,34 @@ async def member_workspace_id(db: AsyncSession, member: Member) -> str | None:
     return str(workspace_id) if workspace_id else config.get("workspaceId")
 
 
+async def _member_workspace_status(db: AsyncSession, workspace_id: str | None) -> str | None:
+    """Look up an agent workspace's runtime status (pending_start/running/stopped/...).
+
+    Used by serialize_member to surface runtimeStatus so the frontend can show an
+    "agent starting" state — member.status alone is only online/offline.
+    """
+    if not workspace_id:
+        return None
+    try:
+        parsed = uuid.UUID(str(workspace_id))
+    except (ValueError, TypeError):
+        return None
+    result = await db.execute(
+        select(AgentWorkspace.status)
+        .where(AgentWorkspace.id == parsed)
+        .limit(1)
+    )
+    status = result.scalar_one_or_none()
+    return status or None
+
+
 async def serialize_member(
     db: AsyncSession,
     member: Member,
     *,
     _computer: Computer | None | object = UNSET,
     _workspace_id: str | None | object = UNSET,
+    _workspace_status: str | None | object = UNSET,
     _reference: str | None = None,
 ) -> dict:
     config = member.config or {}
@@ -94,6 +117,13 @@ async def serialize_member(
     else:
         workspace_id = cast(str | None, _workspace_id)
 
+    runtime_status: str | None = None
+    if member.kind == "agent":
+        if _workspace_status is UNSET:
+            runtime_status = await _member_workspace_status(db, workspace_id)
+        else:
+            runtime_status = cast(str | None, _workspace_status)
+
     payload = {
         "id": str(member.id),
         "name": member.handle,
@@ -115,4 +145,6 @@ async def serialize_member(
     }
     if member.kind == "agent":
         payload["description"] = member.description
+        if runtime_status:
+            payload["runtimeStatus"] = runtime_status
     return payload

@@ -1396,10 +1396,17 @@ async def _upsert_daemon_workspace(
     agent_member.computer_id = computer.id
     if item.backend:
         agent_member.backend = item.backend
+    previous_member_status = agent_member.status
     if item.status in {"running", "active", "idle"}:
         agent_member.status = "online"
     elif item.status in {"stopped", "offline", "exited"}:
         agent_member.status = "offline"
+    # Surface the status change to the caller (daemon_heartbeat) so it can emit
+    # a member.updated event — mirrors the _smallkhoj_realtime_changed pattern below.
+    agent_member._smallkhoj_member_status_changed = (
+        previous_member_status != agent_member.status
+    )
+    agent_member._smallkhoj_previous_member_status = previous_member_status
 
     current_runtime_state = (
         workspace.runtime,
@@ -1486,6 +1493,36 @@ async def _record_computer_status_event(
             "daemonId": computer.active_daemon_id,
             "leaseExpiresAt": computer.daemon_lease_expires_at.isoformat() if computer.daemon_lease_expires_at else None,
             "lastHeartbeatAt": computer.last_heartbeat_at.isoformat() if computer.last_heartbeat_at else None,
+        },
+    ))
+
+
+async def _record_member_status_event(
+    db: AsyncSession,
+    server: Server,
+    member: Member,
+    *,
+    previous_status: str | None,
+    action: str,
+) -> None:
+    """Push a member.updated event when an agent's status changes via daemon lifecycle.
+
+    Uses a bare EventRecord (not _record_activity) to avoid polluting the supervisor
+    activity feed with "@agent updated @agent" spam on every heartbeat/shutdown.
+    Mirrors _record_computer_status_event's pattern. Frontend already listens for
+    member.updated / member.status.updated and will re-fetch member data on receipt.
+    """
+    db.add(EventRecord(
+        server_id=server.id,
+        event_type="member.updated",
+        actor_id=None,
+        payload={
+            "type": "member.updated",
+            "memberId": str(member.id),
+            "memberName": member.handle,
+            "status": member.status,
+            "previousStatus": previous_status,
+            "action": action,
         },
     ))
 
@@ -1875,6 +1912,14 @@ async def daemon_heartbeat(
                     "pid": workspace.pid,
                 },
             )
+        if getattr(agent_member, "_smallkhoj_member_status_changed", False):
+            await _record_member_status_event(
+                db,
+                server,
+                agent_member,
+                previous_status=getattr(agent_member, "_smallkhoj_previous_member_status", None),
+                action="heartbeat",
+            )
         upserted.append(await _serialize_workspace(db, workspace))
 
     if previous_computer_status != computer.status:
@@ -1947,12 +1992,21 @@ async def daemon_shutdown(
     workspaces = []
     for workspace, agent_member in workspace_result.all():
         previous_workspace_status = workspace.status
+        previous_member_status = agent_member.status
         if workspace.status in {"running", "active", "idle", PENDING_RUNTIME_START_STATUS}:
             workspace.status = "stopped"
             workspace.pid = None
             workspace.stopped_at = now
         if agent_member.status in {"online", "active", "running", "idle"}:
             agent_member.status = "offline"
+        if previous_member_status != agent_member.status:
+            await _record_member_status_event(
+                db,
+                server,
+                agent_member,
+                previous_status=previous_member_status,
+                action="shutdown",
+            )
         if previous_workspace_status != workspace.status:
             await _record_activity(
                 db,

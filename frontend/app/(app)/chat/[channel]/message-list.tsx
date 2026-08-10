@@ -125,6 +125,7 @@ function didReact(message: ChannelMessage, emoji: string, currentMemberId?: stri
 
 type MessageItemCallbacks = {
   onOpenThread: (message: ChannelMessage) => void
+  onAvatarClick?: (memberId: string) => void
   onToggleReaction: (message: ChannelMessage, emoji: string) => void
   onToggleSaved: (messageId: string) => void
   onCreateTask: (message: ChannelMessage) => void
@@ -171,6 +172,7 @@ export const MessageItem = memo(function MessageItem({
   isMaterialActive,
   deskCapturing = false,
   onOpenThread,
+  onAvatarClick,
   onToggleReaction,
   onToggleSaved,
   onCreateTask,
@@ -182,6 +184,13 @@ export const MessageItem = memo(function MessageItem({
 }: MessageItemProps) {
   const tChat = useTranslations("chat")
   const senderMember = memberForMessageSender(message.sender, message.senderType, allKnownMembers)
+  // Fake-id guard: memberForMessageSender returns synthetic ids (message:agent:xxx)
+  // when the real member can't be resolved. Don't wire avatar click in that case —
+  // clicking would silently do nothing (no matching member to show).
+  const senderHasRealId = Boolean(senderMember.id) && !senderMember.id!.startsWith("message:")
+  const avatarClickHandler = onAvatarClick && senderHasRealId
+    ? () => onAvatarClick(senderMember.id!)
+    : undefined
   const messageRoleLabels = { assistant: tChat("agentKind"), member: tChat("members") }
   const hasReacted = didReact(message, "👍", currentMemberId)
   const hasMaterialResource = Boolean(materialResource)
@@ -328,6 +337,7 @@ export const MessageItem = memo(function MessageItem({
           timeVariant="compact"
           avatarSize="sm"
           showStatus={message.senderType === "agent"}
+          onAvatarClick={avatarClickHandler}
           roleLabels={messageRoleLabels}
           materialSurface={{
             ownerId: message.id,
@@ -372,6 +382,7 @@ export const MessageItem = memo(function MessageItem({
         contentLength={message.content.length}
         avatarSize="lg"
         showStatus={senderMember.kind === "agent"}
+        onAvatarClick={avatarClickHandler}
         roleLabels={messageRoleLabels}
         materialSurface={{
           ownerId: message.id,
