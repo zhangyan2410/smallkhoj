@@ -723,13 +723,14 @@ def execute_transfer(
         if authorized
         else {"type": "task-scoped", "taskId": validate_task_scope(root, task_id or ""), "capacityClaim": "not-asserted"}
     )
-    # The carrier image serves these exact artifacts. Validate externally
-    # prepared Windows input before any Docker/SSH side effects; the normal
-    # builder path is revalidated after it runs below.
-    validate_daemon_release_artifacts(
-        root / DAEMON_RELEASE_ARTIFACT_DIR,
-        candidate.head,
-    )
+    # The carrier image serves these exact artifacts. When skipping the daemon
+    # build, validate externally prepared Windows input before any Docker/SSH
+    # side effects. When building, the post-build revalidation covers it.
+    if options.skip_daemon_build:
+        validate_daemon_release_artifacts(
+            root / DAEMON_RELEASE_ARTIFACT_DIR,
+            candidate.head,
+        )
     plan = build_plan(options)
     identities: dict[str, ImageIdentity] | None = None
     archive_path = resolve_transfer_output(options.output_archive, root)
