@@ -32,8 +32,8 @@ Pipeline phases (in order):
 3. Tree equality        origin/main^{tree} == candidate tree
 4. Image build/transfer production_image_transfer.py (non-dry-run, registry-free)
 5. App-only deploy      docker compose up -d ... backend frontend caddy
-6. Post-deploy smoke    post_deploy_smoke.py against the public base URL
-7. Health window        10-minute window, sampled every 60s
+6. Post-deploy smoke    OPTIONAL — only when the user explicitly requests it
+7. Health window        OPTIONAL — only when the user explicitly requests it
    Rollback             schema-aware: allowed only when Alembic revision unchanged
 ```
 
@@ -88,7 +88,8 @@ python3 scripts/production_image_transfer.py \
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
   --force-recreate --no-deps --no-build --pull never backend frontend caddy
 
-# Phase 6 — post-deploy smoke (health route is /api/health, NOT /health)
+# Phase 6 — post-deploy smoke (OPTIONAL: only run when the user explicitly asks)
+# Health route is /api/health, NOT /health.
 python3 scripts/post_deploy_smoke.py --base-url http://124.222.40.40 --daemon-package-version <published-package-version> --allow-http --json
 ```
 
@@ -263,14 +264,19 @@ and compare it with the inspected image identity.
 - Bundle naming on the remote: `smallkhoj-deploy-__B_SHORT__` where `__B_SHORT__`
   is `git rev-parse --short=12 HEAD`, under `__REMOTE_ROOT__`.
 
-#### Phase 6 — Post-deploy smoke and health
+#### Phase 6 — Post-deploy smoke and health (OPTIONAL)
 
+**Smoke and health window are NOT part of the default deploy flow.** Only run
+them when the user explicitly requests smoke testing or a health check after
+deploy. Do not auto-run or assume they are required.
+
+When the user does ask for them:
 - Health endpoint is `/api/health`, NOT `/health`. `deploy/caddy/Caddyfile`
   routes `/api` and `/api/*` to backend; `/health` is routed to frontend and is
   NOT valid backend-health evidence. `scripts/post_deploy_smoke.py` probes
   `/api/health`.
-- Phase 7 requires a 10-minute health window sampled every 60 seconds (ten
-  samples, no-clobber), with connection-budget parity `48 / 100` against
+- Phase 7 health window (if requested): 10-minute window sampled every 60 seconds
+  (ten samples, no-clobber), with connection-budget parity `48 / 100` against
   PostgreSQL `max_connections=100`.
 
 #### Rollback (schema-aware, fail-closed)
@@ -385,7 +391,7 @@ and compare it with the inspected image identity.
 
 - Good: clean candidate -> `make ci` green -> `formal-300-500-30-v1` passes ->
   squash merge preserving tree -> transfer with capacity report -> app-only
-  deploy -> `/api/health` smoke -> 10-minute window; rollback anchor recorded.
+  deploy; rollback anchor recorded. (Smoke/health only if explicitly requested.)
 - Good: storing the large Docker archive on `/Volumes/ORICO/...` for release.
 - Base: a labeled `smoke` run validates Docker/query/report wiring while
   `acceptance.passed=false`; formal capacity still pending.
@@ -414,7 +420,7 @@ For any change touching the pipeline:
 - Release-level: `python3 scripts/initial_release_foundation_gate.py
   --base-url <url> --daemon-package-version <published-package-version>
   --allow-http --json`.
-- Post-deploy: `python3 scripts/post_deploy_smoke.py --base-url <url>
+- Post-deploy (OPTIONAL — only when user explicitly requests): `python3 scripts/post_deploy_smoke.py --base-url <url>
   --daemon-package-version <published-package-version> --allow-http --json`
   plus `/api/health`, `/docs`, `/login`, and daemon WS.
 - For image transfer changes: dry-run with `--capacity-report` first; after a
@@ -434,8 +440,8 @@ make ci passed and I opened localhost:3000/login, so the cloud release is ready.
 ```text
 make ci is the local static/build gate only. Release still needs formal capacity
 on the candidate tree, squash merge with tree equality, registry-free image
-transfer with capacity report, app-only deploy, and /api/health smoke against
-http://124.222.40.40.
+transfer with capacity report, and app-only deploy against
+http://124.222.40.40. (Smoke/health checks only if explicitly requested.)
 ```
 
 #### Wrong
