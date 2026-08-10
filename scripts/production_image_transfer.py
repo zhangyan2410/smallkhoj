@@ -697,12 +697,14 @@ def execute_transfer(
     root: Path,
     release_evidence: Path | None = None,
     task_id: str | None = None,
+    authorized: bool = False,
 ) -> int:
     root = root.resolve()
     candidate = validate_release_candidate(root, options.source_revision)
-    if bool(capacity_report) == bool(task_id):
+    gates = sum(1 for g in (capacity_report, task_id, authorized) if g)
+    if gates != 1:
         raise ValueError(
-            "choose exactly one deployment gate: --capacity-report or --task-scoped with --task-id"
+            "choose exactly one deployment gate: --capacity-report, --task-scoped with --task-id, or --authorized"
         )
     capacity = (
         validate_capacity_report(capacity_report.resolve(), candidate.tree)
@@ -717,6 +719,8 @@ def execute_transfer(
     deployment_scope = (
         {"type": "formal-capacity", "profileId": capacity.profile_id}
         if capacity
+        else {"type": "user-authorized", "capacityClaim": "user-authorized"}
+        if authorized
         else {"type": "task-scoped", "taskId": validate_task_scope(root, task_id or ""), "capacityClaim": "not-asserted"}
     )
     # The carrier image serves these exact artifacts. Validate externally
@@ -856,6 +860,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Trellis task id recorded in task-scoped release evidence.",
     )
     parser.add_argument(
+        "--authorized",
+        action="store_true",
+        help=(
+            "User-authorized deploy: same checks as a formal release "
+            "(clean source, image build, archive, SSH transfer) but without "
+            "a capacity report. Use when the user explicitly authorizes "
+            "deployment of the current HEAD. Records capacityClaim="
+            "'user-authorized' in release evidence."
+        ),
+    )
+    parser.add_argument(
         "--release-evidence",
         type=Path,
         help=(
@@ -956,9 +971,15 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    if args.capacity_report is None and not args.task_scoped:
+    if args.authorized and (args.capacity_report is not None or args.task_scoped):
         print(
-            "release validation failed: use --capacity-report for a formal release or --task-scoped --task-id for a scoped deploy",
+            "release validation failed: --authorized is mutually exclusive with --capacity-report and --task-scoped",
+            file=sys.stderr,
+        )
+        return 2
+    if args.capacity_report is None and not args.task_scoped and not args.authorized:
+        print(
+            "release validation failed: use --capacity-report, --task-scoped --task-id, or --authorized",
             file=sys.stderr,
         )
         return 2
@@ -969,6 +990,7 @@ def main(argv: list[str] | None = None) -> int:
             root=root,
             release_evidence=args.release_evidence,
             task_id=args.task_id if args.task_scoped else None,
+            authorized=args.authorized,
         )
     except ValueError as exc:
         print(f"release validation failed: {exc}", file=sys.stderr)

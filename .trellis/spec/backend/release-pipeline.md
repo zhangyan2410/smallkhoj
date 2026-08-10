@@ -27,7 +27,9 @@ Pipeline phases (in order):
 
 ```text
 0. Local candidate      clean worktree + make ci green
-1. Deployment gate      formal capacity for release claims, or explicit task scope for functional deploys
+1. Deployment gate      one of: formal capacity report (--capacity-report),
+                        Trellis task scope (--task-scoped --task-id),
+                        or user authorization (--authorized)
 2. Squash merge         gh pr merge --squash --match-head-commit <SHA>
 3. Tree equality        origin/main^{tree} == candidate tree
 4. Image build/transfer production_image_transfer.py (non-dry-run, registry-free)
@@ -84,6 +86,21 @@ python3 scripts/production_image_transfer.py \
   --task-scoped --task-id <task-id> --skip-daemon-build \
   --use-vpn-proxy
 
+# User-authorized deployment (no capacity report, no Trellis task required):
+# Same image build + transfer checks as a formal release, but gated by explicit
+# user authorization instead of a capacity report. Records capacityClaim=
+# "user-authorized" in release evidence. Use when the user says "deploy this".
+# Requires PUBLIC_API_KEY in the caller environment (see note below).
+export PUBLIC_API_KEY=<value-from-cloud-env.prod>  # see PUBLIC_API_KEY section below
+python3 scripts/production_image_transfer.py \
+  --host 124.222.40.40 --user ubuntu \
+  --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
+  --platform linux/amd64 \
+  --authorized --skip-daemon-build \
+  --output-archive /Volumes/ORICO/smallkhoj-deploy/smallkhoj-production-images-amd64.tar \
+  --use-vpn-proxy
+
 # Phase 5 — app-only deploy (NEVER include `db` in the deploy command)
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
   --force-recreate --no-deps --no-build --pull never backend frontend caddy
@@ -103,6 +120,34 @@ Remote:   /home/ubuntu/smallkhoj-deploy (current image archive + bundle parent)
           /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy (Compose bundle)
 Secrets:  /Volumes/ORICO/smallkhoj-secrets/release-worker.env (external drive; never committed)
 ```
+
+#### PUBLIC_API_KEY — how to obtain and use it
+
+`PUBLIC_API_KEY` is the production API key shared between the frontend (baked
+into the browser bundle at Docker build time via `--secret id=public_api_key,
+env=PUBLIC_API_KEY`) and the backend (runtime env in `.env.prod`). It is **not**
+committed to the repo, not in `release-worker.env`, and not auto-read by any
+script. The caller must export it before running `production_image_transfer.py`.
+
+**Where the current value lives:** on the cloud server, inside
+`/home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod`. Retrieve it via SSH
+without printing the value to chat/logs:
+
+```bash
+ssh -i /Users/lee/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'grep "^PUBLIC_API_KEY=" /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod' \
+  > /tmp/.deploy-pubkey
+export $(cat /tmp/.deploy-pubkey)
+rm -f /tmp/.deploy-pubkey
+```
+
+**Rules:**
+- Never use the dev default `sk_public_local` in production.
+- Never print the value in chat, command output, or URLs.
+- The same value must exist in both the frontend image and the server `.env.prod`;
+  a mismatch causes every authenticated request to return 401.
+- Only generate a new value on first deploy or key rotation; then update the
+  server `.env.prod` and rebuild both frontend and backend together.
 
 Runtime image tags loaded on the server:
 
