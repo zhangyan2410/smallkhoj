@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
+from config import settings
 from models import Account, Member, Server, ServerMembership
 from services.member_identity import (
     SERVER_HANDLE_RETRY_LIMIT,
@@ -21,6 +22,7 @@ from services.member_identity import (
     integrity_constraint_name,
     normalize_handle,
 )
+from services.server_membership import ensure_account_membership
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,20 @@ async def _create_home_server(db: Any, *, name: str) -> Server:
     raise HTTPException(503, "Could not allocate a unique Server handle")
 
 
+async def _load_configured_official_server(db: Any) -> Server | None:
+    """Resolve the optional official Server from ``OFFICIAL_SERVER_HANDLE``.
+
+    An empty setting disables the auto-join; an unknown handle (official
+    Account not registered yet) skips it without failing the signup.
+    """
+
+    handle = (settings.official_server_handle or "").strip().lower()
+    if not handle:
+        return None
+    result = await db.execute(select(Server).where(Server.server_handle == handle))
+    return result.scalar_one_or_none()
+
+
 async def bootstrap_account(
     db: Any,
     *,
@@ -125,6 +141,15 @@ async def bootstrap_account(
         )
         db.add(membership)
         await db.flush()
+        official_server = await _load_configured_official_server(db)
+        if official_server is not None and official_server.id != server.id:
+            await ensure_account_membership(
+                db,
+                account=account,
+                server=official_server,
+                member=member,
+                default_role="member",
+            )
     else:
         server_result = await db.execute(select(Server).where(Server.id == account.home_server_id))
         server = server_result.scalar_one_or_none()

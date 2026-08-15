@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     daemon_download_base_url: str = ""
     daemon_npx_package: str = ""
 
+    # Optional official Server: every newly registered Account auto-joins the
+    # Server with this handle as a plain member. Empty disables the auto-join.
+    official_server_handle: str = ""
+
     database_url: str = "postgresql+asyncpg://smallkhoj:smallkhoj@localhost:5432/smallkhoj"
     database_pool_size: int = Field(default=5, ge=1)
     database_max_overflow: int = Field(default=10, ge=0)
