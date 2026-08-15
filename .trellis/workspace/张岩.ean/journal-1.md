@@ -824,3 +824,36 @@ twd 主栈 + 隔离 computer daemon 真机链路验收。修：computer daemon W
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: DeepSeek+codex 排障：沙箱提权修复 + provider 溯源
+
+**Date**: 2026-08-15
+**Task**: DeepSeek+codex 排障：沙箱提权修复 + provider 溯源
+**Branch**: `main`
+
+### Summary
+
+用户报告 codex+DeepSeek 三问题。溯源：@ee/@wqa 无 provider → ~/.codex/config.toml → 真 DeepSeek（deepseek-v4-flash）；定位器 → cc-switch laodog-ai → krill 中继 404（坏的 provider）。activity 报错根因 = codex-acp 默认沙箱禁网 + 模型未按 AGENTS.md 提权 → aura 全失败；对齐 exec 路径 danger-full-access 修复，wqa 真机回复验证。用户 tab 冻结是 TDZ 崩溃残留（消息根本没发出，DB 0 条）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8e03132` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

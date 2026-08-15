@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 24
+- **Total Sessions**: 25
 - **Last Active**: 2026-08-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~826 | Active |
+| `journal-1.md` | ~859 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 25 | 2026-08-15 | DeepSeek+codex 排障：沙箱提权修复 + provider 溯源 | `8e03132` | `main` |
 | 24 | 2026-08-15 | 卡按钮 bug 根因修复：activity 事件未推 SSE hub | `971f71e` | `main` |
 | 23 | 2026-08-15 | 聊天取消真机验收：三个产品缺陷现场修复 | `ed8fa26` | `main` |
 | 22 | 2026-08-15 | 聊天页内嵌取消 + Claude Code interrupt 取消支持 | `f124d1c` | `main` |
