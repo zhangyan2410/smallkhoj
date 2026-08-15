@@ -659,3 +659,36 @@ Completed Windows/macOS onboarding acceptance handoff and task-scoped cloud-prod
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: 登记项 B：用户侧取消回合全链路落地
+
+**Date**: 2026-08-15
+**Task**: 登记项 B：用户侧取消回合全链路落地
+**Branch**: `main`
+
+### Summary
+
+三层链路：computers 页按钮 → lifecycle action=cancel → daemon_control_hub → daemon cancel_turn 控制命令 → requestGracefulCancel（ACP session/cancel）→ cancelled 结算。修了 boot 级 runtime 无 workspaceId 的守卫误杀。测试：daemon 集成测试 + backend pytest；回归 337/337 + 61/61 + tsc 干净。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `691e362` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
