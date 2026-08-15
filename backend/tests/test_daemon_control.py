@@ -56,6 +56,9 @@ class _ExecuteResult:
     def scalar_one_or_none(self):
         return self._scalar_one
 
+    def one_or_none(self):
+        return self._rows[0] if self._rows else None
+
 
 class _FakeSession:
     def __init__(self, *results):
@@ -1392,3 +1395,51 @@ async def test_push_events_skips_heartbeat_only_pages_and_delivers_later_message
     assert delivered == 1
     assert [event["content"] for event in websocket.sent] == ["real human prompt"]
     assert hub._event_cursors[websocket] == 303
+
+
+@pytest.mark.asyncio
+async def test_workspace_lifecycle_cancel_pushes_cancel_turn_without_mutating_status(monkeypatch):
+    computer = _computer()
+    agent = _runtime_member(config={"runtimeDesiredStatus": "running"}, status="active")
+    agent.handle = "cancel-probe"
+    workspace = _workspace(status="running")
+    db = _FakeSession(_ExecuteResult(rows=[(workspace, agent, computer)]))
+    pushed = []
+
+    async def fake_active_server_context(_db, _request):
+        return SimpleNamespace(
+            server=SimpleNamespace(id=computer.server_id),
+            member=agent,
+            membership=SimpleNamespace(role="owner"),
+        )
+
+    async def fake_noop(*_args, **_kwargs):
+        return None
+
+    async def fake_serialize_computer(*_args, **_kwargs):
+        return {}
+
+    async def fake_push(_computer_id, event):
+        pushed.append(event)
+        return True
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_active_server_context)
+    monkeypatch.setattr(public_api, "_record_activity", fake_noop)
+    monkeypatch.setattr(public_api, "_push_committed_events", fake_noop)
+    monkeypatch.setattr(public_api, "_serialize_workspace", lambda *args, **kwargs: {})
+    monkeypatch.setattr(public_api, "_serialize_computer", fake_serialize_computer)
+    monkeypatch.setattr(public_api.daemon_control_hub, "push", fake_push)
+
+    request = _JsonRequest({"action": "cancel"})
+    response = await public_api.control_workspace_lifecycle(str(workspace.id), request, _auth=None, db=db)
+
+    assert response["ok"] is True
+    assert response["action"] == "cancel"
+    assert response["delivered"] is True
+    command = pushed[0]["command"]
+    assert command["type"] == "cancel_turn"
+    assert command["agentId"] == str(agent.id)
+    assert command["workspaceId"] == str(workspace.id)
+    # Turn-scoped cancel: workspace/agent state must be untouched.
+    assert workspace.status == "running"
+    assert agent.config == {"runtimeDesiredStatus": "running"}

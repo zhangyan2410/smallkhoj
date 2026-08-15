@@ -2582,3 +2582,170 @@ test('daemon detected runtimes keep provider entries alongside the five runtime 
   assert.equal(providerEntry?.provider, 'krill');
   assert.equal(providerEntry?.source, 'cc-switch');
 });
+
+// 登记项 B（08-15）：backend cancel_turn 控制命令 → daemon
+// requestGracefulCancel → 挂起中的 ACP turn 以 stopReason cancelled 结算。
+function writeHangingAcpScript(path, marker) {
+  writeFileSync(path, `
+import { writeFileSync } from 'node:fs';
+
+let buffer = '';
+let pending = null;
+process.stdin.setEncoding('utf-8');
+process.stdin.on('data', chunk => {
+  buffer += chunk;
+  const lines = buffer.split(/\\r?\\n/);
+  buffer = lines.pop() ?? '';
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      send({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: [] } });
+    } else if (msg.method === 'session/new') {
+      send({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'fake-acp-daemon-session' } });
+    } else if (msg.method === 'session/load') {
+      send({ jsonrpc: '2.0', id: msg.id, result: {} });
+    } else if (msg.method === 'session/prompt') {
+      const prompt = (msg.params.prompt ?? []).map(block => block.text ?? '').join('\\n');
+      if (prompt.includes('startup readiness check')) {
+        notify(msg.params.sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'warmup ok' } });
+        send({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } });
+      } else {
+        notify(msg.params.sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'long turn starting' } });
+        // 挂起：只有 session/cancel 才结算（120s 兜底 end_turn 防测试卡死）
+        pending = { id: msg.id, sessionId: msg.params.sessionId };
+      }
+      setTimeout(() => {
+        if (!pending) return;
+        const p = pending;
+        pending = null;
+        send({ jsonrpc: '2.0', id: p.id, result: { stopReason: 'end_turn' } });
+      }, 120000);
+    } else if (msg.method === 'session/cancel') {
+      if (msg.id !== undefined) send({ jsonrpc: '2.0', id: msg.id, result: {} });
+      if (pending) {
+        const p = pending;
+        pending = null;
+        writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ cancelled: true }));
+        notify(p.sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'winding down' } });
+        send({ jsonrpc: '2.0', id: p.id, result: { stopReason: 'cancelled' } });
+      }
+    }
+  }
+});
+function send(frame) { process.stdout.write(JSON.stringify(frame) + '\\n'); }
+function notify(sessionId, update) { send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId, update } }); }
+`);
+}
+
+test('daemon cancels a busy runtime turn via the cancel_turn control command', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-daemon-cancel-turn-'));
+  const runtimeWorkspace = join(root, '.slock-runtimes', 'server-cancel', 'computer-cancel', 'workspace-cancel');
+  const marker = join(root, 'cancel-marker.json');
+  const fakeAcp = join(root, 'hanging-acp.mjs');
+  let turnStarted = false;
+  let inboundDelivered = false;
+  const upstreamPaths = [];
+  const upstream = await startServer((req, res, body) => {
+    const url = new URL(req.url, 'http://upstream.test');
+    upstreamPaths.push(url.pathname);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/internal/agent-api/daemon/register' || url.pathname === '/internal/agent-api/daemon/heartbeat') {
+      const controlCommands = turnStarted
+        ? [{ type: 'cancel_turn', agentId: 'agent-cancel', workspaceId: 'workspace-cancel' }]
+        : [];
+      res.end(JSON.stringify({ ok: true, controlCommands }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/server') {
+      res.end(JSON.stringify({ id: 'server-cancel', channels: [{ name: 'general' }] }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/send') {
+      res.end(JSON.stringify({ state: 'sent', body: JSON.parse(body) }));
+      return;
+    }
+    if (url.pathname === '/internal/agent-api/events') {
+      if (!inboundDelivered) {
+        inboundDelivered = true;
+        turnStarted = true;
+        res.end(JSON.stringify({
+          count: 1,
+          eventLogCursor: '1',
+          events: [{
+            type: 'message_received',
+            eventSeq: '1',
+            messageId: 'msg-cancel-1',
+            target: '#general',
+            channelId: 'channel-general',
+            sender: 'human',
+            actor: 'human-1',
+            content: 'start a long running turn',
+          }],
+        }));
+        return;
+      }
+      res.end(JSON.stringify({ count: 0, events: [] }));
+      return;
+    }
+    res.end(JSON.stringify({ events: [] }));
+  });
+
+  writeHangingAcpScript(fakeAcp, marker);
+  chmodSync(fakeAcp, 0o755);
+
+  const daemon = spawn(process.execPath, [
+    resolve('dist/cmd/main.js'),
+    'start',
+    '--foreground',
+    '--server', upstream.url,
+    '--ws', 'none',
+    '--agent-id', 'agent-cancel',
+    '--proxy-port', '0',
+    '--pid-file', join(root, 'aaa-daemon.pid'),
+    '--workspace', root,
+    '--runtime', 'codex',
+    '--runtime-command', process.execPath,
+    '--runtime-command-arg', fakeAcp,
+    '--runtime-stall-timeout-ms', '90000',
+    '--register-daemon',
+  ], {
+    cwd: resolve('.'),
+    env: {
+      ...process.env,
+      SLOCK_AGENT_TOKEN: 'sk_machine_real',
+      SLOCK_SERVER_ID: 'server-cancel',
+      SLOCK_COMPUTER_ID: 'computer-cancel',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  let stderr = '';
+  let stdout = '';
+  daemon.stderr.setEncoding('utf-8');
+  daemon.stdout.setEncoding('utf-8');
+  daemon.stderr.on('data', chunk => { stderr += chunk; });
+  daemon.stdout.on('data', chunk => { stdout += chunk; });
+
+  try {
+    // Turn starts via events polling; the next 15s heartbeat carries
+    // cancel_turn; the hanging fake ACP then settles with stopReason
+    // cancelled and writes the marker.
+    await waitFor(() => existsSync(marker), 60_000);
+    // The marker is written by the fake ACP only inside its session/cancel
+    // handler — proof that requestGracefulCancel reached the busy turn.
+    assert.equal(JSON.parse(readFileSync(marker, 'utf-8')).cancelled, true);
+  } catch (err) {
+    assert.fail(`${err.message}\nUPSTREAM:\n${JSON.stringify(upstreamPaths)}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  } finally {
+    daemon.kill('SIGTERM');
+    await waitForExit(daemon);
+    await upstream.close();
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      // Windows can briefly keep spawned script directories locked after process exit.
+    }
+  }
+});

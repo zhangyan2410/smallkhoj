@@ -148,6 +148,23 @@ def runtime_control_command(workspace: AgentWorkspace, agent: Member, command_ty
     """Build a daemon control envelope for a supported workspace lifecycle action."""
     if command_type == "start_runtime":
         return runtime_start_command(workspace, agent)
+    if command_type == "cancel_turn":
+        # Turn-scoped cancel: the runtime keeps running; the daemon asks the
+        # driver for a graceful ACP session/cancel of the in-flight turn.
+        command = {
+            "type": command_type,
+            "agentId": str(agent.id),
+            "workspaceId": str(workspace.id),
+        }
+        return {
+            "type": "control",
+            "event_type": "control",
+            "eventType": "control",
+            "controlType": command_type,
+            "agentId": str(agent.id),
+            "workspaceId": str(workspace.id),
+            "command": command,
+        }
     if command_type not in {"stop_runtime", "restart_runtime"}:
         raise ValueError(f"Unsupported runtime control command: {command_type}")
 

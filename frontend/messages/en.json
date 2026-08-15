@@ -327,6 +327,7 @@
     "start": "Start",
     "stop": "Stop",
     "restart": "Restart",
+    "cancelTurn": "Cancel turn",
     "providerDefault": "provider default",
     "runtimeDefault": "runtime",
     "noCwd": "no cwd",

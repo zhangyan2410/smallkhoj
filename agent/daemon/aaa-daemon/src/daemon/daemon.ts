@@ -137,7 +137,7 @@ export interface TaskRunLifecycleReport {
 }
 
 export interface DaemonControlCommand {
-  type: 'start_runtime' | 'stop_runtime' | 'restart_runtime';
+  type: 'start_runtime' | 'stop_runtime' | 'restart_runtime' | 'cancel_turn';
   agentId: string;
   workspaceId?: string;
   config?: {
@@ -1927,6 +1927,30 @@ export class DaemonCore extends EventEmitter {
     this.proxy.unregister(runtime.proxyToken);
   }
 
+  /**
+   * 登记项 B（08-15）：用户侧取消当前回合。走驱动级 ACP session/cancel
+   * （requestGracefulCancel）；回合以 stopReason cancelled 自然结算，然后
+   * 正常的 result → idle 活动流接手，无需新的 activity 类型。
+   */
+  cancelRuntimeTurn(agentId: string, workspaceId?: string): boolean {
+    const runtime = this.runtimes.get(agentId);
+    // A boot-configured runtime has no backend-assigned workspaceId; it is a
+    // per-agent singleton, so an unscoped runtime still matches the command.
+    if (!runtime || (workspaceId && runtime.workspaceId !== undefined && runtime.workspaceId !== workspaceId)) {
+      this.log(`Turn cancel ignored for agent ${agentId}: runtime not running`, 'warn');
+      return false;
+    }
+    const cancel = runtime.driver.requestGracefulCancel?.();
+    const outcome = cancel === true
+      ? 'graceful cancel delivered'
+      : typeof runtime.driver.requestGracefulCancel === 'function' && !runtime.driver.busy
+        ? 'runtime idle, nothing to cancel'
+        : 'runtime does not support graceful cancel';
+    this.log(`Turn cancel requested for agent ${agentId}: ${outcome}`, cancel === true ? 'info' : 'warn');
+    this.emitRuntimeTrace({ type: 'stream_event', agentId, eventType: 'turn_cancel', subtype: cancel === true ? 'delivered' : outcome });
+    return cancel === true;
+  }
+
   private defaultRuntimeWorkspacePath(agentId: string, workspaceId?: string): string {
     const basePath = this.config.workspacePath ?? defaultDaemonWorkspaceRoot();
     if (this.credential?.agentId === agentId && this.runtimes.size === 0) {
@@ -1953,6 +1977,10 @@ export class DaemonCore extends EventEmitter {
     }
     if (command.type === 'stop_runtime') {
       this.stopRuntimeForAgent(command.agentId);
+      return;
+    }
+    if (command.type === 'cancel_turn') {
+      this.cancelRuntimeTurn(command.agentId, command.workspaceId);
       return;
     }
     if (command.type === 'restart_runtime') {
@@ -2909,7 +2937,10 @@ export function parseDaemonControlCommand(input: unknown): DaemonControlCommand 
   if (!isRecord(value)) return null;
 
   const type = firstString(value.type, value.controlType, value.commandType);
-  if (type !== 'start_runtime' && type !== 'stop_runtime' && type !== 'restart_runtime') {
+  if (
+    type !== 'start_runtime' && type !== 'stop_runtime'
+    && type !== 'restart_runtime' && type !== 'cancel_turn'
+  ) {
     return null;
   }
 

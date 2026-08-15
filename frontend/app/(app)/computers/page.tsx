@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Scan,
   Search,
+  Square,
   Terminal,
   Trash2,
   XCircle,
@@ -111,6 +112,7 @@ function makeComputersCopy(t: TranslationFn) {
     start: t("start"),
     stop: t("stop"),
     restart: t("restart"),
+    cancelTurn: t("cancelTurn"),
     providerDefault: t("providerDefault"),
     runtimeDefault: t("runtimeDefault"),
     noCwd: t("noCwd"),
@@ -686,6 +688,15 @@ function WorkspaceRow({
             <Button type="submit" size="sm" variant="outline" disabled={!canRestart} title={disabledTitle || copy.restart}>
               <RotateCcw className="size-3.5" />
               {copy.restart}
+            </Button>
+          </form>
+          <form action={controlWorkspaceLifecycleAction}>
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <input type="hidden" name="computerId" value={computerId} />
+            <input type="hidden" name="action" value="cancel" />
+            <Button type="submit" size="sm" variant="outline" disabled={!canStop} title={copy.cancelTurn}>
+              <Square className="size-3.5" />
+              {copy.cancelTurn}
             </Button>
           </form>
         </div>

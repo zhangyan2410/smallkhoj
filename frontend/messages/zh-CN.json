@@ -327,6 +327,7 @@
     "start": "启动",
     "stop": "停止",
     "restart": "重启",
+    "cancelTurn": "取消回合",
     "providerDefault": "默认提供商",
     "runtimeDefault": "默认运行时",
     "noCwd": "无工作目录",

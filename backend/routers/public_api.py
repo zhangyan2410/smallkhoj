@@ -5096,6 +5096,7 @@ async def control_workspace_lifecycle(
         "start": "start_runtime",
         "stop": "stop_runtime",
         "restart": "restart_runtime",
+        "cancel": "cancel_turn",
     }
     command_type = command_by_action.get(action)
     if command_type is None:
@@ -5156,6 +5157,10 @@ async def control_workspace_lifecycle(
         workspace.pid = None
         workspace.stopped_at = now
         agent.status = "offline"
+    elif action == "cancel":
+        # Turn-scoped cancel: no workspace/agent status mutation — the runtime
+        # keeps running and the in-flight turn settles as cancelled.
+        pass
     else:
         config["runtimeDesiredStatus"] = "running"
         workspace.status = PENDING_RUNTIME_START_STATUS
