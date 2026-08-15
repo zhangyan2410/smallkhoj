@@ -593,3 +593,36 @@ Completed Windows/macOS onboarding acceptance handoff and task-scoped cloud-prod
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: 08-15 ACP SDK 升级任务收尾：G1/G2/G3/R1.1 全部落地
+
+**Date**: 2026-08-15
+**Task**: 08-15 ACP SDK 升级任务收尾：G1/G2/G3/R1.1 全部落地
+**Branch**: `main`
+
+### Summary
+
+完成 08-15-acp-sdk-upgrade 全部范围：G2 slock 提示词迁 workspace AGENTS.md + 逐 turn 裸消息（实测 turn 增量 +359 vs 旧 +9k）；G1 scope→session 映射原子落盘 + 重启恢复 + 过期自愈（真机跨重启同 session 并回忆暗号）；R1.1 smoke 真实性硬断言（错误 delta + usage>0 双向验证）；G3/D 复测关闭（命名调用不可复现）。终检 tsc + 聚焦阶梯 55/55。登记后续项 B/C/P1。提交 b8e62ef/2539f7d/deeeb39。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `deeeb39` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
