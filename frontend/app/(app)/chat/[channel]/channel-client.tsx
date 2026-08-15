@@ -790,6 +790,14 @@ export function ChannelClient({
       return
     }
 
+    // workspace.updated carries the DM peer's runtimeStatus (starting →
+    // running → stopped). Without this refresh the "agent starting" banner
+    // sticks after the runtime is already up until a manual page reload.
+    if (event.type === "workspace.updated" || event.type === "computer.status.updated") {
+      void refreshChannelsAndDms()
+      return
+    }
+
     if (event.type === "channel.member_joined" || event.type === "channel.member_left") {
       const eventChannelId = typeof event.payload.channelId === "string" ? event.payload.channelId : null
       const changedMemberId = channelMembershipEventMemberId(event.payload)
