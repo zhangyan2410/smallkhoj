@@ -2541,9 +2541,10 @@ test('daemon detected runtimes always report the four supported runtimes from lo
   assert.equal(detected.filter(item => item.type === 'claude_code').length, 1);
 });
 
-test('daemon detected runtimes keep provider entries alongside the four runtime entries', () => {
-  // 有 ccswitch provider 时：4 条 runtime 条目仍在最前，provider 条目作为附加
-  // 信息保留（Provider 下拉等高级用法依赖 runtimeProvider）。
+test('daemon detected runtimes keep provider entries alongside the five runtime entries', () => {
+  // 有 ccswitch provider 时：5 条 runtime 条目仍在最前（goose 自 08-06 起为
+  // 一级 runtime），provider 条目作为附加信息保留（Provider 下拉等高级用法
+  // 依赖 runtimeProvider）。
   const detected = detectedRuntimesForInventory(
     { runtime: 'claude_code' },
     {
@@ -2564,7 +2565,7 @@ test('daemon detected runtimes keep provider entries alongside the four runtime 
   const runtimeEntries = detected.filter(item => !item.runtimeProvider);
   assert.deepEqual(
     runtimeEntries.map(item => item.type),
-    ['claude_code', 'codex', 'opencode', 'pi'],
+    ['claude_code', 'codex', 'opencode', 'goose', 'pi'],
   );
   assert.ok(runtimeEntries.every(item => item.status === 'available'));
   assert.equal(runtimeEntries.find(item => item.type === 'pi')?.source, 'bundled');

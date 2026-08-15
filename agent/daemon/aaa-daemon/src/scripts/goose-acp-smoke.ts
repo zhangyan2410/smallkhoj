@@ -24,6 +24,9 @@ interface Args {
   cancelAfterEvents?: number;
 }
 
+/** goose's fixed wrapper phrasing when it streams an agent-side error turn. */
+const ERROR_TURN_TEXT = /ran into this error/i;
+
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     agentId: 'goose-smoke',
@@ -96,6 +99,9 @@ async function main(): Promise<void> {
   const codec = agentNamespacedCodec(args.agentId);
   const events: unknown[] = [];
   let sawUsageNotification = false;
+  // Error turns (401/empty reply) surface usage counters stuck at zero — the
+  // only truthful "the model actually answered" signal is positive usage.
+  let maxUsageTokens = 0;
 
   const bridge = new CodexAcpBridge({
     command,
@@ -105,7 +111,21 @@ async function main(): Promise<void> {
     sessionIdCodec: codec,
     clientCapabilitiesMeta: { goose: { customNotifications: true } },
     onNotification: (method, params) => {
-      if (method === '_goose/unstable/session/update') sawUsageNotification = true;
+      if (method === '_goose/unstable/session/update') {
+        sawUsageNotification = true;
+        const usage = (params as { update?: { usage?: Record<string, unknown>; accumulatedInputTokens?: number } }).update?.usage;
+        if (usage) {
+          maxUsageTokens = Math.max(
+            maxUsageTokens,
+            Number(usage.inputTokens ?? 0) || 0,
+            Number(usage.cacheReadTokens ?? 0) || 0,
+          );
+        }
+        const update = (params as { update?: { accumulatedInputTokens?: number } }).update;
+        if (update?.accumulatedInputTokens) {
+          maxUsageTokens = Math.max(maxUsageTokens, update.accumulatedInputTokens);
+        }
+      }
       log({ type: 'notification', method, params });
     },
     onUpdate: (update) => {
@@ -150,10 +170,29 @@ async function main(): Promise<void> {
       result = await bridge.prompt(sessionId, args.prompt);
       log({ type: 'result', sessionId, stopReason: result.stopReason, eventCount: events.length });
     }
+    // R1.1 (task 08-15): an error turn must NOT pass. goose 1.46 streams the
+    // error itself as an item_delta ("Ran into this error: ..."), so counting
+    // deltas alone is not enough: PASS additionally requires that no streamed
+    // text is goose's error wrapper and that the usage counters actually moved
+    // (error turns report zero usage).
+    const streamingDeltas = events.filter(event =>
+      typeof event === 'object' && event !== null && (event as { type?: string }).type === 'item_delta');
+    const errorDeltas = streamingDeltas.filter(event =>
+      /ran into this error/i.test(String((event as { delta?: { text?: string } }).delta?.text ?? '')));
+    log({ type: 'summary', sawUsageNotification, eventCount: events.length, streamingDeltas: streamingDeltas.length, maxUsageTokens });
+    if (errorDeltas.length > 0) {
+      throw new Error(
+        `smoke streamed a goose error turn (eventCount=${events.length}, stopReason=${result.stopReason}) — check the provider key and goose logs before trusting this run`,
+      );
+    }
+    if (streamingDeltas.length === 0 || maxUsageTokens === 0) {
+      throw new Error(
+        `smoke saw no real model output (eventCount=${events.length}, streamingDeltas=${streamingDeltas.length}, maxUsageTokens=${maxUsageTokens}, stopReason=${result.stopReason}) — this is the error-turn signature; check the provider key and goose logs before trusting this run`,
+      );
+    }
     // Verify codec.decode round-trips back to the native id for loadSession.
     const restored = await bridge.loadSession(sessionId);
     log({ type: 'load_session', sessionId, restoredEqual: restored === sessionId });
-    log({ type: 'summary', sawUsageNotification, eventCount: events.length });
   } finally {
     await bridge.stop();
     if (!args.cwd && !args.keepWorkspace) {

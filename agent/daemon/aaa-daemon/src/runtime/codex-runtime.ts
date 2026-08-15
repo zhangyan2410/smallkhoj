@@ -1,7 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
-import { mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { writeAgentInstructionsFile } from './agent-instructions.js';
 import type { Credential } from '../types.js';
 import { prependPathEnv } from './slock-wrapper.js';
 import { runtimeCommandSpawnSpec, runtimeProcessSpawnOptions, scheduleRuntimeProcessTreeKill, signalRuntimeProcessTree } from './process-tree.js';
@@ -48,14 +47,17 @@ export function buildCodexSlockPrompt(options: Pick<CodexRuntimeOptions, 'creden
   ].join('\n');
 }
 
-export function writeCodexPromptFile(options: Pick<CodexRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>): string {
-  mkdirSync(options.wrapperDir, { recursive: true });
-  const promptFile = join(options.wrapperDir, 'codex-slock-prompt.md');
-  writeFileSync(promptFile, buildCodexSlockPrompt({
-    credential: options.credential,
+// G2 (task 08-15): the Slock prompt lives in <workspacePath>/AGENTS.md, which
+// codex loads from its cwd into the system-prompt slot; per-turn stdin now
+// carries only the bare event text.
+export function writeCodexPromptFile(options: Pick<CodexRuntimeOptions, 'credential' | 'workspacePath'>): string {
+  return writeAgentInstructionsFile({
     workspacePath: options.workspacePath,
-  }), 'utf-8');
-  return promptFile;
+    systemPrompt: buildCodexSlockPrompt({
+      credential: options.credential,
+      workspacePath: options.workspacePath,
+    }),
+  });
 }
 
 export function buildCodexRuntimeEnv(options: CodexRuntimeOptions, baseEnv = process.env): NodeJS.ProcessEnv {
@@ -126,16 +128,6 @@ export function buildCodexResumeArgs(threadId: string, options: Pick<CodexRuntim
   return args;
 }
 
-export function buildCodexPrompt(systemPrompt: string, text: string): string {
-  return [
-    systemPrompt,
-    '',
-    '## Current Slock Event',
-    '',
-    text,
-  ].join('\n');
-}
-
 export function parseCodexJsonLine(line: string): CodexStreamEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -164,7 +156,7 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
   private started = false;
   private stopping = false;
   private forceKillTimer: ReturnType<typeof setTimeout> | null = null;
-  private systemPrompt = '';
+  private instructionsFile = '';
   private sawStructuredEvent = false;
 
   constructor(options: CodexRuntimeOptions) {
@@ -180,13 +172,9 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     const promptFile = writeCodexPromptFile({
       credential: this.options.credential,
       workspacePath: this.options.workspacePath,
-      wrapperDir: this.options.wrapperDir,
     });
-    this.systemPrompt = buildCodexSlockPrompt({
-      credential: this.options.credential,
-      workspacePath: this.options.workspacePath,
-    });
-    this.emit('line', { stream: 'stderr', line: `Codex Slock prompt written to ${promptFile}` } satisfies CodexRuntimeEvent);
+    this.instructionsFile = promptFile;
+    this.emit('line', { stream: 'stderr', line: `Codex Slock instructions written to ${promptFile}` } satisfies CodexRuntimeEvent);
     this.flushQueuedMessages();
   }
 
@@ -310,11 +298,11 @@ export class CodexRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
       this.flushQueuedMessages();
     });
 
-    const prompt = buildCodexPrompt(this.systemPrompt || buildCodexSlockPrompt(this.options), text);
-    child.stdin.end(prompt);
+    child.stdin.end(text);
     this.emit('message_sent', {
       type: 'codex_exec',
-      promptBytes: Buffer.byteLength(prompt, 'utf-8'),
+      promptBytes: Buffer.byteLength(text, 'utf-8'),
+      instructionsFile: this.instructionsFile,
       hasSessionId: Boolean(effectiveSessionId),
       session_id: effectiveSessionId,
       sessionScopeKey: options?.sessionScopeKey,

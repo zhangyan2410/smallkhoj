@@ -1,11 +1,12 @@
 import { EventEmitter } from 'events';
-import { appendFileSync, mkdirSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { PromptResponse, SessionNotification, SessionUpdate } from '@agentclientprotocol/sdk';
 import type { Credential } from '../types.js';
 import { buildSlockSystemPrompt, type ClaudeRuntimeOptions } from './claude-runtime.js';
-import { buildCodexPrompt, buildCodexRuntimeEnv } from './codex-runtime.js';
+import { buildCodexRuntimeEnv } from './codex-runtime.js';
+import { writeAgentInstructionsFile } from './agent-instructions.js';
 import { CodexAcpBridge } from './codex-acp-bridge.js';
 import { translateAcpSessionUpdate } from './acp-event-translator.js';
 import { agentNamespacedCodec, prepareGooseSessionDir } from './goose-session-store.js';
@@ -33,13 +34,13 @@ export type GooseRuntimeExitEvent = RuntimeExitEvent;
 export type GooseStreamEvent = RuntimeStreamEvent;
 type PendingUserMessage = { text: string; options?: RuntimeSendOptions };
 
-export function buildGooseSlockPrompt(options: Pick<GooseRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>): string {
+export function buildGooseSlockPrompt(options: Pick<GooseRuntimeOptions, 'credential' | 'workspacePath'> & Partial<Pick<GooseRuntimeOptions, 'wrapperDir'>>): string {
   return [
     buildSlockSystemPrompt({
       credential: options.credential,
       workspacePath: options.workspacePath,
-      wrapperDir: options.wrapperDir,
-    } satisfies Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>),
+      ...(options.wrapperDir ? { wrapperDir: options.wrapperDir } : {}),
+    } satisfies Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath'>),
     '',
     '## Goose Runtime Notes',
     '',
@@ -53,15 +54,15 @@ export function buildGooseSlockPrompt(options: Pick<GooseRuntimeOptions, 'creden
   ].join('\n');
 }
 
-export function writeGoosePromptFile(options: Pick<GooseRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>): string {
-  mkdirSync(options.wrapperDir, { recursive: true });
-  const promptFile = join(options.wrapperDir, 'goose-slock-prompt.md');
-  writeFileSync(promptFile, buildGooseSlockPrompt({
-    credential: options.credential,
+// G2 (task 08-15): the Slock prompt lives in <workspacePath>/AGENTS.md, which
+// goose loads from the session cwd into the system-prompt slot; each turn now
+// sends only the bare event text over ACP. Never write the shared
+// ~/.config/goose/AGENTS.md — per-agent workspaces are the isolation boundary.
+export function writeGoosePromptFile(options: Pick<GooseRuntimeOptions, 'credential' | 'workspacePath'>): string {
+  return writeAgentInstructionsFile({
     workspacePath: options.workspacePath,
-    wrapperDir: options.wrapperDir,
-  }), 'utf-8');
-  return promptFile;
+    systemPrompt: buildGooseSlockPrompt(options),
+  });
 }
 
 function num(value: unknown): number {
@@ -111,7 +112,6 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
   private stopping = false;
   private bootstrapping: Promise<void> | null = null;
   private activePrompt: Promise<void> | null = null;
-  private systemPrompt = '';
   private readonly accumulatedUsage = new Map<string, { input: number; output: number }>();
   // Session-level cumulative counters already reported as a turn delta; the
   // next turn's usage is the difference against this baseline.
@@ -137,17 +137,11 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     this.started = true;
     this.stopping = false;
     this.exitEmitted = false;
-    const promptFile = writeGoosePromptFile({
+    const instructionsFile = writeGoosePromptFile({
       credential: this.options.credential,
       workspacePath: this.options.workspacePath,
-      wrapperDir: this.options.wrapperDir,
     });
-    this.systemPrompt = buildGooseSlockPrompt({
-      credential: this.options.credential,
-      workspacePath: this.options.workspacePath,
-      wrapperDir: this.options.wrapperDir,
-    });
-    this.emit('line', { stream: 'stdout', line: `Goose Slock prompt written to ${promptFile}; GOOSE_PATH_ROOT=${this.dataDir}` } satisfies GooseRuntimeEvent);
+    this.emit('line', { stream: 'stdout', line: `Goose Slock instructions written to ${instructionsFile}; GOOSE_PATH_ROOT=${this.dataDir}` } satisfies GooseRuntimeEvent);
     void this.flushQueuedMessages();
   }
 
@@ -351,17 +345,16 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
       const bridge = this.bridge;
       if (!bridge) throw new Error('Goose ACP bridge is not started');
       this.turnUsage = { input: 0, output: 0 };
-      const prompt = options?.control
-        ? text
-        : buildCodexPrompt(this.systemPrompt || buildGooseSlockPrompt(this.options), text);
+      // Slock instructions live in the workspace AGENTS.md (system-prompt
+      // slot); each turn sends only the bare event text.
       this.emit('message_sent', {
         type: 'goose_prompt',
         session_id: activeSessionId,
         sessionScopeKey: options?.sessionScopeKey,
         control: options?.control === true,
-        promptBytes: Buffer.byteLength(prompt, 'utf-8'),
+        promptBytes: Buffer.byteLength(text, 'utf-8'),
       });
-      const result = await bridge.prompt(activeSessionId, prompt);
+      const result = await bridge.prompt(activeSessionId, text);
       const accumulated = this.accumulatedUsage.get(activeSessionId);
       recordGooseUsage(activeSessionId, result, accumulated);
       this.emit('stream_event', this.buildResultEvent(result, activeSessionId));

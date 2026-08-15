@@ -1,12 +1,13 @@
 import { EventEmitter } from 'events';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import type { PromptResponse, SessionNotification, SessionUpdate } from '@agentclientprotocol/sdk';
 import type { Credential } from '../types.js';
 import { buildSlockSystemPrompt, type ClaudeRuntimeOptions } from './claude-runtime.js';
-import { buildCodexPrompt, buildCodexRuntimeEnv } from './codex-runtime.js';
+import { buildCodexRuntimeEnv } from './codex-runtime.js';
+import { writeAgentInstructionsFile } from './agent-instructions.js';
 import { CodexAcpBridge, resolveNpxCommand } from './codex-acp-bridge.js';
 import { translateAcpSessionUpdate } from './acp-event-translator.js';
 import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
@@ -130,13 +131,13 @@ function isNpxCommand(command: string): boolean {
   return /(^|[/\\])npx(\.cmd)?$/i.test(command);
 }
 
-export function buildCodexAcpSlockPrompt(options: Pick<CodexAcpRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>): string {
+export function buildCodexAcpSlockPrompt(options: Pick<CodexAcpRuntimeOptions, 'credential' | 'workspacePath'> & Partial<Pick<CodexAcpRuntimeOptions, 'wrapperDir'>>): string {
   return [
     buildSlockSystemPrompt({
       credential: options.credential,
       workspacePath: options.workspacePath,
-      wrapperDir: options.wrapperDir,
-    } satisfies Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>),
+      ...(options.wrapperDir ? { wrapperDir: options.wrapperDir } : {}),
+    } satisfies Pick<ClaudeRuntimeOptions, 'credential' | 'workspacePath'>),
     '',
     '## Codex ACP Runtime Notes',
     '',
@@ -150,15 +151,14 @@ export function buildCodexAcpSlockPrompt(options: Pick<CodexAcpRuntimeOptions, '
   ].join('\n');
 }
 
-export function writeCodexAcpPromptFile(options: Pick<CodexAcpRuntimeOptions, 'credential' | 'workspacePath' | 'wrapperDir'>): string {
-  mkdirSync(options.wrapperDir, { recursive: true });
-  const promptFile = join(options.wrapperDir, 'codex-acp-slock-prompt.md');
-  writeFileSync(promptFile, buildCodexAcpSlockPrompt({
-    credential: options.credential,
+// G2 (task 08-15): the Slock prompt lives in <workspacePath>/AGENTS.md, which
+// codex loads from the session cwd into the system-prompt slot; each turn now
+// sends only the bare event text over ACP.
+export function writeCodexAcpPromptFile(options: Pick<CodexAcpRuntimeOptions, 'credential' | 'workspacePath'>): string {
+  return writeAgentInstructionsFile({
     workspacePath: options.workspacePath,
-    wrapperDir: options.wrapperDir,
-  }), 'utf-8');
-  return promptFile;
+    systemPrompt: buildCodexAcpSlockPrompt(options),
+  });
 }
 
 export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntimeDriver {
@@ -170,7 +170,6 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
   private stopping = false;
   private bootstrapping: Promise<void> | null = null;
   private activePrompt: Promise<void> | null = null;
-  private systemPrompt = '';
   private lastUsageUpdate: Record<string, unknown> | undefined;
   private readonly toolNamesByCallId = new Map<string, string>();
   private exitEmitted = false;
@@ -186,17 +185,11 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
     this.started = true;
     this.stopping = false;
     this.exitEmitted = false;
-    const promptFile = writeCodexAcpPromptFile({
+    const instructionsFile = writeCodexAcpPromptFile({
       credential: this.options.credential,
       workspacePath: this.options.workspacePath,
-      wrapperDir: this.options.wrapperDir,
     });
-    this.systemPrompt = buildCodexAcpSlockPrompt({
-      credential: this.options.credential,
-      workspacePath: this.options.workspacePath,
-      wrapperDir: this.options.wrapperDir,
-    });
-    this.emit('line', { stream: 'stdout', line: `Codex ACP Slock prompt written to ${promptFile}` } satisfies CodexAcpRuntimeEvent);
+    this.emit('line', { stream: 'stdout', line: `Codex ACP Slock instructions written to ${instructionsFile}` } satisfies CodexAcpRuntimeEvent);
     void this.flushQueuedMessages();
   }
 
@@ -362,17 +355,16 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
       const activeSessionId = await this.ensureSession(options);
       const bridge = this.bridge;
       if (!bridge) throw new Error('Codex ACP bridge is not started');
-      const prompt = options?.control
-        ? text
-        : buildCodexPrompt(this.systemPrompt || buildCodexAcpSlockPrompt(this.options), text);
+      // Slock instructions live in the workspace AGENTS.md (system-prompt
+      // slot); each turn sends only the bare event text.
       this.emit('message_sent', {
         type: 'codex_acp_prompt',
         session_id: activeSessionId,
         sessionScopeKey: options?.sessionScopeKey,
         control: options?.control === true,
-        promptBytes: Buffer.byteLength(prompt, 'utf-8'),
+        promptBytes: Buffer.byteLength(text, 'utf-8'),
       });
-      const result = await bridge.prompt(activeSessionId, prompt);
+      const result = await bridge.prompt(activeSessionId, text);
       this.emit('stream_event', this.buildResultEvent(result));
     })();
 

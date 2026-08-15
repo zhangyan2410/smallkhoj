@@ -64,11 +64,25 @@
   新建 goose/codex session → 每条新 session 首次 LLM 调用缓存全不命中
   （实测冷启动 1-2% vs 会话内 98-99%）。叠加 warmup/任务 scope 各自建
   session，一次 DM 测试多付 3-4 次全价首调。
-- **G2. slock 系统提示词每 turn 重发（bug，codex 历史欠账，goose 原样继承）**：
+- **G2. slock 系统提示词每 turn 重发（bug，codex 历史欠账，goose 原样继承）（✅ 已修复）**：
   提示词未进 system 槽，而是经 `buildCodexPrompt` 拼进每条 user 消息
   （实测 27.5k-29.7k 字符/条，~9k token），每 turn 滚入历史灌水上下文；
   会话内靠缓存压价，新 session 首调全额付。goose 与 codex 同修：改为
   每 session 随首条 prompt 发一次，需设计长会话/goose 压缩后的兜底。
+  落地：`writeAgentInstructionsFile` 写 `<workspacePath>/AGENTS.md`
+  （marker 幂等合并，保留 agent 自己追加的内容），goose / codex-acp /
+  codex-exec 三个 driver 逐 turn 只发裸事件文本；压缩兜底 = 指令在 agent
+  自身 system 槽（AGENTS.md）、不在会话历史里，天然免疫 compaction。
+  实测数字见验收区 G2。
+- **P1. daemon-runtime.test.mjs 预存在问题（main 既有，非本任务引入；本任务
+  只顺手修其一）**：在干净 HEAD 90b2bf7 上复现——(a) runtime inventory 断言
+  自 08-06 合入 goose 后漏更新（期望四 runtime 不含 goose，已随本任务修正为
+  五个并调整顺序断言）；(b) 一批走 daemon 启动假 runtime 的测试（"fake
+  Claude with the workspace aura wrapper" 等）因代理 fetch 上游失败而挂
+  （Error: fetch failed / HTTP_502），成因待查（环境或 main 回归）；
+  (c) 失败路径泄漏 startServer 句柄导致整个测试文件进程不退出（疑似
+  close 不在 finally）——历史上多轮 `npm test` 因此挂死残留进程。需独立
+  任务修复（含把各 upstream.close() 挪进 finally）。
 - **G3. goose session 命名开关失效（bug）**：`GOOSE_DISABLE_SESSION_NAMING=1`
   对 goose 1.46 无效，每 session 白跑一次命名 LLM 调用（实测 6,371 input，
   不命中缓存）。改用 goose config 方式关闭。
@@ -90,9 +104,22 @@
 ## Acceptance Criteria
 
 - [x] daemon 依赖 `^1.3.0`，`npm install` + `tsc` 通过。
-- [ ] **R1.1 smoke 真实性硬断言**：`goose-acp-smoke` 必须收到至少一个流式
-      `item_delta` 回复才算 PASS——错误 turn（401/空回复，形状为
-      eventCount=3 无 delta）当前会假阳性通过（升级当天实踩）。
+- [x] **R1.1 smoke 真实性硬断言**：错误 turn 不得 PASS。落地时发现 goose 1.46
+      会把错误 turn 的报错文本本身作为 `item_delta` 流出（"Ran into this
+      error: ..."），只数 delta 拦不住——最终 gate = 有流式 delta **且** 无
+      goose 错误包装文本 **且** usage 计数 >0（错误 turn usage 恒为 0）。双向
+      真机验证：真 key PASS（streamingDeltas=2, inputTokens=5323）；坏 key
+      FAIL（exit 1，maxUsageTokens=0 被抓）。
+- [x] **G2 实测（真 goose 1.46 + MiniMax-M3，driver 级两 turn）**：
+      - per-turn prompt 27 字节（旧实现 ~27,500 字符）；
+      - `<workspace>/AGENTS.md` 落盘 26,966 字符且含 slock 指令；turn-1 input
+        10,844（= goose 基础提示 + AGENTS.md 进 system 槽；user 消息仅 27 字节
+        ——指令唯一来源就是 AGENTS.md，双向证明）；
+      - turn-2 input 11,203，**增量 +359**（旧实现此处每 turn 再滚 ~9k）；
+      - 复用 session 的 smoke run cache 命中 5,201/5,254 ≈ 99%。
+      注：PRD 原先预期"新 session 首调 10-30k → 1-2k"不成立——AGENTS.md 合法地
+      进入 goose system 槽，首调仍需支付一次指令 input（~10k），真正的收益是
+      多 turn 不再滚入历史（+359/turn vs +9k/turn）与指令免疫 compaction。
 - [x] 相关单测全绿（codex-acp-activity / codex-acp-runtime / codex-acp-mvp /
       acp-event-translator / runtime-activity / pi，38/38）。
 - [x] `smoke:goose-acp` 通过（真实 goose 1.46 + MiniMax：codec/通知/负载 round-trip）。

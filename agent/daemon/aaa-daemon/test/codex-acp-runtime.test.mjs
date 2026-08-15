@@ -171,9 +171,12 @@ test('codex acp runtime creates a session and emits daemon-compatible stream lif
 
     const record = JSON.parse(readFileSync(marker, 'utf-8'));
     assert.equal(record.sessions[0].cwd, workspacePath);
-    assert.match(record.prompts[0].text, /daemon-managed ACP resident runtime/);
-    assert.match(record.prompts[0].text, /Current Slock Event/);
-    assert.match(record.prompts[0].text, /hello acp/);
+    // G2: Slock instructions live in the workspace AGENTS.md (system-prompt
+    // slot); the per-turn prompt carries only the bare event text.
+    assert.equal(record.prompts[0].text, 'hello acp');
+    const instructions = readFileSync(join(workspacePath, 'AGENTS.md'), 'utf-8');
+    assert.match(instructions, /daemon-managed ACP resident runtime/);
+    assert.match(instructions, /aura CLI ONLY/);
   } finally {
     driver.stop();
     await waitFor(() => exits.length > 0 || !driver.pid).catch(() => {});
@@ -277,7 +280,7 @@ test('codex acp runtime sends allowlisted control slash prompts without Slock wr
     const record = JSON.parse(readFileSync(marker, 'utf-8'));
     assert.equal(record.prompts[0].text, '/compact');
     assert.equal(record.prompts[0].text.startsWith('/'), true);
-    assert.equal(record.prompts[0].text.includes('Current Slock Event'), false);
+    assert.equal(record.prompts[0].text.includes('aura CLI ONLY'), false);
   } finally {
     driver.stop();
     await waitFor(() => !driver.pid).catch(() => {});

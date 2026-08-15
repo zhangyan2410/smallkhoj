@@ -83,8 +83,14 @@ ACP runtime 的事件必须经共享 translator（`src/runtime/acp-event-transla
 - **provider env**：daemon 不接管 native-config runtime 的 LLM 凭证——只清掉
   冲突的中继 env（`ANTHROPIC_*`…）并设平台开关；用户经 runtime 自己的配置
   （`goose configure` / OpenAI 兼容 env 透传）配 provider。
-- warmup/slock 提示词：在 `buildSlockSystemPrompt` 后追加短小的 runtime 备注
-  （沙箱/提权差异、heredoc 禁令）。
+- **slock 提示词进 AGENTS.md，不进每 turn 消息（G2，08-15）**：driver `start()`
+  调 `writeAgentInstructionsFile({ workspacePath, systemPrompt })` 写
+  `<workspacePath>/AGENTS.md`（marker 幂等合并，agent 自己追加的内容保留），
+  逐 turn 只发裸事件文本。绝不把系统提示词拼进每条 user 消息（旧
+  `buildCodexPrompt` 方式：~9k token/turn 滚入历史，实测多付一个数量级）。
+  新 runtime 若原生读项目 AGENTS.md（goose/codex 均读），照抄此模式。
+- warmup/slock 提示词内容：在 `buildSlockSystemPrompt` 后追加短小的 runtime 备注
+  （沙箱/提权差异、heredoc 禁令）——内容同样经 AGENTS.md 生效。
 
 ## Step 4 — 产品接线（backend + frontend）
 
@@ -142,6 +148,9 @@ ACP runtime 的事件必须经共享 translator（`src/runtime/acp-event-transla
 - `runtime.lastTurnUsage` 只在 turn 带 `traceId` 时填充；warmup turn 的 Idle
   tokens 为空是正常的。
 - 累积 usage 通知可能在 prompt 返回后到达——绝不把累积计数当 turn 总量上报。
+- smoke 判真不能只数 `item_delta`：goose 1.46 会把错误 turn 的报错文本本身
+  作为 delta 流出（"Ran into this error: ..."）。真 green 需要 delta 无错误
+  包装文本 **且** usage 计数 >0（错误 turn usage 恒 0）。
 - `pkill -f "next dev"` 会杀掉机器上所有 dev server（包括共享 main 栈）。按
   PID/端口杀（`lsof -ti :PORT`）。
 
