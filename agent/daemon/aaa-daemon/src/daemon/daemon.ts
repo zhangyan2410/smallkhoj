@@ -46,6 +46,7 @@ import {
   ScopedProviderSessionStore,
   type RuntimeSessionScope,
 } from './session-scope.js';
+import { loadScopedSessionRecords, saveScopedSessionRecords } from './scoped-session-persistence.js';
 import {
   detectedRuntimesForInventory,
   detectRuntimeProviders,
@@ -312,6 +313,7 @@ export class DaemonCore extends EventEmitter {
     super();
     this.config = config;
     this.runtimeProviderInventory = detectRuntimeProviders();
+    this.restoreScopedProviderSessions();
     this.proxy = new AgentProxy();
     this.clientHandler = new ClientHandler(this);
     this.proxy.setDaemonRpcHandler((message) => this.clientHandler.handleMessage(message as never));
@@ -344,6 +346,41 @@ export class DaemonCore extends EventEmitter {
 
   private managedLifecycleEnabled(): boolean {
     return process.env.AURA_STANDALONE === '1';
+  }
+
+  /**
+   * G1 (task 08-15): restore the persisted scope→session mapping so a daemon
+   * restart resumes the same provider sessions instead of minting cold ones
+   * (cold first calls paid full uncached input, 1-2% vs 98-99% hit).
+   */
+  private restoreScopedProviderSessions(): void {
+    const records = loadScopedSessionRecords();
+    for (const record of records) {
+      try {
+        this.scopedProviderSessions.remember({
+          agentId: record.agentId,
+          runtimeWorkspaceId: record.runtimeWorkspaceId,
+          scope: record.scope,
+          providerSessionId: record.providerSessionId,
+          status: record.status,
+          summaryMemoryEntryId: record.summaryMemoryEntryId,
+          now: record.lastUsedAt,
+        });
+      } catch {
+        // A malformed record never blocks the daemon or the remaining ones.
+      }
+    }
+    if (records.length > 0) {
+      this.log(`Restored ${records.length} scoped provider session mapping(s) from disk`, 'info');
+    }
+  }
+
+  private persistScopedProviderSessions(): void {
+    try {
+      saveScopedSessionRecords(this.scopedProviderSessions.snapshot());
+    } catch (error) {
+      this.log(`Failed to persist scoped provider sessions: ${(error as Error).message}`, 'warn');
+    }
   }
 
   private writeManagedLifecycleState(
@@ -549,6 +586,7 @@ export class DaemonCore extends EventEmitter {
       }
       const driverDiscarded = runtime.driver.discardQueuedChannel(change.channelId);
       this.scopedProviderSessions.forgetChannel(runtime.agentId, change.channelId);
+      this.persistScopedProviderSessions();
       this.log(
         `Removed Agent Channel cutoff: agent=${runtime.agentId} channel=${change.channelId} `
           + `daemonQueued=${pendingBefore - runtime.pendingActivityTurns.length} driverQueued=${driverDiscarded}`,
@@ -1657,6 +1695,7 @@ export class DaemonCore extends EventEmitter {
           scope: activeSessionScope,
           providerSessionId: sessionId,
         });
+        this.persistScopedProviderSessions();
       }
       const now = Date.now();
       this.sessionManager.upsert({

@@ -119,3 +119,83 @@ test('scoped provider session store keeps provider ids isolated by logical scope
   ]);
   assert.ok(snapshot.every((item) => item.lastUsedAt > 0));
 });
+
+// G1 (task 08-15): the scope→session mapping survives daemon restarts via a
+// JSON file; a "restart" is save → new store → load → remember-each.
+
+test('scoped provider session mapping round-trips through the persistence file', async () => {
+  const { mkdtempSync, readFileSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { loadScopedSessionRecords, saveScopedSessionRecords } = await import('../dist/daemon/scoped-session-persistence.js');
+
+  const root = mkdtempSync(join(tmpdir(), 'aaa-scoped-sessions-'));
+  const file = join(root, 'scoped-sessions.json');
+  const scope = normalizeRuntimeSessionScope({ type: 'dm', peerMemberId: 'user-9' });
+
+  const before = new ScopedProviderSessionStore();
+  before.remember({ agentId: 'agent-1', scope, providerSessionId: 'goose-agent-1-20260815_1' });
+  before.remember({
+    agentId: 'agent-2',
+    scope: normalizeRuntimeSessionScope({ type: 'channel', channelId: 'ch-2' }),
+    providerSessionId: 'codex-thread-7',
+    runtimeWorkspaceId: 'workspace-2',
+    summaryMemoryEntryId: 'memory-5',
+  });
+  saveScopedSessionRecords(before.snapshot(), file);
+
+  const after = new ScopedProviderSessionStore();
+  for (const record of loadScopedSessionRecords(file)) {
+    after.remember(record);
+  }
+
+  assert.equal(after.lookup('agent-1', scope)?.providerSessionId, 'goose-agent-1-20260815_1');
+  const restoredAgent2 = after.snapshot('agent-2')[0];
+  assert.equal(restoredAgent2.providerSessionId, 'codex-thread-7');
+  assert.equal(restoredAgent2.runtimeWorkspaceId, 'workspace-2');
+  assert.equal(restoredAgent2.summaryMemoryEntryId, 'memory-5');
+  assert.equal(restoredAgent2.scope.channelId, 'ch-2');
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('forgetting a channel persists away on the next save', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { loadScopedSessionRecords, saveScopedSessionRecords } = await import('../dist/daemon/scoped-session-persistence.js');
+
+  const root = mkdtempSync(join(tmpdir(), 'aaa-scoped-sessions-forget-'));
+  const file = join(root, 'scoped-sessions.json');
+  const store = new ScopedProviderSessionStore();
+  const dmScope = normalizeRuntimeSessionScope({ type: 'dm', peerMemberId: 'u1' });
+  const channelScope = normalizeRuntimeSessionScope({ type: 'channel', channelId: 'ch-x' });
+  store.remember({ agentId: 'agent-1', scope: dmScope, providerSessionId: 's-dm' });
+  store.remember({ agentId: 'agent-1', scope: channelScope, providerSessionId: 's-channel' });
+  saveScopedSessionRecords(store.snapshot(), file);
+
+  store.forgetChannel('agent-1', 'ch-x');
+  saveScopedSessionRecords(store.snapshot(), file);
+
+  const reloaded = new ScopedProviderSessionStore();
+  for (const record of loadScopedSessionRecords(file)) reloaded.remember(record);
+  assert.equal(reloaded.lookup('agent-1', dmScope)?.providerSessionId, 's-dm');
+  assert.equal(reloaded.lookup('agent-1', channelScope), undefined);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('missing or corrupt persistence file degrades to an empty mapping', async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { loadScopedSessionRecords } = await import('../dist/daemon/scoped-session-persistence.js');
+
+  const root = mkdtempSync(join(tmpdir(), 'aaa-scoped-sessions-corrupt-'));
+  assert.deepEqual(loadScopedSessionRecords(join(root, 'absent.json')), []);
+  const corrupt = join(root, 'corrupt.json');
+  writeFileSync(corrupt, '{not json', 'utf-8');
+  assert.deepEqual(loadScopedSessionRecords(corrupt), []);
+  const wrongSchema = join(root, 'wrong.json');
+  writeFileSync(wrongSchema, JSON.stringify({ schemaVersion: 99, records: [{ agentId: 'a' }] }), 'utf-8');
+  assert.deepEqual(loadScopedSessionRecords(wrongSchema), []);
+  rmSync(root, { recursive: true, force: true });
+});

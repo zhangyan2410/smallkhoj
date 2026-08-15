@@ -48,8 +48,12 @@ process.stdin.on('data', chunk => {
       writeMarker({ sessions: [{ type: 'new', sessionId, cwd: msg.params.cwd, mcpServers: msg.params.mcpServers ?? [] }] });
       send({ jsonrpc: '2.0', id: msg.id, result: { sessionId } });
     } else if (msg.method === 'session/load') {
-      writeMarker({ sessions: [{ type: 'load', sessionId: msg.params.sessionId, cwd: msg.params.cwd, mcpServers: msg.params.mcpServers ?? [] }] });
-      send({ jsonrpc: '2.0', id: msg.id, result: {} });
+      if (process.env.FAKE_ACP_FAIL_LOAD === '1') {
+        send({ jsonrpc: '2.0', id: msg.id, error: { code: -32000, message: 'session not found' } });
+      } else {
+        writeMarker({ sessions: [{ type: 'load', sessionId: msg.params.sessionId, cwd: msg.params.cwd, mcpServers: msg.params.mcpServers ?? [] }] });
+        send({ jsonrpc: '2.0', id: msg.id, result: {} });
+      }
     } else if (msg.method === 'session/prompt') {
       const promptText = (msg.params.prompt ?? []).map(block => block.text ?? '').join('\\n');
       const promptIndex = ++inFlightPrompts;
@@ -326,6 +330,36 @@ test('codex acp runtime rejects control prompts that cannot be delivered immedia
     assert.equal(driver.queuedMessageCount, 0);
   } finally {
     driver.stop();
+    if (existsSync(root)) rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('codex acp runtime recovers from a stale persisted session by minting a fresh one', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aaa-codex-acp-stale-'));
+  const marker = join(root, 'marker.json');
+  const { driver } = makeDriver(root, marker, { resumeSessionId: 'gone-session-1' });
+  const events = [];
+  const lines = [];
+  driver.on('stream_event', event => events.push(event));
+  driver.on('line', event => lines.push(event.line));
+
+  try {
+    process.env.FAKE_ACP_FAIL_LOAD = '1';
+    driver.start();
+    driver.sendUserMessage('hello after restart');
+
+    await waitFor(() => events.some(event => event.type === 'result'));
+    const result = events.find(event => event.type === 'result');
+    assert.equal(result.subtype, 'success');
+    // session/load failed → session/new used → new fake id reported upward.
+    assert.match(driver.sessionId ?? '', /^fake-acp-session-/);
+    const record = JSON.parse(readFileSync(marker, 'utf-8'));
+    assert.equal(record.sessions.some(s => s.type === 'load'), false);
+    assert.ok(lines.some(line => /Stale codex session gone-session-1/.test(line)));
+  } finally {
+    delete process.env.FAKE_ACP_FAIL_LOAD;
+    driver.stop();
+    await waitFor(() => !driver.pid).catch(() => {});
     if (existsSync(root)) rmSync(root, { recursive: true, force: true });
   }
 });

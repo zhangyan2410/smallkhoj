@@ -59,11 +59,20 @@
 - **D. goose 无效 env 修正**（属 08-06 遗留）：`GOOSE_DISABLE_SESSION_NAMING=1`
   对 goose 1.46 失效，每 turn 多一次 session 命名 LLM 调用；需查 1.46 的
   正确开关或改 config 方式。已同步登记到 08-06 遗留清单。
-- **G1. scoped session 映射不持久化（bug，用户定性）**：`ScopedProviderSessionStore`
+- **G1. scoped session 映射不持久化（bug，用户定性）（✅ 已修复）**：
+  `ScopedProviderSessionStore`
   纯内存 Map（session-scope.ts:95），daemon/runtime 重启即丢 → 同 scope 反复
   新建 goose/codex session → 每条新 session 首次 LLM 调用缓存全不命中
   （实测冷启动 1-2% vs 会话内 98-99%）。叠加 warmup/任务 scope 各自建
   session，一次 DM 测试多付 3-4 次全价首调。
+  落地：`scoped-session-persistence.ts`（原子 JSON，temp+rename，0600，
+  `<daemonRoot>/scoped-sessions.json`，`AURA_SCOPED_SESSIONS_FILE` 可覆盖；
+  损坏文件降级为空映射）；daemon 构造时恢复、remember/forgetChannel 后
+  落盘；goose/codex driver `loadSession` 失败自动回退 `createSession` 并
+  上报新 id（持久化记录随之自愈）。真机验收：跨 driver 重启同 session id
+  （g1-verify-20260815_1），重启后 turn 能回忆重启前暗号 blue-fox-42
+  （上下文真实续接）。单测 +3（round-trip/forget/损坏降级）+1（stale 回退），
+  聚焦阶梯 47/47 + paths/status 9/9 绿。
 - **G2. slock 系统提示词每 turn 重发（bug，codex 历史欠账，goose 原样继承）（✅ 已修复）**：
   提示词未进 system 槽，而是经 `buildCodexPrompt` 拼进每条 user 消息
   （实测 27.5k-29.7k 字符/条，~9k token），每 turn 滚入历史灌水上下文；

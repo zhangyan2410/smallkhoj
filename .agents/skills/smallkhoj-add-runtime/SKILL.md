@@ -73,6 +73,10 @@ ACP runtime 的事件必须经共享 translator（`src/runtime/acp-event-transla
 - **session id 防撞**：native id 非全局唯一时（goose：`20260814_1`）加 codec
   （`goose-session-store.ts` 的 `agentNamespacedCodec`）——createSession/通知
   encode，loadSession/prompt/cancel decode。core 生成的 id 不需要（codex）。
+- **过期 session 自愈**：scope→session 映射持久化在
+  `<daemonRoot>/scoped-sessions.json`（daemon 自动恢复/落盘）；映射可能指向
+  已被清理的会话数据，driver 的 `loadSession` 必须失败回退 `createSession`
+  并照常 emit `session` 新 id（goose/codex 已内置，新 runtime 照抄）。
 - **per-session 数据目录**：runtime 自带共享 SQLite/catalog 时，按 agentId 给
   独立根目录（`GOOSE_PATH_ROOT`）+ SAFE_ID 路径校验。
 - **usage 提取**：先确认 agent 实际报什么。goose 1.46：`message_usage` ext

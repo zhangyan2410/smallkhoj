@@ -250,9 +250,9 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
       if (requestedSessionId === null) {
         sessionId = await bridge.createSession();
       } else if (requestedSessionId) {
-        sessionId = await bridge.loadSession(requestedSessionId);
+        sessionId = await this.loadSessionOrRecreate(bridge, requestedSessionId);
       } else if (this.currentSessionId) {
-        sessionId = await bridge.loadSession(this.currentSessionId);
+        sessionId = await this.loadSessionOrRecreate(bridge, this.currentSessionId);
       } else {
         sessionId = await bridge.createSession();
       }
@@ -271,6 +271,24 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     }
     if (!this.currentSessionId) throw new Error('Goose ACP session is not ready');
     return this.currentSessionId;
+  }
+
+  /**
+   * G1 (task 08-15): a persisted mapping may point at a session whose backing
+   * data is gone (user cleaned the runtime's session storage). Failing the
+   * whole turn would strand the scope; mint a fresh session instead — the
+   * emitted session id makes the daemon overwrite the stale mapping.
+   */
+  private async loadSessionOrRecreate(bridge: CodexAcpBridge, sessionId: string): Promise<string> {
+    try {
+      return await bridge.loadSession(sessionId);
+    } catch (error) {
+      this.emit('line', {
+        stream: 'stderr',
+        line: `Stale goose session ${sessionId}; creating a fresh one (${(error as Error).message})`,
+      } satisfies GooseRuntimeEvent);
+      return await bridge.createSession();
+    }
   }
 
   private createBridge(): CodexAcpBridge {

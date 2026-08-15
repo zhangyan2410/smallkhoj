@@ -69,6 +69,7 @@ export interface DaemonPaths {
   machineIdPath: string;
   pidPath: string;
   statePath: string;
+  scopedSessionsPath: string;
   logPath: string;
   workspaceRoot: string;
 }
@@ -93,6 +94,8 @@ export function daemonPaths(
     || pathJoin(platformValue, daemonRoot, 'machine-id');
   const pidPath = env.AURA_PID_FILE?.trim() || pathJoin(platformValue, daemonRoot, 'aura.pid');
   const statePath = env.AURA_STATE_FILE?.trim() || pathJoin(platformValue, daemonRoot, 'daemon-state.json');
+  const scopedSessionsPath =
+    env.AURA_SCOPED_SESSIONS_FILE?.trim() || pathJoin(platformValue, daemonRoot, 'scoped-sessions.json');
   const logPath = env.AURA_LOG_FILE?.trim() || pathJoin(platformValue, daemonRoot, 'aura.log');
   const workspaceRoot =
     env.SMALLKHOJ_DAEMON_WORKSPACE_ROOT?.trim()
@@ -105,6 +108,7 @@ export function daemonPaths(
     machineIdPath,
     pidPath,
     statePath,
+    scopedSessionsPath,
     logPath,
     workspaceRoot,
   };
