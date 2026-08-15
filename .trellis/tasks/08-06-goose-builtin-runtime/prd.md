@@ -324,6 +324,9 @@ output），不比现状慢（删掉的 7 条正则匹配反而省）。
 - `GOOSE_DISABLE_SESSION_NAMING=1` 疑似对 goose 1.46 失效（日志仍见 session
   命名 LLM 调用），仅多一次小额调用。后续任务登记见
   08-15-acp-sdk-upgrade PRD 的「后续任务登记 D」。
+  → 已于 08-15 复测关闭：全部 daemon 代表性路径（新建/恢复/桥接、env=1/unset）
+  均恰好一笔 LLM 调用，命名调用不复现；env 保留。见
+  08-15 research/g3-session-naming-verification.md。
 - codex control output 迁移后无真机覆盖（control 对 goose 是 PRD non-goal）。
 - 新增 runtime 的通用流程已沉淀为项目 skill：
   `.agents/skills/smallkhoj-add-runtime/SKILL.md`（下一个 runtime：

@@ -56,9 +56,11 @@
 - **C. 桥迁移到新版 client API**：legacy `ClientSideConnection.prompt` 不
   透传 `cancellationSignal`；迁移后解锁 `$/cancel_request`（传输层取消）
   与 handler 请求上下文（prompt/响应关联排障）。独立任务。
-- **D. goose 无效 env 修正**（属 08-06 遗留）：`GOOSE_DISABLE_SESSION_NAMING=1`
-  对 goose 1.46 失效，每 turn 多一次 session 命名 LLM 调用；需查 1.46 的
-  正确开关或改 config 方式。已同步登记到 08-06 遗留清单。
+- **D. goose 无效 env 修正**（属 08-06 遗留）（✅ 与 G3 一并关闭：实测无此
+  问题，见 research/g3-session-naming-verification.md）：`GOOSE_DISABLE_SESSION_NAMING=1`
+  在 goose 1.46 + ACP 的全部 daemon 代表性路径（新建/恢复/桥接）下均无命名
+  LLM 调用（累计器=单笔调用）；原「每 turn 多一次命名调用」证据今日不可复现，
+  401 日志中的 naming attempt 属主回复失败后的错误路径。env=1 保留。
 - **G1. scoped session 映射不持久化（bug，用户定性）（✅ 已修复）**：
   `ScopedProviderSessionStore`
   纯内存 Map（session-scope.ts:95），daemon/runtime 重启即丢 → 同 scope 反复
@@ -92,9 +94,14 @@
   (c) 失败路径泄漏 startServer 句柄导致整个测试文件进程不退出（疑似
   close 不在 finally）——历史上多轮 `npm test` 因此挂死残留进程。需独立
   任务修复（含把各 upstream.close() 挪进 finally）。
-- **G3. goose session 命名开关失效（bug）**：`GOOSE_DISABLE_SESSION_NAMING=1`
+- **G3. goose session 命名开关失效（bug）（✅ 关闭：实测无此问题）**：
+  `GOOSE_DISABLE_SESSION_NAMING=1`
   对 goose 1.46 无效，每 session 白跑一次命名 LLM 调用（实测 6,371 input，
   不命中缓存）。改用 goose config 方式关闭。
+  → 复测（research/g3-session-naming-verification.md）：env=1 / unset 两组、
+  裸桥接与 AGENTS.md 完整环境、新建与恢复 session，全部恰好一笔 LLM 调用
+  （累计器=单笔），命名调用不复现。env 保留，无代码变更；原 6,371 证据
+  属 08-06 时期，401 日志里的 naming attempt 是主回复失败后的错误路径。
 - **H. 对照参考项目 agent-platform（NAP）逐项审计 ACP 封装（✅ 已完成，
   见 research/acp-wrapping-vs-nap-audit.md）**：判定——G2 与 B 均为**漏抄**
   （NAP 把系统提示词写 AGENTS.md、每 turn 只发裸消息；interrupt 端点即
@@ -140,6 +147,16 @@
 - [x] 变更审计文档入库（research/upstream-changelog-audit.md）。
 - [x] 升级流程沉淀进 skill（smallkhoj-add-runtime 附录节）。
 - [x] 在 main 上直接落地（用户指定，属 contained 升级 + 全量回归）。
+- [x] **G1 落地与验收**：`scoped-sessions.json` 原子落盘 + daemon 构造恢复 +
+      remember/forgetChannel 后写盘 + 过期自愈（loadSession 失败→新建并上报）。
+      真机验收：跨 driver 重启同 session id，重启后 turn 回忆重启前暗号
+      blue-fox-42（上下文真实续接）。单测 +4。
+- [x] **G3 复测关闭**：全部 daemon 代表性路径（新建/恢复/桥接 × env=1/unset）
+      恰好一笔 LLM 调用（累计器=单笔），命名调用不复现；env 保留，无代码变更
+      （research/g3-session-naming-verification.md）。D（08-06 遗留）同步关闭。
+- [x] **终检**：tsc 干净；聚焦阶梯（含 G1/G2 新增单测）**55/55** 绿。
+      `daemon-runtime.test.mjs` 的预存失败/挂死为 main 既有问题（P1 登记，
+      08-06 时期已有记录），不属本任务验收范围。
 
 ## Risks
 
