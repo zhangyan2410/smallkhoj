@@ -857,3 +857,36 @@ twd 主栈 + 隔离 computer daemon 真机链路验收。修：computer daemon W
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: 启动提示卡住修复：workspace.updated 刷新 DM 列表
+
+**Date**: 2026-08-15
+**Task**: 启动提示卡住修复：workspace.updated 刷新 DM 列表
+**Branch**: `main`
+
+### Summary
+
+用户报告创建 agent 后启动提示卡住需刷新。根因：channel-client 未处理 workspace.updated（事件过 in-scope 检查后无人认领），DM peer.runtimeStatus 不刷新。补分支后双向真机验证：停止→未在线实时出现；启动→启动中→running 自动消失，全程无刷新。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `daed91c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
