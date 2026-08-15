@@ -93,9 +93,15 @@ function commandAppearsOnPath(command: string, pathValue: string): boolean {
 
 export function buildCodexAcpCommand(options: CodexAcpCommandOptions = {}): { command: string; args: string[] } {
   if (options.npmPackage) {
-    return { command: resolveNpxCommand(), args: ['-y', options.npmPackage] };
+    return {
+      command: resolveNpxCommand(),
+      // Daemon-managed agents run trusted on the user's machine; matching the
+      // codex exec path's danger-full-access keeps aura wrapper calls working
+      // without per-call model escalation.
+      args: ['-y', options.npmPackage, '-c', 'sandbox_mode=danger-full-access'],
+    };
   }
-  return { command: options.command ?? 'codex-acp', args: [] };
+  return { command: options.command ?? 'codex-acp', args: ['-c', 'sandbox_mode=danger-full-access'] };
 }
 
 export function translateAcpUpdate(update: SessionUpdate): CodexAcpTranslatedUpdate {

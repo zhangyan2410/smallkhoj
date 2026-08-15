@@ -138,11 +138,12 @@ ${fakeAcpEval()}
 test('codex acp command builder supports direct binary and npx package modes', () => {
   assert.deepEqual(buildCodexAcpCommand({ command: 'codex-acp' }), {
     command: 'codex-acp',
-    args: [],
+    args: ['-c', 'sandbox_mode=danger-full-access'],
   });
+  // daemon 管理的 ACP 路径与 codex exec 一致：danger-full-access（aura 免提权）。
   assert.deepEqual(buildCodexAcpCommand({ npmPackage: '@zed-industries/codex-acp@0.16.0' }), {
     command: resolveNpxCommand(),
-    args: ['-y', '@zed-industries/codex-acp@0.16.0'],
+    args: ['-y', '@zed-industries/codex-acp@0.16.0', '-c', 'sandbox_mode=danger-full-access'],
   });
 });
 

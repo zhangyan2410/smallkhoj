@@ -191,7 +191,7 @@ test('codex acp runtime creates a session and emits daemon-compatible stream lif
 test('codex acp runtime keeps package args when daemon config supplies empty runtime args', () => {
   const launch = resolveCodexAcpLaunchCommand({ commandArgs: [] });
   assert.match(launch.command, /^npx(\.cmd)?$/);
-  assert.deepEqual(launch.args, ['-y', '@zed-industries/codex-acp@0.16.0']);
+  assert.deepEqual(launch.args, ['-y', '@zed-industries/codex-acp@0.16.0', '-c', 'sandbox_mode=danger-full-access']);
 });
 
 test('pinned ACP overrides newer max reasoning config without mutating user config', () => {
@@ -209,7 +209,7 @@ test('pinned ACP overrides newer max reasoning config without mutating user conf
     assert.deepEqual(codexAcpCompatibilityArgs(env), ['-c', 'model_reasoning_effort=xhigh']);
     assert.deepEqual(resolveCodexAcpLaunchCommand({ command: 'npx', commandArgs: [], baseEnv: env }), {
       command: sidecar,
-      args: ['-c', 'model_reasoning_effort=xhigh'],
+      args: ['-c', 'model_reasoning_effort=xhigh', '-c', 'sandbox_mode=danger-full-access'],
     });
     assert.equal(readFileSync(join(codexHome, 'config.toml'), 'utf8'), config);
   } finally {
@@ -241,7 +241,7 @@ test('codex acp runtime resolves npx.cmd on Windows PATH', () => {
     writeFileSync(join(root, 'npx.cmd'), '@echo off\r\n');
     assert.deepEqual(resolveCodexAcpLaunchCommand({ commandArgs: [], baseEnv: { PATH: root } }), {
       command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
-      args: ['-y', '@zed-industries/codex-acp@0.16.0'],
+      args: ['-y', '@zed-industries/codex-acp@0.16.0', '-c', 'sandbox_mode=danger-full-access'],
     });
   } finally {
     rmSync(root, { recursive: true, force: true });

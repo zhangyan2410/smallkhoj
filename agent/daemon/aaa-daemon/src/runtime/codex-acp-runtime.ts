@@ -17,6 +17,13 @@ export const CODEX_ACP_VERSION = '0.16.0';
 
 const CODEX_ACP_REASONING_COMPATIBILITY_ARGS = ['-c', 'model_reasoning_effort=xhigh'];
 
+// codex-acp defaults to a read-only, network-restricted sandbox where every
+// `aura` call needs an escalation request — models that don't comply (e.g.
+// deepseek-v4-flash) fail every tool call. The daemon-managed codex exec path
+// already runs danger-full-access; align the ACP path so the wrapper's
+// localhost proxy calls work without model cooperation.
+const CODEX_ACP_SANDBOX_ARGS = ['-c', 'sandbox_mode=danger-full-access'];
+
 export interface CodexAcpRuntimeOptions {
   credential: Credential;
   workspacePath: string;
@@ -119,12 +126,12 @@ export function resolveCodexAcpLaunchCommand(options: Pick<CodexAcpRuntimeOption
   }
   const bundled = resolveBundledCodexAcpPath(baseEnv);
   if (bundled && (isNpxCommand(command) || command === bundled)) {
-    return { command: bundled, args: codexAcpCompatibilityArgs(baseEnv) };
+    return { command: bundled, args: [...codexAcpCompatibilityArgs(baseEnv), ...CODEX_ACP_SANDBOX_ARGS] };
   }
   if (isNpxCommand(command)) {
-    return { command, args: ['-y', DEFAULT_CODEX_ACP_PACKAGE] };
+    return { command, args: ['-y', DEFAULT_CODEX_ACP_PACKAGE, ...CODEX_ACP_SANDBOX_ARGS] };
   }
-  return { command, args: [] };
+  return { command, args: [...CODEX_ACP_SANDBOX_ARGS] };
 }
 
 function isNpxCommand(command: string): boolean {
