@@ -112,6 +112,9 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
   private stopping = false;
   private bootstrapping: Promise<void> | null = null;
   private activePrompt: Promise<void> | null = null;
+  // Aborting this controller makes the bridge send $/cancel_request for the
+  // in-flight prompt — the transport-level sibling of goose's session/cancel.
+  private turnAbort: AbortController | null = null;
   private readonly accumulatedUsage = new Map<string, { input: number; output: number }>();
   // Session-level cumulative counters already reported as a turn delta; the
   // next turn's usage is the difference against this baseline.
@@ -176,6 +179,9 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     if (!bridge?.alive || !this.activePrompt || !this.currentSessionId) return false;
     try {
       void bridge.cancel(this.currentSessionId);
+      // Dual-channel cancel: agent-domain session/cancel plus transport-level
+      // $/cancel_request for agents that ignore the former.
+      this.turnAbort?.abort();
       return true;
     } catch {
       return false;
@@ -315,6 +321,7 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
       onLine: (event) => this.emit('line', event satisfies GooseRuntimeEvent),
       sessionIdCodec: agentNamespacedCodec(this.options.credential.agentId),
       clientCapabilitiesMeta: { goose: { customNotifications: true } },
+      extNotificationMethods: [GOOSE_USAGE_NOTIFICATION],
       onNotification: (method, params) => this.trackExtNotification(method, params),
     });
     bridge.on('error', (err) => this.emit('error', err));
@@ -363,6 +370,7 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
       const bridge = this.bridge;
       if (!bridge) throw new Error('Goose ACP bridge is not started');
       this.turnUsage = { input: 0, output: 0 };
+      this.turnAbort = new AbortController();
       // Slock instructions live in the workspace AGENTS.md (system-prompt
       // slot); each turn sends only the bare event text.
       this.emit('message_sent', {
@@ -372,7 +380,7 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
         control: options?.control === true,
         promptBytes: Buffer.byteLength(text, 'utf-8'),
       });
-      const result = await bridge.prompt(activeSessionId, text);
+      const result = await bridge.prompt(activeSessionId, text, { signal: this.turnAbort.signal });
       const accumulated = this.accumulatedUsage.get(activeSessionId);
       recordGooseUsage(activeSessionId, result, accumulated);
       this.emit('stream_event', this.buildResultEvent(result, activeSessionId));
@@ -390,6 +398,7 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
       this.emit('error', err);
     } finally {
       this.activePrompt = null;
+      this.turnAbort = null;
       void this.flushQueuedMessages();
     }
   }

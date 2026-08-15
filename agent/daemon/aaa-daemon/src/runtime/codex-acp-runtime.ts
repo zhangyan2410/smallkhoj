@@ -170,6 +170,9 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
   private stopping = false;
   private bootstrapping: Promise<void> | null = null;
   private activePrompt: Promise<void> | null = null;
+  // Aborting this controller makes the bridge send $/cancel_request for the
+  // in-flight prompt — the transport-level sibling of codex's session/cancel.
+  private turnAbort: AbortController | null = null;
   private lastUsageUpdate: Record<string, unknown> | undefined;
   private readonly toolNamesByCallId = new Map<string, string>();
   private exitEmitted = false;
@@ -224,6 +227,9 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
     if (!bridge?.alive || !this.activePrompt || !this.currentSessionId) return false;
     try {
       void bridge.cancel(this.currentSessionId);
+      // Dual-channel cancel: agent-domain session/cancel plus transport-level
+      // $/cancel_request for agents that ignore the former.
+      this.turnAbort?.abort();
       return true;
     } catch {
       return false;
@@ -382,7 +388,8 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
         control: options?.control === true,
         promptBytes: Buffer.byteLength(text, 'utf-8'),
       });
-      const result = await bridge.prompt(activeSessionId, text);
+      this.turnAbort = new AbortController();
+      const result = await bridge.prompt(activeSessionId, text, { signal: this.turnAbort.signal });
       this.emit('stream_event', this.buildResultEvent(result));
     })();
 
@@ -398,6 +405,7 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
       this.emit('error', err);
     } finally {
       this.activePrompt = null;
+      this.turnAbort = null;
       void this.flushQueuedMessages();
     }
   }

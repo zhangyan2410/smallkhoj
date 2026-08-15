@@ -4,15 +4,15 @@ import { existsSync } from 'fs';
 import { delimiter, join } from 'path';
 import { Readable, Writable } from 'stream';
 import {
-  ClientSideConnection,
+  client as createClientApp,
+  methods,
   ndJsonStream,
   PROTOCOL_VERSION,
-  type Client,
+  type ClientConnection,
+  type ClientContext,
   type ContentBlock,
   type McpServer,
   type PromptResponse,
-  type RequestPermissionRequest,
-  type RequestPermissionResponse,
   type SessionNotification,
   type SessionUpdate,
 } from '@agentclientprotocol/sdk';
@@ -47,7 +47,14 @@ export interface CodexAcpBridgeOptions {
   sessionIdCodec?: SessionIdCodec;
   /** Extra `clientCapabilities._meta` sent at initialize (e.g. goose flags). */
   clientCapabilitiesMeta?: Record<string, unknown>;
-  /** Receives custom agent→client notifications (`_goose/unstable/...`). */
+  /**
+   * Agent→client extension notification methods this bridge should receive
+   * (e.g. goose's `_goose/unstable/session/update`). The new client API
+   * registers notification handlers per method name, so runtimes declare the
+   * ext methods they consume instead of a legacy catch-all.
+   */
+  extNotificationMethods?: string[];
+  /** Receives the declared agent→client extension notifications. */
   onNotification?: (method: string, params: Record<string, unknown>) => void;
 }
 
@@ -135,7 +142,8 @@ export function translateAcpUpdate(update: SessionUpdate): CodexAcpTranslatedUpd
 export class CodexAcpBridge extends EventEmitter {
   private readonly options: CodexAcpBridgeOptions;
   private child: ChildProcessWithoutNullStreams | null = null;
-  private connection: ClientSideConnection | null = null;
+  private connection: ClientConnection | null = null;
+  private agentContext: ClientContext | null = null;
   readonly sessionIds = new Set<string>();
 
   constructor(options: CodexAcpBridgeOptions) {
@@ -172,33 +180,44 @@ export class CodexAcpBridge extends EventEmitter {
       this.emit('exit', { code, signal });
       this.child = null;
       this.connection = null;
+      this.agentContext = null;
     });
 
     const input = Writable.toWeb(child.stdin) as WritableStream<Uint8Array>;
     const output = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
     const codec = this.options.sessionIdCodec;
-    const client: Client = {
-      sessionUpdate: (notification) => {
-        // Translate the notification's native sessionId into the platform id
-        // space when a codec is configured, so consumers compare against the
-        // stable platform id the driver tracks.
-        const rawSessionId = notification.sessionId;
-        const platformSessionId = codec && rawSessionId ? codec.encode(rawSessionId) : rawSessionId;
-        const translated = platformSessionId === rawSessionId
-          ? notification
-          : { ...notification, sessionId: platformSessionId };
-        this.options.onUpdate?.(translated.update, translated);
-        this.emit('update', translated.update, translated);
-      },
-      requestPermission: (request) => this.approveFirstPermissionOption(request),
-    };
-    if (this.options.onNotification) {
-      const handler = this.options.onNotification;
-      client.extNotification = (method, params) => handler(method, params);
+    const app = createClientApp({ name: 'smallkhoj-daemon' });
+    app.onNotification(methods.client.session.update, (context) => {
+      // Translate the notification's native sessionId into the platform id
+      // space when a codec is configured, so consumers compare against the
+      // stable platform id the driver tracks.
+      const notification = context.params;
+      const rawSessionId = notification.sessionId;
+      const platformSessionId = codec && rawSessionId ? codec.encode(rawSessionId) : rawSessionId;
+      const translated = platformSessionId === rawSessionId
+        ? notification
+        : { ...notification, sessionId: platformSessionId };
+      this.options.onUpdate?.(translated.update, translated);
+      this.emit('update', translated.update, translated);
+    });
+    app.onRequest(methods.client.session.requestPermission, (context) =>
+      this.approveFirstPermissionOption(context.params));
+    const onNotification = this.options.onNotification;
+    if (onNotification) {
+      for (const method of this.options.extNotificationMethods ?? []) {
+        const passthrough = (params: unknown) => params as Record<string, unknown>;
+        app.onNotification(method, passthrough, (context) => onNotification(method, context.params));
+      }
     }
 
-    this.connection = new ClientSideConnection(() => client, ndJsonStream(input, output));
-    await this.connection.initialize({
+    // The deprecated ClientSideConnection is a shim over exactly this app
+    // machinery; connecting directly keeps us on the supported path and
+    // unlocks SendRequestOptions.cancellationSignal ($/cancel_request).
+    const connection = app.connect(ndJsonStream(input, output));
+    this.connection = connection;
+    this.agentContext = connection.agent;
+    void connection.closed.catch(() => {});
+    await this.agentContext.request(methods.agent.initialize, {
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: this.options.clientCapabilitiesMeta
         ? { _meta: this.options.clientCapabilitiesMeta }
@@ -207,8 +226,8 @@ export class CodexAcpBridge extends EventEmitter {
   }
 
   async createSession(options: { cwd?: string; mcpServers?: McpServer[] } = {}): Promise<string> {
-    const connection = this.requireConnection();
-    const result = await connection.newSession({
+    const agent = this.requireAgentContext();
+    const result = await agent.request(methods.agent.session.new, {
       cwd: options.cwd ?? this.options.cwd,
       mcpServers: options.mcpServers ?? this.options.mcpServers ?? [],
     });
@@ -219,10 +238,10 @@ export class CodexAcpBridge extends EventEmitter {
   }
 
   async loadSession(sessionId: string, options: { cwd?: string; mcpServers?: McpServer[] } = {}): Promise<string> {
-    const connection = this.requireConnection();
+    const agent = this.requireAgentContext();
     const codec = this.options.sessionIdCodec;
     const nativeId = codec ? codec.decode(sessionId) : sessionId;
-    await connection.loadSession({
+    await agent.request(methods.agent.session.load, {
       sessionId: nativeId,
       cwd: options.cwd ?? this.options.cwd,
       mcpServers: options.mcpServers ?? this.options.mcpServers ?? [],
@@ -231,19 +250,25 @@ export class CodexAcpBridge extends EventEmitter {
     return sessionId;
   }
 
-  async prompt(sessionId: string, text: string): Promise<PromptResponse> {
-    const connection = this.requireConnection();
+  async prompt(sessionId: string, text: string, options: { signal?: AbortSignal } = {}): Promise<PromptResponse> {
+    const agent = this.requireAgentContext();
     const codec = this.options.sessionIdCodec;
     const nativeId = codec ? codec.decode(sessionId) : sessionId;
     const prompt: ContentBlock[] = [{ type: 'text', text }];
-    return connection.prompt({ sessionId: nativeId, prompt });
+    // An aborted signal makes the SDK send $/cancel_request for this prompt —
+    // the transport-level sibling of the agent-domain session/cancel.
+    return agent.request(
+      methods.agent.session.prompt,
+      { sessionId: nativeId, prompt },
+      options.signal ? { cancellationSignal: options.signal } : undefined,
+    );
   }
 
   async cancel(sessionId: string): Promise<void> {
-    const connection = this.requireConnection();
+    const agent = this.requireAgentContext();
     const codec = this.options.sessionIdCodec;
     const nativeId = codec ? codec.decode(sessionId) : sessionId;
-    await connection.cancel({ sessionId: nativeId });
+    await agent.notify(methods.agent.session.cancel, { sessionId: nativeId });
   }
 
   destroy(): void {
@@ -251,7 +276,9 @@ export class CodexAcpBridge extends EventEmitter {
   }
 
   async stop(timeoutMs = 2000): Promise<void> {
+    this.connection?.close();
     this.connection = null;
+    this.agentContext = null;
     const child = this.child;
     if (!child) return;
     const exited = new Promise<void>((resolve) => {
@@ -276,12 +303,12 @@ export class CodexAcpBridge extends EventEmitter {
     this.child = null;
   }
 
-  private requireConnection(): ClientSideConnection {
-    if (!this.connection) throw new Error('Codex ACP bridge is not started');
-    return this.connection;
+  private requireAgentContext(): ClientContext {
+    if (!this.agentContext) throw new Error('Codex ACP bridge is not started');
+    return this.agentContext;
   }
 
-  private approveFirstPermissionOption(request: RequestPermissionRequest): RequestPermissionResponse {
+  private approveFirstPermissionOption(request: { options?: Array<{ optionId?: string }> }): { outcome: { outcome: 'selected'; optionId: string } } {
     const optionId = request.options?.[0]?.optionId ?? 'allow-once';
     return { outcome: { outcome: 'selected', optionId } };
   }

@@ -110,6 +110,7 @@ async function main(): Promise<void> {
     env,
     sessionIdCodec: codec,
     clientCapabilitiesMeta: { goose: { customNotifications: true } },
+    extNotificationMethods: ['_goose/unstable/session/update'],
     onNotification: (method, params) => {
       if (method === '_goose/unstable/session/update') {
         sawUsageNotification = true;
@@ -149,9 +150,11 @@ async function main(): Promise<void> {
     if (!encodedOk) throw new Error(`codec.encode did not namespace the session id: ${sessionId}`);
     let result: Awaited<ReturnType<typeof bridge.prompt>>;
     if (args.cancelAfterEvents) {
+      let cancelSentAt = 0;
       const cancelTimer = setInterval(() => {
         if (events.length >= args.cancelAfterEvents!) {
           clearInterval(cancelTimer);
+          cancelSentAt = Date.now();
           log({ type: 'cancelling', sessionId, eventsSeen: events.length });
           void bridge.cancel(sessionId).catch((err) => log({ type: 'cancel_error', message: String(err) }));
         }
@@ -161,10 +164,23 @@ async function main(): Promise<void> {
       } finally {
         clearInterval(cancelTimer);
       }
+      // goose 1.46 (openai-compatible provider) interrupts the stream on
+      // session/cancel but labels the response end_turn instead of cancelled
+      // (verified with raw JSON-RPC on the wire). The truth signal is that the
+      // long turn actually ended right after the cancel, so PASS on either an
+      // explicit cancelled stopReason or a prompt that resolved within 10s of
+      // the cancel on a deliberately long-running task.
+      const settledMsAfterCancel = cancelSentAt ? Date.now() - cancelSentAt : Number.POSITIVE_INFINITY;
+      const interrupted = settledMsAfterCancel <= 10_000;
       log({ type: 'result', sessionId, stopReason: result.stopReason, eventCount: events.length });
-      log({ type: 'cancel_check', stopReason: result.stopReason, ok: result.stopReason === 'cancelled' });
-      if (result.stopReason !== 'cancelled') {
-        throw new Error(`agent did not honor session/cancel: stopReason=${result.stopReason}`);
+      log({
+        type: 'cancel_check',
+        stopReason: result.stopReason,
+        settledMsAfterCancel,
+        ok: result.stopReason === 'cancelled' || interrupted,
+      });
+      if (result.stopReason !== 'cancelled' && !interrupted) {
+        throw new Error(`agent did not honor session/cancel: stopReason=${result.stopReason}, settled ${settledMsAfterCancel}ms after cancel`);
       }
     } else {
       result = await bridge.prompt(sessionId, args.prompt);
@@ -174,7 +190,9 @@ async function main(): Promise<void> {
     // error itself as an item_delta ("Ran into this error: ..."), so counting
     // deltas alone is not enough: PASS additionally requires that no streamed
     // text is goose's error wrapper and that the usage counters actually moved
-    // (error turns report zero usage).
+    // (error turns report zero usage). In cancel mode an interrupted turn
+    // legitimately reports no usage, so only the error-wrapper check applies
+    // there — the cancel_check timing gate above is that mode's verdict.
     const streamingDeltas = events.filter(event =>
       typeof event === 'object' && event !== null && (event as { type?: string }).type === 'item_delta');
     const errorDeltas = streamingDeltas.filter(event =>
@@ -185,7 +203,7 @@ async function main(): Promise<void> {
         `smoke streamed a goose error turn (eventCount=${events.length}, stopReason=${result.stopReason}) — check the provider key and goose logs before trusting this run`,
       );
     }
-    if (streamingDeltas.length === 0 || maxUsageTokens === 0) {
+    if (!args.cancelAfterEvents && (streamingDeltas.length === 0 || maxUsageTokens === 0)) {
       throw new Error(
         `smoke saw no real model output (eventCount=${events.length}, streamingDeltas=${streamingDeltas.length}, maxUsageTokens=${maxUsageTokens}, stopReason=${result.stopReason}) — this is the error-turn signature; check the provider key and goose logs before trusting this run`,
       );

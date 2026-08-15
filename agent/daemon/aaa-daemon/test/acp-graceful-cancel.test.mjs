@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -32,6 +32,7 @@ function waitFor(predicate, timeoutMs = 8_000) {
 
 function fakeAcpEval() {
   return `
+import { writeFileSync } from 'node:fs';
 const sessions = new Set();
 let cancelled = false;
 let pending = null;
@@ -63,6 +64,10 @@ process.stdin.on('data', chunk => {
           send({ jsonrpc: '2.0', id: p.id, result: { stopReason: 'end_turn' } });
         }
       }, 10000);
+    } else if (msg.method === '$/cancel_request') {
+      // 传输层取消（JSON-RPC 通知）：记录收到即证明 driver 的 AbortController
+      // 走到了 SDK 的 cancellationSignal 路径。
+      try { writeFileSync(process.env.CANCEL_PROBE_FILE, '1'); } catch {}
     } else if (msg.method === 'session/cancel') {
       cancelled = true;
       if (msg.id !== undefined) send({ jsonrpc: '2.0', id: msg.id, result: {} });
@@ -109,6 +114,8 @@ function makeOptions(root) {
 
 async function exerciseCancel(makeDriver, label) {
   const root = mkdtempSync(join(tmpdir(), `aaa-${label}-cancel-`));
+  const transportCancelProbe = join(root, 'transport-cancel.txt');
+  process.env.CANCEL_PROBE_FILE = transportCancelProbe;
   const driver = makeDriver(root);
   const events = [];
   driver.on('stream_event', event => events.push(event));
@@ -126,7 +133,10 @@ async function exerciseCancel(makeDriver, label) {
     assert.equal(result.stopReason, 'cancelled');
     // 无活跃 prompt 时再次取消必须返回 false（看门狗据此直接走 kill 兜底）
     assert.equal(driver.requestGracefulCancel(), false);
+    // 双通道取消：session/cancel 之外，$/cancel_request 也必须到达 agent。
+    assert.equal(existsSync(transportCancelProbe), true, '$/cancel_request not received by the fake agent');
   } finally {
+    delete process.env.CANCEL_PROBE_FILE;
     driver.stop();
     await waitFor(() => !driver.busy, 3000).catch(() => {});
     rmSync(root, { recursive: true, force: true });
