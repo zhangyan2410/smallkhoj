@@ -59,10 +59,26 @@
 - **D. goose 无效 env 修正**（属 08-06 遗留）：`GOOSE_DISABLE_SESSION_NAMING=1`
   对 goose 1.46 失效，每 turn 多一次 session 命名 LLM 调用；需查 1.46 的
   正确开关或改 config 方式。已同步登记到 08-06 遗留清单。
-- **F. 每 turn ~33k input 固定底价优化**（backlog，成本非正确性）：构成 =
-  slock 系统提示词 + goose 内置工具 schema（--with-builtin）+ 工具循环
-  上下文重发 + 跨 session 缓存命中差（实测仅 128 token cache read）。
-  手段：goose 版 slock 提示词瘦身、裁剪 builtin 列表、会话复用提缓存。
+- **G1. scoped session 映射不持久化（bug，用户定性）**：`ScopedProviderSessionStore`
+  纯内存 Map（session-scope.ts:95），daemon/runtime 重启即丢 → 同 scope 反复
+  新建 goose/codex session → 每条新 session 首次 LLM 调用缓存全不命中
+  （实测冷启动 1-2% vs 会话内 98-99%）。叠加 warmup/任务 scope 各自建
+  session，一次 DM 测试多付 3-4 次全价首调。
+- **G2. slock 系统提示词每 turn 重发（bug，codex 历史欠账，goose 原样继承）**：
+  提示词未进 system 槽，而是经 `buildCodexPrompt` 拼进每条 user 消息
+  （实测 27.5k-29.7k 字符/条，~9k token），每 turn 滚入历史灌水上下文；
+  会话内靠缓存压价，新 session 首调全额付。goose 与 codex 同修：改为
+  每 session 随首条 prompt 发一次，需设计长会话/goose 压缩后的兜底。
+- **G3. goose session 命名开关失效（bug）**：`GOOSE_DISABLE_SESSION_NAMING=1`
+  对 goose 1.46 无效，每 session 白跑一次命名 LLM 调用（实测 6,371 input，
+  不命中缓存）。改用 goose config 方式关闭。
+- **H. 对照参考项目 agent-platform（NAP）逐项审计 ACP 封装（前置调研任务）**：
+  NAP 源码在 `/Users/code/project/agent-platform`（internal/acp-adapter/ +
+  agents/{codex,goose,claude-code}）。G1/G2/G3 这类问题 NAP 理应已解决——
+  要么当时参考时漏抄，要么双方都有。逐项对比：session 生命周期与持久化、
+  系统提示词注入位置与频次、prompt cache 策略、usage 记账、取消、压缩
+  （compaction）处理、扩展通知。产出：G1-G3 的参考解法 + 我们独有或双方
+  共有的缺陷清单，再决定修复排期。
 
 ## Non-goals
 
