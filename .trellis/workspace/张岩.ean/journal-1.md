@@ -758,3 +758,36 @@ Claude driver 走 claude 2.x stream-json stdin interrupt 控制帧（形状取�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: 聊天取消真机验收：三个产品缺陷现场修复
+
+**Date**: 2026-08-15
+**Task**: 聊天取消真机验收：三个产品缺陷现场修复
+**Branch**: `main`
+
+### Summary
+
+twd 主栈 + 隔离 computer daemon 真机链路验收。修：computer daemon WS 启动即崩（X-Agent-Id undefined）；runtime 活动驱动 member 忙态（working/thinking⇄online，补上设计意图缺失的链路）；取消按钮 8s 抑制窗口 + destructive 高亮样式。终态：单击取消 → 4s 回落 online、按钮即消无复现。证据三张截图 + 事件日志对账。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ed8fa26` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
