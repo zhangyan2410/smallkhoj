@@ -173,9 +173,12 @@ export function buildActivityPayload(status: string): WebSocketActivityPayload {
 }
 
 export function buildWebSocketHeaders(credential: Credential): Record<string, string> {
+  // Computer-connect credentials carry no daemon-level agent id; the backend
+  // WS endpoint authenticates machine tokens via X-Computer-Id. Sending an
+  // undefined/empty X-Agent-Id crashes the Headers constructor at startup.
   return {
     'Authorization': `Bearer ${credential.token}`,
-    'X-Agent-Id': credential.agentId,
+    ...(credential.agentId ? { 'X-Agent-Id': credential.agentId } : {}),
     ...(credential.computerId ? { 'X-Computer-Id': credential.computerId } : {}),
   };
 }

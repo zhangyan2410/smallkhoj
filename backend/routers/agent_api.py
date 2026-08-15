@@ -4360,6 +4360,42 @@ async def list_agent_activity(
     }
 
 
+RUNTIME_BUSY_MEMBER_STATUS_BY_KIND = {
+    "runtime_working": "working",
+    "runtime_thinking": "thinking",
+}
+
+
+async def _apply_runtime_activity_member_status(
+    db: AsyncSession,
+    server: Server,
+    member: Member,
+    kind: str,
+) -> None:
+    """Chat-turn busy signal: runtime activity drives the agent member status.
+
+    The frontend status model (thinking/working buckets) expects live busy
+    states, but only Task lifecycle set them before. Runtime activities now
+    flip the agent to working/thinking for the duration of a turn and back to
+    online on idle — without touching task-driven or offline/stopped states.
+    """
+    next_status = RUNTIME_BUSY_MEMBER_STATUS_BY_KIND.get(kind)
+    if next_status is None and kind == "runtime_idle":
+        if member.status in {"working", "thinking"}:
+            next_status = "online"
+    if next_status is None or member.status == next_status:
+        return
+    previous_status = member.status
+    member.status = next_status
+    await _record_member_status_event(
+        db,
+        server,
+        member,
+        previous_status=previous_status,
+        action="runtime_activity",
+    )
+
+
 @router.post("/activity")
 async def create_agent_activity(
     request: Request,
@@ -4395,6 +4431,8 @@ async def create_agent_activity(
         channel_id=channel_id,
         task_id=task_id,
     )
+    if member.kind == "agent":
+        await _apply_runtime_activity_member_status(db, server, member, kind)
     await db.commit()
     await db.refresh(activity)
     return {

@@ -255,6 +255,7 @@ export const ChatComposer = memo(function ChatComposer({
   onSend,
   onCancelTurn,
   cancelTurnDisabled,
+  cancelTurnTitle,
 }: {
   placeholder: string
   scopeKey: string
@@ -267,6 +268,8 @@ export const ChatComposer = memo(function ChatComposer({
   /** Present when the conversation has a busy agent: stops its current turn. */
   onCancelTurn?: () => void | Promise<void>
   cancelTurnDisabled?: boolean
+  /** Hover hint naming the busy agent(s) the button will stop. */
+  cancelTurnTitle?: string
 }) {
   const tChat = useTranslations("chat")
   const { draft: input, setDraft: setInput, clearDraft: clearInput } = useChatDraft(scopeKey)
@@ -352,14 +355,15 @@ export const ChatComposer = memo(function ChatComposer({
         {onCancelTurn ? (
           <Button
             type="button"
-            variant="outline"
+            variant="destructive"
             size="icon"
             aria-label={tChat("cancelTurn")}
-            title={tChat("cancelTurn")}
+            title={cancelTurnTitle || tChat("cancelTurn")}
             disabled={cancelTurnDisabled}
             onClick={() => void onCancelTurn()}
+            className="animate-pulse"
           >
-            <Square className="size-3.5" />
+            <Square className="size-3.5 fill-current" />
           </Button>
         ) : null}
       </ChatComposerSurface>

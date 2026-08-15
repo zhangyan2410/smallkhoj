@@ -957,20 +957,33 @@ export function ChannelClient({
 
   // Composer 回调：内容由 ChatComposer 的内部 state 提交上来。
   // 返回是否发送成功，Composer 据此决定要不要清空草稿。
-  const busyAgentIds = useMemo(
+  // 取消后的抑制窗口：被中断回合的尾声（goose/claude 结算前的 trailing
+  // thinking/output 活动）会把 member.status 短暂翻回 busy，导致按钮复现、
+  // 用户以为要连点多次。窗口内忽略 busy 回翻，回合结算后自然回落。
+  const cancelSuppressUntilRef = useRef<Map<string, number>>(new Map())
+  // Bumped after a cancel click so the busy memo recomputes past the suppress
+  // window without referencing later state (TDZ-safe).
+  const [busyRevision, setBusyRevision] = useState(0)
+  const busyAgents = useMemo(
     () => allKnownMembers
       .filter(member => member.kind === "agent")
       .filter(member => {
         const bucket = getStatusBucket(member.status || "offline")
-        return bucket === "THINKING" || bucket === "ACTIVE"
-      })
-      .map(member => member.id),
-    [allKnownMembers],
+        if (bucket !== "THINKING" && bucket !== "ACTIVE") return false
+        return (cancelSuppressUntilRef.current.get(member.id) ?? 0) < Date.now()
+      }),
+    [allKnownMembers, busyRevision],
   )
+  const busyAgentIds = useMemo(() => busyAgents.map(member => member.id), [busyAgents])
   const [cancellingTurn, setCancellingTurn] = useState(false)
   const handleCancelTurn = useCallback(async () => {
     if (busyAgentIds.length === 0) return
+    const suppressUntil = Date.now() + 8_000
+    for (const agentId of busyAgentIds) {
+      cancelSuppressUntilRef.current.set(agentId, suppressUntil)
+    }
     setCancellingTurn(true)
+    setBusyRevision(revision => revision + 1)
     try {
       await Promise.all(busyAgentIds.map(agentId =>
         apiPost(`/api/v1/agents/${encodeURIComponent(agentId)}/cancel-turn`, {}, sessionToken),
@@ -979,6 +992,7 @@ export function ChannelClient({
       // 409 = 无活跃回合；按钮按忙态渲染，这里静默即可（状态流会收敛）。
     } finally {
       setCancellingTurn(false)
+      setBusyRevision(revision => revision + 1)
     }
   }, [busyAgentIds, sessionToken])
 
@@ -1569,6 +1583,7 @@ export function ChannelClient({
                   onSend={handleSend}
                   onCancelTurn={busyAgentIds.length > 0 ? handleCancelTurn : undefined}
                   cancelTurnDisabled={cancellingTurn}
+                  cancelTurnTitle={busyAgents.map(member => `@${member.handle}`).join(" ")}
                 />
               </>
             )}
