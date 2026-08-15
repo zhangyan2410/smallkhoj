@@ -660,6 +660,8 @@ export interface DaemonConfig {
   /** Computer name written by the local Aura Setup step. */
   computerName?: string;
   serverUrl: string;
+  /** True when serverUrl came from an explicit --server flag: it then outranks a stored credential's server_url. */
+  serverUrlExplicit?: boolean;
   wsUrl: string;
   credentialPath: string;
   proxyPort: number;

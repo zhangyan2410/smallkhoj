@@ -1422,13 +1422,17 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     assert.equal(runtime.slockHome, join(root, '.slock'));
     assert.equal(runtime.currentWorkspacePath, root);
     assert.equal(runtime.sessionId, 'fake-acp-daemon-session');
-    assert.match(runtime.prompt, /Codex ACP Runtime Notes/);
-    assert.match(runtime.prompt, /Use the PATH-injected `aura` CLI/);
-    assert.equal(runtime.prompt.includes(join(root, '.slock', 'slock')), false);
-    assert.equal(runtime.prompt.includes(join(root, '.slock', 'raft')), false);
-    assert.equal(runtime.prompt.includes(join(root, '.slock', 'aura')), false);
-    assert.match(runtime.prompt, /request elevated execution immediately/);
+    // G2: Slock instructions live in the workspace AGENTS.md (system-prompt
+    // slot); the per-turn prompt carries only the bare warmup text.
+    assert.equal(runtime.prompt.includes('Codex ACP Runtime Notes'), false);
     assert.match(runtime.prompt, /Run `aura server info` once/);
+    const instructions = readFileSync(join(root, 'AGENTS.md'), 'utf-8');
+    assert.match(instructions, /Codex ACP Runtime Notes/);
+    assert.match(instructions, /Use the PATH-injected `aura` CLI/);
+    assert.equal(instructions.includes(join(root, '.slock', 'slock')), false);
+    assert.equal(instructions.includes(join(root, '.slock', 'raft')), false);
+    assert.equal(instructions.includes(join(root, '.slock', 'aura')), false);
+    assert.match(instructions, /request elevated execution immediately/);
 
     await waitFor(() => registerBodies.some(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-acp' && workspace.runtime === 'codex' && workspace.status === 'running')));
     const runtimeHeartbeat = registerBodies.find(item => (item.workspaces ?? []).some(workspace => workspace.agentId === 'agent-acp' && workspace.runtime === 'codex' && workspace.status === 'running'));
@@ -1475,23 +1479,27 @@ test('daemon starts public Codex runtime with ACP implementation and reports wor
     assert.equal(working.description, 'Working on message');
     assert.equal(working.details.target, '#general');
     await waitFor(() => activityBodies.filter(item => item.type === 'runtime_idle').length >= 2);
-    const warning = activityBodies.find(item => item.type === 'runtime_warning');
-    assert.ok(warning, `runtime warning activity missing: ${JSON.stringify(activityBodies)}`);
-    assert.match(warning.description, /Model metadata/);
+    // AgentEvent path (08-06 design): item_delta text is no longer regex-
+    // scanned into runtime_warning rows — provider noise such as the "Model
+    // metadata" fallback notice becomes the first Thinking text instead, and
+    // later reasoning deltas do not rewrite the surfaced thought.
+    assert.equal(
+      activityBodies.some(item => item.type === 'runtime_warning'),
+      false,
+      `AgentEvent runtimes must not text-scan warnings: ${JSON.stringify(activityBodies)}`,
+    );
     const thinking = activityBodies.find(item => item.type === 'runtime_thinking');
     assert.ok(thinking, `runtime thinking activity missing: ${JSON.stringify(activityBodies)}`);
-    assert.equal(thinking.details.thought, 'checking the repository');
+    assert.match(thinking.details.thought, /Model metadata/);
     assert.equal(thinking.details.protocol, 'codex-acp');
-    assert.equal(thinking.details.sourceEvent, 'agent_thought_chunk');
-    assert.doesNotMatch(thinking.details.thought, /Model metadata/);
     assert.equal(
       activityBodies.some(item => item.description === 'Generated output'),
       false,
       `Codex narration must not invent Generated output: ${JSON.stringify(activityBodies)}`,
     );
-    const toolUse = activityBodies.find(item => item.type === 'runtime_output' && item.description === 'Ran Bash');
+    const toolUse = activityBodies.find(item => item.type === 'runtime_output' && item.description === 'Ran execute');
     assert.ok(toolUse, `Codex tool-use activity missing: ${JSON.stringify(activityBodies)}`);
-    assert.equal(toolUse.details.sourceEvent, 'tool_call');
+    assert.equal(toolUse.details.sourceEvent, 'codex_stream_event');
     assert.equal(toolUse.details.commandPreview, 'pwd');
     assert.equal(
       activityBodies.some(item => item.description === 'Tool completed' || item.description === 'Tool failed'),
@@ -2551,6 +2559,7 @@ test('daemon detected runtimes keep provider entries alongside the five runtime 
       claudeCommand: '/usr/local/bin/claude',
       codexCommand: '/usr/local/bin/codex',
       opencodeCommand: '/usr/local/bin/opencode',
+      gooseCommand: '/usr/local/bin/goose',
       providers: [{
         id: 'codex-krill',
         name: 'krill',

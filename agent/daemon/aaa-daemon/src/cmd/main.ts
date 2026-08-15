@@ -486,6 +486,7 @@ async function runStart(options: StartOptions): Promise<void> {
     agentId: options.agentId || process.env.SLOCK_AGENT_ID || '',
     computerName: setup?.name || process.env.AURA_COMPUTER_NAME,
     serverUrl,
+    serverUrlExplicit: options.server !== undefined,
     wsUrl,
     credentialPath: options.config || process.env.SLOCK_AGENT_CREDENTIAL || paths.credentialPath,
     proxyPort: parseInt(options.proxyPort, 10),

@@ -938,19 +938,28 @@ export class DaemonCore extends EventEmitter {
       try {
         const raw = readFileSync(credPath, 'utf-8');
         const data = JSON.parse(raw);
-        const token = typeof data.token === 'string'
+        // Explicit CLI input outranks the stored credential: an operator
+        // passing --server (or --machine-token, carried as SLOCK_AGENT_TOKEN)
+        // must not be silently pointed back at a stale stored server_url /
+        // token. Restarts without explicit flags keep honoring the file.
+        const explicitToken = process.env.SLOCK_AGENT_TOKEN?.trim();
+        const fileToken = typeof data.token === 'string'
           ? data.token.trim()
           : typeof data.apiKey === 'string'
             ? data.apiKey.trim()
             : '';
+        const token = explicitToken || fileToken;
         if (!token) return null;
         return {
-          agentId: data.agent_id || data.agentId || this.config.agentId,
-          serverId: data.server_id || data.serverId || 'unknown',
-          computerId: data.computer_id || data.computerId,
-          machineId: data.machine_id || data.machineId,
+          agentId: this.config.agentId || data.agent_id || data.agentId,
+          serverId: process.env.SLOCK_SERVER_ID?.trim() || data.server_id || data.serverId || 'unknown',
+          computerId: process.env.SLOCK_COMPUTER_ID?.trim() || data.computer_id || data.computerId,
+          machineId: process.env.SLOCK_MACHINE_ID?.trim() || data.machine_id || data.machineId,
           token,
-          serverUrl: data.server_url || data.serverUrl || this.config.serverUrl,
+          serverUrl: (this.config.serverUrlExplicit ? this.config.serverUrl : undefined)
+            || data.server_url
+            || data.serverUrl
+            || this.config.serverUrl,
           wsUrl: data.ws_url || data.wsUrl || this.config.wsUrl,
         };
       } catch (err) {

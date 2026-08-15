@@ -356,7 +356,9 @@ export class AgentProxy extends EventEmitter {
         res.end();
       }
     } catch (err) {
-      console.error(`[Proxy] Request failed: ${method} ${rewritten}:`, (err as Error).message);
+      const cause = (err as Error & { cause?: unknown }).cause;
+      const causeText = cause instanceof Error ? `${cause.message}${(cause as Error & { code?: string }).code ? ` (${(cause as Error & { code?: string }).code})` : ''}` : undefined;
+      console.error(`[Proxy] Request failed: ${method} ${rewritten}:`, (err as Error).message, causeText ? `cause: ${causeText}` : '');
       res.writeHead(502, { 'content-type': 'application/json' });
       res.end(JSON.stringify({
         error: 'failed to proxy local agent request',
