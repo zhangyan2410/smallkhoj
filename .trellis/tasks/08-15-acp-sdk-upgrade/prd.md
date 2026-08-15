@@ -72,13 +72,14 @@
 - **G3. goose session 命名开关失效（bug）**：`GOOSE_DISABLE_SESSION_NAMING=1`
   对 goose 1.46 无效，每 session 白跑一次命名 LLM 调用（实测 6,371 input，
   不命中缓存）。改用 goose config 方式关闭。
-- **H. 对照参考项目 agent-platform（NAP）逐项审计 ACP 封装（前置调研任务）**：
-  NAP 源码在 `/Users/code/project/agent-platform`（internal/acp-adapter/ +
-  agents/{codex,goose,claude-code}）。G1/G2/G3 这类问题 NAP 理应已解决——
-  要么当时参考时漏抄，要么双方都有。逐项对比：session 生命周期与持久化、
-  系统提示词注入位置与频次、prompt cache 策略、usage 记账、取消、压缩
-  （compaction）处理、扩展通知。产出：G1-G3 的参考解法 + 我们独有或双方
-  共有的缺陷清单，再决定修复排期。
+- **H. 对照参考项目 agent-platform（NAP）逐项审计 ACP 封装（✅ 已完成，
+  见 research/acp-wrapping-vs-nap-audit.md）**：判定——G2 与 B 均为**漏抄**
+  （NAP 把系统提示词写 AGENTS.md、每 turn 只发裸消息；interrupt 端点即
+  用户取消的参考实现）；G1 为**我们架构独有**（resident daemon 的 scope
+  映射层，NAP 无此层，需自设计持久化）；G3 自查（NAP config 全托管无对应）。
+  G2 修法要点：写 `<workspacePath>/AGENTS.md`（不能写共享的
+  ~/.config/goose/AGENTS.md，多 agent 会互相覆盖），goose/codex 同修；
+  验收 = 缓存命中率与新 session 首调 input 量复测。
 
 ## Non-goals
 
