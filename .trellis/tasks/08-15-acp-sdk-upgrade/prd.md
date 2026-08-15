@@ -48,6 +48,22 @@
   SIGKILL；进度恢复即重置。无取消能力的 runtime 直接走原 kill 路径。
 - goose smoke 增加 `--cancel-after-events <n>` 取消模式。
 
+## 后续任务登记（本任务只登记不实施）
+
+- **B. 用户侧取消入口**（后续做，用户已定）：产品 UI 的任务取消/停止回合
+  走 daemon `requestGracefulCancel()`，而不是只能等 turn 自然结束或被
+  stall 看门狗杀掉。独立小任务。
+- **C. 桥迁移到新版 client API**：legacy `ClientSideConnection.prompt` 不
+  透传 `cancellationSignal`；迁移后解锁 `$/cancel_request`（传输层取消）
+  与 handler 请求上下文（prompt/响应关联排障）。独立任务。
+- **D. goose 无效 env 修正**（属 08-06 遗留）：`GOOSE_DISABLE_SESSION_NAMING=1`
+  对 goose 1.46 失效，每 turn 多一次 session 命名 LLM 调用；需查 1.46 的
+  正确开关或改 config 方式。已同步登记到 08-06 遗留清单。
+- **F. 每 turn ~33k input 固定底价优化**（backlog，成本非正确性）：构成 =
+  slock 系统提示词 + goose 内置工具 schema（--with-builtin）+ 工具循环
+  上下文重发 + 跨 session 缓存命中差（实测仅 128 token cache read）。
+  手段：goose 版 slock 提示词瘦身、裁剪 builtin 列表、会话复用提缓存。
+
 ## Non-goals
 
 - ❌ 启用 ACP v2 实验 API / schema v2 alpha（等正式化单独立任务）。
@@ -57,6 +73,9 @@
 ## Acceptance Criteria
 
 - [x] daemon 依赖 `^1.3.0`，`npm install` + `tsc` 通过。
+- [ ] **R1.1 smoke 真实性硬断言**：`goose-acp-smoke` 必须收到至少一个流式
+      `item_delta` 回复才算 PASS——错误 turn（401/空回复，形状为
+      eventCount=3 无 delta）当前会假阳性通过（升级当天实踩）。
 - [x] 相关单测全绿（codex-acp-activity / codex-acp-runtime / codex-acp-mvp /
       acp-event-translator / runtime-activity / pi，38/38）。
 - [x] `smoke:goose-acp` 通过（真实 goose 1.46 + MiniMax：codec/通知/负载 round-trip）。
