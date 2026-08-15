@@ -791,3 +791,36 @@ twd 主栈 + 隔离 computer daemon 真机链路验收。修：computer daemon W
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: 卡按钮 bug 根因修复：activity 事件未推 SSE hub
+
+**Date**: 2026-08-15
+**Task**: 卡按钮 bug 根因修复：activity 事件未推 SSE hub
+**Branch**: `main`
+
+### Summary
+
+用户报告回合结算后停止按钮不消失。干净复现排除 HMR 残留；定位：activity 处理器 commit 后缺 _push_committed_events，member 状态事件从未到 SSE hub。补推送后真机复验：自然结算 → 按钮自动消失。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `971f71e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
