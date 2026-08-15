@@ -205,6 +205,8 @@ interface RuntimeRecord {
   restartTimer: ReturnType<typeof setTimeout> | null;
   stallTimer: ReturnType<typeof setInterval> | null;
   lastProgressAt: number;
+  /** When a stall-triggered graceful cancel was last sent; cleared on progress. */
+  stallCancelSentAt?: number;
   /** Startup warmup gate: true once an aura tool call has completed successfully */
   ready: boolean;
   /** Timestamp the warmup probe was injected, for timeout / duration reporting */
@@ -1284,6 +1286,7 @@ export class DaemonCore extends EventEmitter {
       restartTimer: null,
       stallTimer: null,
       lastProgressAt: Date.now(),
+      stallCancelSentAt: undefined,
       ready: false,
       warmupStartedAt: undefined,
       pendingWarmupResult: new Set(),
@@ -2005,6 +2008,30 @@ export class DaemonCore extends EventEmitter {
       const idleForMs = Date.now() - runtime.lastProgressAt;
       if (idleForMs < timeoutMs) return;
 
+      // Grace-first recovery: ask the agent to cancel the turn cooperatively
+      // (ACP session/cancel) and only SIGKILL after a grace window. A stalled
+      // agent may still settle the prompt with stopReason 'cancelled', which
+      // keeps the session/resume state intact instead of losing the process.
+      if (runtime.driver.requestGracefulCancel && runtime.stallCancelSentAt === undefined) {
+        runtime.stallCancelSentAt = Date.now();
+        if (runtime.driver.requestGracefulCancel()) {
+          this.log(`${runtime.runtime} runtime ${runtime.agentId} stalled for ${idleForMs}ms; sent graceful cancel`, 'warn');
+          this.emitRuntimeTrace({
+            type: 'stall_cancel',
+            agentId: runtime.agentId,
+            idleForMs,
+            timeoutMs,
+            sessionId: runtime.driver.sessionId,
+          });
+          return;
+        }
+        runtime.stallCancelSentAt = undefined;
+      }
+      const cancelGraceMs = Math.min(30_000, Math.max(timeoutMs, 5_000));
+      if (runtime.stallCancelSentAt !== undefined && Date.now() - runtime.stallCancelSentAt < cancelGraceMs) {
+        return;
+      }
+
       this.log(`${runtime.runtime} runtime ${runtime.agentId} stalled for ${idleForMs}ms; terminating`, 'warn');
       this.emitRuntimeTrace({
         type: 'stall',
@@ -2209,6 +2236,7 @@ export class DaemonCore extends EventEmitter {
 
   private markRuntimeProgress(runtime: RuntimeRecord): void {
     runtime.lastProgressAt = Date.now();
+    runtime.stallCancelSentAt = undefined;
   }
 
   /**

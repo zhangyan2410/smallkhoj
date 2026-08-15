@@ -145,7 +145,28 @@ ACP runtime 的事件必须经共享 translator（`src/runtime/acp-event-transla
 - `pkill -f "next dev"` 会杀掉机器上所有 dev server（包括共享 main 栈）。按
   PID/端口杀（`lsof -ti :PORT`）。
 
-## 附：ACP SDK 升级流程（@agentclientprotocol/sdk）
+## 附：ACP 优雅取消与 SDK 升级流程
+
+### 优雅取消（session/cancel）
+
+- ACP prompt-turn 取消的标准通道是 `session/cancel`（goose/codex 已实现）；
+  JSON-RPC 层的 `$/cancel_request` 需要新版 client API + `cancellationSignal`，
+  legacy `ClientSideConnection.prompt` 不透传（后续迁移项）。
+- driver 实现 `requestGracefulCancel()`（发 `bridge.cancel`）；daemon 停滞
+  看门狗分级：先优雅取消 → 宽限 `min(30s, max(stallTimeout, 5s))` → 才
+  SIGKILL；`markRuntimeProgress` 会重置已发标记。
+- 验证三件套：`test/acp-graceful-cancel.test.mjs`（fake-ACP 挂起→取消→
+  stopReason cancelled + 无活跃 prompt 返回 false）× codex/goose 两个 driver；
+  真机 `npm run smoke:goose-acp -- --cancel-after-events 3 --prompt "Use the
+  developer shell tool to run: sleep 30 ..."`（长工具调用中途取消）。
+- **真机测试的 LLM key 从 cc-switch DB 取**（`~/.cc-switch/cc-switch.db` 的
+  providers 表）——worktree 里的 .env 是未入库本地文件，worktree 删除后 grep
+  静默返回空，空 key 的症状是 401 错误码 1004 "carry the API secret key"
+  （缺 Authorization header，易误判成 key 过期/额度耗尽）。smoke 输出里
+  `eventCount=3 + 无 streaming delta` = LLM 错误 turn 的形状，验 PASS 前必须
+  确认有真实流式回复。
+
+### SDK 升级流程（@agentclientprotocol/sdk）
 
 新 runtime 若要求更新的协议特性（或上游发了新 major），按此流程升 SDK：
 

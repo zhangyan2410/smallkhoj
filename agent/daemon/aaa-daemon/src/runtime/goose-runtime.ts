@@ -177,6 +177,17 @@ export class GooseRuntimeDriver extends EventEmitter implements ManagedRuntimeDr
     });
   }
 
+  requestGracefulCancel(): boolean {
+    const bridge = this.bridge;
+    if (!bridge?.alive || !this.activePrompt || !this.currentSessionId) return false;
+    try {
+      void bridge.cancel(this.currentSessionId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   get pid(): number | undefined {
     return this.bridge?.pid;
   }

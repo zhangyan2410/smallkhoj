@@ -20,6 +20,8 @@ interface Args {
   agentId: string;
   prompt: string;
   keepWorkspace: boolean;
+  /** After N ACP events, cancel the prompt; expect stopReason 'cancelled'. */
+  cancelAfterEvents?: number;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -45,6 +47,10 @@ function parseArgs(argv: string[]): Args {
       i++;
     } else if (item === '--keep-workspace') {
       args.keepWorkspace = true;
+    } else if (item === '--cancel-after-events' && next) {
+      const parsed = Number.parseInt(next, 10);
+      if (Number.isFinite(parsed) && parsed > 0) args.cancelAfterEvents = parsed;
+      i++;
     } else if (item === '--help' || item === '-h') {
       printHelp();
       process.exit(0);
@@ -65,6 +71,9 @@ Options:
   --agent-id <id>     Agent id used to namespace session ids and the data dir
   --prompt <text>     Prompt to send to the goose session
   --keep-workspace    Keep the temporary workspace after exit
+  --cancel-after-events <n>
+                      Cancel the prompt after n ACP events; verifies the
+                      agent honors session/cancel with stopReason 'cancelled'
 `);
 }
 
@@ -118,8 +127,29 @@ async function main(): Promise<void> {
     const encodedOk = sessionId.startsWith(`${args.agentId}-`);
     log({ type: 'session', sessionId, codecEncodeOk: encodedOk });
     if (!encodedOk) throw new Error(`codec.encode did not namespace the session id: ${sessionId}`);
-    const result = await bridge.prompt(sessionId, args.prompt);
-    log({ type: 'result', sessionId, stopReason: result.stopReason, eventCount: events.length });
+    let result: Awaited<ReturnType<typeof bridge.prompt>>;
+    if (args.cancelAfterEvents) {
+      const cancelTimer = setInterval(() => {
+        if (events.length >= args.cancelAfterEvents!) {
+          clearInterval(cancelTimer);
+          log({ type: 'cancelling', sessionId, eventsSeen: events.length });
+          void bridge.cancel(sessionId).catch((err) => log({ type: 'cancel_error', message: String(err) }));
+        }
+      }, 100);
+      try {
+        result = await bridge.prompt(sessionId, `${args.prompt} Take your time and be thorough.`);
+      } finally {
+        clearInterval(cancelTimer);
+      }
+      log({ type: 'result', sessionId, stopReason: result.stopReason, eventCount: events.length });
+      log({ type: 'cancel_check', stopReason: result.stopReason, ok: result.stopReason === 'cancelled' });
+      if (result.stopReason !== 'cancelled') {
+        throw new Error(`agent did not honor session/cancel: stopReason=${result.stopReason}`);
+      }
+    } else {
+      result = await bridge.prompt(sessionId, args.prompt);
+      log({ type: 'result', sessionId, stopReason: result.stopReason, eventCount: events.length });
+    }
     // Verify codec.decode round-trips back to the native id for loadSession.
     const restored = await bridge.loadSession(sessionId);
     log({ type: 'load_session', sessionId, restoredEqual: restored === sessionId });

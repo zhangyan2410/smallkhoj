@@ -38,6 +38,16 @@
   PROTOCOL_VERSION）、回归阶梯、何时必须升级（新 agent 按新协议版本
   握手时）。
 
+### R4 优雅取消（升级后追加，用户需求）
+- SDK 0.29+ 的取消分两层：`session/cancel`（agent 域、goose 已实现）与
+  `$/cancel_request`（JSON-RPC 传输层，legacy `ClientSideConnection.prompt`
+  不透传 `cancellationSignal`，需迁新版 client API 才可用——记为后续项）。
+- `ManagedRuntimeDriver` 增加可选 `requestGracefulCancel()`；goose/codex
+  driver 实现（`bridge.cancel`）。
+- daemon 停滞看门狗分级：先优雅取消 → 宽限（min 30s 或 stallTimeout）→ 才
+  SIGKILL；进度恢复即重置。无取消能力的 runtime 直接走原 kill 路径。
+- goose smoke 增加 `--cancel-after-events <n>` 取消模式。
+
 ## Non-goals
 
 - ❌ 启用 ACP v2 实验 API / schema v2 alpha（等正式化单独立任务）。
@@ -50,6 +60,11 @@
 - [x] 相关单测全绿（codex-acp-activity / codex-acp-runtime / codex-acp-mvp /
       acp-event-translator / runtime-activity / pi，38/38）。
 - [x] `smoke:goose-acp` 通过（真实 goose 1.46 + MiniMax：codec/通知/负载 round-trip）。
+      注：升级当轮的 smoke 因 key 取自已删除的 worktree .env 而空跑（错误 turn
+      假阳性）；已用 cc-switch 源的 MiniMax token 重跑确认为真实流式回复。
+- [x] 优雅取消落地：驱动级单测 ×2（codex/goose，fake-ACP 取消生命周期）+
+      真机 cancel smoke（sleep 30 工具调用中途取消 → stopReason cancelled）+
+      看门狗先取消后 SIGKILL；测试阶梯 40/40。
 - [x] 变更审计文档入库（research/upstream-changelog-audit.md）。
 - [x] 升级流程沉淀进 skill（smallkhoj-add-runtime 附录节）。
 - [x] 在 main 上直接落地（用户指定，属 contained 升级 + 全量回归）。

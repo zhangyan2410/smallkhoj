@@ -1,3 +1,7 @@
 {"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
 {"file": "agent/daemon/aaa-daemon/package.json", "reason": "@agentclientprotocol/sdk ^0.28.1 → ^1.3.0：官方 1.0 稳定线，审计确认无 API 破坏"}
 {"file": ".agents/skills/smallkhoj-add-runtime/SKILL.md", "reason": "沉淀 ACP SDK 升级流程（先审计 diff 三样 → 回归阶梯 → 行为变化必须过 smoke）"}
+{"file": "agent/daemon/aaa-daemon/src/runtime/runtime-driver.ts", "reason": "接口新增可选 requestGracefulCancel()：ACP session/cancel 优雅取消，无实现时看门狗直接走 kill 兜底"}
+{"file": "agent/daemon/aaa-daemon/src/daemon/daemon.ts", "reason": "停滞看门狗分级（stall_cancel trace → 宽限 → killUnresponsive），markRuntimeProgress 重置标记"}
+{"file": "agent/daemon/aaa-daemon/test/acp-graceful-cancel.test.mjs", "reason": "取消生命周期单测：fake-ACP 挂起→取消→cancelled 结算，codex/goose 两 driver"}
+{"file": "agent/daemon/aaa-daemon/src/scripts/goose-acp-smoke.ts", "reason": "smoke 新增 --cancel-after-events 取消模式（真机验证 goose honor session/cancel）"}

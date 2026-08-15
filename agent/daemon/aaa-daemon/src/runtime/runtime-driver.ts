@@ -32,6 +32,14 @@ export interface ManagedRuntimeDriver {
   start(): void;
   stop(): void;
   killUnresponsive(): void;
+  /**
+   * Ask the agent to wind down the in-flight turn cooperatively (ACP
+   * `session/cancel`): the agent stops LLM/tool work and settles the prompt
+   * with stopReason 'cancelled'. Returns false when there is nothing to
+   * cancel or the runtime has no protocol-level cancellation — callers then
+   * fall back to killUnresponsive().
+   */
+  requestGracefulCancel?(): boolean;
   sendUserMessage(text: string, options?: RuntimeSendOptions): boolean;
   /** Drop daemon-queued Channel/thread prompts without stopping other Channel scopes. */
   discardQueuedChannel(channelId: string): number;
