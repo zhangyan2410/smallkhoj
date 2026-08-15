@@ -725,3 +725,36 @@ ClientSideConnection(废弃) → client().connect()；ext 通知按方法显式�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: 聊天页内嵌取消 + Claude Code interrupt 取消支持
+
+**Date**: 2026-08-15
+**Task**: 聊天页内嵌取消 + Claude Code interrupt 取消支持
+**Branch**: `main`
+
+### Summary
+
+Claude driver 走 claude 2.x stream-json stdin interrupt 控制帧（形状取自真实 2.1.201 二进制并单测固化）；backend 新增 /agents/{id}/cancel-turn（按 member 解析活跃 workspace 复用 cancel_turn）；composer 停止按钮按 member.status 忙态渲染。回归 338/338 + 63/63 + tsc 干净。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f124d1c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

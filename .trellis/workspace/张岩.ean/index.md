@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 21
+- **Total Sessions**: 22
 - **Last Active**: 2026-08-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~727 | Active |
+| `journal-1.md` | ~760 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 22 | 2026-08-15 | 聊天页内嵌取消 + Claude Code interrupt 取消支持 | `f124d1c` | `main` |
 | 21 | 2026-08-15 | 登记项 C：ACP 桥迁移新版 client API + 双通道取消 | `73b8564` | `main` |
 | 20 | 2026-08-15 | 登记项 B：用户侧取消回合全链路落地 | `691e362` | `main` |
 | 19 | 2026-08-15 | P1 修复：daemon-runtime 套件复活（凭证优先级 + 测试事实更新） | `4454b5c` | `main` |
