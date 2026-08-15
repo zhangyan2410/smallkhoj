@@ -890,3 +890,36 @@ twd 主栈 + 隔离 computer daemon 真机链路验收。修：computer daemon W
 ### Next Steps
 
 - None - task complete
+
+
+## Session 27: codex 多次回复事故：六实例重复投递定位与清理
+
+**Date**: 2026-08-16
+**Task**: codex 多次回复事故：六实例重复投递定位与清理
+**Branch**: `main`
+
+### Summary
+
+用户报告 ee 一句问话多条回复。复现：一条消息→恰好 6 条回复。根因：6 个 daemon 进程（2 个测试残留 + 4 个用户 home 孤儿托管实例）同时认领同一 computer，各自跑 runtime、消息六路投递。清理后验证 1→1。登记 08-16-single-active-daemon-lease 任务（租约强制防再发）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `daed91c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
