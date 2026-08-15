@@ -4434,6 +4434,10 @@ async def create_agent_activity(
     if member.kind == "agent":
         await _apply_runtime_activity_member_status(db, server, member, kind)
     await db.commit()
+    # Push recorded events to the public SSE hub — without this the
+    # member.status.updated frames sit in event_records and realtime clients
+    # (chat busy state, sidebar) never see them until a reconnect catch-up.
+    await _push_committed_events(db, server_id=server.id)
     await db.refresh(activity)
     return {
         "created": True,
