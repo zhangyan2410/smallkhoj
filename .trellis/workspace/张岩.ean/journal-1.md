@@ -692,3 +692,36 @@ Completed Windows/macOS onboarding acceptance handoff and task-scoped cloud-prod
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: 登记项 C：ACP 桥迁移新版 client API + 双通道取消
+
+**Date**: 2026-08-15
+**Task**: 登记项 C：ACP 桥迁移新版 client API + 双通道取消
+**Branch**: `main`
+
+### Summary
+
+ClientSideConnection(废弃) → client().connect()；ext 通知按方法显式声明；prompt 支持 AbortSignal → $/cancel_request 传输层取消；双 driver requestGracefulCancel 双通道（session/cancel + abort）。裸 JSON-RPC 直测发现 goose 1.46 流中取消会中断但标注 end_turn——smoke 改真值判定。43/43 + 337/337 + 双模式真机 smoke 通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `73b8564` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
