@@ -568,6 +568,33 @@ export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeD
     this.terminate(true);
   }
 
+  /**
+   * 优雅取消当前回合：向常驻 claude 进程的 stdin 写 interrupt 控制帧
+   * （claude 2.x stream-json 控制协议，
+   * `{"type":"control_request","request":{"subtype":"interrupt"}}`）。
+   * 中断后 claude 以正常 result 事件结算回合，走既有
+   * awaitingTurnResult 复位 → 队列刷新路径。
+   */
+  requestGracefulCancel(): boolean {
+    const child = this.getWritableChild();
+    if (!child || !this.isBusy()) return false;
+    try {
+      const payload = {
+        type: 'control_request',
+        request_id: `interrupt-${process.pid}-${Date.now()}`,
+        request: { subtype: 'interrupt' },
+      };
+      child.stdin.write(`${JSON.stringify(payload)}\n`);
+      this.emit('line', {
+        stream: 'stderr',
+        line: `Claude turn interrupt requested (${payload.request_id})`,
+      } satisfies ClaudeRuntimeEvent);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   killUnresponsive(): void {
     this.terminate(false);
   }
@@ -643,6 +670,12 @@ export class ClaudeRuntimeDriver extends EventEmitter implements ManagedRuntimeD
     }
 
     if (!event) return;
+    // Control frames (e.g. the interrupt control_response) are protocol
+    // plumbing, not conversation events — keep them out of the activity flow.
+    if (event.type === 'control_response' || event.type === 'control_request') {
+      this.emit('line', { stream: 'stdout', line: `claude control frame: ${line.slice(0, 200)}` } satisfies ClaudeRuntimeEvent);
+      return;
+    }
     this.consumeStreamEvent(event);
   }
 

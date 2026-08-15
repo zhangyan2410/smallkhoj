@@ -148,6 +148,7 @@
     "attachImage": "Attach image",
     "sendAsTask": "Send as task",
     "sendMessage": "Send message",
+    "cancelTurn": "Stop current turn",
     "noMemberSuggestions": "No matching member in this channel.",
     "noChannelSuggestions": "No matching channel in this Server.",
     "thread": "Thread",

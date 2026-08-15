@@ -148,6 +148,7 @@
     "attachImage": "附加图片",
     "sendAsTask": "作为任务发送",
     "sendMessage": "发送消息",
+    "cancelTurn": "取消当前回合",
     "noMemberSuggestions": "当前频道没有匹配的成员。",
     "noChannelSuggestions": "当前 Server 没有匹配的频道。",
     "thread": "线程",

@@ -957,6 +957,31 @@ export function ChannelClient({
 
   // Composer 回调：内容由 ChatComposer 的内部 state 提交上来。
   // 返回是否发送成功，Composer 据此决定要不要清空草稿。
+  const busyAgentIds = useMemo(
+    () => allKnownMembers
+      .filter(member => member.kind === "agent")
+      .filter(member => {
+        const bucket = getStatusBucket(member.status || "offline")
+        return bucket === "THINKING" || bucket === "ACTIVE"
+      })
+      .map(member => member.id),
+    [allKnownMembers],
+  )
+  const [cancellingTurn, setCancellingTurn] = useState(false)
+  const handleCancelTurn = useCallback(async () => {
+    if (busyAgentIds.length === 0) return
+    setCancellingTurn(true)
+    try {
+      await Promise.all(busyAgentIds.map(agentId =>
+        apiPost(`/api/v1/agents/${encodeURIComponent(agentId)}/cancel-turn`, {}, sessionToken),
+      ))
+    } catch {
+      // 409 = 无活跃回合；按钮按忙态渲染，这里静默即可（状态流会收敛）。
+    } finally {
+      setCancellingTurn(false)
+    }
+  }, [busyAgentIds, sessionToken])
+
   const handleSend = useCallback(async (
     content: string,
     asTask: boolean,
@@ -1542,6 +1567,8 @@ export function ChannelClient({
                   channels={composerChannels}
                   onUpload={handleFileUpload}
                   onSend={handleSend}
+                  onCancelTurn={busyAgentIds.length > 0 ? handleCancelTurn : undefined}
+                  cancelTurnDisabled={cancellingTurn}
                 />
               </>
             )}

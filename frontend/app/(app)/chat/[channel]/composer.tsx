@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
-import { CheckSquare, Paperclip, Send } from "lucide-react"
+import { CheckSquare, Paperclip, Send, Square } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -253,6 +253,8 @@ export const ChatComposer = memo(function ChatComposer({
   channels,
   onUpload,
   onSend,
+  onCancelTurn,
+  cancelTurnDisabled,
 }: {
   placeholder: string
   scopeKey: string
@@ -262,6 +264,9 @@ export const ChatComposer = memo(function ChatComposer({
   channels: ComposerChannelSuggestion[]
   onUpload: (file: File) => void | Promise<void>
   onSend: (content: string, asTask: boolean, mentionMemberIds: string[]) => Promise<boolean>
+  /** Present when the conversation has a busy agent: stops its current turn. */
+  onCancelTurn?: () => void | Promise<void>
+  cancelTurnDisabled?: boolean
 }) {
   const tChat = useTranslations("chat")
   const { draft: input, setDraft: setInput, clearDraft: clearInput } = useChatDraft(scopeKey)
@@ -344,6 +349,19 @@ export const ChatComposer = memo(function ChatComposer({
         >
           <Send className="size-3.5" />
         </Button>
+        {onCancelTurn ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label={tChat("cancelTurn")}
+            title={tChat("cancelTurn")}
+            disabled={cancelTurnDisabled}
+            onClick={() => void onCancelTurn()}
+          >
+            <Square className="size-3.5" />
+          </Button>
+        ) : null}
       </ChatComposerSurface>
     </div>
   )

@@ -1443,3 +1443,65 @@ async def test_workspace_lifecycle_cancel_pushes_cancel_turn_without_mutating_st
     # Turn-scoped cancel: workspace/agent state must be untouched.
     assert workspace.status == "running"
     assert agent.config == {"runtimeDesiredStatus": "running"}
+
+
+@pytest.mark.asyncio
+async def test_cancel_agent_turn_resolves_active_workspace_and_pushes_cancel_turn(monkeypatch):
+    computer = _computer()
+    agent = _runtime_member(config={"runtimeDesiredStatus": "running"}, status="active")
+    agent.handle = "chat-cancel-probe"
+    agent.origin_server_id = computer.server_id
+    workspace = _workspace(status="running")
+    db = _FakeSession(_ExecuteResult(rows=[(workspace, agent, computer)]))
+    pushed = []
+
+    async def fake_active_server_context(_db, _request):
+        return SimpleNamespace(
+            server=SimpleNamespace(id=computer.server_id),
+            member=agent,
+            membership=SimpleNamespace(role="owner"),
+        )
+
+    async def fake_noop(*_args, **_kwargs):
+        return None
+
+    async def fake_push(_computer_id, event):
+        pushed.append(event)
+        return True
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_active_server_context)
+    monkeypatch.setattr(public_api, "_record_activity", fake_noop)
+    monkeypatch.setattr(public_api, "_push_committed_events", fake_noop)
+    monkeypatch.setattr(public_api.daemon_control_hub, "push", fake_push)
+
+    request = _JsonRequest({})
+    response = await public_api.cancel_agent_turn(str(agent.id), request, _auth=None, db=db)
+
+    assert response["ok"] is True
+    assert response["delivered"] is True
+    assert response["agentId"] == str(agent.id)
+    command = pushed[0]["command"]
+    assert command["type"] == "cancel_turn"
+    assert command["workspaceId"] == str(workspace.id)
+    # Turn-scoped: workspace/agent state untouched.
+    assert workspace.status == "running"
+    assert agent.config == {"runtimeDesiredStatus": "running"}
+
+
+@pytest.mark.asyncio
+async def test_cancel_agent_turn_without_active_workspace_conflicts(monkeypatch):
+    agent = _runtime_member(status="active")
+    agent.handle = "chat-cancel-idle"
+    db = _FakeSession(_ExecuteResult(rows=[]))
+
+    async def fake_active_server_context(_db, _request):
+        return SimpleNamespace(
+            server=SimpleNamespace(id=uuid.uuid4()),
+            member=agent,
+            membership=SimpleNamespace(role="owner"),
+        )
+
+    monkeypatch.setattr(public_api, "_resolve_active_server_context", fake_active_server_context)
+    with pytest.raises(HTTPException) as exc:
+        await public_api.cancel_agent_turn(str(agent.id), _JsonRequest({}), _auth=None, db=db)
+    assert exc.value.status_code == 409

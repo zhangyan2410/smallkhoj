@@ -17,7 +17,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import and_, delete, exists, func, or_, select
+from sqlalchemy import and_, case, delete, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
@@ -5203,6 +5203,75 @@ async def control_workspace_lifecycle(
         ),
         "workspace": _serialize_workspace(workspace, agent),
         "computer": await _serialize_computer(db, computer),
+    }
+
+
+@router.post("/agents/{member_id}/cancel-turn")
+async def cancel_agent_turn(
+    member_id: str,
+    request: Request,
+    _auth: None = Depends(verify_public_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """Chat-inline cancel: resolve the agent's active workspace and enqueue a
+    turn-scoped cancel_turn command (zero workspace/agent status mutation)."""
+    context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
+    server = context.server
+    try:
+        parsed_member_id = uuid.UUID(member_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid member id")
+
+    result = await db.execute(
+        select(AgentWorkspace, Member, Computer)
+        .join(Member, Member.id == AgentWorkspace.agent_id)
+        .join(Computer, Computer.id == AgentWorkspace.computer_id)
+        .where(
+            Member.id == parsed_member_id,
+            Member.origin_server_id == server.id,
+            Computer.server_id == server.id,
+            AgentWorkspace.status.in_(["running", "pending_start", "busy", "starting", "restarting"]),
+        )
+        .order_by(
+            case((AgentWorkspace.status == "running", 0), else_=1),
+            AgentWorkspace.started_at.desc(),
+        )
+        .limit(1)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(409, "Agent has no running workspace to cancel")
+    workspace, agent, computer = row
+
+    if computer.status not in {"online", "active"} or _lease_expired(computer.daemon_lease_expires_at):
+        raise HTTPException(409, "Daemon is offline; reconnect the computer before cancelling turns")
+
+    event = runtime_control_command(workspace, agent, "cancel_turn")
+    delivered = await daemon_control_hub.push(computer.id, event)
+    await _record_activity(
+        db,
+        server,
+        agent,
+        "workspace_lifecycle",
+        f"@{agent.handle} turn cancel requested from chat on {computer.name}",
+        {
+            "computerId": str(computer.id),
+            "workspaceId": str(workspace.id),
+            "runtime": _public_runtime(workspace.runtime),
+            "status": workspace.status,
+            "action": "cancel",
+            "delivered": delivered,
+        },
+    )
+    await db.commit()
+    await _push_committed_events(db, server_id=server.id)
+    return {
+        "ok": True,
+        "action": "cancel",
+        "delivered": delivered,
+        "agentId": str(agent.id),
+        "workspaceId": str(workspace.id),
     }
 
 
