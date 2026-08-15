@@ -1,4 +1,4 @@
-export type RuntimeActivityRuntime = 'claude_code' | 'codex' | 'opencode' | 'pi';
+export type RuntimeActivityRuntime = 'claude_code' | 'codex' | 'goose' | 'opencode' | 'pi';
 
 export type RuntimeActivityProtocol =
   | 'claude-stream-json'
@@ -36,6 +36,36 @@ export function translateRuntimeStreamActivity(
 ): RuntimeStreamActivitySignal[] {
   if (!isRecord(event)) return [];
   const eventType = stringField(event, 'type');
+
+  // ── AgentEvent path (goose / codex-on-new-schema) ──
+  if (eventType === 'item_delta') {
+    const delta = isRecord(event.delta) ? event.delta : undefined;
+    const deltaType = stringField(delta, 'type');
+    const text = stringField(delta, 'text');
+    if ((deltaType === 'reasoning' || deltaType === 'text') && text) {
+      return [{ type: 'thinking', protocol: runtimeProtocol(runtime), sourceEvent: runtimeSourceEvent(runtime, event), text }];
+    }
+    return [];
+  }
+  if (eventType === 'item_started' && isRecord(event.item) && event.item.kind === 'tool_call') {
+    const toolUseId = stringField(event.item, 'callId') ?? stringField(event.item, 'toolName') ?? 'tool';
+    const toolName = stringField(event.item, 'toolName') ?? 'tool';
+    const callPart = Array.isArray(event.item.content)
+      ? (event.item.content.find((part) => isRecord(part) && part.type === 'tool_call') as Record<string, unknown> | undefined)
+      : undefined;
+    const rawInput = isRecord(callPart) ? callPart.rawInput : undefined;
+    const input = isRecord(rawInput) ? rawInput : {};
+    return [{
+      type: 'tool_use',
+      protocol: runtimeProtocol(runtime),
+      sourceEvent: runtimeSourceEvent(runtime, event),
+      toolUseId,
+      toolName,
+      commandPreview: toolInputPreview(input, toolName),
+    }];
+  }
+
+  // ── Legacy pseudo-Anthropic envelope path (claude_code / pi / opencode) ──
   if (eventType !== 'assistant' && eventType !== 'user') return [];
 
   const protocol = runtimeProtocol(runtime);
@@ -91,6 +121,7 @@ export function translateRuntimeStreamActivity(
 function runtimeProtocol(runtime: RuntimeActivityRuntime): RuntimeActivityProtocol {
   switch (runtime) {
     case 'codex':
+    case 'goose':
       return 'codex-acp';
     case 'opencode':
       return 'opencode-sse';
@@ -104,6 +135,9 @@ function runtimeProtocol(runtime: RuntimeActivityRuntime): RuntimeActivityProtoc
 function runtimeSourceEvent(runtime: RuntimeActivityRuntime, event: Record<string, unknown>): string {
   if (runtime === 'codex') {
     return stringField(event, 'acpUpdate') ?? 'codex_stream_event';
+  }
+  if (runtime === 'goose') {
+    return stringField(event, 'type') ?? 'goose_stream_event';
   }
   if (runtime === 'opencode') {
     return stringField(event, 'opencodeEvent') ?? 'opencode_stream_event';

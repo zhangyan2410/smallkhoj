@@ -630,6 +630,7 @@ export function runtimeLabel(runtime: RuntimeInfo) {
     codex: "Codex",
     codex_cli: "Codex",
     codex_acp: "Codex",
+    goose: "Goose",
     opencode: "OpenCode",
     pi: "Built-in Pi",
     custom: "Custom",

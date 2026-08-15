@@ -150,14 +150,14 @@ test('codex acp runtime creates a session and emits daemon-compatible stream lif
     assert.equal(sent[0].type, 'codex_acp_prompt');
     assert.equal(sent[0].session_id, sessions[0].sessionId);
 
-    const assistant = events.find(event => event.type === 'assistant');
+    const assistant = events.find(event => event.type === 'item_delta' && event.delta?.type === 'text');
     assert.equal(assistant.runtime, 'codex_acp');
-    assert.deepEqual(assistant.message.content, [{ type: 'text', text: 'chunk-1' }]);
+    assert.equal(assistant.delta.text, 'chunk-1');
 
-    const usage = events.find(event => event.type === 'usage');
+    const usage = events.find(event => event.type === 'session_ended');
     assert.equal(usage.runtime, 'codex_acp');
-    assert.equal(usage.used, 101);
-    assert.equal(usage.contextWindow, 258400);
+    assert.equal(usage.stats.contextTokens, 101);
+    assert.equal(usage.stats.contextWindow, 258400);
 
     const result = events.find(event => event.type === 'result');
     assert.equal(result.runtime, 'codex_acp');

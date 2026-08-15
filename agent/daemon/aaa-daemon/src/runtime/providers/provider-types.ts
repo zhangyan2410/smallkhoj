@@ -19,6 +19,7 @@ export interface RuntimeProviderInventory {
   claudeCommand?: string;
   codexCommand?: string;
   opencodeCommand?: string;
+  gooseCommand?: string;
   providers: LocalRuntimeProvider[];
 }
 

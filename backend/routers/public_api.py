@@ -5328,6 +5328,7 @@ def _normalize_runtime(value: str | None) -> str:
         "codex": "codex",
         "codex-acp": "codex",
         "codex_acp": "codex",
+        "goose": "goose",
         "opencode": "opencode",
         "open_code": "opencode",
         "pi": "pi",

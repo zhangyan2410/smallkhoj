@@ -6,7 +6,7 @@ import {
   parseCcSwitchProviderRows,
   parseCcsClaudeListOutput,
 } from './providers/cc-switch-provider.js';
-import { detectClaudeCommand, detectCodexCommand, detectOpenCodeCommand } from './providers/local-command-provider.js';
+import { detectClaudeCommand, detectCodexCommand, detectGooseCommand, detectOpenCodeCommand } from './providers/local-command-provider.js';
 import { loadManualRuntimeProviders, parseManualRuntimeProviders } from './providers/manual-provider.js';
 import { loadOpenCodeConfigProviders, parseOpenCodeConfigProviders } from './providers/opencode-config-provider.js';
 import type {
@@ -25,6 +25,7 @@ export type {
 export {
   detectClaudeCommand,
   detectCodexCommand,
+  detectGooseCommand,
   detectOpenCodeCommand,
   loadCcSwitchProviders,
   parseCcSwitchOpenCodeProviderRows,
@@ -39,6 +40,7 @@ export function detectRuntimeProviders(env: NodeJS.ProcessEnv = process.env): Ru
   const claudeCommand = detectClaudeCommand(env);
   const codexCommand = detectCodexCommand(env);
   const opencodeCommand = detectOpenCodeCommand(env);
+  const gooseCommand = detectGooseCommand(env);
   const manualProviders = loadManualRuntimeProviders(env);
   const opencodeConfigProviders = loadOpenCodeConfigProviders(env);
   const ccSwitchProviders = loadCcSwitchProviders(env, homeDir);
@@ -55,6 +57,7 @@ export function detectRuntimeProviders(env: NodeJS.ProcessEnv = process.env): Ru
     claudeCommand,
     codexCommand,
     opencodeCommand,
+    gooseCommand,
     providers,
   };
 }
@@ -81,6 +84,13 @@ export function detectedRuntimesForInventory(
     {
       type: 'opencode',
       status: inventory.opencodeCommand ? 'available' : 'not_installed',
+    },
+    {
+      type: 'goose',
+      // goose is a PATH-detected Rust binary (`brew install goose`). Phase 1
+      // does not bundle it; availability is honest about local detection.
+      status: inventory.gooseCommand ? 'available' : 'not_installed',
+      ...(inventory.gooseCommand ? { source: 'bundled' } : {}),
     },
     // Pi 是产品内置 runtime，检测层面恒可用；bundled layout 缺失只影响实际启动，
     // 不应该让「检测到的运行时」把它显示成未安装（灰色）。
@@ -177,11 +187,12 @@ export function resolveRuntimeProviderLaunch(
 }
 
 export function resolveDetectedRuntimeCommand(
-  runtime: 'pi' | 'claude_code' | 'codex' | 'opencode',
+  runtime: 'pi' | 'claude_code' | 'codex' | 'opencode' | 'goose',
   inventory: RuntimeProviderInventory,
 ): string | undefined {
   if (runtime === 'claude_code') return inventory.claudeCommand;
   if (runtime === 'opencode') return inventory.opencodeCommand;
+  if (runtime === 'goose') return inventory.gooseCommand;
   return undefined;
 }
 

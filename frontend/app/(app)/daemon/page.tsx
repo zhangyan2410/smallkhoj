@@ -327,6 +327,7 @@ function runtimeLabel(runtime: string | { type?: string; status?: string; comman
     codex: "Codex",
     codex_cli: "Codex",
     codex_acp: "Codex",
+    goose: "Goose",
     custom: "Custom",
   }
   if (typeof runtime === "string") return labels[runtime] ?? runtime

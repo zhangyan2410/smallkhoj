@@ -40,7 +40,20 @@ test('bundled Pi layout resolves target-relative Node and Pi without PATH', () =
       piEntry,
       version: '0.73.1',
     });
-    assert.equal(resolveBundledPiLayout({ SMALLKHOJ_DAEMON_INSTALL_ROOT: join(root, 'missing') }), undefined);
+    // A missing install root now falls back to the daemon package's own
+    // node_modules (dev path) so pi is usable without a release install root.
+    const devLayout = resolveBundledPiLayout({ SMALLKHOJ_DAEMON_INSTALL_ROOT: join(root, 'missing') });
+    assert.equal(typeof devLayout, 'object');
+    assert.equal(devLayout.nodePath, process.execPath);
+    assert.ok(devLayout.piEntry.endsWith(join('node_modules', '@mariozechner', 'pi-coding-agent', 'dist', 'cli.js')));
+    // A genuinely unresolvable entry (forced via env) still yields undefined.
+    assert.equal(
+      resolveBundledPiLayout({
+        SMALLKHOJ_DAEMON_INSTALL_ROOT: join(root, 'missing'),
+        SMALLKHOJ_BUNDLED_PI_ENTRY: join(root, 'nope.js'),
+      }),
+      undefined,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

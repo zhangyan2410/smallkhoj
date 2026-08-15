@@ -24,6 +24,17 @@ export interface CodexAcpCommandOptions {
   npmPackage?: string;
 }
 
+/**
+ * Bidirectional session id mapping between an agent's native id space and the
+ * platform id space. `encode` maps a freshly-created native id to the stable
+ * platform id; `decode` reverses it before handing the id back to the agent.
+ * When unset the bridge is an identity codec (codex path).
+ */
+export interface SessionIdCodec {
+  encode(nativeId: string): string;
+  decode(platformId: string): string;
+}
+
 export interface CodexAcpBridgeOptions {
   command?: string;
   args?: string[];
@@ -32,6 +43,12 @@ export interface CodexAcpBridgeOptions {
   mcpServers?: McpServer[];
   onUpdate?: (update: SessionUpdate, notification: SessionNotification) => void;
   onLine?: (event: { stream: 'stdout' | 'stderr'; line: string }) => void;
+  /** Maps native ⇄ platform session ids. Omit for an identity codec. */
+  sessionIdCodec?: SessionIdCodec;
+  /** Extra `clientCapabilities._meta` sent at initialize (e.g. goose flags). */
+  clientCapabilitiesMeta?: Record<string, unknown>;
+  /** Receives custom agent→client notifications (`_goose/unstable/...`). */
+  onNotification?: (method: string, params: Record<string, unknown>) => void;
 }
 
 export interface CodexAcpTranslatedUpdate {
@@ -159,18 +176,33 @@ export class CodexAcpBridge extends EventEmitter {
 
     const input = Writable.toWeb(child.stdin) as WritableStream<Uint8Array>;
     const output = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
+    const codec = this.options.sessionIdCodec;
     const client: Client = {
       sessionUpdate: (notification) => {
-        this.options.onUpdate?.(notification.update, notification);
-        this.emit('update', notification.update, notification);
+        // Translate the notification's native sessionId into the platform id
+        // space when a codec is configured, so consumers compare against the
+        // stable platform id the driver tracks.
+        const rawSessionId = notification.sessionId;
+        const platformSessionId = codec && rawSessionId ? codec.encode(rawSessionId) : rawSessionId;
+        const translated = platformSessionId === rawSessionId
+          ? notification
+          : { ...notification, sessionId: platformSessionId };
+        this.options.onUpdate?.(translated.update, translated);
+        this.emit('update', translated.update, translated);
       },
       requestPermission: (request) => this.approveFirstPermissionOption(request),
     };
+    if (this.options.onNotification) {
+      const handler = this.options.onNotification;
+      client.extNotification = (method, params) => handler(method, params);
+    }
 
     this.connection = new ClientSideConnection(() => client, ndJsonStream(input, output));
     await this.connection.initialize({
       protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: {},
+      clientCapabilities: this.options.clientCapabilitiesMeta
+        ? { _meta: this.options.clientCapabilitiesMeta }
+        : {},
     });
   }
 
@@ -180,14 +212,18 @@ export class CodexAcpBridge extends EventEmitter {
       cwd: options.cwd ?? this.options.cwd,
       mcpServers: options.mcpServers ?? this.options.mcpServers ?? [],
     });
-    this.sessionIds.add(result.sessionId);
-    return result.sessionId;
+    const codec = this.options.sessionIdCodec;
+    const sessionId = codec ? codec.encode(result.sessionId) : result.sessionId;
+    this.sessionIds.add(sessionId);
+    return sessionId;
   }
 
   async loadSession(sessionId: string, options: { cwd?: string; mcpServers?: McpServer[] } = {}): Promise<string> {
     const connection = this.requireConnection();
+    const codec = this.options.sessionIdCodec;
+    const nativeId = codec ? codec.decode(sessionId) : sessionId;
     await connection.loadSession({
-      sessionId,
+      sessionId: nativeId,
       cwd: options.cwd ?? this.options.cwd,
       mcpServers: options.mcpServers ?? this.options.mcpServers ?? [],
     });
@@ -197,13 +233,17 @@ export class CodexAcpBridge extends EventEmitter {
 
   async prompt(sessionId: string, text: string): Promise<PromptResponse> {
     const connection = this.requireConnection();
+    const codec = this.options.sessionIdCodec;
+    const nativeId = codec ? codec.decode(sessionId) : sessionId;
     const prompt: ContentBlock[] = [{ type: 'text', text }];
-    return connection.prompt({ sessionId, prompt });
+    return connection.prompt({ sessionId: nativeId, prompt });
   }
 
   async cancel(sessionId: string): Promise<void> {
     const connection = this.requireConnection();
-    await connection.cancel({ sessionId });
+    const codec = this.options.sessionIdCodec;
+    const nativeId = codec ? codec.decode(sessionId) : sessionId;
+    await connection.cancel({ sessionId: nativeId });
   }
 
   destroy(): void {

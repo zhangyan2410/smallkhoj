@@ -7,7 +7,8 @@ import type { PromptResponse, SessionNotification, SessionUpdate } from '@agentc
 import type { Credential } from '../types.js';
 import { buildSlockSystemPrompt, type ClaudeRuntimeOptions } from './claude-runtime.js';
 import { buildCodexPrompt, buildCodexRuntimeEnv } from './codex-runtime.js';
-import { CodexAcpBridge, resolveNpxCommand, translateAcpUpdate } from './codex-acp-bridge.js';
+import { CodexAcpBridge, resolveNpxCommand } from './codex-acp-bridge.js';
+import { translateAcpSessionUpdate } from './acp-event-translator.js';
 import type { ManagedRuntimeDriver, RuntimeExitEvent, RuntimeLineEvent, RuntimeSendOptions, RuntimeStreamEvent } from './runtime-driver.js';
 
 export const DEFAULT_CODEX_ACP_PACKAGE = '@zed-industries/codex-acp@0.16.0';
@@ -171,6 +172,7 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
   private activePrompt: Promise<void> | null = null;
   private systemPrompt = '';
   private lastUsageUpdate: Record<string, unknown> | undefined;
+  private readonly toolNamesByCallId = new Map<string, string>();
   private exitEmitted = false;
 
   constructor(options: CodexAcpRuntimeOptions) {
@@ -380,83 +382,28 @@ export class CodexAcpRuntimeDriver extends EventEmitter implements ManagedRuntim
   }
 
   private consumeUpdate(update: SessionUpdate, notification: SessionNotification): void {
-    const translated = translateAcpUpdate(update);
     const sessionId = notification.sessionId;
     if (sessionId && sessionId !== this.currentSessionId) {
       this.currentSessionId = sessionId;
       this.emit('session', { sessionId });
     }
-
-    if ((translated.type === 'message_delta' || translated.type === 'thought_delta') && translated.text) {
-      const content = translated.type === 'thought_delta'
-        ? { type: 'thinking', thinking: translated.text }
-        : { type: 'text', text: translated.text };
-      this.emit('stream_event', {
-        type: 'assistant',
-        runtime: 'codex_acp',
-        session_id: sessionId,
-        sessionId,
-        message: { content: [content] },
-        acpUpdate: update.sessionUpdate,
-      } satisfies CodexAcpStreamEvent);
-      return;
-    }
-
-    if (translated.type === 'tool_call') {
-      const toolId = stringField(update, 'toolCallId') ?? stringField(update, 'id') ?? `${sessionId ?? 'codex-acp'}-tool`;
-      this.emit('stream_event', {
-        type: 'assistant',
-        runtime: 'codex_acp',
-        session_id: sessionId,
-        sessionId,
-        message: {
-          content: [{
-            type: 'tool_use',
-            id: toolId,
-            name: translated.toolName ?? 'tool',
-            input: {
-              status: translated.status,
-              command: codexToolCommandPreview(update),
-              raw: update,
-            },
-          }],
-        },
-        acpUpdate: update.sessionUpdate,
-      } satisfies CodexAcpStreamEvent);
-      return;
-    }
-
-    if (translated.type === 'tool_result') {
-      const toolId = stringField(update, 'toolCallId') ?? stringField(update, 'id') ?? `${sessionId ?? 'codex-acp'}-tool`;
-      this.emit('stream_event', {
-        type: 'user',
-        runtime: 'codex_acp',
-        session_id: sessionId,
-        sessionId,
-        message: {
-          content: [{
-            type: 'tool_result',
-            tool_use_id: toolId,
-            content: JSON.stringify({ status: translated.status, raw: update }),
-            is_error: translated.status === 'failed',
-          }],
-        },
-        acpUpdate: update.sessionUpdate,
-      } satisfies CodexAcpStreamEvent);
-      return;
-    }
-
-    if (translated.type === 'usage') {
+    // Preserve the usage_update so buildResultEvent can fold in the context
+    // window; the translator also emits a session_ended stats fragment.
+    if ((update as Record<string, unknown>).sessionUpdate === 'usage_update') {
       this.lastUsageUpdate = update as unknown as Record<string, unknown>;
-      this.emit('stream_event', {
-        type: 'usage',
-        runtime: 'codex_acp',
-        session_id: sessionId,
-        sessionId,
-        used: numberField(update, 'used'),
-        contextWindow: numberField(update, 'size'),
-        raw: update,
-      } satisfies CodexAcpStreamEvent);
+    }
+    for (const event of translateAcpSessionUpdate(update, sessionId)) {
+      // Some agents omit the tool name on tool_call_update; remember it from
+      // the item_started so failure diagnostics name the tool.
+      if (event.type === 'item_started' && event.item.callId && event.item.toolName) {
+        this.toolNamesByCallId.set(event.item.callId, event.item.toolName);
+      }
+      if (event.type === 'item_completed' && event.item.callId && !event.item.toolName) {
+        const remembered = this.toolNamesByCallId.get(event.item.callId);
+        if (remembered) event.item.toolName = remembered;
+        this.toolNamesByCallId.delete(event.item.callId);
+      }
+      this.emit('stream_event', { runtime: 'codex_acp', ...event } satisfies CodexAcpStreamEvent);
     }
   }
 

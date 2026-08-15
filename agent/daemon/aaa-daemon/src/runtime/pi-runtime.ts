@@ -2,7 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import type { Credential } from '../types.js';
 import { buildSlockSystemPrompt } from './claude-runtime.js';
 import { prependPathEnv } from './slock-wrapper.js';
@@ -79,24 +80,46 @@ function buildPiSystemPrompt(options: PiRuntimeOptions): string {
 
 export function resolveBundledPiLayout(env: NodeJS.ProcessEnv = process.env): BundledPiLayout | undefined {
   const rawRoot = env.SMALLKHOJ_DAEMON_INSTALL_ROOT?.trim();
-  if (!rawRoot) return undefined;
-  const installRoot = resolve(rawRoot);
-  const nodePath = env.SMALLKHOJ_BUNDLED_NODE?.trim() || join(
-    installRoot,
-    'runtime',
-    'node',
-    process.platform === 'win32' ? 'node.exe' : 'bin/node',
-  );
+  // Production: an explicit install root points at a release layout that ships
+  // its own bundled node runtime under runtime/node.
+  if (rawRoot) {
+    const installRoot = resolve(rawRoot);
+    const nodePath = env.SMALLKHOJ_BUNDLED_NODE?.trim() || join(
+      installRoot,
+      'runtime',
+      'node',
+      process.platform === 'win32' ? 'node.exe' : 'bin/node',
+    );
+    const piEntry = env.SMALLKHOJ_BUNDLED_PI_ENTRY?.trim() || join(
+      installRoot,
+      'node_modules',
+      '@mariozechner',
+      'pi-coding-agent',
+      'dist',
+      'cli.js',
+    );
+    if (existsSync(nodePath) && existsSync(piEntry)) {
+      return { installRoot, nodePath, piEntry, version: BUNDLED_PI_VERSION };
+    }
+  }
+  // Dev fallback: resolve against the daemon package root (where `npm install`
+  // drops node_modules) so pi is usable without a release install root. The
+  // running daemon's own node is a fine launcher in dev. Mirrors the moduleRoot
+  // derivation used by resolveBundledCodexAcpPath.
+  const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
   const piEntry = env.SMALLKHOJ_BUNDLED_PI_ENTRY?.trim() || join(
-    installRoot,
+    packageRoot,
     'node_modules',
     '@mariozechner',
     'pi-coding-agent',
     'dist',
     'cli.js',
   );
-  if (!existsSync(nodePath) || !existsSync(piEntry)) return undefined;
-  return { installRoot, nodePath, piEntry, version: BUNDLED_PI_VERSION };
+  const nodePath = env.SMALLKHOJ_BUNDLED_NODE?.trim() || process.execPath;
+  if (existsSync(piEntry) && existsSync(nodePath)) {
+    return { installRoot: packageRoot, nodePath, piEntry, version: BUNDLED_PI_VERSION };
+  }
+  return undefined;
 }
 
 export function resolvePiLaunch(options: PiLaunchOptions): { command: string; args: string[] } {

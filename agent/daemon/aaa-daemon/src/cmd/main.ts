@@ -60,6 +60,7 @@ function parseRuntimeOption(value: string): DaemonConfig['runtime'] | undefined 
   if (value === 'claude' || value === 'claude_code') return 'claude_code';
   if (value === 'codex' || value === 'codex_acp') return 'codex';
   if (value === 'opencode' || value === 'kimi_cli' || value === 'custom') return value;
+  if (value === 'goose') return 'goose';
   throw new Error(`Unsupported runtime: ${value}`);
 }
 

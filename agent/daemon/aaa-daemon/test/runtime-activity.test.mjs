@@ -169,3 +169,61 @@ test('user transcript parts are never Thinking or Output', () => {
     opencodeEvent: 'message.part.updated',
   }), []);
 });
+
+// ── AgentEvent path (goose / codex-on-new-schema) ──
+
+test('item_delta text and reasoning both translate to Thinking on the AgentEvent path', () => {
+  assert.deepEqual(
+    translateRuntimeStreamActivity('goose', {
+      type: 'item_delta',
+      sessionId: 's1',
+      delta: { type: 'text', text: 'narration' },
+    }),
+    [{ type: 'thinking', protocol: 'codex-acp', sourceEvent: 'item_delta', text: 'narration' }],
+  );
+  assert.deepEqual(
+    translateRuntimeStreamActivity('goose', {
+      type: 'item_delta',
+      sessionId: 's1',
+      delta: { type: 'reasoning', text: 'hmm' },
+    }),
+    [{ type: 'thinking', protocol: 'codex-acp', sourceEvent: 'item_delta', text: 'hmm' }],
+  );
+});
+
+test('item_started tool_call translates to a tool_use signal with command preview', () => {
+  const signals = translateRuntimeStreamActivity('goose', {
+    type: 'item_started',
+    sessionId: 's1',
+    item: {
+      kind: 'tool_call',
+      role: 'assistant',
+      status: 'in_progress',
+      callId: 'tc-9',
+      toolName: 'shell',
+      content: [{ type: 'tool_call', toolName: 'shell', rawInput: { command: 'ls -la' } }],
+    },
+  });
+  assert.equal(signals.length, 1);
+  assert.equal(signals[0].type, 'tool_use');
+  assert.equal(signals[0].toolUseId, 'tc-9');
+  assert.equal(signals[0].toolName, 'shell');
+  assert.equal(signals[0].commandPreview, 'ls -la');
+});
+
+test('item_completed tool_result produces no activity signal (terminal state only)', () => {
+  assert.deepEqual(
+    translateRuntimeStreamActivity('goose', {
+      type: 'item_completed',
+      sessionId: 's1',
+      item: {
+        kind: 'tool_result',
+        role: 'user',
+        status: 'failed',
+        callId: 'tc-9',
+        content: [{ type: 'tool_result', output: 'boom', isError: true }],
+      },
+    }),
+    [],
+  );
+});

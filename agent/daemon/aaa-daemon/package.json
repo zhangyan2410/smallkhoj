@@ -25,6 +25,7 @@
     "daemon": "node dist/cmd/main.js start",
     "attach": "node dist/cmd/main.js attach",
     "smoke:codex-acp": "npm run build && node dist/scripts/codex-acp-smoke.js",
+    "smoke:goose-acp": "npm run build && node dist/scripts/goose-acp-smoke.js",
     "status": "node dist/cmd/main.js status",
     "stop": "node dist/cmd/main.js stop"
   },

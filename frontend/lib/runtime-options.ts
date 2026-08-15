@@ -16,7 +16,7 @@ export type ProviderOption = { value: string; label: string }
  * ccswitch/manual/opencode-config 检测出的 provider 条目不在 chips 区平铺
  * （它们仅供 Provider 下拉等高级用法使用）。
  */
-export const PRIMARY_RUNTIMES = ["claude_code", "codex", "opencode", "pi"] as const
+export const PRIMARY_RUNTIMES = ["claude_code", "codex", "goose", "opencode", "pi"] as const
 
 /** 是否是 4 条主 runtime 之一（即不含 provider 附加条目）。
  *  provider 附加条目虽然 type 也是 claude_code/codex/opencode，但带有
@@ -123,6 +123,7 @@ export type RuntimeOption = {
 const RUNTIME_LABELS: Record<string, string> = {
   claude_code: "Claude Code",
   codex: "Codex",
+  goose: "Goose",
   opencode: "OpenCode",
   custom: "Custom",
 }

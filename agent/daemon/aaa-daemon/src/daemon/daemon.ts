@@ -24,6 +24,7 @@ import { SessionManager } from './session-manager.js';
 import { type SlockWrapperResult, writeSlockWrapper } from '../runtime/slock-wrapper.js';
 import { ClaudeRuntimeDriver, getContentBlocks } from '../runtime/claude-runtime.js';
 import { CodexAcpRuntimeDriver, codexAcpReadiness } from '../runtime/codex-acp-runtime.js';
+import { GooseRuntimeDriver } from '../runtime/goose-runtime.js';
 import { OpenCodeServerRuntimeDriver } from '../runtime/opencode-server-runtime.js';
 import { PiRuntimeDriver, resolveBundledPiLayout } from '../runtime/pi-runtime.js';
 import type { ManagedRuntimeDriver } from '../runtime/runtime-driver.js';
@@ -241,7 +242,7 @@ interface RuntimeRecord {
   };
 }
 
-type DaemonRuntimeImplementation = 'pi' | 'claude_code' | 'codex' | 'opencode';
+type DaemonRuntimeImplementation = 'pi' | 'claude_code' | 'codex' | 'goose' | 'opencode';
 
 export function workspacePathSegment(value: string | undefined, fallback: string): string {
   const segment = (value || fallback).trim().replace(/[^A-Za-z0-9_.-]/g, '_');
@@ -772,7 +773,7 @@ export class DaemonCore extends EventEmitter {
       this.startDaemonHeartbeat();
     }
 
-    if ((this.config.runtime === 'claude_code' || this.config.runtime === 'codex' || this.config.runtime === 'codex_acp' || this.config.runtime === 'opencode' || this.config.runtime === 'pi') && this.credential.agentId) {
+    if ((this.config.runtime === 'claude_code' || this.config.runtime === 'codex' || this.config.runtime === 'codex_acp' || this.config.runtime === 'goose' || this.config.runtime === 'opencode' || this.config.runtime === 'pi') && this.credential.agentId) {
       this.startRuntimeForAgent(this.credential.agentId, {
         runtime: this.config.runtime,
         runtimeCommand: this.config.runtimeCommand,
@@ -1215,6 +1216,18 @@ export class DaemonCore extends EventEmitter {
           resumeSessionId: resumeSessionId ?? undefined,
           baseEnv,
         })
+      : runtimeType === 'goose'
+      ? new GooseRuntimeDriver({
+          credential,
+          workspacePath,
+          wrapperDir: wrapper.wrapperDir,
+          slockHome: wrapper.slockHome,
+          launchId: wrapper.launchId,
+          command,
+          commandArgs,
+          resumeSessionId: resumeSessionId ?? undefined,
+          baseEnv,
+        })
       : runtimeType === 'opencode'
         ? new OpenCodeServerRuntimeDriver({
           credential,
@@ -1352,6 +1365,29 @@ export class DaemonCore extends EventEmitter {
             }
           }
         }
+        // AgentEvent path (goose / codex-on-new-schema): structured tool items
+        // replace the pseudo-Anthropic envelope scan above.
+        if (eventType === 'item_started' && isRecord(event.item) && event.item.kind === 'tool_call') {
+          const toolName = typeof event.item.toolName === 'string' ? event.item.toolName : '';
+          const callId = typeof event.item.callId === 'string' ? event.item.callId : undefined;
+          const callPart = Array.isArray(event.item.content)
+            ? event.item.content.find((part) => isRecord(part) && part.type === 'tool_call')
+            : undefined;
+          const rawInput = isRecord(callPart) ? callPart.rawInput : undefined;
+          const cmd = isRecord(rawInput) && typeof rawInput.command === 'string' ? rawInput.command : '';
+          if (callId && (/aura/i.test(toolName) || /\baura\b/.test(cmd))) {
+            runtime.pendingWarmupResult.add(callId);
+          }
+        }
+        if (eventType === 'item_completed' && isRecord(event.item) && event.item.kind === 'tool_result') {
+          const callId = typeof event.item.callId === 'string' ? event.item.callId : undefined;
+          if (callId && runtime.pendingWarmupResult.has(callId)) {
+            runtime.pendingWarmupResult.delete(callId);
+            if (event.item.status !== 'failed') {
+              this.markRuntimeReady(runtime, 'warmup_aura_ok');
+            }
+          }
+        }
       }
 
       if (runtime.activeTraceId) {
@@ -1392,7 +1428,12 @@ export class DaemonCore extends EventEmitter {
           // Store on the runtime record so the Idle activity can use real values.
           runtime.lastTurnUsage = sessionUsage
             ? { source: 'session-jsonl', ...sessionUsage }
-            : { source: 'provider-stream-json', inputTokens: realInputTokens, outputTokens: realOutputTokens, cacheReadInputTokens: providerCacheRead };
+            : {
+              source: 'provider-stream-json',
+              inputTokens: realInputTokens ?? (typeof resultUsage?.input_tokens === 'number' ? resultUsage.input_tokens : undefined),
+              outputTokens: realOutputTokens ?? (typeof resultUsage?.output_tokens === 'number' ? resultUsage.output_tokens : undefined),
+              cacheReadInputTokens: providerCacheRead,
+            };
 
           this.emitLatencyTrace(runtime.activeTraceId, 'daemon.runtime.result', {
             flow: 'message_to_agent_reply',
@@ -1411,10 +1452,11 @@ export class DaemonCore extends EventEmitter {
         }
       }
 
-      if (eventType === 'usage') {
+      if (eventType === 'usage' || eventType === 'session_ended') {
         const usageEvent = isRecord(event) ? event : {};
-        const knownTokens = numberFrom(usageEvent.used) ?? numberFrom(usageEvent.totalTokens) ?? numberFrom(usageEvent.total_tokens);
-        const contextWindow = numberFrom(usageEvent.contextWindow) ?? numberFrom(usageEvent.context_window) ?? numberFrom(usageEvent.size);
+        const stats = isRecord(usageEvent.stats) ? usageEvent.stats : {};
+        const knownTokens = numberFrom(usageEvent.used) ?? numberFrom(stats.contextTokens) ?? numberFrom(usageEvent.totalTokens) ?? numberFrom(usageEvent.total_tokens);
+        const contextWindow = numberFrom(usageEvent.contextWindow) ?? numberFrom(stats.contextWindow) ?? numberFrom(usageEvent.context_window) ?? numberFrom(usageEvent.size);
         runtime.lastTurnContextUsage = {
           source: 'runtime_usage_event',
           knownTokens,
@@ -1429,7 +1471,29 @@ export class DaemonCore extends EventEmitter {
       // Only report after the runtime has finished warming up; warmup itself
       // would otherwise flood the timeline with Thinking/Output entries.
       if (runtime.ready) {
-        if (runtime.activeTaskRunId && eventType === 'user') {
+        // Structured failure diagnostics (AgentEvent path). status === 'failed'
+        // is the authoritative signal; the legacy stream_event regex scan is no
+        // longer needed for ACP runtimes (the stderr 'line' regex remains).
+        if (eventType === 'item_completed' && isRecord(event.item) && event.item.status === 'failed') {
+          const toolName = typeof event.item.toolName === 'string' ? event.item.toolName : 'tool';
+          const contentParts = Array.isArray(event.item.content) ? event.item.content : [];
+          const resultPart = contentParts.find((part) => isRecord(part) && part.type === 'tool_result') as Record<string, unknown> | undefined;
+          const output = isRecord(resultPart) && typeof resultPart.output === 'string' ? resultPart.output : '';
+          void this.reportRuntimeActivity(
+            runtime,
+            'runtime_error',
+            runtimeDiagnosticDescription('error', `Tool ${toolName} failed${output ? `: ${output.slice(0, 200)}` : ''}`),
+            {
+              runtime: runtime.runtime,
+              severity: 'error',
+              source: 'tool_result',
+              toolName,
+              message: output.slice(0, 240),
+              sessionId: driver.sessionId,
+            },
+          );
+        }
+        if (runtime.activeTaskRunId && (eventType === 'user' || eventType === 'item_completed')) {
           const toolResultCount = countToolResults(event);
           runtime.activeTaskRunToolResultCount += toolResultCount;
           const outputMessageId = extractTaskRunOutputMessageIdFromEvent(event);
@@ -1456,7 +1520,10 @@ export class DaemonCore extends EventEmitter {
         const activitySignals = translateRuntimeStreamActivity(runtimeType, event);
         for (const signal of activitySignals) {
           if (signal.type !== 'thinking') continue;
-          const severity = classifyRuntimeDiagnostic(signal.text);
+          // The AgentEvent path (item_delta) no longer regex-scans model text —
+          // tool failures arrive structured via item_completed status. Legacy
+          // envelope runtimes (claude_code/pi/opencode) keep the text scan.
+          const severity = eventType === 'assistant' ? classifyRuntimeDiagnostic(signal.text) : undefined;
           if (severity) {
             void this.reportRuntimeActivity(
               runtime,
@@ -1488,7 +1555,7 @@ export class DaemonCore extends EventEmitter {
             });
           }
         }
-        if (eventType === 'assistant' && runtime.activityTurnState !== 'idle') {
+        if ((eventType === 'assistant' || eventType === 'item_started') && runtime.activityTurnState !== 'idle') {
           let toolUseRecorded = false;
           for (const signal of activitySignals) {
             if (signal.type !== 'tool_use') continue;
@@ -1594,12 +1661,12 @@ export class DaemonCore extends EventEmitter {
         agentId,
         status: 'active',
         cwd: workspacePath,
-        command: runtime.runtimeCommand ?? (runtime.runtime === 'codex' ? 'npx @zed-industries/codex-acp@0.16.0' : runtime.runtime === 'opencode' ? 'opencode serve' : 'claude'),
+        command: runtime.runtimeCommand ?? (runtime.runtime === 'codex' ? 'npx @zed-industries/codex-acp@0.16.0' : runtime.runtime === 'goose' ? 'goose acp' : runtime.runtime === 'opencode' ? 'opencode serve' : 'claude'),
         createdAt: now,
         updatedAt: now,
       });
-      if (runtime.runtime === 'codex' || runtime.runtime === 'opencode') {
-        this.markRuntimeReady(runtime, runtime.runtime === 'codex' ? 'codex_acp_session_ready' : 'opencode_session_ready');
+      if (runtime.runtime === 'codex' || runtime.runtime === 'goose' || runtime.runtime === 'opencode') {
+        this.markRuntimeReady(runtime, runtime.runtime === 'codex' ? 'codex_acp_session_ready' : runtime.runtime === 'goose' ? 'goose_acp_session_ready' : 'opencode_session_ready');
       }
       this.emitRuntimeTrace({ type: 'session', agentId, sessionId, sessionScope: activeSessionScope?.key });
       this.emit('runtime_session', { agentId, sessionId, sessionScope: activeSessionScope?.key });
@@ -2863,6 +2930,17 @@ function collectRuntimeControlResult(
   const chunks: string[] = [];
   let capturedChars = 0;
   let outputTruncated = false;
+  const captureControlText = (text: string) => {
+    const remaining = RUNTIME_CONTROL_OUTPUT_MAX_CHARS - capturedChars;
+    if (remaining <= 0) {
+      outputTruncated = true;
+      return;
+    }
+    const captured = text.slice(0, remaining);
+    chunks.push(captured);
+    capturedChars += captured.length;
+    if (captured.length < text.length) outputTruncated = true;
+  };
   let settleCollector: (patch?: Partial<DaemonRuntimeControlResult>) => void = () => {};
   const promise = new Promise<DaemonRuntimeControlResult>((resolveResult) => {
     let settled = false;
@@ -2890,15 +2968,15 @@ function collectRuntimeControlResult(
       if (event.type === 'assistant') {
         for (const block of getContentBlocks(event)) {
           if (block.type !== 'text' || typeof block.text !== 'string') continue;
-          const remaining = RUNTIME_CONTROL_OUTPUT_MAX_CHARS - capturedChars;
-          if (remaining <= 0) {
-            outputTruncated = true;
-            continue;
-          }
-          const captured = block.text.slice(0, remaining);
-          chunks.push(captured);
-          capturedChars += captured.length;
-          if (captured.length < block.text.length) outputTruncated = true;
+          captureControlText(block.text);
+        }
+      }
+      if (event.type === 'item_delta') {
+        // AgentEvent path (goose / codex-on-new-schema): assistant text arrives
+        // as item_delta(text); reasoning deltas must not leak into the output.
+        const delta = isRecord(event.delta) ? event.delta : undefined;
+        if (delta?.type === 'text' && typeof delta.text === 'string') {
+          captureControlText(delta.text);
         }
       }
       if (event.type === 'result') {
@@ -2927,6 +3005,7 @@ function normalizeDaemonRuntimeType(runtime: string | undefined): DaemonRuntimeI
   if (runtime === 'codex' || runtime === 'codex_acp') return 'codex';
   if (runtime === 'opencode') return 'opencode';
   if (runtime === 'pi') return 'pi';
+  if (runtime === 'goose') return 'goose';
   return undefined;
 }
 
@@ -2956,7 +3035,7 @@ function isNpxLikeCommand(command: string): boolean {
 }
 
 function requiresDetectedRuntimeCommand(runtime: DaemonRuntimeImplementation): boolean {
-  return runtime === 'claude_code' || runtime === 'opencode';
+  return runtime === 'claude_code' || runtime === 'opencode' || runtime === 'goose';
 }
 
 function runtimeCommandDetectionError(runtime: DaemonRuntimeImplementation): string {
@@ -2965,6 +3044,9 @@ function runtimeCommandDetectionError(runtime: DaemonRuntimeImplementation): str
   }
   if (runtime === 'opencode') {
     return 'Cannot start opencode runtime: no OpenCode command was detected. Install OpenCode or set SLOCK_OPENCODE_COMMAND/OPENCODE_COMMAND.';
+  }
+  if (runtime === 'goose') {
+    return 'Cannot start goose runtime: no goose command was detected. Install goose (`brew install goose` or the official install.sh) or set SLOCK_GOOSE_COMMAND/GOOSE_COMMAND.';
   }
   return `Cannot start ${runtime} runtime: no launch command was detected.`;
 }
@@ -3101,13 +3183,25 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export function extractTaskRunOutputMessageIdFromEvent(event: unknown): string | undefined {
   const record = isRecord(event) ? event : {};
+  // AgentEvent path: item_completed whose tool_result content part holds the
+  // aura `message send` stdout JSON. The hard invariant is that this stdout
+  // stays fully recoverable from the part's output string.
+  if (record.type === 'item_completed' && isRecord(record.item)) {
+    const content = Array.isArray(record.item.content) ? record.item.content : [];
+    for (const part of content) {
+      if (!isRecord(part) || part.type !== 'tool_result') continue;
+      const direct = extractMessageIdFromUnknown(part.output);
+      if (direct) return direct;
+    }
+  }
+  // Legacy pseudo-Anthropic envelope path (claude_code / pi / opencode).
   for (const block of getContentBlocks(record)) {
     if (block.type !== 'tool_result') continue;
     const direct = extractMessageIdFromUnknown(block);
     if (direct) return direct;
   }
   if (isRecord(event)) {
-    const direct = extractMessageIdFromUnknown(event.tool_use_result);
+    const direct = extractMessageIdFromUnknown(record.tool_use_result);
     if (direct) return direct;
   }
   return undefined;
@@ -3143,8 +3237,12 @@ function extractMessageIdFromUnknown(value: unknown): string | undefined {
   return undefined;
 }
 
-function countToolResults(event: unknown): number {
+export function countToolResults(event: unknown): number {
   const record = isRecord(event) ? event : {};
+  // AgentEvent path: one item_completed carries exactly one tool_result.
+  if (record.type === 'item_completed' && isRecord(record.item) && record.item.kind === 'tool_result') {
+    return 1;
+  }
   return getContentBlocks(record).filter((block) => block.type === 'tool_result').length;
 }
 

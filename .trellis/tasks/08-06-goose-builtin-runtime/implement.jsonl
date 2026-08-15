@@ -1,0 +1,11 @@
+{"file": ".trellis/tasks/08-06-goose-builtin-runtime/research/nap-goose-integration.md", "reason": "NAP goose 接入逐行实现解析——session-store codec、trackExtNotification/recordUsage、applyProviderEnv，移植依据"}
+{"file": ".trellis/tasks/08-06-goose-builtin-runtime/research/smallkhoj-acp-architecture.md", "reason": "smallkhoj 现有 ACP 桥/runtime 抽象/工厂/检测体系与 R1-R7 全量接线清单"}
+{"file": ".trellis/spec/backend/runtime-slock-integration.md", "reason": "现有 daemon/runtime/control 契约——goose runtime 须遵守同一 slock 集成约束"}
+{"file": ".trellis/spec/backend/event-delivery-contracts.md", "reason": "事件投递契约——goose 的 stream_event/usage 事件须保持控制面安全、不污染 agent prompt"}
+{"file": ".trellis/tasks/08-06-goose-builtin-runtime/research/nap-universal-event.md", "reason": "NAP UniversalEvent 深调研——Part B 档 3 schema 重构蓝本（主干设计/translator/消费者/四字段决策依据）"}
+{"file": ".trellis/tasks/08-06-goose-builtin-runtime/research/smallkhoj-stream-event-consumers.md", "reason": "codex stream_event 21 个消费者彻查——档 3 风险审计 + 5 通用消费者迁移清单 + aura stdout 硬约束"}
+{"file": "agent/daemon/aaa-daemon/src/daemon/daemon.ts", "reason": "审计修复：boot 自启动条件加 goose；control output capture 迁移 item_delta（codex 回归）；lastTurnUsage 回退 result usage"}
+{"file": "agent/daemon/aaa-daemon/src/runtime/goose-runtime.ts", "reason": "审计修复：per-turn usage 三层（message_usage 汇总→累积 delta→PromptResponse）；toolName by callId 补全"}
+{"file": "backend/routers/public_api.py", "reason": "产品侧集成：_normalize_runtime 白名单加 goose（缺失则 UI 无法创建 goose agent，API 400）"}
+{"file": "frontend/lib/runtime-options.ts", "reason": "产品侧集成：RUNTIME_LABELS/PRIMARY_RUNTIMES/publicRuntimeValue 加 goose"}
+{"file": ".agents/skills/smallkhoj-add-runtime/SKILL.md", "reason": "沉淀「新增 runtime」通用工作流（daemon 接线→事件契约→产品接线→测试阶梯→坑清单），供 kimicode / DeepSeek Harness 复用"}
