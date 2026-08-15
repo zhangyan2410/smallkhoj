@@ -1,6 +1,6 @@
 ---
 name: aura-zcode-frontend-sop
-description: SmallKhoj 前端开发测试 SOP。在 SmallKhoj 项目里做前端改动、测试、调试、浏览器验证时自动触发。覆盖 kimi-webbridge 真实浏览器测试、dev server 管理、代码变更验证、回归排查的完整流程。当用户让你改前端、测试、复现 bug、或提到 localhost:3000/聊天页面/agent 时加载。
+description: SmallKhoj 前端开发测试 + 云端部署 SOP。在 SmallKhoj 项目里做前端改动、测试、调试、浏览器验证、部署到云端时自动触发。覆盖 kimi-webbridge 真实浏览器测试、dev server 管理、代码变更验证、回归排查、Tencent Lighthouse 云端部署的完整流程。当用户让你改前端、测试、复现 bug、部署、上传云端、同步云端，或提到 localhost:3000/聊天页面/agent/124.222.40.40 时加载。
 ---
 
 # SmallKhoj 前端开发测试 SOP
@@ -177,3 +177,159 @@ SmallKhoj 前端的 `window.location.href`（整页加载）和 `router.push`（
 - **ChatDataProvider 是 SSR 快照**，client 端要用 `router.refresh()` 刷新，不要自己 fetch（不带 token 会 401）
 - **loading.tsx 在根路由组**，会绕过 `(app)/layout.tsx` 的外壳——取数慢时显示居中骨架屏
 - **响应式布局依赖 `sm:` 媒体查询**（min-width: 40rem = 640px），给 html/body/main 加 `w-full` 确保首帧宽度正确
+
+## 8. 部署到云端（Tencent Lighthouse）
+
+当用户说"部署"、"上传云端"、"同步云端"、"上线"时，走以下流程。
+
+### 前置检查
+
+```bash
+# 1. worktree 干净
+git status --short
+
+# 2. 已推到 origin/main
+git rev-parse HEAD && git rev-parse origin/main  # 两个必须一致
+
+# 3. SSH key 存在
+ls /Users/lee/.ssh/tengxun-ssh-key.pem
+
+# 4. ORICO 外置盘挂载（用于存镜像 archive）
+ls /Volumes/ORICO/  # 如果没挂载，提醒用户插上
+```
+
+### 获取 PUBLIC_API_KEY
+
+`PUBLIC_API_KEY` 不在仓库、不在 release-worker.env。从云端 `.env.prod` 读取（不打印到聊天）：
+
+```bash
+ssh -i /Users/lee/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'grep "^PUBLIC_API_KEY=" /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod' \
+  > /tmp/.deploy-pubkey
+export $(cat /tmp/.deploy-pubkey)
+rm -f /tmp/.deploy-pubkey
+```
+
+**绝不能**：打印密钥值、用 dev 默认值 `sk_public_local`、把密钥贴到聊天/URL。
+
+### 镜像构建 + 传输（--authorized 模式）
+
+用户授权后用 `--authorized`（不需要容量报告、不需要 Trellis task）：
+
+```bash
+cd /Users/code/project/smallkhoj
+export $(cat /tmp/.deploy-pubkey)
+python3 scripts/production_image_transfer.py \
+  --host 124.222.40.40 \
+  --user ubuntu \
+  --identity-file /Users/lee/.ssh/tengxun-ssh-key.pem \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
+  --platform linux/amd64 \
+  --authorized \
+  --output-archive /Volumes/ORICO/smallkhoj-deploy/smallkhoj-production-images-amd64.tar \
+  --use-vpn-proxy
+```
+
+**常见报错**：
+- `ConnectionClosed downloading tarball` → bun install 偶发断线，直接重跑
+- `daemon artifact source revision does not match` → 已修复，`--skip-daemon-build` 才校验已有 artifact
+- `Trellis task metadata not found` → 用 `--authorized` 而非 `--task-scoped`
+
+### Phase 5: app-only deploy
+
+**永远不包含 `db`**。
+
+**关键：先确认 `.env.prod` 的 image tag 指向 `local-release`。** 如果指向旧 commit tag（如 `5cadf11`），compose 会用旧镜像而非新上传的 `local-release`，导致部署"看起来成功"但代码没更新：
+
+```bash
+# 检查+修复 image tag（先备份再改）
+ssh -i ~/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'cd /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy && \
+   cp .env.prod .env.prod.bak.$(date +%s) && \
+   sed -i "s|SMALLKHOJ_BACKEND_IMAGE=.*|SMALLKHOJ_BACKEND_IMAGE=smallkhoj-backend:local-release|" .env.prod && \
+   sed -i "s|SMALLKHOJ_FRONTEND_IMAGE=.*|SMALLKHOJ_FRONTEND_IMAGE=smallkhoj-frontend:local-release|" .env.prod && \
+   sed -i "s|SMALLKHOJ_CADDY_IMAGE=.*|SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:local-release|" .env.prod'
+
+# 确认 tag 正确
+ssh -i ~/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'grep IMAGE /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod'
+```
+
+然后 deploy：
+
+```bash
+ssh -i /Users/lee/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'cd /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy && \
+   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
+   --force-recreate --no-deps --no-build --pull never backend frontend caddy'
+```
+
+### 确认部署成功
+
+```bash
+# 容器状态
+ssh -i /Users/lee/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'docker compose --env-file /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod \
+   -f /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/docker-compose.prod.yml ps \
+   --format "{{.Name}} {{.Status}}"'
+
+# 健康检查（endpoint 是 /api/health，不是 /health）
+curl -s -m 10 -o /dev/null -w "HTTP %{http_code}\n" http://124.222.40.40/api/health
+```
+
+### Smoke 测试
+
+**默认不做。** 只在用户主动要求时才跑 `post_deploy_smoke.py`。
+
+### 部署目标信息
+
+```
+Host:     124.222.40.40 (Tencent Lighthouse lhins-6gznhrts, ap-shanghai)
+User:     ubuntu
+Base URL: http://124.222.40.40
+Key:      /Users/lee/.ssh/tengxun-ssh-key.pem
+Remote:   /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy
+Secrets:  云端 .env.prod（含 PUBLIC_API_KEY 等）
+Images:   smallkhoj-{backend,frontend,caddy}:local-release
+```
+
+### 完整部署命令（复制即用）
+
+```bash
+# 1. 获取密钥
+ssh -i ~/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'grep "^PUBLIC_API_KEY=" /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod' > /tmp/.deploy-pubkey
+export $(cat /tmp/.deploy-pubkey) && rm -f /tmp/.deploy-pubkey
+
+# 2. 构建+传输
+cd /Users/code/project/smallkhoj
+python3 scripts/production_image_transfer.py \
+  --host 124.222.40.40 --user ubuntu \
+  --identity-file ~/.ssh/tengxun-ssh-key.pem \
+  --remote-dir /home/ubuntu/smallkhoj-deploy \
+  --platform linux/amd64 --authorized \
+  --output-archive /Volumes/ORICO/smallkhoj-deploy/smallkhoj-production-images-amd64.tar \
+  --use-vpn-proxy
+
+# 3. 修复 .env.prod image tag 指向 local-release（关键！不做这步会部署旧镜像）
+ssh -i ~/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'cd /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy && \
+   cp .env.prod .env.prod.bak.$(date +%s) && \
+   sed -i "s|SMALLKHOJ_BACKEND_IMAGE=.*|SMALLKHOJ_BACKEND_IMAGE=smallkhoj-backend:local-release|" .env.prod && \
+   sed -i "s|SMALLKHOJ_FRONTEND_IMAGE=.*|SMALLKHOJ_FRONTEND_IMAGE=smallkhoj-frontend:local-release|" .env.prod && \
+   sed -i "s|SMALLKHOJ_CADDY_IMAGE=.*|SMALLKHOJ_CADDY_IMAGE=smallkhoj-caddy:local-release|" .env.prod'
+
+# 4. 部署
+ssh -i ~/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'cd /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy && \
+   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d \
+   --force-recreate --no-deps --no-build --pull never backend frontend caddy'
+
+# 5. 确认（必须看到 local-release tag，不是旧 commit tag）
+ssh -i ~/.ssh/tengxun-ssh-key.pem ubuntu@124.222.40.40 \
+  'docker compose --env-file /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/.env.prod \
+   -f /home/ubuntu/smallkhoj-deploy/smallkhoj-deploy/docker-compose.prod.yml ps \
+   --format "{{.Name}} {{.Image}} {{.Status}}"'
+curl -s -o /dev/null -w "%{http_code}" http://124.222.40.40/api/health
+```
+

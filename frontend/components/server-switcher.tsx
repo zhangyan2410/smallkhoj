@@ -58,10 +58,10 @@ export function ServerSwitcher({ session }: { session: AccountSession }) {
     <details data-region="server-switcher" className="group/server-switcher relative">
       <summary
         aria-label={t("ariaServer", { name: active.server.name })}
-        title={active.server.name}
+        title={`${active.server.name} · ${activeRole}`}
         className="sk-rail-logo relative flex size-9 cursor-pointer list-none items-center justify-center rounded-none text-sm font-semibold marker:hidden transition-transform active:translate-y-px group-open/server-switcher:translate-x-px group-open/server-switcher:translate-y-px [&::-webkit-details-marker]:hidden"
       >
-        <span aria-hidden>{accountInitial(accountLabel)}</span>
+        <span aria-hidden>{accountInitial(active.server.name)}</span>
       </summary>
       <InkframeObjectSurface raised className="fixed left-14 top-3 z-50 w-[min(20rem,calc(100vw-4.5rem))] text-sand-ink">
         <div className="border-b-2 border-[var(--ink)] bg-sand-card px-2.5 py-2">
@@ -82,7 +82,7 @@ export function ServerSwitcher({ session }: { session: AccountSession }) {
 
         <div className="px-2.5 py-2">
           <ObjectField
-            label={`${t("currentServer")} · ${activeRole}`}
+            label={`${t("currentServer")} · ${activeRole}${active.isDefault ? ` · ${t("homeServer")}` : ""}`}
             mono={false}
             value={
               <span className="inline-flex min-w-0 items-center gap-2">

@@ -22,6 +22,7 @@ import type { ChannelInfo, DmInfo } from "./chat-data-context"
  */
 
 const cachedCurrentAccount = cache(currentAccount)
+export { cachedCurrentAccount }
 const cachedSessionToken = cache(getSessionToken)
 
 async function buildChatHeaders(): Promise<Record<string, string>> {

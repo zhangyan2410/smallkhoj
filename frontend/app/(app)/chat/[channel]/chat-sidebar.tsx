@@ -49,7 +49,13 @@ function latestSeqEventMatchesEntity(entity: ChatUnreadEntity, detail: ChatLates
   return false
 }
 
-export function ChatSidebar() {
+export function ChatSidebar({
+  canManageServer = false,
+  serverContextLabel = "",
+}: {
+  canManageServer?: boolean
+  serverContextLabel?: string
+}) {
   const { channels, dms, allMembers, currentChannelName } = useChatData()
   const router = useRouter()
   const { store: unreadStore, clearKeys: clearUnreadKeys } = useActivityUnreadStore()
@@ -196,7 +202,7 @@ export function ChatSidebar() {
         >
           {tChat("workbench")}
           <span className="mt-0.5 block text-xs font-normal text-sand-muted">
-            {tChat("sidebarSubtitle") ?? "Channels & DMs"}
+            {serverContextLabel || tChat("sidebarSubtitle") || "Channels & DMs"}
           </span>
         </Link>
       </div>
@@ -216,7 +222,7 @@ export function ChatSidebar() {
         <Section
           title={tChat("channels")}
           tone="blue"
-          action={<CreateChannelDialog />}
+          action={canManageServer ? <CreateChannelDialog /> : undefined}
         >
           {[...channels]
             .sort((a, b) => a.name.localeCompare(b.name))
@@ -244,7 +250,7 @@ export function ChatSidebar() {
         </Section>
 
         {/* DMs */}
-        <Section title={tChat("dms")} tone="mint" action={<CreateAgentDialog />}>
+        <Section title={tChat("dms")} tone="mint" action={canManageServer ? <CreateAgentDialog /> : undefined}>
           {dms.map((dm) => {
             const peer = dmAvatarMember(dm)
             const isActive = dm.name === currentChannelName

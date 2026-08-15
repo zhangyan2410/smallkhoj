@@ -81,6 +81,13 @@ All production Channel membership mutations call
 
 - One Account bootstraps exactly one home Server, one Human Member, and one
   owner `ServerMembership` in one transaction.
+- Optional official Server auto-join: when `OFFICIAL_SERVER_HANDLE` names an
+  existing Server, the same signup transaction also writes one plain `member`
+  `ServerMembership` for that Server (same Human Member UUID, never a copy).
+  The hook runs only on the create branch of `bootstrap_account()`
+  (`services/account_bootstrap.py`); resume never duplicates memberships, the
+  official Account's own home Server skips the self-join, and an empty or
+  unknown handle skips the auto-join without failing signup.
 - Joining another Server adds a `ServerMembership` that points to the same Human
   Member UUID. It never creates a Server-local Human copy.
 - Agents have an immutable origin Server and can join only Channels belonging
@@ -139,6 +146,7 @@ All production Channel membership mutations call
 | Human lacks active Server membership for a Channel | 403 |
 | Strict Channel removal targets missing membership | 404 and no event/revision change |
 | Non-owner/admin mutates members | 403 |
+| Non-owner/admin creates a Channel (`POST /channels`) | 403 `Server owner/admin role required` |
 | Additional Server creation | 410 |
 | Identity migration sees existing identity rows | fail with `IDENTITY_CLEAN_RESET_REQUIRED` |
 | Unknown or ambiguous manual `@` token | send succeeds as ordinary text; mention nobody |

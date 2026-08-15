@@ -43,6 +43,7 @@ import {
 } from "@/lib/control-plane"
 import { isPrimaryRuntime } from "@/lib/runtime-options"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { canManageActiveServer } from "@/lib/server-permissions"
 import { resolvePublicApiBaseFromHeaders } from "@/lib/runtime-url"
 import type { OnboardingPreview, PlatformCommandMap } from "@/lib/computer-onboarding"
 
@@ -717,6 +718,7 @@ export default async function ComputersPage({
 }) {
   const session = await requireCurrentAccount()
   const t = await getTranslations("computers")
+  const canManageServer = canManageActiveServer(session)
   const copy = makeComputersCopy(t)
   const resolvedSearchParams = (await searchParams) ?? {}
   const cookieStore = await cookies()
@@ -764,14 +766,16 @@ export default async function ComputersPage({
             <span className="font-semibold text-sand-ink">{copy.computerCount(computers.length)}</span>
             <span className="flex items-center gap-2">
               <span className="text-xs text-sand-muted">{onlineComputers} {copy.online}</span>
-              <ConnectComputerDialog
-                action={createComputerConnectCommandAction}
-                credential={credential}
-                preview={onboardingPreview}
-                connectedComputerName={connectedComputer?.name}
-                error={error}
-                initialStepsOpen={showConnectComputerForm}
-              />
+              {canManageServer ? (
+                <ConnectComputerDialog
+                  action={createComputerConnectCommandAction}
+                  credential={credential}
+                  preview={onboardingPreview}
+                  connectedComputerName={connectedComputer?.name}
+                  error={error}
+                  initialStepsOpen={showConnectComputerForm}
+                />
+              ) : null}
             </span>
           </div>
           <div data-inkframe-mobile-role="computers-list" className="min-h-0 min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto p-2">

@@ -646,7 +646,8 @@
     "signOut": "退出登录",
     "roleOwner": "拥有者",
     "roleAdmin": "管理员",
-    "roleMember": "成员"
+    "roleMember": "成员",
+    "homeServer": "我的"
   },
   "settings": {
     "title": "外观",

@@ -31,6 +31,7 @@ import { API_BASE, apiGet, apiGetCritical, formatTime, type Computer, type Membe
 import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { getStatusBucket, getStatusLabel } from "@/lib/agent-status"
 import { getSessionToken, requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { canManageActiveServer } from "@/lib/server-permissions"
 import type { TaskProjectionTask as Task } from "@/lib/task-projection"
 
 type Channel = {
@@ -223,6 +224,7 @@ export default async function Home({
   const session = await requireCurrentAccount()
   const sessionToken = await getSessionToken()
   const activeServerId = session.server.id
+  const canManageServer = canManageActiveServer(session)
   const resolvedSearchParams = (await searchParams) ?? {}
   const searchQuery = Array.isArray(resolvedSearchParams.q) ? resolvedSearchParams.q[0] : resolvedSearchParams.q
   const t = await getTranslations("home")
@@ -266,22 +268,24 @@ export default async function Home({
       sidebarDescription={t("quickStartDesc")}
       sidebar={
         <div className="space-y-4">
-          <form action={createChannelAction} className="flex items-end gap-2">
-            <div className="min-w-0 flex-1">
-              <label htmlFor="channel-name" className="mb-1 block text-xs font-medium text-muted-foreground">
-                {t("newChannel")}
-              </label>
-              <Input
-                id="channel-name"
-                name="channelName"
-                placeholder={t("channelPlaceholder")}
-                required
-              />
-            </div>
-            <Button type="submit" size="icon" aria-label={t("newChannel")}>
-              <Plus className="size-4" />
-            </Button>
-          </form>
+          {canManageServer ? (
+            <form action={createChannelAction} className="flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <label htmlFor="channel-name" className="mb-1 block text-xs font-medium text-muted-foreground">
+                  {t("newChannel")}
+                </label>
+                <Input
+                  id="channel-name"
+                  name="channelName"
+                  placeholder={t("channelPlaceholder")}
+                  required
+                />
+              </div>
+              <Button type="submit" size="icon" aria-label={t("newChannel")}>
+                <Plus className="size-4" />
+              </Button>
+            </form>
+          ) : null}
           <form action={createDmAction} className="flex items-end gap-2">
             <div className="min-w-0 flex-1">
               <label htmlFor="dm-peer" className="mb-1 block text-xs font-medium text-muted-foreground">

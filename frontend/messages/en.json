@@ -646,7 +646,8 @@
     "signOut": "Sign out",
     "roleOwner": "Owner",
     "roleAdmin": "Admin",
-    "roleMember": "Member"
+    "roleMember": "Member",
+    "homeServer": "Mine"
   },
   "settings": {
     "title": "Appearance",

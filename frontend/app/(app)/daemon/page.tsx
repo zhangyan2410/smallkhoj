@@ -28,6 +28,7 @@ import { StatusPill } from "@/components/product-ui"
 import { API_BASE, dotClass, statusLabel } from "@/lib/control-plane"
 import { fetchAllTaskPages, type TaskCursorPage } from "@/lib/cursor-pagination"
 import { requireCurrentAccount, serverApiHeaders } from "@/lib/server-auth"
+import { canManageActiveServer } from "@/lib/server-permissions"
 
 type Channel = {
   id: string
@@ -338,7 +339,8 @@ export default async function DaemonPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireCurrentAccount()
+  const session = await requireCurrentAccount()
+  const canManageServer = canManageActiveServer(session)
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const marker = (searchParamValue(resolvedSearchParams.marker) || "").trim()
   const data = await getDashboardData()
@@ -504,16 +506,18 @@ export default async function DaemonPage({
                 </Button>
               </form>
 
-              <form action={createChannelAction} className="space-y-2">
-                <ControlLabel text="Channel" />
-                <Input name="channelName" placeholder="Channel name" required />
-                <Input name="channelDescription" placeholder="Description" />
-                <ControlSelect name="channelType" items={["public", "private"]} fallback="public" />
-                <Button size="sm" variant="outline" className="w-full" type="submit">
-                  <MessageSquare className="size-4" />
-                  Create
-                </Button>
-              </form>
+              {canManageServer ? (
+                <form action={createChannelAction} className="space-y-2">
+                  <ControlLabel text="Channel" />
+                  <Input name="channelName" placeholder="Channel name" required />
+                  <Input name="channelDescription" placeholder="Description" />
+                  <ControlSelect name="channelType" items={["public", "private"]} fallback="public" />
+                  <Button size="sm" variant="outline" className="w-full" type="submit">
+                    <MessageSquare className="size-4" />
+                    Create
+                  </Button>
+                </form>
+              ) : null}
             </CardContent>
           </Card>
 

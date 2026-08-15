@@ -5514,6 +5514,7 @@ async def create_channel(
     request: Request, _auth: None = Depends(verify_public_api_key), db: AsyncSession = Depends(get_db),
 ):
     context = await _resolve_active_server_context(db, request)
+    require_admin_role(context.membership)
     server = context.server
     body = await request.json()
     name = body.get("name")

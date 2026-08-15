@@ -43,6 +43,50 @@ test("channel file deletion is server-authorized, strictly scoped, and collectio
   assert.ok(genericProjectionIndex > fileProjectionIndex)
 })
 
+test("admin-only creation entries are hidden for plain members", async () => {
+  const [chatLayout, chatSidebar, homePage, daemonPage, computersPage] = await Promise.all([
+    read("../app/(app)/chat/layout.tsx"),
+    read("../app/(app)/chat/[channel]/chat-sidebar.tsx"),
+    read("../app/(app)/page.tsx"),
+    read("../app/(app)/daemon/page.tsx"),
+    read("../app/(app)/computers/page.tsx"),
+  ])
+
+  // Chat sidebar: create-channel / create-agent dialogs render only for owner/admin.
+  assert.match(chatLayout, /canManageActiveServer\(account\)/)
+  assert.match(chatLayout, /<ChatSidebar canManageServer=\{canManageServer\}/)
+  assert.match(chatSidebar, /canManageServer \? <CreateChannelDialog \/> : undefined/)
+  assert.match(chatSidebar, /canManageServer \? <CreateAgentDialog \/> : undefined/)
+
+  // Workbench quick-start and daemon control surfaces gate their channel forms.
+  assert.match(homePage, /canManageActiveServer\(session\)/)
+  assert.match(homePage, /\{canManageServer \? \(\s*<form action=\{createChannelAction\}/)
+  assert.match(daemonPage, /\{canManageServer \? \(\s*<form action=\{createChannelAction\}/)
+
+  // Computers page: connect-daemon dialog hidden for plain members.
+  assert.match(computersPage, /\{canManageServer \? \(\s*<ConnectComputerDialog/)
+})
+
+test("current server context is visible in switcher and chat sidebar", async () => {
+  const [switcher, chatLayout, chatSidebar] = await Promise.all([
+    read("../components/server-switcher.tsx"),
+    read("../app/(app)/chat/layout.tsx"),
+    read("../app/(app)/chat/[channel]/chat-sidebar.tsx"),
+  ])
+
+  // Rail trigger identifies the active server (initial + name/role tooltip).
+  assert.match(switcher, /accountInitial\(active\.server\.name\)/)
+  assert.match(switcher, /title=\{`\$\{active\.server\.name\} · \$\{activeRole\}`\}/)
+  // Dropdown marks the home server.
+  assert.match(switcher, /active\.isDefault \? ` · \$\{t\("homeServer"\)\}`/)
+  // Chat sidebar brand row carries the composed "name · role" label.
+  assert.match(chatLayout, /serverContextLabel/)
+  assert.match(chatSidebar, /\{serverContextLabel \|\| tChat\("sidebarSubtitle"\)/)
+
+  assert.ok(en.serverSwitcher.homeServer.trim(), "en.serverSwitcher.homeServer")
+  assert.ok(zh.serverSwitcher.homeServer.trim(), "zh.serverSwitcher.homeServer")
+})
+
 test("English and Chinese destructive-action copy stays complete and non-empty", () => {
   const commonKeys = ["close"] as const
   const taskKeys = [
