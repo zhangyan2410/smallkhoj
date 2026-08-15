@@ -145,6 +145,28 @@ ACP runtime 的事件必须经共享 translator（`src/runtime/acp-event-transla
 - `pkill -f "next dev"` 会杀掉机器上所有 dev server（包括共享 main 栈）。按
   PID/端口杀（`lsof -ti :PORT`）。
 
+## 附：ACP SDK 升级流程（@agentclientprotocol/sdk）
+
+新 runtime 若要求更新的协议特性（或上游发了新 major），按此流程升 SDK：
+
+1. **先审计后升级**——拉上游 CHANGELOG（release-please 生成，无 BREAKING
+   区块 ≠ 无行为变化），再 `npm pack` 新旧两版，diff 三样：
+   `dist/schema/zod.gen.js` 的 `sessionUpdate: z.literal(...)` 成员集
+   （translator 的 switch 是否需要扩）、`dist/acp.d.ts` 导出面（桥用到的
+   `ClientSideConnection`/`ndJsonStream`/`Client` 接口形状）、
+   `PROTOCOL_VERSION`（变了 = 握手兼容性风险）。
+   参考：任务 08-15 的 research/upstream-changelog-audit.md。
+2. **回归阶梯**：`tsc` → 6 个 ACP 相关单测（codex-acp-activity / runtime /
+   mvp / translator / runtime-activity / pi，其中 mvp 用假 ACP 覆盖流层）→
+   `npm run smoke:goose-acp`（真实二进制，覆盖校验策略等行为级变化）。
+3. **行为级变化只有真机能暴露**：如 1.2.0 的 JSON-RPC 校验策略统一——
+   单测过了也必须跑 smoke。
+4. 协议 shape 事实（`tool_call` 必填 `title`、`ToolKind` 封闭枚举）已固化在
+   codex-acp-activity 测试里，SDK 升级后跑它即可验证未漂移。
+5. 升级历史参考：0.28.1→1.3.0（2026-08，无 API 破坏，38 单测+smoke 通过）；
+   ACP v2（schema v2 alpha）当时为实验态未启用，正式化后单独立任务。
+
+
 ## 参考
 
 - 任务 08-06 PRD + research：`.trellis/tasks/08-06-goose-builtin-runtime/`
