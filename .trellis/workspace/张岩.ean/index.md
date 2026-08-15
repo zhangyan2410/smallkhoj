@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 18
+- **Total Sessions**: 19
 - **Last Active**: 2026-08-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~628 | Active |
+| `journal-1.md` | ~661 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 19 | 2026-08-15 | P1 修复：daemon-runtime 套件复活（凭证优先级 + 测试事实更新） | `4454b5c` | `main` |
 | 18 | 2026-08-15 | 08-15 ACP SDK 升级任务收尾：G1/G2/G3/R1.1 全部落地 | `deeeb39` | `main` |
 | 17 | 2026-08-07 | Finish Windows Computer onboarding and cloud deployment | `9f2d0ea` | `main` |
 | 16 | 2026-08-05 | Finish Codex/OpenCode runtime gates: Activity + Aura unified | `49948bd`, `8bf2d1f`, `b48acd5` | `main` |

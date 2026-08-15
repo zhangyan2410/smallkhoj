@@ -626,3 +626,36 @@ Completed Windows/macOS onboarding acceptance handoff and task-scoped cloud-prod
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: P1 修复：daemon-runtime 套件复活（凭证优先级 + 测试事实更新）
+
+**Date**: 2026-08-15
+**Task**: P1 修复：daemon-runtime 套件复活（凭证优先级 + 测试事实更新）
+**Branch**: `main`
+
+### Summary
+
+根因：~/.smallkhoj/daemon/credential.json 静默覆盖显式 --server/SLOCK_AGENT_TOKEN/ids（残留文件指向死端口 64120），无该文件的机器（CI）一直绿。修复：显式 CLI/env 胜过存储凭证；proxy fetch 打 err.cause；daemon-runtime 三处测试事实更新（G2 AGENTS.md、AgentEvent 无文本扫描、goose 一级 runtime）。验收：daemon-runtime 32/32 + 全套 npm test 336/336，进程正常退出（9 天来首次）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4454b5c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
