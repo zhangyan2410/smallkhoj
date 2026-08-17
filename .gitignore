@@ -94,3 +94,8 @@ BACKLOG.md
 .codex/hooks.json
 .codex/skills/
 .runtime/integration-gate/
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<
