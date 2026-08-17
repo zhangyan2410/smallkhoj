@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install install-backend install-frontend verify-backend-env verify-frontend-env verify-e2e-env verify-release-source migration-check test test-backend test-frontend scripts-test twd-guard-test lint lint-backend lint-frontend typecheck build-frontend build-frontend-ci frontend-image-build backend-ci frontend-ci e2e-authenticated compose-check diff-check ci
+.PHONY: install install-backend install-frontend verify-backend-env verify-frontend-env verify-e2e-env verify-release-source migration-check test test-backend test-frontend scripts-test twd-guard-test trellis-dashboard-test lint lint-backend lint-frontend typecheck build-frontend build-frontend-ci frontend-image-build backend-ci frontend-ci e2e-authenticated compose-check diff-check ci
 
 FRONTEND_IMAGE_TAG ?= smallkhoj-frontend:audit-candidate
 RELEASE_SOURCE_REVISION := $(shell git rev-parse --verify HEAD 2>/dev/null)
@@ -60,6 +60,11 @@ test-frontend:
 
 scripts-test: twd-guard-test
 	python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+trellis-dashboard-test:
+	node --check tools/trellis-dashboard/web/app.js
+	node --check tools/trellis-dashboard/web/demo.js
+	python3 -m unittest discover -s tools/trellis-dashboard -p 'test_*.py'
 
 twd-guard-test:
 	python3 -m unittest agent/daemon/webdriver/test_twd_selection.py

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Trellis Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="demo.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">◍</span> Trellis Dashboard</div>
+    <div class="topbar-meta" id="project-meta">加载中…</div>
+    <div class="topbar-actions">
+      <button id="theme-toggle" title="切换主题">🌓</button>
+      <button id="refresh" title="立即刷新">↻</button>
+      <span id="refreshed-at" class="muted"></span>
+    </div>
+  </header>
+  <main>
+    <section id="cards" class="cards" aria-label="概览"></section>
+    <div id="risk-strip" class="risk-strip" aria-label="风险提示"></div>
+    <nav id="tabs" class="tabs" role="tablist">
+      <button data-tab="tasks" role="tab" class="tab active">任务</button>
+      <button data-tab="sessions" role="tab" class="tab">会话</button>
+      <button data-tab="timeline" role="tab" class="tab">时间线</button>
+      <span class="tabs-spacer"></span>
+      <span id="tab-extra"></span>
+    </nav>
+    <section id="view" aria-live="polite"></section>
+    <details id="raw" class="raw">
+      <summary>原始快照 JSON</summary>
+      <pre id="raw-json"></pre>
+    </details>
+  </main>
+  <div id="drawer-mask" class="drawer-mask" hidden></div>
+  <aside id="drawer" class="drawer" hidden aria-label="工件预览">
+    <div class="drawer-head">
+      <div>
+        <div id="drawer-title" class="drawer-title"></div>
+        <div id="drawer-sub" class="drawer-sub muted"></div>
+      </div>
+      <button id="drawer-close" class="icon-btn" title="关闭">✕</button>
+    </div>
+    <div id="drawer-body" class="drawer-body"></div>
+  </aside>
+</body>
+</html>
