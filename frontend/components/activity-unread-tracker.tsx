@@ -17,6 +17,7 @@ import {
   writeActivityUnreadStore,
 } from "@/lib/activity-unread-state"
 import { chatScopeKeys } from "@/lib/chat-unread-state"
+import { currentChatChannelId } from "@/lib/current-chat-view"
 
 /**
  * 活动未读跟踪器（R1 状态层的 SSE 驱动端，无 UI）。
@@ -62,6 +63,8 @@ export function ActivityUnreadTracker({
       pathname: pathnameRef.current,
       currentMemberNames: memberNamesRef.current,
       currentMemberIds: memberIdsRef.current,
+      // 每条事件实时读取：chat-sidebar 随路由切换即时更新注册表
+      currentChatChannelId: currentChatChannelId(),
       chatScopeKeys,
     })
     if (keys.length === 0) return

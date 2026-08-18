@@ -299,3 +299,40 @@ test("route visit clears task/activity domain keys but never chat keys", () => {
   assert.deepEqual(activityUnreadClearKeysForPath("/chat/general"), [])
   assert.deepEqual(activityUnreadClearKeysForPath("/"), [])
 })
+
+test("message.created for the open DM is suppressed by currentChatChannelId", () => {
+  // DM 的 scope.name 是内部名 dm:{idA}-{idB}，与路由名 /chat/<handle> 永远
+  // 不相等——修复前「正在查看的 DM」每条消息都递增本地未读，切走时积累的
+  // 角标显形。currentChatChannelId（chat-sidebar 注册）按 id 精确抑制。
+  const incoming = event({
+    scope: { kind: "dm", id: "dm-1", name: "dm:111-222" },
+    payload: {},
+  })
+  const options = {
+    pathname: "/chat/ee",
+    currentMemberNames: ["me"],
+    chatScopeKeys: chatKeys,
+  }
+  assert.deepEqual(activityUnreadKeysForEvent(incoming, options), [
+    "chat:dm:id:dm-1",
+    "chat:dm:name:dm:111-222",
+  ])
+  // 注册当前会话 id 后抑制。
+  assert.deepEqual(
+    activityUnreadKeysForEvent(incoming, { ...options, currentChatChannelId: "dm-1" }),
+    [],
+  )
+  // 注册的是其它会话时不抑制。
+  assert.deepEqual(
+    activityUnreadKeysForEvent(incoming, { ...options, currentChatChannelId: "dm-other" }),
+    ["chat:dm:id:dm-1", "chat:dm:name:dm:111-222"],
+  )
+  // 频道也能走 id 抑制（name 缺失时的兜底）。
+  assert.deepEqual(
+    activityUnreadKeysForEvent(
+      event({ scope: { kind: "channel", id: "ch-9" }, payload: {} }),
+      { ...options, pathname: "/chat/unknown-route", currentChatChannelId: "ch-9" },
+    ),
+    [],
+  )
+})

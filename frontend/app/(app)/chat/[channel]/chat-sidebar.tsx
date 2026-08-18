@@ -22,6 +22,7 @@ import {
   type ChatUnreadEntity,
 } from "@/lib/chat-unread-state"
 import { apiPost } from "@/lib/control-plane"
+import { setCurrentChatView } from "@/lib/current-chat-view"
 import { cn } from "@/lib/utils"
 
 function channelPathSegment(name: string) {
@@ -97,11 +98,21 @@ export function ChatSidebar({
   const activeEntity = activeChannel ?? activeDm
   const activeEntityKey = activeEntity ? `${activeEntity.type ?? "channel"}:${activeEntity.id ?? activeEntity.name}` : ""
 
-  // 切换频道时重置 live 序号跟踪。
+  // 切换频道时重置 live 序号跟踪，并注册当前会话（供 unread tracker 按
+  // channelId 抑制未读递增——DM 的 scope.name 是内部名，路由名匹配不上）。
   useEffect(() => {
     liveLatestSeqRef.current = 0
     lastCursorWriteSeqRef.current = 0
     cursorWriteInFlightRef.current = false
+    setCurrentChatView(
+      activeEntity?.id
+        ? { channelId: activeEntity.id, name: activeEntity.name ?? undefined }
+        : null,
+    )
+    return () => {
+      setCurrentChatView(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 与 activeEntityKey 同步即可
   }, [activeEntityKey])
 
   // ref 持有最新 activeEntity，供异步回调使用（避免闭包过期）。

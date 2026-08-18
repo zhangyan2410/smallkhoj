@@ -299,6 +299,9 @@ function chatRouteNameFromPath(pathname: string): string | null {
  * - message.created（channel/dm scope）：自己发的（payload.senderId/actorId
  *   与当前 memberId 匹配）、当前正在查看的频道/DM 不计；其余递增聊天域键
  *   （键派生复用 chat-unread-state 的规则，由调用方传入）。
+ *   「正在查看」两种判定：路由名 === scope.name（频道可用），或
+ *   currentChatChannelId === scope.id（chat-sidebar 注册的当前会话 id；
+ *   DM 的 scope.name 是内部名 dm:{idA}-{idB}，永远不等于路由名，必须靠 id）。
  * - task.*：正在 /tasks 时不计，否则递增 task:all。
  * - member.status.updated / member.updated（agent 活动代理）：正在 /daemon 时不计，
  *   否则递增 activity:all。
@@ -309,6 +312,7 @@ export function activityUnreadKeysForEvent(
     pathname: string
     currentMemberNames?: readonly string[]
     currentMemberIds?: readonly string[]
+    currentChatChannelId?: string | null
     chatScopeKeys: (scope: PublicEventEnvelope["scope"]) => string[]
   },
 ): string[] {
@@ -319,6 +323,8 @@ export function activityUnreadKeysForEvent(
     const routeName = chatRouteNameFromPath(pathname)
     const scopeName = event.scope.name?.replace(/^#/, "")
     if (routeName && scopeName && routeName === scopeName) return []
+    const currentChannelId = options.currentChatChannelId ?? null
+    if (currentChannelId && event.scope.id && currentChannelId === event.scope.id) return []
     return chatScopeKeys(event.scope)
   }
 
