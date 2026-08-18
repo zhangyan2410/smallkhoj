@@ -44,6 +44,10 @@ SmallKhoj keeps project rules short in this file; detailed workflows live in ind
 - Advisory codebase audits and roadmap discovery: `.agents/skills/improve/SKILL.md`. Use it before Trellis task selection; after selecting a finding, translate it into a normal Trellis PRD/design/implementation task. Integration and conflict rules: `docs/improve-trellis-usage.md`.
 - CC Switch launcher: `ccs-claude` starts Claude Code with a selected CC Switch provider without changing the global provider. Index: `ccs-claude list`, `ccs-claude current`, `ccs-claude "<provider>" <model>`.
 
+## Comet 与平台 Plan 模式互斥
+
+当用户显式调用 Comet Skill（`/comet`、`/comet-native`、`@comet`、`/comet-hotfix` 等，且意图是启动或恢复一个 change），或 `.comet/current-change.json` 指向活跃 change 时：**不要调用 `EnterPlanMode`、不要进入平台 plan 模式、不要另建平台计划文件**。Comet Native 的 Shape 阶段就是规划阶段，规划产物（brief、完整目标规格、验收项）、阶段推进与验收全部由 `comet native` Runtime 管理；平台 plan 模式会与它冲突并吞掉入口。用户只是把 `.zcode/skills/comet*` 当文档引用、并不打算启动 workflow 时，不受此限制，仍按普通任务处理（可以用 plan 模式）。
+
 <comet-ambient-resume>
 <!-- Managed by Comet. Edits inside this block may be replaced by comet init/update. -->
 <!-- Contract: comet.resume_probe.v2 -->
