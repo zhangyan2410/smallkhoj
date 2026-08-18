@@ -3,7 +3,7 @@
   "name": "07-31-daemon-write-and-computer-connect",
   "title": "Repair daemon write permission and local/cloud Computer connection",
   "description": "Restore default runtime message writes through the backend-to-daemon control path, diagnose local command-to-Computer connection failure, and prove the repaired behavior locally and on cloud.",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "张岩.ean",
   "assignee": "张岩.ean",
   "createdAt": "2026-07-31",
-  "completedAt": null,
+  "completedAt": "2026-08-18",
   "branch": "feat/daemon-write-and-computer-connect",
   "base_branch": "main",
   "worktree_path": null,
@@ -21,8 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
-  "meta": {
-    "needsDecision": "这个任务修复了「daemon 没有写权限、computer 连不上」的问题：修复代码已在 main，本地完整验证通过。最后一步「云端验证」被配置卡住——生产环境需要正式的 PUBLIC_API_KEY，现在用开发值会被安全校验拒绝。请选：① 归档本任务，另开一个「生产密钥治理 + 云端验证」新任务；② 保留本任务等密钥解决后继续。"
-  }
+  "notes": "2026-08-18 用户拍板：归档本任务；云端验证被 PUBLIC_API_KEY 生产配置债阻塞，另立「生产密钥治理与云端部署验证」后续任务。",
+  "meta": {}
 }

@@ -3,7 +3,7 @@
   "name": "audit-remediation-delivery-ui",
   "title": "Repair delivery gates and visible UI",
   "description": "修复019/020/021/023及DOCS-01/02：CI、Bun构建、e2e认证、可见UI和项目WebDriver证据。",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "张岩.ean",
   "assignee": "张岩.ean",
   "createdAt": "2026-07-22",
-  "completedAt": null,
+  "completedAt": "2026-08-18",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -21,8 +21,6 @@
   "children": [],
   "parent": "07-22-codebase-audit-remediation",
   "relatedFiles": [],
-  "notes": "",
-  "meta": {
-    "needsDecision": "7 月代码审计整改之一：交付质量门禁和可见 UI（CI 流水线、页面加载/报错提示、删除确认弹窗等）。改动已全部合入 main，并留有 14 份真实浏览器验证记录，只是任务清单没逐条打勾、也没写正式验证总结。请选：① 补一份简短总结后归档；② 直接归档。"
-  }
+  "notes": "2026-08-18 用户拍板：直接归档。交付物与 14 份真机证据已随 PR#1（5749828）进 main，验证记录在父任务 evidence/ 下。",
+  "meta": {}
 }

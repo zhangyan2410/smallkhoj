@@ -3,7 +3,7 @@
   "name": "stable-member-handles-channel-identity",
   "title": "Stable member handles and channel identity",
   "description": "Design immutable member handles, Channel-scoped identity context, and optional Agent descriptions.",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "张岩.ean",
   "assignee": "张岩.ean",
   "createdAt": "2026-08-05",
-  "completedAt": null,
+  "completedAt": "2026-08-18",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -21,8 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
-  "meta": {
-    "needsDecision": "这个任务让「成员身份标识和频道身份」变稳定（改名、重连后身份不丢）。43 项验收已通过 42 项，代码全部合入 main。只剩一件事：在云端服务器（124.222.40.40 那台）实际部署一次并验证线上正常。请选：① 直接归档，云端部署以后再安排；② 保留任务，等云端部署验证后再收尾。"
-  }
+  "notes": "2026-08-18 用户拍板：接受现状归档（本地 42/43 已过、代码在 main）；云端 reset/deploy/smoke 验证以后另行安排。",
+  "meta": {}
 }
