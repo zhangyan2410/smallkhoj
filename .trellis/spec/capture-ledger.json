@@ -1,0 +1,1719 @@
+{
+ "schema": "trellis.spec-capture.v1",
+ "auditedAt": "2026-08-18",
+ "method": "timeline audit of archived tasks + custom skills vs .trellis/spec (7 parallel read-only agents; gaps written by 3 writer agents + main agent)",
+ "items": [
+  {
+   "kind": "task",
+   "month": "2026-05",
+   "id": "05-28-complete-daemon-cli-surface",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-02-agent-delegation-control-plane",
+   "status": "covered",
+   "target": "backend/event-delivery-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-02-P0-backend-core-api",
+   "status": "captured",
+   "target": "backend/member-identity-channel-contracts.md",
+   "note": "agent-api 双键兼容 + 认领乐观锁"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-02-P0-frontend-minimal-e2e",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性脚手架"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-02-P1-computer-member-model",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-02-P1-realtime-events",
+   "status": "covered",
+   "target": "backend/event-delivery-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-05-management-apis-design",
+   "status": "covered",
+   "target": "backend/member-identity-channel-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-06-fix-computer-credential-daemon-command",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-07-backend-to-daemon-runtime-launch-bridge",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-07-dev-script-mac-auto-startup",
+   "status": "covered",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-07-management-flow-usability-seed-cleanup",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-08-fix-agent-dm-replies-after-reconnect",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-08-fix-runtime-session-history-replay",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-09-chat-product-surface",
+   "status": "covered",
+   "target": "frontend/product-ui-style.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-09-frontend-design-system-cyan-blue",
+   "status": "covered",
+   "target": "frontend/product-ui-style.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-09-frontend-product-shell-and-navigation",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-09-tasks-board-list-filters",
+   "status": "covered",
+   "target": "frontend/state-management.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-09-trellis-real-test-quality-gate",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-10-fix-daemon-stale-active-lease",
+   "status": "captured",
+   "target": "backend/daemon-release-and-lease-contracts.md",
+   "note": "graceful shutdown 端点契约"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-10-latency-trace-timeline",
+   "status": "captured",
+   "target": "guides/runtime-debugging-sop.md",
+   "note": "trace-id 端到端排查节"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-10-provider-specific-ccs-runtime-agents",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-10-skip-workspace-heartbeat-event-records",
+   "status": "covered",
+   "target": "backend/event-delivery-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-15-minimax-agent-reply-latency",
+   "status": "covered",
+   "target": "guides/runtime-debugging-sop.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-17-webdriver-cli-skill",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-19-fix-webdriver-url-match-tab-selection",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-19-frontend-drag-and-drop-interactions",
+   "status": "captured",
+   "target": "frontend/component-guidelines.md",
+   "note": "拖拽分层契约"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-21-agent-avatar-status-ui",
+   "status": "covered",
+   "target": "frontend/product-ui-style.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-21-realtime-event-stream-platform",
+   "status": "covered",
+   "target": "backend/event-delivery-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-22-06-22-frontend-dm-channel-notifications",
+   "status": "captured",
+   "target": "frontend/product-ui-style.md",
+   "note": "通知密度契约"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-22-06-22-frontend-home-dashboard",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性页面"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-22-06-22-frontend-i18n-core-pages",
+   "status": "captured",
+   "target": "frontend/quality-guidelines.md",
+   "note": "next-intl 文案契约"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-22-06-22-frontend-members-page-redesign",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-22-06-22-frontend-realtime-sync-fixes",
+   "status": "captured",
+   "target": "frontend/state-management.md",
+   "note": "SSE 重连 + eventTypes 审计"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-22-06-22-twd-auth-target-guard",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-26-trellis-workflow-optimization",
+   "status": "skipped",
+   "target": null,
+   "note": "流程元配置"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-07-15-initial-release",
+   "status": "skipped",
+   "target": null,
+   "note": "发布规划落 docs"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-06-28-initial-release-feishu-channel-sdk-transport",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-06-28-initial-release-feishu-worker-runtime",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-06-28-initial-release-taskrun-writeback-hook",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-feishu-worker-db-session-lifecycle-hardening",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-daemon-single-local-computer-identity",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-daemon-websocket-deploy-smoke",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-deployment-bundle",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-feishu-jira-taskrun-loop",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-feishu-long-connection-mvp",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-feishu-outbound-replies",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-feishu-raw-event-loop",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-feishu-reply-orchestration",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-feishu-worker-cli",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-frontend-standalone-production-image",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-image-platform-selection",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-integration-bootstrap-cli",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-integration-gateway-foundation",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-jira-rest-mvp",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-jira-writeback-runtime-deps",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-lighthouse-host-bootstrap-probe",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-live-run-preflight-cli",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-local-production-compose-smoke",
+   "status": "covered",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-post-deploy-smoke-cli",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-production-deploy-preflight-cli",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-production-env-template-guardrail",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-production-image-transfer-runner",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-production-url-reverse-proxy-readiness",
+   "status": "captured",
+   "target": "frontend/quality-guidelines.md",
+   "note": "API/WS 基址推导"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-remote-deploy-evidence-collector",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-28-initial-release-ssh-deployment-probe-runner",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-29-06-29-initial-release-daemon-distribution-versioning",
+   "status": "covered",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-29-06-29-initial-release-foundation-reliability-risk-gates",
+   "status": "covered",
+   "target": "backend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-29-06-29-initial-release-lighthouse-resource-baseline",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性度量"
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-29-06-29-initial-release-production-env-validation",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-29-06-29-initial-release-server-account-membership-foundation",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-29-06-29-initial-release-worker-rollout-execution-gates",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-29-06-29-initial-release-worker-rollout-runner",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-29-initial-release-better-auth-server-switcher",
+   "status": "covered",
+   "target": "frontend/auth-onboarding-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-29-initial-release-daemon-prompt-gate-refresh",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-30-daemon-runtime-provider-productization",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-06",
+   "id": "06-30-server-invite-join-flow",
+   "status": "covered",
+   "target": "frontend/auth-onboarding-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-01-codex-acp-product-path-cleanup",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-02-chat-event-unread-indicators",
+   "status": "captured",
+   "target": "backend/event-delivery-contracts.md",
+   "note": "read-cursor 契约源头"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-04-ink-material-card-restore-resource",
+   "status": "skipped",
+   "target": null,
+   "note": "归 07-06 母任务"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-07-06-inkframe-background-image-resource-readability",
+   "status": "captured",
+   "target": "frontend/product-ui-style.md",
+   "note": "Material 资源三 URL 分离"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-chat-read-cursor-last-read-seq-input-hardening",
+   "status": "captured",
+   "target": "backend/event-delivery-contracts.md",
+   "note": "lastReadSeq 校验矩阵"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-chat-read-cursor-thread-last-seen-contract",
+   "status": "captured",
+   "target": "backend/event-delivery-contracts.md",
+   "note": "thread 归属校验"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-app-background-material-action-contract",
+   "status": "captured",
+   "target": "frontend/product-ui-style.md",
+   "note": "material 动作词表"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-browserless-dom-mobile-proof-readiness",
+   "status": "captured",
+   "target": "frontend/component-guidelines.md",
+   "note": "data-inkframe 契约层"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-chat-mobile-composer-message-containment",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-desk-background-owner-route-coverage",
+   "status": "captured",
+   "target": "frontend/product-ui-style.md",
+   "note": "desk 覆盖与干净入口"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-member-computer-detail-containment",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-member-computer-entity-containment",
+   "status": "covered",
+   "target": "frontend/component-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-mobile-shell-drawer-reachability",
+   "status": "captured",
+   "target": "frontend/quality-guidelines.md",
+   "note": "移动端可达性"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-mobile-source-contract-hardening",
+   "status": "skipped",
+   "target": null,
+   "note": "流程垫片"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-proof-runner-app-background-material-surface-contract",
+   "status": "skipped",
+   "target": null,
+   "note": "归 runner 缺口"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-selector-driven-twd-proof-runner",
+   "status": "captured",
+   "target": "frontend/quality-guidelines.md",
+   "note": "proof runner 验收门"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-task-board-mobile-containment",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-task-mobile-detail-dialog-reachability",
+   "status": "captured",
+   "target": "frontend/quality-guidelines.md",
+   "note": "svh 对话框约定"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-07-06-inkframe-twd-evidence-http-cursor-harness",
+   "status": "captured",
+   "target": "backend/event-delivery-contracts.md",
+   "note": "真 ASGI+PG 证据标准"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-chat-read-cursor-postgres-monotonic-scope-completion",
+   "status": "captured",
+   "target": "backend/event-delivery-contracts.md",
+   "note": "单调性 no-op"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-chat-read-cursor-request-body-scope-hardening",
+   "status": "captured",
+   "target": "backend/event-delivery-contracts.md",
+   "note": "body/scope 400 先于 commit"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-chat-unread-frontend-cursor-contract-hardening",
+   "status": "captured",
+   "target": "frontend/state-management.md",
+   "note": "未读消费契约"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-inkframe-browser-connection-mobile-proof",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-inkframe-browser-mobile-backend-hardening",
+   "status": "skipped",
+   "target": null,
+   "note": "验证执行"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-inkframe-material-runtime-chat-events-optimization",
+   "status": "captured",
+   "target": "frontend/product-ui-style.md",
+   "note": "Material runtime 节"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-inkframe-material-source-image-fidelity-contrast",
+   "status": "captured",
+   "target": "frontend/product-ui-style.md",
+   "note": "三 URL 保真分离"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-inkframe-proof-runner-product-shell-route-sweep",
+   "status": "skipped",
+   "target": null,
+   "note": "归 runner 缺口"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-06-inkframe-runtime-browser-proof-product-polish",
+   "status": "skipped",
+   "target": null,
+   "note": "执行壳"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-10-ignore-animation-artifacts-and-sync-production",
+   "status": "covered",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-22-audit-remediation-auth-tenancy",
+   "status": "captured",
+   "target": "backend/member-identity-channel-contracts.md",
+   "note": "actor identity 归一化"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-24-chat-transition-fast-path",
+   "status": "captured",
+   "target": "frontend/hook-guidelines.md",
+   "note": "滚动遥测禁入根 state"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-24-page-transition-shell-persistence",
+   "status": "skipped",
+   "target": null,
+   "note": "被姊妹任务取代"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-28-runtime-select-guide",
+   "status": "captured",
+   "target": "backend/runtime-slock-integration.md",
+   "note": "bundled Pi 全链契约"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-29-integration-gate-restoration",
+   "status": "covered",
+   "target": "backend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-30-ci-credential-log-scan-portability",
+   "status": "covered",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-30-integration-gate-review-fixes",
+   "status": "captured",
+   "target": "backend/quality-guidelines.md",
+   "note": "受众解析契约"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "07-30-pi-merge-ruff-gate-cleanup",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-10-remotion-long-skeleton-phase1",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性视频工程"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-11-managed-daemon-supervisor-upgrade",
+   "status": "skipped",
+   "target": null,
+   "note": "规划即交付"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-13-agent-runtime-capability-matrix",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-22-audit-remediation-delivery-ui",
+   "status": "covered",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-22-audit-remediation-runtime-querying",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-22-audit-remediation-schema-integrity",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-30-background-notifications",
+   "status": "captured",
+   "target": "frontend/state-management.md",
+   "note": "通知抑制/折叠/降级"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-30-frontend-perf-optimization",
+   "status": "covered",
+   "target": "frontend/state-management.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-30-realtime-activity-indicators",
+   "status": "captured",
+   "target": "frontend/state-management.md",
+   "note": "域×scope 未读层场景"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "07-31-07-31-daemon-write-and-computer-connect",
+   "status": "captured",
+   "target": "backend/runtime-slock-integration.md",
+   "note": "allowWrites 产品默认"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-01-real-delivery-workflow-mvp",
+   "status": "skipped",
+   "target": null,
+   "note": "入口文档整理"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-01-repair-twd-evidence-runtime-loop",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-03-ci-daemon-version-source",
+   "status": "covered",
+   "target": "backend/release-pipeline.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-03-computer-connect-ux",
+   "status": "captured",
+   "target": "backend/event-delivery-contracts.md",
+   "note": "connect 必发状态事件"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-03-fix-codex-acp-exit-127",
+   "status": "captured",
+   "target": "backend/runtime-slock-integration.md",
+   "note": "child env 权威+readiness"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-03-fix-empty-computers-dialog-e2e",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 E2E"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-03-runtime-detection-four-runtimes",
+   "status": "captured",
+   "target": "backend/runtime-slock-integration.md",
+   "note": "detectedRuntimes 形状更新"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-03-smallkhoj-cleanup-skill",
+   "status": "skipped",
+   "target": null,
+   "note": "skill 即交付物"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-04-frontend-beautification",
+   "status": "covered",
+   "target": "frontend/product-ui-style.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-04-repair-codex-opencode-runtime-gates",
+   "status": "covered",
+   "target": "backend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-05-stable-member-handles-channel-identity",
+   "status": "covered",
+   "target": "backend/member-identity-channel-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-06-goose-builtin-runtime",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-06-windows-computer-install-setup-connect",
+   "status": "covered",
+   "target": "backend/daemon-release-and-lease-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-12-official-server-auto-join",
+   "status": "covered",
+   "target": "backend/member-identity-channel-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-13-admin-role-enforcement-and-role-ui",
+   "status": "captured",
+   "target": "frontend/member-identity-ui-contracts.md",
+   "note": "admin 入口按角色隐藏"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-15-acp-bridge-new-client-api",
+   "status": "captured",
+   "target": "backend/runtime-slock-integration.md",
+   "note": "双通道取消契约"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-15-acp-sdk-upgrade",
+   "status": "covered",
+   "target": ".agents/skills/smallkhoj-add-runtime",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-15-agent-turn-cancel",
+   "status": "captured",
+   "target": "backend/runtime-slock-integration.md",
+   "note": "cancel_turn 命令族"
+  },
+  {
+   "kind": "task",
+   "month": "2026-08",
+   "id": "08-15-chat-cancel-claude",
+   "status": "captured",
+   "target": "backend/runtime-slock-integration.md",
+   "note": "Claude interrupt 帧协议"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "00-bootstrap-guidelines",
+   "status": "skipped",
+   "target": null,
+   "note": "spec 自身起点"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "05-29-slock-cli",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "05-30-claude-runtime-message-delivery",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "05-30-visible-daemon-runtime-architecture",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性架构文档"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-01-twd-packaging",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-01-twd-record-replay",
+   "status": "skipped",
+   "target": null,
+   "note": "未落地规划"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-02-agent-delegation-control-plane",
+   "status": "skipped",
+   "target": null,
+   "note": "纯调研（实现侧已由 arch-06 同名任务沉淀）"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-02-P2-threads-dm-files",
+   "status": "covered",
+   "target": "backend/threading-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-02-slock-backend-analysis",
+   "status": "skipped",
+   "target": null,
+   "note": "纯调研"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-02-slock-detail-spec",
+   "status": "skipped",
+   "target": null,
+   "note": "调研前身"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-03-symphony-p0-improvements",
+   "status": "skipped",
+   "target": null,
+   "note": "未落地被取代"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-03-symphony-research",
+   "status": "skipped",
+   "target": null,
+   "note": "纯调研"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-05-smallkhoj-worker-orchestration-skill",
+   "status": "covered",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-06-frontend-protocol-interactions-and-clean-e2e-data",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-07-agent-runtime-provider-selection",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-08-dev-auth-human-member",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-08-fix-message-visibility-after-daemon-restart",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-08-optimize-trace-logs-dm-thread-flow",
+   "status": "covered",
+   "target": "guides/runtime-debugging-sop.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-08-sync-control-plane-dm-thread-behavior",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-agent-activity-diagnostics",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-agent-permissions-ui-and-sync",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-api-key-management-ui",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-auth-multi-server-account",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-computers-product-detail",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-daemon-packaged-onboarding",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-database-observation-sop",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-files-surface-and-attachments",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-human-debug-workbench",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-members-agent-profile-tabs",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-message-actions-thread-reactions-saved",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-notifications-inbox-saved-search",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-product-maturity-gap-decomposition",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-production-readiness-broadcast-cache",
+   "status": "covered",
+   "target": "backend/event-delivery-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-runtime-lifecycle-controls",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-runtime-provider-expansion",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-settings-and-admin",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-task-from-message-and-thread",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-task-review-evidence",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性 UI"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-thread-panel-and-summary",
+   "status": "covered",
+   "target": "backend/threading-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-09-trace-to-task-evidence",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性工具流"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-11-06-11-saved-items-persistence",
+   "status": "skipped",
+   "target": null,
+   "note": "普通 CRUD"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-11-public-file-upload-endpoint",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-12-frontend-notion-style-ui-redesign-workflow",
+   "status": "covered",
+   "target": "frontend/product-ui-style.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-16-slock-cli-parity",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-19-agent-context-inspector",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性功能"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-19-channel-task-workspace-optimization",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-19-daemon-codex-runtime",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-22-06-22-frontend-agent-status-system",
+   "status": "covered",
+   "target": "frontend/product-ui-style.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-22-06-22-frontend-chat-message-identity",
+   "status": "covered",
+   "target": "frontend/product-ui-style.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-22-06-22-frontend-visual-redesign-theme",
+   "status": "covered",
+   "target": "frontend/product-ui-style.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-22-channel-memory-store-and-scoped-sessions",
+   "status": "covered",
+   "target": "backend/memory-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-23-daemon-connect-maturity-and-onboarding",
+   "status": "covered",
+   "target": "backend/daemon-release-and-lease-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-23-frontend-design-open-design-impeccable",
+   "status": "skipped",
+   "target": null,
+   "note": "环境安装"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-24-channel-taskrun-model",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-25-taskrun-config-templates",
+   "status": "captured",
+   "target": "backend/runtime-slock-integration.md",
+   "note": "TaskRun 三透镜状态契约"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-26-daemon-single-local-computer-identity",
+   "status": "covered",
+   "target": "backend/runtime-slock-integration.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-27-chat-conversation-minimap-navigator",
+   "status": "skipped",
+   "target": null,
+   "note": "规划未实现"
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-28-07-15-initial-release",
+   "status": "covered",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-28-initial-release-integration-gateway-foundation",
+   "status": "covered",
+   "target": "backend/database-guidelines.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-30-ink-wash-theme-exploration",
+   "status": "covered",
+   "target": "frontend/product-ui-style.md",
+   "note": null
+  },
+  {
+   "kind": "task",
+   "month": "2026-07",
+   "id": "06-30-windows-runtime-launch-conversation-validation",
+   "status": "skipped",
+   "target": null,
+   "note": "一次性真机验证"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "aura-zcode-frontend-sop",
+   "status": "captured",
+   "target": "frontend/quality-guidelines.md",
+   "note": "浏览器验证双轨裁定"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "grill-me",
+   "status": "skipped",
+   "target": null,
+   "note": "纯流程跳转"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "grill-with-docs",
+   "status": "skipped",
+   "target": null,
+   "note": "对话工具"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "grilling",
+   "status": "skipped",
+   "target": null,
+   "note": "面试式提问"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "impeccable",
+   "status": "skipped",
+   "target": null,
+   "note": "通用方法论"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "improve",
+   "status": "skipped",
+   "target": null,
+   "note": "通用审计方法"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "project-webdriver-cli",
+   "status": "covered",
+   "target": "frontend/quality-guidelines.md",
+   "note": "spec 已双写引用"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "smallkhoj-add-runtime",
+   "status": "captured",
+   "target": "backend/runtime-slock-integration.md",
+   "note": "事件/AGENTS.md/接线契约"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "smallkhoj-cleanup",
+   "status": "skipped",
+   "target": null,
+   "note": "运维 runbook"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "smallkhoj-real-test",
+   "status": "captured",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": "候选身份门禁场景"
+  },
+  {
+   "kind": "skill",
+   "month": null,
+   "id": "smallkhoj-worker-orchestration",
+   "status": "captured",
+   "target": "backend/deployment-environment-contracts.md",
+   "note": "worker 栈端口/角色事实"
+  }
+ ]
+}

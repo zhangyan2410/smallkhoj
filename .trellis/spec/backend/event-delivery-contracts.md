@@ -310,6 +310,13 @@ report.contextUsage = evidence.contextUsage; // absent on identity mismatch
   authorization uses that identity; dropping it makes every other backend worker
   discard an otherwise valid event. If even the minimal identity-bearing envelope
   cannot fit the payload limit, fail before calling `pg_notify`.
+- `POST /internal/agent-api/daemon/connect` emits `computer.status.updated`
+  (action `"connect"`) unconditionally after commit — even when the status string
+  stays `online` → `online`. Only `daemon/register`/`daemon/heartbeat` gate on an
+  actual status change (08-03 task `08-03-computer-connect-ux`): the `/computers`
+  page relies on `RealtimeRefresh` receiving that event to auto-refresh after a
+  daemon connect, and "only on change" publishing silently reintroduces the
+  manual-refresh bug for fresh connects.
 
 ### 4. Validation & Error Matrix
 
@@ -323,6 +330,7 @@ report.contextUsage = evidence.contextUsage; // absent on identity mismatch
 | Postgres NOTIFY channel contains unsafe characters | Adapter construction fails with `ValueError`. |
 | Event payload exceeds NOTIFY payload budget | Adapter publish fails before sending oversized payload. |
 | Large Server-scoped event is compacted | `serverId` remains available at the top level and in `payload`; same-Server subscribers can receive it and foreign-Server subscribers reject it. |
+| Daemon `/connect` commits with unchanged status string | `computer.status.updated` (action `connect`) is still published post-commit; register/heartbeat keep their status-change-only gating. |
 
 ### 5. Good/Base/Bad Cases
 
@@ -440,4 +448,79 @@ event commit -> new asyncpg TCP connection -> pg_notify -> close
 ```text
 short setup session -> frozen claims -> dependency finalized -> bounded stream state
 lifespan owner -> publisher pool + generation-guarded listener -> bounded recovery/shutdown
+```
+
+---
+
+## Scenario: Chat Read-Cursor API Contract
+
+### 1. Scope / Trigger
+
+- Trigger: changing `POST /api/v1/chat/read-cursors` request parsing, scope resolution, `lastReadSeq` validation, `lastSeenMessageId` ownership checks, cursor monotonicity, or their tests.
+- Evidence cluster: the four 07-06 tasks (`chat-read-cursor-last-read-seq-input-hardening`, `chat-read-cursor-thread-last-seen-contract`, `chat-read-cursor-request-body-scope-hardening`, `chat-read-cursor-postgres-monotonic-scope-completion`).
+
+### 2. Signatures
+
+- Endpoint: `POST /api/v1/chat/read-cursors`
+- Scope body: `{scope: {kind: "channel"|"dm"|"thread", channelId?: <uuid>} | {kind: "thread", rootMessageId: <uuid>}}`
+- Cursor fields: `lastReadSeq` / `last_read_seq` (int), optional `lastSeenMessageId` (thread only)
+- Storage: `channel_members.last_read_seq` (channel + DM), `chat_thread_read_cursors.last_read_seq` / `last_seen_message_id` (thread)
+- Legacy fallback: a missing `scope` with top-level `{"kind":"thread","threadId":...}` remains accepted
+- Helpers: `mark_channel_read(...)`, `upsert_thread_read_cursor(...)`
+
+### 3. Contracts
+
+- `lastReadSeq` parsing must go through a named validation helper, never raw `int(body.get("lastReadSeq") or ...)`. Accepted: missing field -> `0`; integer `0`; positive integers; digit strings after whitespace trim (`"12"`). Rejected with HTTP 400: empty/whitespace-only string, negative int or negative string, float or float-like string, boolean, object, array, explicit `null`.
+- Key precedence: if `lastReadSeq` is present it wins; else `last_read_seq`; else default `0`. The same validated value feeds the channel, DM, and thread write paths.
+- Body and `scope` shape validation happens before any `.get(...)` access and before DB writes/commits: non-object JSON bodies (`null`, array, string, number, boolean) and present non-object `scope` values (`null`, array, string, boolean, number) return a stable 400 — never an escaped `AttributeError`/500. Missing `scope` with the top-level thread fallback stays valid.
+- Monotonicity: a valid lower (retrograde) write returns HTTP 200 but is a high-water no-op — `last_read_seq` stays at the higher existing value, and thread cursors additionally keep the existing `last_seen_message_id`. Input validation changes validity only, never monotonic semantics.
+- Thread `lastSeenMessageId` ownership: accepted only when `message.id == root.id` or `message.parent_id == root.id` (root itself or a direct reply). A malformed UUID, missing message, another thread's root, or a reply whose `parent_id` is a different root -> 400 and no DB commit. The DB foreign key on `last_seen_message_id` only proves existence, never thread ownership — route-level validation is the real gate.
+- Scope serialization is stable: channel -> `{kind:"channel", channelId}`, DM -> `{kind:"dm", channelId}`, thread -> `{kind:"thread", rootMessageId}`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| `lastReadSeq` missing | Treated as `0`; request proceeds. |
+| `lastReadSeq` `"12"` (digit string) | Accepted after trim. |
+| `lastReadSeq` empty string / whitespace / float / bool / negative / array / object / explicit null | HTTP 400 with stable detail (`Invalid lastReadSeq`); nothing written. |
+| Body is non-object JSON (`null`/array/string/number/boolean) | HTTP 400 with stable body-shape error, not 500. |
+| `scope` present but not an object | HTTP 400 with stable scope-shape error, before DB commit. |
+| `scope` missing with top-level thread fallback shape | Accepted (legacy compatibility). |
+| Valid retrograde DM/channel/thread write | HTTP 200; persisted `last_read_seq` (and thread `last_seen_message_id`) unchanged. |
+| Thread `lastSeenMessageId` = root or direct child (`parent_id == root.id`) | Persisted. |
+| Thread `lastSeenMessageId` malformed / missing / other thread / non-direct reply | HTTP 400; no commit. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `{"scope":{"kind":"thread","rootMessageId":R},"lastReadSeq":"15","lastSeenMessageId":<direct-reply-id>}` returns 200 and persists both fields.
+- Base: an older channel write after seq 100 returns 200 with the cursor still at 100.
+- Bad: `int(body.get("lastReadSeq") or 0)` silently coercing `""`/`-5`/`1.5`/`true` to a valid seq.
+- Bad: trusting `chat_thread_read_cursors.last_seen_message_id` FK as proof the message belongs to the thread.
+- Bad: a malformed-body 500 leaking from `.get()` on a non-object body, or validation that runs after the service write.
+
+### 6. Tests Required
+
+- Route HTTP tests cover the full malformed/negative matrix per scope kind (channel, DM, thread), returning 400 before any cursor write.
+- Body/scope-shape tests prove non-object bodies and non-object `scope` values get stable 400s and the top-level thread fallback still works.
+- Monotonicity, cross-scope rejection (channel kind on a DM channel etc.), last-seen ownership, and unauthorized/missing-session rejections must run through a real ASGI boundary against temporary PostgreSQL — handler fakes and source-code assertions (`assert "int(body.get" not in source`) are supplementary, not substitutes. A skipped Postgres suite is not a pass.
+- Thread retrograde test asserts both `last_read_seq` and `last_seen_message_id` survive an older write.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+last_read_seq = int(body.get("lastReadSeq") or body.get("last_read_seq") or 0)
+scope = body["scope"]          # AttributeError -> 500 on list/null bodies
+await upsert_thread_read_cursor(db, root_id, uuid.UUID(body.get("lastSeenMessageId")))
+```
+
+#### Correct
+
+```python
+body = require_json_object(await request.json())      # stable 400 on non-object
+scope = parse_read_cursor_scope(body)                 # stable 400 on bad scope shape
+last_read_seq = parse_last_read_seq(body)             # named helper; matrix above
+validate_thread_last_seen(db, root, body.get("lastSeenMessageId"))  # 400 pre-commit
 ```

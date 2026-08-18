@@ -229,3 +229,73 @@ for stale in daemon_control_hub.add_exclusive(computer.id, websocket, event_curs
 # register claims the lease unconditionally (daemonId present); a later
 # heartbeat conflict closes this socket with 4001 instead of skipping.
 ```
+
+---
+
+## Scenario: Daemon Graceful Shutdown Endpoint
+
+### 1. Scope / Trigger
+
+- Trigger: changing daemon stop/exit lifecycle, `POST /internal/agent-api/daemon/shutdown`, the daemon-side shutdown hook, or how computer/workspace/member status is released when a daemon exits.
+- Root cause background (06-10 task `06-10-fix-daemon-stale-active-lease`): before this endpoint, a locally stopped daemon left its lease row active, so reconnects failed with `409 Computer already has an active daemon` and the Computers page lagged offline/stopped states.
+
+### 2. Signatures
+
+```text
+POST /internal/agent-api/daemon/shutdown
+auth: machine credential (resolve_machine: Bearer sk_machine_* / X-Machine-* context)
+body: {"daemonId": "<uuid>", "status": "offline"?}
+guard: _daemon_shutdown_can_release(computer, daemonId) ->
+       not computer.active_daemon_id or not daemonId or computer.active_daemon_id == daemonId
+daemon hook: daemon.ts shutdownDaemonLifecycle() -> POST /daemon/shutdown before exit
+```
+
+### 3. Contracts
+
+- Authentication is the machine token (same principal as connect/register/heartbeat), never an agent or public key.
+- Release is scoped to the reporting daemon id: only a shutdown whose `daemonId` matches `active_daemon_id` (or when no active id / no id is registered) may release. A mismatched id is a benign no-op — HTTP 200 `{ok: true, ignored: true, reason: "active_daemon_id_mismatch"}` with unchanged state, so a stale/losing daemon cannot knock the current lease holder offline.
+- A valid release sets `status = body.status or "offline"`, `active_daemon_id = None`, `daemon_lease_expires_at = now`, `last_heartbeat_at = now`, and marks that computer's runtimes stopped: workspaces in `running`/`active`/`idle`/`pending_start` become `stopped` with `pid = None` and `stopped_at = now`; agent members in `online`/`active`/`running`/`idle` become `offline`, each transition emitting the usual member status event / workspace activity.
+- The daemon must call this endpoint during graceful stop, before exiting. Failure to reach the backend is logged and non-fatal — the daemon still exits.
+- Hard kill (SIGKILL, crash, network loss) is not covered by this endpoint; stale leases in that path are reclaimed only by the existing lease-expiry fallback. Do not add shutdown paths that bypass the daemonId guard "to be safe".
+- Register/heartbeat/connect behavior is unchanged; this endpoint only releases, never claims.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| Machine token valid, `daemonId == active_daemon_id` | Release lease, computer offline, workspaces stopped, members offline, status events emitted. |
+| `daemonId` differs from a still-active `active_daemon_id` | HTTP 200 `ignored: true`, reason `active_daemon_id_mismatch`; zero state change. |
+| Computer has no `active_daemon_id` (lease already expired) | Release proceeds idempotently; no error. |
+| Graceful daemon stop with unreachable backend | Daemon logs `Daemon shutdown failed`, exits anyway; lease later expires via fallback. |
+| Daemon SIGKILL/crash | No shutdown call; lease expiry is the sole reclaimer. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `aura stop`/graceful exit calls `/daemon/shutdown` with its own daemonId; an immediate reconnect succeeds without 409 and Computers shows offline + stopped workspaces promptly.
+- Base: a superseded old daemon shuts down after a newer instance registered; its mismatched daemonId is ignored and the new holder stays online.
+- Bad: releasing the lease on any authenticated shutdown regardless of daemonId — a zombie displaces the live lease holder.
+- Bad: treating a failed shutdown POST as a reason not to exit, or re-claiming state in this endpoint.
+
+### 6. Tests Required
+
+- Backend: valid shutdown releases active_daemon_id/lease/workspaces/members and emits status transitions; mismatched daemonId returns the ignored envelope with zero state change; non-machine auth is rejected.
+- Daemon: graceful stop issues the POST with its daemonId before exit; network failure is logged without blocking exit.
+- Regression: shutdown followed by reconnect does not raise `DAEMON_LEASE_ACTIVE` 409; a concurrent newer lease survives an old daemon's shutdown.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+if machine_token_valid:
+    computer.active_daemon_id = None      # any daemon can release any lease
+    computer.daemon_lease_expires_at = now
+```
+
+#### Correct
+
+```python
+if not _daemon_shutdown_can_release(computer, body.daemonId):
+    return {"ok": True, "ignored": True, "reason": "active_daemon_id_mismatch"}
+# release scoped to the reporting daemon id; SIGKILL stays bounded by lease expiry
+```

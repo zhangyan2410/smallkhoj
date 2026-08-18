@@ -124,6 +124,8 @@ pending affordance.
 - Task events project to task-data invalidation. `TaskBoard` refetches every bounded task page and reapplies channel/creator/assignee/status filters. Unrelated events do not cause a task refetch.
 - `RealtimeRefresh` may still refresh a route for explicitly accepted non-task events; it must not turn every event into an unspecified full-page refresh.
 - This contract does not claim that every server-rendered task summary/list/detail region becomes client-live. Broad server/client decomposition requires a separate architecture task.
+- SSE disconnects reconnect automatically with capped exponential backoff: `delayMs = Math.min(1000 * 2 ** Math.min(attempt, 5), 30000)` in `connectRealtimeEvents` (`lib/realtime-events.ts`), and `attempt` resets to 0 after every successful connect. Do not add manual "reconnect" UI or unbounded retry loops for the transport.
+- Adding a realtime event type requires a page-by-page audit of every `RealtimeRefresh` `eventTypes` list. Lesson: `member.created` shipped without being subscribed on `/members`, so roster updates silently missed the route. When a new event type lands, grep all `<RealtimeRefresh eventTypes={...}>` consumers and update each affected route deliberately.
 
 ### 4. Validation & Error Matrix
 
@@ -167,4 +169,74 @@ const { tasks } = await apiGet('/api/v1/tasks') // silently first page only
 ```tsx
 <RealtimeProvider serverId={session.server.id}>{children}</RealtimeProvider>
 const tasks = await fetchAllTaskPages((path) => apiGet(path, emptyPage))
+```
+
+---
+
+## Scenario: Domain × Scope Unread Activity Layer
+
+### 1. Scope / Trigger
+
+- Trigger: adding unread/"unseen" indicators for any domain, wiring a new domain into notifications, or touching the shared browser-realtime unread counters (tasks `07-30-realtime-activity-indicators`, `07-30-background-notifications`).
+
+### 2. Signatures
+
+- Store: `frontend/lib/activity-unread-state.ts` — `ActivityUnreadStore`, `markActivityUnread`, `clearActivityUnreadMarked`, `resetActivityUnreadHighWaterMarked`, `activityUnreadKeysForEvent`, `activityUnreadSeqForEvent`, `activityUnreadClearKeysForPath`.
+- Chat-domain key derivation: `frontend/lib/chat-unread-state.ts` — `chatScopeKeys`, `chatEntityKeys`, `chatReadCursorRequestForEntity`.
+- Current-view registry: `frontend/lib/current-chat-view.ts` — `setCurrentChatView`, `currentChatChannelId`.
+- Notification mapping: `frontend/lib/background-notifications.ts` — `planNotificationForEvent`, `offerThrottledNotification`, `flushThrottledNotifications`; preferences in `frontend/lib/notification-preferences.ts`.
+- Presentation primitives: `EventBadge` (`components/inkframe-object-ui.tsx`), `ActivityDot` / `ActivityCountBadge` / `ActivityIndicator` (`components/activity-indicator.tsx`), fed by `hooks/use-activity-indicator.ts`.
+
+### 3. Contracts
+
+- Unread state is a domain × scope two-level key store, persisted at `smallkhoj.activity.unread.v1`: entity keys `chat:{channel|dm}:id|name:<v>` plus aggregate keys `task:all` and `activity:all`. A new domain means a new prefix in this store — never a parallel store.
+- Counters are incremented by SSE events (tracker in `components/activity-unread-tracker.tsx`). Chat-key dedup uses the in-channel `messageSeq` high-water mark (`activityUnreadSeqForEvent`), NOT the global event `seq`: global seq is a cross-scope DB identity, so a per-key global-seq high-water makes legal new messages in sibling channels eat each other. Aggregate keys (`task:all`/`activity:all`) keep the global `seq`.
+- Entering a route clears aggregate keys only (`activityUnreadClearKeysForPath`: `/tasks` → `task:all`, `/daemon` → `activity:all`). The chat domain is never cleared wholesale by route — chat clears per-entity keys plus server read-cursor calibration (`chatReadCursorRequestForEntity`).
+- "Currently viewing" is decided by `scope.id` via the `current-chat-view` registry (`currentChatChannelId() === event.scope.id`), not by name matching: a DM's `scope.name` is the internal `dm:{idA}-{idB}` form and never equals the routable `/chat/<handle>` name. Name comparison is valid only for channels.
+- SSE catch-up (reconnect/epoch change) invalidates local chat high-water marks (`resetActivityUnreadHighWaterMarked`): stale watermarks silently swallow replayed events; recounting and letting entity-entry clear + read-cursor calibration absorb overcounts beats undercounting.
+- Presentation primitives are stateless: `EventBadge` / `ActivityIndicator` receive only display props (`hasUnread`/`count`) and never subscribe to events; subscription lives in the hook. Any new domain integrating unread indicators must reuse this layer and its primitives — building a second unread store/event system is forbidden.
+- Notification side (`background-notifications.ts`): no notification when the relevant route is visible AND the document is focused; replayed events are dropped via the shared realtime epoch/seq high-water decision (`decision.action === "drop"`); same-scope notifications fold into one within `NOTIFICATION_THROTTLE_WINDOW_MS = 30_000`; a denied `Notification.permission` degrades silently (tracker returns before planning, no error, no nagging); clicks navigate through the plan's `href` mapping — DM/mention → `/chat/<name>`, task → `/tasks?task=<id>`, memory → `/chat/<name>` | `/tasks?task=<id>` | `/daemon` by scope.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| Same message replays on same chat key | `seq <= highWater` skips increment; count unchanged. |
+| New message in channel B while channel A has a higher global seq | Chat keys use `messageSeq`, so the event counts. |
+| User enters `/tasks` | `task:all` cleared; chat keys untouched. |
+| User views the DM they have open | `currentChatChannelId() === scope.id` → no increment (name match would fail). |
+| SSE catch-up replays chat events | Chat-key high-water reset first; replays count again. |
+| Route visible + document focused | No system notification for that event. |
+| Second notification for same scope within 30s | `queued`; flushed later as one folded "N new" notification. |
+| `Notification.permission !== "granted"` | Tracker exits silently; no error surfaced. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a `tasks` domain lands by adding `task:all` increments in `activityUnreadKeysForEvent` and an `ActivityIndicator` in the rail — zero new stores.
+- Good: chat badge survives reload via `localStorage` and reconciles with server `unreadCount` (max of local and server).
+- Base: notification permission denied; unread badges still work, notifications silently off.
+- Bad: a feature builds its own `localStorage` unread counter with its own change event.
+- Bad: dedup keyed on global event `seq` for chat, or "viewing" decided by comparing a DM's `scope.name` to the route segment.
+
+### 6. Tests Required
+
+- Unit: multi-key increment dedup, high-water reset on catch-up, clear-on-path projection, own-message suppression, DM-id current-view suppression.
+- Unit: notification planning matrix (visible+focused, mention-only for channels, own events, throttle offer/flush).
+- Cross-tab: store change event (`smallkhoj:activity-unread`) updates mounted consumers (AppRail) without remount.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+localStorage.setItem("myfeature.unread", String(n)) // parallel store
+if (event.scope.name === routeSegment) return []   // DM never matches
+```
+
+#### Correct
+
+```ts
+markActivityUnread(storage, window, activityUnreadKeysForEvent(event, {
+  pathname, currentMemberIds, currentChatChannelId: currentChatChannelId(), chatScopeKeys,
+}))
 ```

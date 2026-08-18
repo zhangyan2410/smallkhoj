@@ -123,6 +123,31 @@ classes are listed first.
 - `<Panel variant="raised">` — border + hard shadow but lighter framing than Card.
 - Raw `<section>`/`<div>` with no border — for layout-only containers (grids, flex).
 
+### Drag layering: native HTML5 DnD vs dnd-kit (06-19-drag-and-drop)
+
+Two drag systems coexist by design; pick by payload, not by preference:
+
+- **OS file drag-drop and cross-surface drops use native drag events +
+  `DataTransfer`** (`onDragStart`/`onDragOver`/`onDrop`, custom MIME types from
+  `lib/drag-data.ts` like `AGENT_DRAG_MIME`). dnd-kit's sensors cannot perceive
+  system files or drags started outside the React tree — files land in
+  `event.dataTransfer.files` (see chat `channel-client.tsx`), agent-onto-task
+  drops land as `dataTransfer.getData(AGENT_DRAG_MIME)` (see `task-board.tsx`).
+  Gate handlers on `event.dataTransfer.types.includes(AGENT_DRAG_MIME)` so file
+  and entity drops do not trigger each other.
+- **dnd-kit is for in-application sorting only** (task cards/columns reorder).
+  Do not extend it to file intake or cross-page drops.
+- **Drag state is optimistic with rollback**: apply the reorder/assignment
+  immediately, and on failure restore the previous order — a failed drop must
+  not leave the UI in the dropped state. And the drag affordance must not break
+  click selection: elements that are both draggable and clickable keep working
+  as click targets (no swallowed `onClick`, no stuck drag ghost).
+
+**Wrong**: reading `dataTransfer.files` inside a dnd-kit `onDragEnd`, or
+starting an OS-file integration by adding a dnd-kit sensor.
+**Correct**: native `onDrop` + MIME gating for files/entities; dnd-kit for
+sorting; optimistic update + rollback either way.
+
 ---
 
 ## Adding a New Component — Decision Tree
@@ -175,6 +200,36 @@ Current regions (chat): `chat-main`, `message-list`, `composer`,
 **Verification:** `[data-region]` must be queryable from the browser. The test
 SOP should assert that each named region exists and is visible rather than
 relying on brittle class-name matches.
+
+### Inkframe surface attributes are a test contract (07-06-browserless-dom)
+
+The `data-inkframe-*` vocabulary is the contract layer between components,
+component tests (`test/material-surface.test.tsx`), and the proof runner
+(`tools/twd-guard/twd-inkframe-proof.mjs`). Core attributes every material
+surface exposes:
+
+- `data-inkframe-surface` (`"material"` | `"app-background"`)
+- `data-inkframe-owner-kind` / `data-inkframe-owner-id` (who owns the surface:
+  `"app-background"`/`"global-desk"`, `"message"`/`<msg-id>`, `"task"`/`<task-id>`)
+- `data-inkframe-region` (workspace region: `app-background`, `chat-main`,
+  `task-main`, ...)
+- `data-inkframe-tint` (`desk` | `paper` | `task` | `evidence` | `review`)
+- `data-inkframe-mobile-role` (`sidebar-drawer`, `sidebar-drawer-toggle`,
+  `sidebar-drawer-close`, `task-detail`, `chat-message-list`, ...)
+- `data-inkframe-state` (explicit collapsed/expanded etc., e.g. the mobile list
+  drawer), plus the extended family (`data-inkframe-unread`,
+  `data-inkframe-pointer-capture`, `data-inkframe-contrast-owner`,
+  `data-inkframe-foreground-surface`).
+
+Rules:
+
+- A new surface that does not expose these attributes is unfinished — the
+  selector-driven proof runner cannot see it, and the browserless DOM tests
+  cannot assert it. Attribute values are stable contract strings; changing one
+  is a breaking change to `twd-inkframe-proof` groups.
+- Assertions go through these selectors, not screenshots: DOM attributes are
+  deterministic and diffable; pixel comparisons are not. Screenshot evidence is
+  for humans reviewing visual style, never for pass/fail gates.
 
 ---
 

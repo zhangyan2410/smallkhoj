@@ -19,6 +19,31 @@ Data source of truth: **Claude Code verbose stream-json events**, reported by th
 
 ---
 
+## Trace-ID End-to-End Latency Tracing
+
+The four-state timeline answers "is the turn stuck, and where". For "the reply is **slow** — which segment is slow", use the trace-ID pipeline instead of grepping each layer's logs separately.
+
+### How it works
+
+- The backend generates a `traceId` at message creation (`backend/services/latency_trace.py` — `trace_id_from_request`, format `message:<hex>`; a caller-supplied `X-SmallKhoj-Trace-Id` header wins). The id rides the EventRecord payload over WS into the daemon (`message.traceId`) and tags every daemon/runtime span.
+- Backend spans: `backend.public_message.*` / `backend.agent_send.*` — `request_received → resolve → db_flush → event_record → commit → push_events → response_ready`.
+- Daemon/runtime spans: `daemon.websocket.message_received` (WS receipt) → `daemon.runtime_delivery.attempt` / `.sent_or_queued` → `daemon.runtime.stdin_write` → `daemon.runtime.first_output` → `daemon.runtime.result`.
+- Every span is one `Latency trace: {traceId, span, elapsedMs, ...}` log line — backend into `.dev-logs/backend.log`, daemon via its log RPC. `smallkhoj-trace` parses both.
+
+### Standard path for "reply is slow"
+
+1. `./smallkhoj-trace latency` — groups spans by traceId, prints each as `+elapsed` from the first event. Widen the window with `--tail N`; raw events with `--json`.
+2. `./smallkhoj-trace summary --json` — cross-layer timeline + service health, to see which layer stopped emitting.
+3. `./smallkhoj-trace follow` — live 2s refresh while reproducing the slow turn.
+
+### Notes
+
+- This is the **only ready-made view spanning the full backend → WS → daemon → runtime chain**. Don't reconstruct the timeline from a single layer's log — one layer can't attribute time lost between layers.
+- Within a layer, `elapsedMs` is monotonic-clock based; cross-layer offsets come from wall-clock `at` timestamps, so treat cross-layer gaps as approximate (second-level).
+- For provider latency numbers use daemon-measured `wallClockMs`, never provider-reported `durationApiMs` (inflated — see Step 4 and the MiniMax note above).
+
+---
+
 ## Standard Debugging Flow
 
 ### Step 1: Read the Activity timeline

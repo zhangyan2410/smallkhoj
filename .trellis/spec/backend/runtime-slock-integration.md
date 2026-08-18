@@ -714,6 +714,12 @@ provider result -> Idle persisted last
   - `AgentWorkspace.runtimeProvider?: string` in serialized responses
   - `Computer.detectedRuntimes[]` may include `{type:"claude_code"|"codex", status:"available", provider, runtimeProvider, model, source:"cc-switch"}`
   - `start_runtime.command.config.runtimeProvider?: string`
+- Base runtime inventory shape (08-03 task `08-03-runtime-detection-four-runtimes`; verified against `agent/daemon/aaa-daemon/src/runtime/runtime-provider.ts` `detectedRuntimesForInventory()`):
+  - `Computer.detectedRuntimes[]` always contains the fixed base list: `claude_code`, `codex`, `opencode`, `goose` each `status:"available" | "not_installed"` decided purely by local CLI detection (`detectClaudeCommand` / `detectCodexCommand` / `detectOpenCodeCommand` / `detectGooseCommand`), plus `pi` always `{type:"pi", status:"available", source:"bundled", version?}` — a missing bundled layout affects launch, not the detected shape.
+  - Provider entries (cc-switch / ccs-claude / manual / opencode-config) are optional appended extras (`provider`, `runtimeProvider`, `model`, `source`) for the Provider dropdown. Base detection never depends on ccswitch: a machine without ccswitch still receives the complete base list.
+  - `DetectedRuntime.status` includes `not_installed` end-to-end (daemon TS union + backend serialization passthrough). The daemon's own `config.runtime` is not reported as an inventory entry (no "configured claude_code shows only claude_code").
+- Product write opt-in (07-31 task `07-31-07-31-daemon-write-and-computer-connect`):
+  - `backend/services/daemon_control.py:runtime_start_command()` sets `config["allowWrites"] = True` on every server-managed `start_runtime`/`restart_runtime` envelope; the daemon lands it as `SLOCK_ALLOW_WRITES=1` in the child runtime env and in the generated `.slock`/`aura`/`raft` wrappers.
 
 ### 3. Contracts
 
@@ -731,6 +737,12 @@ provider result -> Idle persisted last
 - If `runtimeCommand` is explicitly supplied, it takes precedence over provider resolution for test/custom-launch paths.
 - Daemon workspace register/heartbeat payloads for provider-launched runtimes include `runtimeProvider`, but omit `runtimeCommand` and `runtimeModel` unless those were explicitly configured outside provider launch.
 - Reconnect/re-register currently re-arms expected-running workspaces that are missing from daemon heartbeat, including last observed `stopped`, `offline`, `exited`, or `crashed` states. A future desired-state controller may narrow this once explicit stop/reset controls exist.
+- Base runtime availability and provider inventory are independent signals (08-03). The base `detectedRuntimes` list answers "what can this machine run" from local CLI detection only; provider entries are additive metadata. Never require ccswitch (or any provider source) for the base list to be complete, and never flatten provider entries into the base runtime chips.
+- Server-managed `start_runtime`/`restart_runtime` envelopes always carry `config.allowWrites:true` (07-31). This is the backend-side symmetric of the daemon CLI fail-closed rule: product-managed runtimes become writable (`SLOCK_ALLOW_WRITES=1` in child env + gated wrappers), while a standalone daemon CLI without the explicit opt-in still fails write commands with `WRITES_NOT_ALLOWED`. Do not "fix" one side by loosening the other.
+- Child-process env authority (08-03 task `08-03-fix-codex-acp-exit-127`): once the ACP bridge receives an explicit child environment, that environment is complete and authoritative — the spawn boundary must never spread `process.env` back into it. Falling back to `process.env` is valid only when no child env is supplied. Nested `npx` launchers must strip the launcher-only package selectors (`npm_config_package` / `NPM_CONFIG_PACKAGE`, lowercase and uppercase) while preserving unrelated npm settings (registry, proxy, cache, certificates).
+- ACP readiness is fail-closed: a `result` event may mark warmup complete only with explicit `subtype:"success"`; `subtype:"error"`, `subtype:"cancelled"`, a missing subtype, or a missing numeric exit code must not make the runtime ready. Successful ACP session create/load remains a valid readiness signal.
+- Failed-start lifecycle truth: a runtime child that exits non-zero before session readiness must never emit a `running` workspace or agent heartbeat for that startup generation; the final workspace state stays non-running (`exited`) so the backend member goes offline, and later messages must not be represented as delivered to a runtime that no longer exists.
+- Bundled Pi contract (07-28 task `07-28-runtime-select-guide`): the daemon reports `{type:"pi", status:"available", source:"bundled", version}` and Pi stays always-selectable as the zero-install fallback. Pi turns run through the backend MiniMax relay so users need no LLM key. Each full agent run/tool loop holds one capacity lease surfaced truthfully as `ready`/`waiting`/`running`/`exhausted`/`failed`; long-lived MiniMax credentials stay backend-only and never reach browser responses, daemon/Pi config, process args, or logs.
 
 ### 4. Validation & Error Matrix
 
@@ -744,6 +756,12 @@ provider result -> Idle persisted last
 - Backend receives `backend` only -> keep it as legacy/display data; do not create `config.runtimeProvider` from it.
 - Daemon heartbeat contains provider runtime -> backend persists provider name only; command path/args must remain absent from public serialized workspace payloads.
 - A detected/runtime workspace says `runtime:"codex"`, `runtimeProvider:"MiniMax"` -> it is a Codex candidate only; provider/model text containing `Claude`, `OpenCode`, or another runtime name cannot change that family.
+- Machine has no ccswitch DB / ccs-claude / manual providers -> base `detectedRuntimes` still lists every base runtime; missing local CLIs report `not_installed`; nothing is dropped.
+- Nested `npx` daemon starts a runtime child -> the child env contains no `npm_config_package`/`NPM_CONFIG_PACKAGE` selector; unrelated npm configuration survives.
+- Bridge receives an explicit child env that omits a key -> the key stays absent at spawn; no `process.env` merge resurrects it.
+- ACP child emits `result` with `subtype:"error"`/`"cancelled"`/missing subtype, or exits non-zero pre-session -> runtime never becomes ready, no `running` heartbeat is emitted, lifecycle reports `exited` with the real exit code.
+- Server-managed `start_runtime` envelope lacks `config.allowWrites` -> runtime write commands fail `WRITES_NOT_ALLOWED` (daemon fail-closed semantics unchanged).
+- Bundled Pi layout missing on disk -> `pi` still reports `{status:"available", source:"bundled"}`; the actual start fails clearly instead of graying out detection.
 
 ### 5. Good/Base/Bad Cases
 
@@ -759,6 +777,11 @@ provider result -> Idle persisted last
 - Bad: auto-discovering `$HOME/.claude/cc-switch.ps1` or launching `ccs-claude <provider> <model>` as product behavior.
 - Bad: sending executable paths, generated settings paths, or provider DB paths through server APIs.
 - Bad: treating MiniMax/provider/model metadata as proof of a Claude, Codex, OpenCode, or Pi runtime. MiniMax is a test provider/model choice, not a runtime contract.
+- Bad: treating a missing ccswitch DB as "no runtimes detected" or flattening provider entries into the base runtime chips.
+- Good: a ccswitch-free machine reports `claude_code`/`codex`/`opencode`/`goose` (missing ones `not_installed`) plus bundled `pi`; the create-agent runtime list stays fully usable.
+- Good: a product `start_runtime` with `allowWrites:true` makes the child see `SLOCK_ALLOW_WRITES=1` and a gated wrapper, while a manual daemon CLI without the flag still fails closed.
+- Bad: re-merging `process.env` into an explicit child env at the spawn boundary, resurrecting an omitted `npm_config_package` and redirecting a nested `npx` to the wrong tarball.
+- Bad: accepting an ACP `result` without `subtype:"success"` as ready, or emitting `running` heartbeats for a startup generation that already exited non-zero.
 
 ### 6. Tests Required
 
@@ -780,6 +803,15 @@ provider result -> Idle persisted last
   - verify browser `/computers` shows the provider and running workspace.
   - verify API state shows `runtimeProvider:"Kimi"`, `runtimeCommand:null`, `runtimeModel:null`.
   - verify `smallkhoj-trace` contains `CC Switch provider: Kimi` and the selected model line.
+- Inventory tests (08-03):
+  - daemon unit: `detectedRuntimesForInventory()` reports the fixed base list with `available`/`not_installed` from CLI detection alone (ccswitch absent), appends sanitized provider extras when sources exist, and never derives a base entry from `config.runtime`.
+  - backend/contract: `not_installed` survives serialization; Computers chips render English brand names with localized state text and do not flatten provider extras into the base chips.
+- allowWrites cross-process contract (07-31):
+  - backend unit: `runtime_start_command()` envelopes assert `config.allowWrites is True` while preserving existing runtime/provider fields.
+  - daemon dynamic-control integration: an `allowWrites:true` payload makes a fake runtime see `SLOCK_ALLOW_WRITES=1`, a gated `.slock` wrapper, and a controlled `message send` reaching the fake upstream; a payload without the field returns `WRITES_NOT_ALLOWED`.
+- Child-env authority and fail-closed readiness (08-03-fix-codex-acp-exit-127):
+  - bridge/spawn tests: an explicit child env stays authoritative (omitted keys do not reappear from `process.env`); nested-npx codex child resolves the requested ACP package instead of the outer daemon tgz.
+  - readiness tests: ACP `result` marks ready only on `subtype:"success"`; error/cancelled/incomplete results and pre-session non-zero exits produce no `running` heartbeat and an `exited` lifecycle with the real exit code.
 
 ### 7. Wrong vs Correct
 
@@ -1363,4 +1395,224 @@ Codex app-server accepted turn/steer
 Provider-specific steer evidence
   → opt-in adapter experiment with hook/side-effect policy
   → durable next-invocation queue remains the universal fallback
+```
+
+---
+
+## Scenario: Graceful Runtime Cancellation
+
+### 1. Scope / Trigger
+
+- Trigger: cancelling an in-flight runtime turn from any entry point — backend lifecycle `action=cancel`, chat `POST /api/v1/agents/{id}/cancel-turn`, daemon `cancel_turn` control command, ACP `session/cancel` / `$/cancel_request`, Claude Code stream-json stdin interrupt, or stall-watchdog escalation.
+- Evidence sources: tasks `08-15-agent-turn-cancel`, `08-15-acp-bridge-new-client-api`, `08-15-chat-cancel-claude`; watchdog ladder verified in `daemon.ts` and documented in `.agents/skills/smallkhoj-add-runtime` (Graceful cancel section).
+
+### 2. Signatures
+
+- Backend workspace path: `POST /api/v1/workspaces/{id}/lifecycle` body `{action:"cancel"}` -> `runtime_control_command()` -> `cancel_turn` control envelope carrying only `agentId` + `workspaceId` (no `config`).
+- Backend member path: `POST /api/v1/agents/{memberId}/cancel-turn` -> resolve the agent's active workspace (status `running`/`pending`) -> reuse the same lifecycle cancel core.
+- Daemon: `DaemonControlCommand.type === "cancel_turn"`; `cancelRuntimeTurn(agentId: string, workspaceId?: string): boolean`.
+- Driver seam: `ManagedRuntimeDriver.requestGracefulCancel?(): boolean`.
+- ACP dual channel: `bridge.prompt(sessionId, text, {signal?: AbortSignal})` -> transport-level `$/cancel_request` on abort; `requestGracefulCancel()` = `bridge.cancel()` (agent-domain `session/cancel`) plus per-turn `AbortController.abort()`.
+- Claude Code stream-json stdin interrupt frame: `{"type":"control_request","request_id":...,"request":{"subtype":"interrupt"}}` (verified against claude 2.1.201).
+- Stall watchdog: `stallCancelSentAt`, grace window `min(30_000, max(stallTimeoutMs, 5_000))` ms, progress marker reset via `markRuntimeProgress()`.
+
+### 3. Contracts
+
+- The `cancel_turn` envelope is minimal — `agentId` + optional `workspaceId`, no config. It is a request, not a state transition.
+- Backend `action=cancel` performs zero state mutation: no workspace/agent status change, no runtime-provider availability check (the runtime is already running), computer-online check retained; it enqueues the control command and records one activity (`@handle 回合取消已请求 on <computer>`).
+- `cancelRuntimeTurn` guards existence and workspace match only; a boot-configured runtime with no registered `workspaceId` is a per-agent singleton and matches an unscoped command. An idle runtime logs `runtime idle, nothing to cancel`; a runtime without `requestGracefulCancel` (pi/opencode today) logs `runtime does not support graceful cancel` — both are logged no-ops, never errors, never state changes.
+- A cancelled turn settles through the existing event path: `stopReason=cancelled` result -> `runtime_idle`. Do not invent a new activity/event kind for cancellation.
+- ACP dual channel: agent-domain `session/cancel` is the primary channel; transport `$/cancel_request` (AbortSignal) is the independent second path for agents that ignore `session/cancel`. `$/cancel_request` must not replace `session/cancel`, and its promise still settles on the peer's final response (possibly `RequestCancelled`).
+- Claude stream-json: write the interrupt `control_request` to stdin only when busy and stdin is writable. `control_response` frames arriving on stdout must be filtered out of `stream_event` dispatch (record as daemon lines for diagnostics only), or they pollute the activity stream. After an interrupt, the turn's existing `result` path settles normally (`awaitingTurnResult` reset -> queued-message flush).
+- `POST /api/v1/agents/{id}/cancel-turn` returns HTTP 409 when the agent has no active workspace (`running`/`pending`) on this server.
+- Stall watchdog ladder for a busy runtime past `stallTimeout`: 1) send graceful cancel once (`stallCancelSentAt` set); 2) wait out the grace window `min(30s, max(stallTimeout, 5s))` — a cooperative `cancelled` settlement keeps the session/resume state intact; 3) only then terminate (SIGKILL). Any progress (`markRuntimeProgress`) resets the escalation markers.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| lifecycle `action=cancel` on a running workspace | Enqueue minimal `cancel_turn` envelope + one activity; workspace/agent/computer status unchanged. |
+| `cancel_turn` for an idle runtime | Log `runtime idle, nothing to cancel`; no error, no state change. |
+| Driver has no `requestGracefulCancel` (pi/opencode) | Log `runtime does not support graceful cancel`; no-op, not an error. |
+| `cancel_turn` for unknown agentId or mismatched workspaceId | Log `runtime not running` warning; return false. |
+| `POST /agents/{id}/cancel-turn` with no active workspace | HTTP 409. |
+| Claude driver idle or stdin not writable | `requestGracefulCancel()` returns false; no frame written. |
+| `control_response` frame on Claude stdout | Never dispatched as `stream_event`; kept as daemon log line. |
+| Stall after graceful cancel sent | Hold through `cancelGraceMs` before SIGKILL; progress resets `stallCancelSentAt`. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: busy goose/codex-acp turn receives `cancel_turn` -> `session/cancel` + `$/cancel_request` -> prompt settles `stopReason=cancelled` -> `runtime_idle`; session stays resumable.
+- Good: chat-page stop button calls `POST /agents/{id}/cancel-turn`, which reuses the lifecycle cancel core with zero state mutation.
+- Base: Claude interrupt writes the exact `control_request` frame; the subsequent result event resumes normal idle processing and queue flush.
+- Bad: implementing cancel by SIGKILL first — it destroys the session/resume state the graceful ladder exists to preserve.
+- Bad: `lifecycle action=cancel` writing a synthetic workspace status such as `cancelling`.
+- Bad: emitting a bespoke `turn_cancelled` activity/event type, or letting `control_response` frames reach `stream_event` consumers.
+
+### 6. Tests Required
+
+- Daemon fake-ACP: hanging turn -> `requestGracefulCancel()` -> fake peer records `$/cancel_request` and the turn settles `cancelled`; drivers without the seam report not-cancellable; idle returns false.
+- Daemon fake-claude: interrupt frame shape (`type`/`request_id`/`subtype`) asserted on stdin; `control_response` excluded from `stream_event`; busy state cleared by the fake result event.
+- Daemon integration: deliver a turn via events -> heartbeat carries `cancel_turn` -> marker settles `cancelled` (boot runtime without workspaceId still matches).
+- Backend: lifecycle `action=cancel` enqueues the minimal envelope and mutates no state (pytest); `cancel-turn` without an active workspace returns 409.
+- Watchdog: grace window is honored before termination; `markRuntimeProgress` resets escalation.
+- Real smoke: cancel mid-way through a long tool call (e.g. `--cancel-after-events`) proves true interruption — delta stream stops and the turn settles within seconds, not just an event count.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+cancel_turn -> SIGKILL child now -> workspace=exited -> invent activity kind "turn_cancelled"
+lifecycle action=cancel -> workspace.status = "cancelling"
+```
+
+#### Correct
+
+```text
+cancel_turn -> requestGracefulCancel (session/cancel + $/cancel_request | stdin interrupt)
+           -> result stopReason=cancelled -> runtime_idle via the existing event path
+lifecycle action=cancel -> enqueue cancel_turn envelope + activity, zero state mutation
+```
+
+---
+
+## Scenario: New Runtime Onboarding Contracts
+
+### 1. Scope / Trigger
+
+- Trigger: adding or auditing a new agent runtime (ACP-resident, CLI turn-based, HTTP/SSE server, or bundled JS CLI) across daemon wiring, event contracts, product surfaces, and tests. Also for diagnosing "new runtime cannot create agents / missing from dropdown / wrong activity".
+- Source of truth: `.agents/skills/smallkhoj-add-runtime` (distilled from task `08-06-goose-builtin-runtime` plus the 08-15 AGENTS.md prompt migration).
+
+### 2. Signatures
+
+- Shared translator: `src/runtime/acp-event-translator.ts` `translateAcpSessionUpdate()` -> AgentEvent schema, emitted as `{ runtime: '<name>', ...AgentEvent }` on `stream_event`.
+- Prompt file seam: `writeAgentInstructionsFile({ workspacePath, systemPrompt })` writes `<workspacePath>/AGENTS.md` with marker-based idempotent merge.
+- Frontend registry: `frontend/lib/runtime-options.ts` (`PRIMARY_RUNTIMES`, `RUNTIME_LABELS`, `publicRuntimeValue()`); brand-label tables in `app/(app)/computers/page.tsx` (`runtimeBrandLabel`), `app/(app)/daemon/page.tsx`, and `lib/control-plane.ts` (`runtimeLabel`).
+- Backend alias gate: `backend/routers/public_api.py` `_normalize_runtime()`.
+
+### 3. Contracts
+
+- Every new runtime's stream events must flow through the shared `translateAcpSessionUpdate()` and emerge as the unified AgentEvent schema. Pseudo-Anthropic envelopes and private event shapes are forbidden. Any new `stream_event` consumer must handle both `item_*` types and the legacy envelope (`eventType === 'assistant'`) shapes.
+- Tool failures must surface as `item_completed` + `status:"failed"` — daemon structured diagnostics read only this. Regex-scanning model text stays reserved for legacy-envelope runtimes and process stderr. If the agent omits toolName on `tool_call_update` (goose-style), the driver must remember `item_started` toolName by `callId` so failures do not degrade to "tool".
+- The Slock system prompt is written once into workspace `AGENTS.md` by driver `start()` via `writeAgentInstructionsFile` (marker-idempotent merge that preserves agent-authored additions); each turn sends only the bare event text. Never concatenate the system prompt into every user message — the legacy `buildCodexPrompt` approach rolled ~9k tokens per turn into history, an order of magnitude overpayment measured in practice.
+- Product wiring is part of the runtime contract: `PRIMARY_RUNTIMES` + `RUNTIME_LABELS` + `publicRuntimeValue()` and all three brand-label tables must list the new runtime. Missing any one spot makes the runtime invisible (daemon reports `available` but the UI filters it out) and users cannot create agents — goose shipped with exactly this hole.
+- Daemon wiring is a checklist of independent failure points, all required: `types.ts` `RuntimeType`; `daemon.ts` `DaemonRuntimeImplementation` union, `normalizeDaemonRuntimeType()` aliases, `start()` boot autostart condition (a separate branch from the factory — missing it means a configured runtime never starts at boot), factory branch, `session`-ready branch, PATH detection (`requiresDetectedRuntimeCommand()` / `runtimeCommandDetectionError()`), `sessionManager.upsert` default command; `cmd/main.ts` CLI flag; `runtime-activity.ts` union + `runtimeProtocol()`; `providers/local-command-provider.ts` + `provider-types.ts` + `runtime-provider.ts` inventory entry; backend `_normalize_runtime()` aliases.
+- Test ladder per gate level: translator/driver unit tests -> bridge smoke against the real binary (`npm run smoke:<name>`: initialize -> createSession (codec encode) -> prompt (real streaming + usage) -> loadSession (codec decode)) -> isolated daemon E2E (boot autostart, codec session ids, AgentEvent stream, structured tool failure, per-agent data dirs) -> isolated full-stack E2E -> `./twd` UI acceptance reconciled with `GET /api/v1/activity`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| New runtime emits a private/pseudo-Anthropic envelope | Reject in review; route through `translateAcpSessionUpdate()` to AgentEvent. |
+| Driver appends the system prompt to each user message | Reject; `AGENTS.md` once at `start()`, bare event text per turn. |
+| `PRIMARY_RUNTIMES` or any brand-label table misses the new id | Product bug: runtime invisible even though daemon reports it available. |
+| Boot autostart condition or factory branch added alone | Configured runtime never starts (or never starts at boot); both sites required. |
+| `tool_call_update` lacks toolName | Driver recalls `item_started` toolName by `callId`; diagnostics keep the real tool name. |
+| New `stream_event` consumer handles only `item_*` or only legacy envelopes | Reject; both shapes must be handled until legacy runtimes are gone. |
+| Smoke "green" with zero usage and error-shaped deltas | Not a pass: an LLM error turn streams the error text as deltas; require real streaming output and usage > 0. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: goose events all arrive as `{runtime:'goose', ...AgentEvent}` through the shared translator; warmup gate, usage accounting, and control-output capture (`item_delta`) work unchanged.
+- Base: a native-config runtime keeps its own LLM credentials; the daemon only clears conflicting relay env (`ANTHROPIC_*`...) and sets platform switches.
+- Bad: a new driver emitting `assistant`/`user` pseudo-Anthropic frames to reuse an old parser.
+- Bad: shipping daemon wiring without `frontend/lib/runtime-options.ts` updates — the runtime exists but no user can create it.
+- Bad: counting `item_delta` frames alone as smoke success while the turn is actually an LLM error.
+
+### 6. Tests Required
+
+- Unit: translator tests mirroring `test/acp-event-translator.test.mjs`; driver lifecycle; `runtime-activity.test.mjs` AgentEvent-path assertions.
+- Bridge smoke (real binary): initialize (+capability meta) -> createSession (codec encode verified) -> prompt (real streaming, usage > 0) -> loadSession (codec decode verified).
+- Isolated daemon E2E (in-process `DaemonCore` + fake backend + isolated HOME): boot autostart, namespaced session ids, AgentEvent stream, structured tool failure, per-agent data directories, concurrent instances with distinct agentIds.
+- Full-stack E2E + `./twd`: create-dialog shows and accepts the runtime -> real agent starts -> DM reply arrives via `aura message send` -> activity shows Working/Thinking/Output/Error and Idle with real per-turn tokens, reconciled against `GET /api/v1/activity`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Per-turn prompt assembly (legacy buildCodexPrompt style, ~9k tokens/turn).
+await bridge.prompt(sessionId, `${SYSTEM_PROMPT}\n\n${eventText}`);
+// Private envelope to reuse an old parser.
+emit('stream_event', { eventType: 'assistant', message: chunk });
+```
+
+#### Correct
+
+```typescript
+// Once at start(); marker-idempotent merge into workspace AGENTS.md.
+await writeAgentInstructionsFile({ workspacePath, systemPrompt });
+// Per turn: bare event text; shared translator owns the schema.
+await bridge.prompt(sessionId, eventText);
+emit('stream_event', { runtime: 'goose', ...translateAcpSessionUpdate(update) });
+```
+
+---
+
+## Scenario: TaskRun Status Lenses And Timestamps
+
+### 1. Scope / Trigger
+
+Use this spec when touching TaskRun status fields, TaskRunTemplate defaults, or
+TaskRun lifecycle timestamps. Evidence: tasks `06-25-taskrun-config-templates`
+(three-lens status contract) and `06-24-channel-taskrun-model` (tz-aware
+timestamp rule).
+
+### 2. Signatures
+
+```text
+TaskRun.status            # participant lens: the user-visible run state
+TaskRun.objective_status  # objective lens: acceptance of the produced artifact
+runtime session state     # runtime lens: the live agent session backing the run
+TaskRunTemplate           # user-editable preset; direct dispatch must use one
+```
+
+### 3. Contracts
+
+- Three status lenses (objective / runtime-session / participant) must stay
+  separate columns; folding them into one boolean loses "completed but session
+  still inspectable" and makes recovery undecidable.
+- `completed` means the current artifact contract is satisfied — it does NOT
+  destroy or detach the runtime session; the run stays recoverable and
+  inspectable (evidence replay, trace, cursor audit).
+- Direct task dispatch resolves its config from a `TaskRunTemplate`; there is
+  no freeform fallback — missing template is a caller error, not a default.
+- All TaskRun lifecycle timestamps are timezone-aware. Naive datetimes must
+  never be written or compared against aware ones; a naive/aware mix produces
+  false "stale" verdicts (this bug occurred once — keep the tz discipline).
+
+### 4. Validation & Error Matrix
+
+- template id missing/unknown on direct dispatch -> 4xx caller error, no TaskRun row
+- naive datetime in a lifecycle field -> reject at write boundary
+- status update that would fold lenses (e.g. set participant=completed from runtime exit alone) -> reject; each lens has its own writer
+
+### 5. Good/Base/Bad Cases
+
+- Good: run completes objective, runtime session idles and stays attached; reopening the run replays evidence.
+- Base: fresh run from a template; three lenses start aligned but diverge freely afterwards.
+- Bad: single `done` flag shared by UI and runtime teardown — recovery and evidence replay become impossible.
+
+### 6. Tests Required
+
+- Unit: template resolution failures produce 4xx with no row written.
+- Unit: naive-datetime write is rejected at the boundary.
+- Integration: completing the objective lens leaves the runtime session alive and the run inspectable.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+run.done = runtime_exited          # one flag folds three lenses
+run.finished_at = datetime.utcnow()  # naive timestamp
+```
+
+#### Correct
+
+```python
+run.objective_status = "completed"  # lens-specific writer
+run.finished_at = datetime.now(timezone.utc)  # tz-aware
+# participant/runtime lenses update through their own transitions
 ```

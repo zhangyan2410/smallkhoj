@@ -45,6 +45,23 @@ remove Agent -> DELETE /api/v1/channels/{channelId}/members/{agentId}
 - Agent labels render canonical `name`/`handle`; Human displayName may be a
   secondary decoration only. Agent displayName is not an API/UI concept.
 
+### Runtime and Provider options are detected, not hardcoded
+
+- The create-Agent Runtime select is built by
+  `runtimeOptionsFromDetected(computers, filters)` (`frontend/lib/runtime-options.ts`)
+  from `computer.detectedRuntimes` — the same data source as the Provider
+  dropdown (`detectedProviderOptions`, also `detectedRuntimes`). One source,
+  two controls; they must never diverge.
+- Option states: detected runtime → selectable; known-but-undetected
+  (`claude_code`, `codex`) → rendered as a disabled "unavailable" item
+  (`disabled: !opt.available` in `components/create-agent-form.tsx`), not
+  hidden; `custom` always selectable; bundled Pi always selectable with the
+  bundled marker. `not_installed` entries are presence evidence, not
+  availability — they must not make an option selectable.
+- Hardcoding a runtime or provider list in a form, or making an undetected
+  item selectable "for testing", is a contract violation: users would pick a
+  runtime no connected computer can run.
+
 ### Composer and targeting
 
 - `@` suggestions contain only current Channel members. Selection is bound to
@@ -70,6 +87,18 @@ remove Agent -> DELETE /api/v1/channels/{channelId}/members/{agentId}
 - A Channel-scoped removal barrier filters late/stale roster responses so they
   cannot resurrect the removed row. A confirmed local or realtime rejoin clears
   that barrier. The same Member ID in another Channel is unaffected.
+
+### Admin-only entries hide by role, not by 403
+
+- Server-management entries are gated by `canManageActiveServer(session)`
+  (`frontend/lib/server-permissions.ts`): an **active** owner/admin membership
+  for the **currently selected** Server. An owner role on another Server never
+  grants access, and status must be `active`.
+- Unauthorized users must not render the entry at all — hide it, never show it
+  and fail with 403 after the click (08-13 R3). Rendering-then-rejecting leaks
+  that the surface exists and produces dead-end errors.
+- Any newly added admin-only entry must ship its role gate in the same change;
+  an ungated render is a security regression, not a styling follow-up.
 
 ## 4. Validation & Error Matrix
 

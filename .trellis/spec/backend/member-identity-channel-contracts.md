@@ -59,6 +59,22 @@ All production Channel membership mutations call
 `services.channel_membership.add_channel_member()`,
 `remove_channel_member()`, or `remove_agent_from_all_channels()`.
 
+Agent API casing and claim contracts (06-02 task `06-02-P0-backend-core-api`):
+
+- The agent API serves two client families with different JSON casing: the daemon
+  Slock CLI sends snake_case (`task_numbers`, `task_number`, `message_ids`) while
+  Web/JS clients send camelCase (`taskNumbers`, `taskNumber`, `messageIds`).
+  `POST /internal/agent-api/tasks/claim` and `/tasks/update-status` must accept
+  both spellings — `taskNumber` / `task_number` / `number`, with list forms
+  (`task_numbers` / `taskNumbers`, `message_ids` / `messageIds`) feeding their
+  first element when no scalar is present. Dropping one spelling silently breaks
+  a live client family.
+- Task claiming is an optimistic lock: the claim query filters
+  `Task.assignee_id IS NULL AND Task.status = 'todo'` within the caller's server
+  scope and returns 404 `No unclaimed task found` when nothing matches. Never
+  implement claim as read-then-write assignment outside that atomic WHERE filter;
+  concurrent claimers must never both win.
+
 ## 3. Contracts
 
 ### Name and reference contract
@@ -141,6 +157,19 @@ All production Channel membership mutations call
   preserve the old `Member.server_id/display_name` or
   `Account.name/server_id/member_id` model.
 
+### Actor identity normalization contract (07-22 auth-tenancy INV-A3)
+
+- A viewer may identify itself by display name, `@handle`, canonical Member UUID,
+  or omission/default, per the endpoint contract. All legal self-representations
+  must resolve to the same canonical viewer Member UUID (INV-A3).
+- Identity normalization happens exactly once, at the API boundary, and yields
+  the canonical Member UUID before authorization. Everything downstream
+  (authorization, notifications, task assignment, event attribution) consumes
+  only that UUID — never a raw body string or mention regex.
+- A viewer must never act as another member through any accepted representation,
+  case/normalization alias, or ambiguous duplicate: all legal self aliases
+  resolve to the viewer; all foreign aliases are rejected.
+
 ## 4. Validation & Error Matrix
 
 | Condition | Required result |
@@ -158,6 +187,10 @@ All production Channel membership mutations call
 | Additional Server creation | 410 |
 | Identity migration sees existing identity rows | fail with `IDENTITY_CLEAN_RESET_REQUIRED` |
 | Unknown or ambiguous manual `@` token | send succeeds as ordinary text; mention nobody |
+| Viewer omits identity, or sends display name / `@handle` / own UUID | all four forms resolve to the same canonical viewer UUID; request proceeds as that member |
+| Viewer supplies another member's name/handle/UUID in any form or case alias | rejected as a foreign alias; nothing is attributed to that member |
+| Two runtimes concurrently call `tasks/claim` for the same task | exactly one claim wins via the `assignee_id IS NULL` optimistic lock; the loser gets 404 `No unclaimed task found` |
+| Agent API task request uses only snake_case or only camelCase keys | both spellings accepted on claim/update-status paths |
 
 ## 5. Good / Base / Bad Cases
 
@@ -187,6 +220,9 @@ All production Channel membership mutations call
   leave delivery, and post-removal queue/access cutoff.
 - Release gate: run the migration suite against explicitly isolated PostgreSQL
   URLs; a skipped migration suite is not a pass.
+- Auth/identity: a self-identity matrix (omitted / display name / `@handle` /
+  UUID) resolves every form to the same viewer UUID and rejects another member
+  through every form; a concurrent `tasks/claim` race proves exactly one winner.
 
 ## 7. Wrong vs Correct
 

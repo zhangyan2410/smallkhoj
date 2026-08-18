@@ -346,6 +346,42 @@ For forms that write to backend APIs, include at least one project WebDriver bro
 - Verifies temporary test data is cleaned up or isolated.
 - Watches network events when a previous bug involved the wrong HTTP method.
 
+### Convention: next-intl Copy Contract (06-22-i18n)
+
+**What**: All user-visible frontend copy lives in `frontend/messages/{zh-CN,en}.json` and renders through `next-intl` (`useTranslations` / `getTranslations`). Locale resolution is `i18n/request.ts`: cookie `smallkhoj_locale` (`LOCALE_COOKIE`, written by `LanguageSwitcher` via `setLocaleAction`) → `defaultLocale = "zh-CN"` (`i18n/config.ts`). The locale is non-routed — existing URLs keep working.
+
+**Why**: The catalog is the only place copy can be audited and kept bilingual; Chinese is the primary audience default. `Accept-Language` negotiation was tried at rollout and deliberately removed — the deterministic rule is cookie or zh-CN, so screenshots and evidence are reproducible.
+
+**Rules**:
+- New user-visible string in a component/page → add the key to BOTH `zh-CN.json` and `en.json` in the same change; `<html lang>` follows the resolved locale.
+- Backend API error copy is NOT translated client-side: render the authoritative backend message (`detail`/`reasonCode`) as-is. The i18n catalog owns product copy, never backend diagnostics.
+- Wrong: hardcoded Chinese/English literals in JSX ("确定"/"Submit"), or per-route mini message objects; Correct: `const t = useTranslations("members")` + catalog keys.
+
+### Convention: API/WS Base URL Derivation, Never Hardcoded Hosts
+
+**What**: All base-URL resolution goes through `frontend/lib/runtime-url.ts` (`resolveApiBase`, `resolvePublicApiBase`, `resolveWebSocketBase`); no component or route hardcodes `localhost`, `127.0.0.1`, or an origin string.
+
+**Rules** (production-URL contract):
+- Browser runtime: same-origin by default — empty base, requests hit the page origin and Next `rewrites` proxy `/api` to the backend (`next.config.mjs`).
+- Server/SSR runtime: `INTERNAL_API_BASE_URL` (compose/deploy value `http://backend:8000`; dev fallback `http://localhost:8000` lives only inside `runtime-url.ts`).
+- WebSocket: derive from the page protocol — `https:` → `wss:`, `http:` → `ws:` (`resolveWebSocketBase`); explicit `NEXT_PUBLIC_WS_BASE_URL` overrides.
+- Explicit `NEXT_PUBLIC_API_BASE_URL`/`NEXT_PUBLIC_WS_BASE_URL` wins when set; `resolvePublicApiKey` fails production builds that still carry the dev key.
+- The source-contract test `frontend/test/runtime-url.test.ts` asserts the env wiring (`INTERNAL_API_BASE_URL: process.env...` in `control-plane.ts`) — do not inline process.env reads elsewhere.
+
+**Wrong**: `fetch("http://localhost:8000/api/v1/...")` in a component or `new WebSocket("ws://localhost:8000")`.
+**Correct**: `joinUrlPath(resolveApiBase(), "/api/v1/...")` / `resolveChatWebSocketUrl()`.
+
+### Convention: Mobile Reachability for Shell Layouts (07-06 tasks)
+
+**What**: Narrow-viewport users must reach every list/detail function, not just see the main column.
+
+**Rules**:
+- The `ProductShell` list column hides below `sm` (`hidden sm:flex` in `components/product-shell-body.tsx`) — this MUST pair with an explicit drawer: toggle button `data-inkframe-mobile-role="sidebar-drawer-toggle"` (`sm:hidden`, `aria-controls`/`aria-expanded`) and `data-inkframe-state="open" | "collapsed"` on the `sidebar-drawer` region. A hidden list column with no way to reopen it is a reachability bug.
+- Full-screen dialogs size against `svh`, not `vh` (mobile browser chrome collapses `vh`): `max-h-[calc(100svh-1rem)]` as in `components/task-detail-dialog.tsx` — and the dialog body owns the vertical scroll (`overflow-y-auto`), not the page.
+- Right-column detail surfaces need a URL-driven dialog fallback so narrow layouts and direct links reach the same content: `/tasks?task=<id>` renders `TaskDetailDialog` (page is a server component reading `?task=`). A detail that exists only as an unnamed desktop sidebar column is unreachable on mobile.
+
+**Tests Required**: `./twd` (or `twd-inkframe-proof` mobile groups) at a narrow viewport asserting the drawer opens/closes and the detail dialog renders from its URL.
+
 ### Real Browser Test SOP
 
 For browser-facing product work, add task-local real-test evidence files. Use the `project-webdriver-cli` skill and the project WebDriver CLI wrapper, not Playwright, for repository browser/UI verification.
@@ -362,6 +398,19 @@ Required evidence:
 - `smallkhoj-trace` cross-check when daemon/runtime delivery is part of the workflow.
 
 If the real browser behavior disagrees with automated tests, treat the task as failing and keep fixing.
+
+Inkframe-surface acceptance gate: the canonical proof runner for Inkframe surfaces
+(`data-inkframe-*` selector vocabulary across product routes) is
+`tools/twd-guard/twd-inkframe-proof` — it drives the already-connected `./twd`
+bridge over route/selector groups (`product-shell`, `chat-desktop`, `chat-mobile`,
+`chat-unread`, `task-desktop`, `task-mobile`, `material-state`). Do not substitute
+Playwright, a self-started Chrome, or a hand-rolled route scanner for this gate.
+
+Ruling on the dual browser tracks: `kimi-webbridge` (127.0.0.1:10086) is for
+exploratory interaction only — poking at a flow, reproducing a bug — and produces
+no acceptance evidence. The sole acceptance gate remains `./twd` /
+`tools/twd-guard/*`; evidence files must cite twd commands, not webbridge sessions
+(this resolves the overlap with the `aura` frontend SOP skill).
 
 ### Convention: Reconcile Long-Lived Branches Across Frontend Ownership Moves
 

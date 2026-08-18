@@ -56,6 +56,33 @@ the UI has a keyboard-accessible affordance. `useResizablePanel` returns
 `onPointerDown` and `onKeyDown`; the consuming separator must set
 `role="separator"`, `aria-orientation`, `aria-label`, and `tabIndex={0}`.
 
+### High-frequency telemetry stays out of component state
+
+Scroll/pointer progress and other per-frame telemetry must never enter
+component root state. This was the P0 regression source in
+`07-24-chat-transition-fast-path`: every `scroll` event re-rendered the whole
+`ChannelClient` tree and the message list.
+
+Rules (reference implementation: `ChatScrollRail` in
+`app/(app)/chat/[channel]/message-list.tsx`):
+
+- Keep DOM-derived values in refs and write them straight back to the DOM as
+  `data-*` attributes or CSS custom properties (`rail.dataset.visible = ...`,
+  `tick.dataset.active = ...`). CSS consumes the attributes; React never sees
+  the updates.
+- One rAF-merged subscription per concern: a single `onScrollOrResize`
+  handler does `cancelAnimationFrame(frame); frame = requestAnimationFrame(update)`,
+  with the `scroll` listener registered `{ passive: true }`.
+- No dual subscription: do not register the same concern through both a JSX
+  prop (`onScroll={...}`) and `addEventListener("scroll", ...)` — handlers
+  double-fire and lifecycles diverge. Pick one owner per event.
+- The observer effect's dependency array must not include `messages.length`
+  (or any frequently-changing data): subscribe once against stable refs
+  (`[scrollContainerRef]`), and let the ResizeObserver notice content growth —
+  re-subscribing per message recreates listeners and re-triggers telemetry on
+  every arrival. (Deliberate exceptions like scroll-to-bottom on new messages
+  are separate effects with their own contract.)
+
 ### Hooks should not hide route context
 
 If a hook needs a route-specific id or current selection, pass it in as an

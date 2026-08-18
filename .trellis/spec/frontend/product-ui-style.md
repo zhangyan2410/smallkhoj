@@ -236,6 +236,19 @@ Pages without a list (Home, Control, Settings, Daemon) omit the `list` prop.
 - Keep controls stable in size; hover/status/counts must not shift layout.
 - Full-width work areas, sidebars, tabs, split panes, tables — prefer these over hero sections.
 
+### Shell-owned material desk coverage (07-06)
+- All product routes inherit the desk background from the `(app)` layout:
+  `app/(app)/layout.tsx` mounts `InkMaterialRuntimeScript` + `AppDeskBackground`
+  exactly once. Routes must NOT mount their own desk background or a second
+  material runtime script; per-route variation is done inside the main region,
+  never by re-owning the desk.
+- `/login` and `/join/[token]` are deliberate exceptions: clean xuan-paper
+  entrances outside `ProductShell` and outside the `(app)` group — no rail, no
+  desk material layer, no `data-inkframe-surface="app-background"`. Do not pull
+  them into the shell, and do not add desk material to other non-`(app)` routes
+  without extending the shell-coverage proof routes in
+  `tools/twd-guard/twd-inkframe-proof.mjs` (`PRODUCT_SHELL_PROOF_ROUTES`).
+
 ---
 
 ## Interaction Conventions
@@ -245,6 +258,13 @@ Pages without a list (Home, Control, Settings, Daemon) omit the `list` prop.
 - One tab style app-wide (do not hand-roll a third tab variant per page).
 - Critical backend mutations use native `<form action={serverAction}>` (see `quality-guidelines.md`).
 - Empty/loading/error states must explain the state AND offer a next action, not just show gray text.
+- **Unread density is asymmetric (06-22-notifications, anti notification-anxiety)**:
+  DM unread = count badge (`EventBadge` with `count`) + emphasized row; channel
+  unread = small dot only (`ActivityDot`, no count, no emphasis). Never give
+  channels per-message counters or bolding — a channel accumulating "99+" is
+  noise, not information. Unread is volatile local state (see the
+  Domain × Scope Unread Activity Layer in `state-management.md`): entering the
+  entity clears it; it is not durable design data and must not drive layout.
 
 ---
 
@@ -266,6 +286,39 @@ Pages without a list (Home, Control, Settings, Daemon) omit the `list` prop.
 - Task Recovery: show brief, plan, progress, output/evidence, summary, breakdown, provenance.
 - Artifacts render as typed viewers (image previews, `<video controls>`, labeled evidence rows).
 - Show version/hash compactly for audit; do not let hashes dominate hierarchy.
+
+---
+
+## Material Runtime (WebGL ink surfaces)
+
+The ink-material layer (`components/inkframe/material-surface.tsx`,
+`material-resource.ts`, `material-surface-store.ts`, `app-desk-background.tsx`)
+follows hard runtime rules from the 07-06 material task family:
+
+- **At most one active WebGL surface app-wide, static by default.** Every
+  material surface (desk background, chat desk, task material) defaults to
+  `mode="static"`, which mounts no `<canvas>` at all — zero GL cost on load and
+  on route transitions. Activation is an explicit user action (chat desk
+  button), coordinated through `materialSurfaceCoordinator`: one active record
+  per region, and activating a new owner in a region deactivates the previous
+  one (`app-background` is owned by `AppDeskBackground`, owner-id
+  `global-desk`).
+- **Resources are session-local, in-memory only.** `MaterialResource` blobs
+  live in a module-level tracked set with `URL.createObjectURL` object URLs,
+  revoked on page lifecycle/discard. Persisting visual/restore/source blobs to
+  `localStorage` or `IndexedDB` is forbidden — material state is ephemeral desk
+  theater, not user data.
+- **Three URLs per resource, for fidelity.** `visualObjectUrl` (what is
+  displayed), `restoreObjectUrl` (the base a restore returns to),
+  `sourceObjectUrl` (the original upload). Keep uses the current resource;
+  discard returns to the owner-clean default via `discardMaterialResource`.
+  Never collapse the three into one URL — restore quality and provenance
+  depend on the separation.
+- **Keep/discard must fall back to a clean owner resource, without tint drift.**
+  Each resource carries its own `tint` (`desk` | `paper` | `task` | `evidence`
+  | `review`); after keep or discard the surface must still report the owner's
+  expected `data-inkframe-tint`. A discarded surface silently inheriting the
+  previous resource's tint is a bug, not a weather effect.
 
 ---
 

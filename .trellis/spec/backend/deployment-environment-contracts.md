@@ -78,7 +78,10 @@ Current Caddy route signatures:
 - `cloud-prod` is the current user/product acceptance surface until a formal domain and HTTPS endpoint replace the IP-only URL.
 - `dev.sh` is a convenience script for `local-dev` only. It must not be used as release evidence, but it must keep local auth env coherent so browser signup/login works during development.
 - The real-runtime SOP follows the selected `DATABASE_URL`; the current `dev.sh`
-  default is host port `5432`. `55432` is not a fixed project test port.
+  default is host port `5432`. `55432` is not a fixed project test port: it is the
+  published host port reserved for the ccs-claude worker-orchestration stack's
+  `smallkhoj-test-db` container (`.agents/skills/smallkhoj-worker-orchestration`),
+  so other stacks must never auto-select it.
 - `dev.sh` must start backend and frontend with the same `AUTH_BRIDGE_SECRET`. The backend rejects Better Auth bridge calls with `503 Auth bridge secret is not configured` when the backend secret is missing, and with `401 Invalid auth bridge secret` when the frontend-provided secret does not match.
 - `dev.sh` derives the backend `PUBLIC_API_KEY` and frontend `NEXT_PUBLIC_API_KEY` from one local-dev source: `${PUBLIC_API_KEY:-sk_public_local}`. A separate `NEXT_PUBLIC_API_KEY` override is not supported by the script.
 - `dev.sh` frontend startup must set local Better Auth env:
@@ -793,4 +796,73 @@ The clean 5/8/3 smoke passed, therefore the 300/500 release capacity gate passed
 ```text
 The 5/8/3 smoke validated the harness only. Formal capacity remains pending until the
 clean candidate completes formal-300-500-30-v1.
+```
+
+---
+
+## Scenario: Real-Test Candidate Identity Gate
+
+### 1. Scope / Trigger
+
+- Trigger: selecting or starting a local stack for browser/runtime/core-flow verification, choosing ports/processes/containers/databases for a real test, or deciding whether a healthy URL may be used as acceptance evidence.
+- Source: `.agents/skills/smallkhoj-real-test` (SKILL + `references/runtime-topology.md`); run its read-only collector (`rtk bash .agents/skills/smallkhoj-real-test/scripts/collect-context.sh`) before selecting any environment, and embed the complete `<smallkhoj-real-test-context>` block at the top of any delegated test prompt.
+
+### 2. Signatures
+
+```text
+rtk bash .agents/skills/smallkhoj-real-test/scripts/collect-context.sh   # read-only context
+./dev.sh start            # reuses already-running processes by default (may be an old build)
+./dev.sh restart | SMALLKHOJ_DEV_FORCE_RESTART=1 ./dev.sh start          # force current worktree code
+uv run python main.py     # backend: NO hot reload — backend changes require restart
+npm run dev               # frontend: hot reload active
+Docker local-test Caddy :38190/:38191                                    # self-contained production-shape stack
+BLOCKED_CANDIDATE_IDENTITY                                               # blocker verdict
+```
+
+### 3. Contracts
+
+- Before any assertion, prove the page and API come from the worktree/commit under test: record worktree, branch, HEAD, and change scope; confirm each frontend/backend process origin. `dev.sh`-launched processes correspond to this worktree's code only after a restart honoring the rules below; Docker containers are current only when the image is proven built from the tested commit.
+- `./dev.sh start` defaults to reusing already-running processes, which may be an old build. To guarantee the current worktree's code, use `./dev.sh restart` or `SMALLKHOJ_DEV_FORCE_RESTART=1 ./dev.sh start`. The backend (`uv run python main.py`) has no hot reload — after backend changes a restart is mandatory; the frontend (`npm run dev`) hot-reloads.
+- Docker `local-test` (Caddy `:38190`/`:38191`) is a self-contained production-shape stack whose frontend/backend/db stay container-network-internal (its DB publishes no host port). A long-running local-test instance proves that image's health, never the current worktree; use it for current-change acceptance only after proving image/build provenance aligns with the tested commit. Docker local-test DB and host `:5432` are different databases.
+- When the candidate identity is unclear (URL healthy but provenance unproven), stop and emit `BLOCKED_CANDIDATE_IDENTITY` — do not proceed to screenshots or business assertions. A healthy `:3000` pointing at a broken `:8000` means fix the configuration so both ends belong to one candidate; never mix data across stacks or borrow another stack's cookies/database.
+- Same-origin verification: frontend, backend, auth session, Server/Agent/Channel/Task identities, Gate results, and the browser marker must all come from the same candidate before writing PASS.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+| --- | --- |
+| Candidate URL healthy but process/image provenance unproven | `BLOCKED_CANDIDATE_IDENTITY`; no screenshots or business claims. |
+| Backend code changed, `./dev.sh start` reused the old process | Stale candidate; run `./dev.sh restart` (or force-restart env) before testing. |
+| `:3000` healthy but `:8000` broken | Fix config so both ends are one candidate; do not point the backend at the shared host DB or edit `alembic_version` to make it work. |
+| Docker local-test healthy after running for days | Evidence for that image only; not current-worktree acceptance. |
+| Test needs a DB | Follow the collector's DATABASE_URL resolution (`dev.sh` default host `5432`); never auto-select `55432` (worker-stack reserved). |
+| Killing processes/stacks owned by others | Forbidden without explicit user authorization; create an isolated one-shot candidate instead. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: collector output + recorded HEAD prove the `:3000`/`:8000` pair runs this worktree after `./dev.sh restart`; marker, API, DB, and Gate evidence all reference the same candidate.
+- Base: no qualified candidate exists — spin up an isolated one-time stack or report the exact blocker.
+- Bad: screenshotting a stale Docker frontend as evidence for current worktree changes.
+- Bad: reusing another stack's cookies, databases, or Server/Agent ids to "make the test pass".
+
+### 6. Tests Required
+
+- This gate is procedural, not unit-testable: its evidence requirements are the test. Verification reports must state candidate identity (worktree/HEAD/process or image origin), URLs used, commands executed, evidence paths, and PASS or the exact blocker.
+- Screenshots, old Docker images, or an unexecuted Gate can never extend a conclusion.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+http://localhost:3000 loaded and the Docker local-test stack is green,
+so the current worktree's frontend fix is verified.
+```
+
+#### Correct
+
+```text
+Collector + HEAD <sha> recorded; ./dev.sh restart brought both processes to this
+worktree; ./twd marker evidence and API/DB checks ran against that candidate;
+Docker local-test was not used as current-change evidence.
 ```

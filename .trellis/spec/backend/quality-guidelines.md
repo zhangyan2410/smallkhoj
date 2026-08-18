@@ -152,6 +152,7 @@ Search .trellis/tasks/06-29-... first, then .trellis/tasks/archive/*/06-29-... b
 - `--runtime-control-result`, `--context-output`, and `--runtime-agent-id` require a single runtime where applicable; one static evidence file cannot be broadcast across `all`.
 - The Gate must not edit, switch, reorder, disable, or delete any local runtime/provider configuration. Provider/model setup is an operator-owned precondition; if safe isolated setup cannot be proven before a write, record a blocker instead of mutating configuration.
 - The seven historical mode names remain stable. Runtime selection changes Foundation readiness only and does not silently alter chat/collaboration scenario semantics.
+- Collaboration audience resolution (07-30 task `07-30-integration-gate-review-fixes`): when collaboration execution starts with a channel name but no durable `--channel-id`, it must reuse the channel ID returned by the message-send response to load channel membership before evaluating V1/V2/V3 audience evidence — never evaluate audience evidence against an unresolved or guessed channel identity. When `--channel-id` is supplied explicitly, keep the fast path and do not issue a duplicate membership request for the same resolved channel.
 
 ### 4. Validation & Error Matrix
 
@@ -165,6 +166,8 @@ Search .trellis/tasks/06-29-... first, then .trellis/tasks/archive/*/06-29-... b
 | Log failure names another Agent | Ignore it for the target profile; do not report target warmup failure. |
 | OpenCode/Pi context control unsupported | Two explicit `skip` rows with `applicable:false`; other ten steps remain strict. |
 | Provider/model contains another runtime name | Ignore it for family matching; use only canonical runtime identity. |
+| Collaboration starts with a channel name, no `--channel-id` | Resolve the channel from the send-returned channel ID, then load membership and evaluate V1/V2/V3; unresolved identity is a failure, not an empty audience. |
+| `--channel-id` already supplied | Membership fast path; no duplicate membership request for the same resolved channel. |
 
 ### 5. Good/Base/Bad Cases
 
@@ -181,6 +184,7 @@ Search .trellis/tasks/06-29-... first, then .trellis/tasks/archive/*/06-29-... b
 - CLI tests assert default `all`, all five accepted runtime values, unsupported-runtime pre-network exit `2`, Codex automatic Agent selection, OpenCode/Pi strict runtime/session behavior, and preservation of all seven mode names.
 - Static and dynamic runtime-control tests assert matching `runtime + agentId` evidence passes and missing/mismatched identity fails with `RUNTIME_CONTROL_TARGET_MISMATCH`.
 - Mixed daemon-log tests assert one Agent's warmup/token error cannot poison another runtime profile.
+- Collaboration CLI tests prove name-only starts resolve membership via the send-returned channel ID (red without the fix) and explicit `--channel-id` runs make exactly one membership request.
 - Result-consumer/UI tests assert `skip` remains skipped and contributes to `summary.skipped`, never `unknown` or pass.
 - Pure contract suite: `node --test tools/integration-gate/*.test.mjs`; it must remain service-free and database-free.
 
