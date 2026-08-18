@@ -574,6 +574,65 @@ def _collect_spec_capture(root: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Spec 文件清单 + 时效性审计（.trellis/spec/spec-audit.json）
+# ---------------------------------------------------------------------------
+
+def read_spec_file(root: Path, rel_path: str) -> dict | None:
+    """读取 spec 目录内 Markdown 的受限预览（256KiB 截断，防穿越）。"""
+    spec_root = (root / ".trellis" / "spec").resolve()
+    artifact = _safe_join(spec_root, rel_path)
+    if artifact is None or not artifact.is_file() or artifact.suffix != ".md":
+        return None
+    size = artifact.stat().st_size
+    with artifact.open("rb") as fh:
+        data = fh.read(ARTIFACT_PREVIEW_LIMIT_BYTES + 1)
+    truncated = len(data) > ARTIFACT_PREVIEW_LIMIT_BYTES
+    return {
+        "path": rel_path,
+        "sizeBytes": size,
+        "truncated": truncated,
+        "content": data[:ARTIFACT_PREVIEW_LIMIT_BYTES].decode("utf-8", errors="replace"),
+    }
+
+
+def _collect_spec_files(root: Path) -> dict:
+    """磁盘 spec 清单 × 时效性审计结论合并。"""
+    spec_root = root / ".trellis" / "spec"
+    audit: dict = {"auditedAt": None, "byPath": {}, "counts": {}}
+    audit_path = spec_root / "spec-audit.json"
+    if audit_path.is_file():
+        try:
+            data = json.loads(audit_path.read_text(encoding="utf-8", errors="replace"))
+            if isinstance(data, dict) and data.get("schema") == "trellis.spec-audit.v1":
+                audit["auditedAt"] = data.get("auditedAt")
+                counts: dict[str, int] = {}
+                for entry in data.get("files", []):
+                    if isinstance(entry, dict) and entry.get("path"):
+                        audit["byPath"][entry["path"]] = entry
+                        for key in ("current", "partial", "stale"):
+                            counts[key] = counts.get(key, 0) + (entry.get("sections") or {}).get(key, 0)
+                audit["counts"] = counts
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    files = []
+    if spec_root.is_dir():
+        for md in sorted(spec_root.rglob("*.md")):
+            rel = md.relative_to(spec_root).as_posix()
+            entry = audit["byPath"].get(rel, {})
+            sections = entry.get("sections") or {}
+            findings = entry.get("findings") or []
+            files.append({
+                "path": rel,
+                "layer": rel.split("/", 1)[0] if "/" in rel else "other",
+                "lines": sum(1 for _ in md.open("rb")),
+                "sections": sections or None,
+                "findings": findings or None,
+            })
+    return {"auditedAt": audit["auditedAt"], "counts": audit["counts"], "files": files}
+
+
+# ---------------------------------------------------------------------------
 # 快照
 # ---------------------------------------------------------------------------
 
@@ -600,4 +659,5 @@ def collect_snapshot(root: Path) -> dict:
         "journal": _collect_journal(root),
         "spec": _collect_spec(root),
         "specCapture": _collect_spec_capture(root),
+        "specFiles": _collect_spec_files(root),
     }

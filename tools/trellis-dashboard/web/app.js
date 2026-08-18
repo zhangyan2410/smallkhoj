@@ -758,6 +758,95 @@ function closeDrawer() {
   state.artifact = null;
 }
 
+/* ============================================================ Spec 文件视图 */
+
+const AUDIT_BADGE = {
+  stale:     { label: "失效", cls: "st-risk" },
+  partial:   { label: "部分失效", cls: "st-progress" },
+  unverifiable: { label: "无法核验", cls: "st-unknown" },
+};
+
+function fileTone(file) {
+  const s = file.sections || {};
+  if ((s.stale || 0) > 0) return "stale";
+  if ((s.partial || 0) > 0 || (s.unverifiable || 0) > 0) return "partial";
+  return "current";
+}
+
+async function openSpecFile(relPath) {
+  showDrawer(relPath, "spec 正文");
+  try {
+    const resp = await fetch(`/api/spec-file?${new URLSearchParams({ path: relPath })}`, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    const inner = el("div", { class: "md" });
+    inner.innerHTML = renderMarkdown(data.content);
+    setDrawerBody(
+      el("div", { class: "drawer-meta muted" },
+        `${fmtBytes(data.sizeBytes)}${data.truncated ? " · 已截断" : ""} · 点击行外区域关闭`),
+      inner);
+  } catch (err) {
+    setDrawerBody(el("div", { class: "empty", text: `无法加载: ${err.message}` }));
+  }
+}
+
+function renderSpecFiles(snapshot) {
+  const spec = snapshot.specFiles || {};
+  const files = spec.files || [];
+  document.getElementById("tab-extra").replaceChildren(
+    el("span", { class: "muted", text: spec.auditedAt ? `时效审计于 ${spec.auditedAt}` : "" }));
+  if (!files.length) {
+    document.getElementById("view").replaceChildren(
+      el("div", { class: "empty", text: "没有 spec 文件" }));
+    return;
+  }
+  const counts = spec.counts || {};
+  const chips = [
+    el("span", { class: "chip", text: `文件 ${files.length}` }),
+    el("span", { class: "chip", text: `CURRENT 节 ${counts.current || 0}` }),
+    el("span", { class: "chip", text: `部分失效 ${counts.partial || 0}` }),
+    el("span", { class: "chip", text: `失效 ${counts.stale || 0}` }),
+  ];
+  const layers = new Map();
+  for (const file of files) {
+    if (!layers.has(file.layer)) layers.set(file.layer, []);
+    layers.get(file.layer).push(file);
+  }
+  const view = el("div", {});
+  for (const [layer, layerFiles] of layers) {
+    view.append(el("div", { class: "capture-month", text: layer }));
+    for (const file of layerFiles) {
+      const tone = fileTone(file);
+      const s = file.sections;
+      const summary = s
+        ? `CURRENT ${s.current || 0}${s.partial ? ` · 部分失效 ${s.partial}` : ""}${s.stale ? ` · 失效 ${s.stale}` : ""}`
+        : "未审计";
+      const row = el("div", { class: `spec-file tone-${tone}` },
+        el("button", {
+          class: "spec-file-name mono",
+          text: file.path.replace(/^\w+\//, ""),
+          title: `点击查看 ${file.path} 正文`,
+          onclick: () => openSpecFile(file.path),
+        }),
+        el("span", { class: "muted", text: `${file.lines} 行` }),
+        el("span", { class: `badge ${tone === "current" ? "st-done" : (tone === "stale" ? "st-risk" : "st-progress")}`,
+                     text: tone === "current" ? (s ? "全部现行" : "未审计") : (tone === "stale" ? "含失效节" : "含部分失效") }),
+        el("span", { class: "muted", text: summary }));
+      view.append(row);
+      for (const finding of file.findings || []) {
+        const badge = finding.fixed
+          ? { label: "已修复", cls: "st-done" }
+          : (AUDIT_BADGE[finding.verdict] || AUDIT_BADGE.unverifiable);
+        view.append(el("div", { class: `spec-finding${finding.fixed ? " finding-fixed" : ""}` },
+          el("span", { class: `badge ${badge.cls}`, text: badge.label }),
+          el("span", { class: "spec-finding-section", text: finding.section }),
+          el("span", { class: "muted", text: finding.evidence })));
+      }
+    }
+  }
+  document.getElementById("view").replaceChildren(el("div", { class: "chip-bar" }, ...chips), view);
+}
+
 /* ============================================================ 视图路由与刷新 */
 
 function renderView() {
@@ -766,6 +855,7 @@ function renderView() {
   if (state.tab === "tasks") renderTasks(snapshot);
   else if (state.tab === "sessions") renderSessions(snapshot);
   else if (state.tab === "speccap") renderSpecCapture(snapshot);
+  else if (state.tab === "specfiles") renderSpecFiles(snapshot);
   else renderTimeline(snapshot);
 }
 

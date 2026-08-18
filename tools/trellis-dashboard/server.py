@@ -20,6 +20,7 @@ from collector import (
     IMAGE_RAW_LIMIT_BYTES,
     collect_snapshot,
     read_artifact_preview,
+    read_spec_file,
     resolve_artifact,
 )
 
@@ -71,6 +72,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._handle_artifact(parse_qs(parsed.query), head=head)
             elif path == "/api/artifact-raw":
                 self._handle_artifact_raw(parse_qs(parsed.query), head=head)
+            elif path == "/api/spec-file":
+                self._handle_spec_file(parse_qs(parsed.query), head=head)
             else:
                 self._serve_static(path, head=head)
         except Exception as exc:  # noqa: BLE001 - 服务器顶层兜底，不让线程崩溃
@@ -109,6 +112,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             mimetypes.guess_type(artifact.name)[0] or "application/octet-stream"
         )
         self._send_bytes(artifact.read_bytes(), mime, head=head)
+
+    def _handle_spec_file(self, query: dict, *, head: bool) -> None:
+        rel = (query.get("path") or [""])[0].strip()
+        if not rel:
+            self._send_json({"error": "缺少 path 参数"}, status=400, head=head)
+            return
+        result = read_spec_file(self.server.root, rel)
+        if result is None:
+            self._send_json({"error": "spec 文件不存在或路径被拒绝"}, status=404, head=head)
+            return
+        self._send_json(result, head=head)
 
     def _serve_static(self, path: str, *, head: bool) -> None:
         rel = "index.html" if path in ("", "/") else path.lstrip("/")
