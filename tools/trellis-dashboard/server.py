@@ -62,6 +62,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if unquote(parsed.path) != "/api/agent-runs":
             self._send_json({"error": "not found"}, status=404)
             return
+        if unquote(parsed.path) == "/api/dsh-web":
+            self._handle_dsh_web()
+            return
         try:
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
@@ -73,6 +76,42 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, status=409)
         except Exception as exc:  # noqa: BLE001
             self._send_json({"error": f"bad request: {exc}"}, status=400)
+
+    def _handle_dsh_web(self) -> None:
+        """拉起 dsh web（127.0.0.1:3080，cwd=仓库根）；已在跑则直接返回 URL。"""
+        import socket
+        import subprocess
+
+        url = "http://127.0.0.1:3080/"
+        sock = socket.socket()
+        sock.settimeout(0.3)
+        try:
+            sock.connect(("127.0.0.1", 3080))
+            up = True
+        except OSError:
+            up = False
+        finally:
+            sock.close()
+        if not up:
+            log_dir = self.server.root / ".trellis" / ".runtime"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log = (log_dir / "dsh-web.log").open("w", encoding="utf-8")
+            try:
+                subprocess.Popen(
+                    ["dsh", "web", "--port", "3080"],
+                    cwd=str(self.server.root),
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+            except FileNotFoundError:
+                log.close()
+                self._send_json({"error": "dsh 不可用（未安装或不在 PATH）"}, status=500)
+                return
+            # 给它一点启动时间，前端拿到 202 后轮询快照里的状态
+            self._send_json({"url": url, "started": True}, status=202)
+            return
+        self._send_json({"url": url, "started": False})
 
     def do_HEAD(self) -> None:  # noqa: N802
         self._route(head=True)

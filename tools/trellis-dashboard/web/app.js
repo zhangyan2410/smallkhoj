@@ -870,6 +870,26 @@ const RUN_STATUS = {
   failed:  { label: "失败", cls: "st-risk" },
 };
 
+async function startDshWeb(section) {
+  try {
+    const resp = await fetch("/api/dsh-web", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      alert(`启动失败: ${body.error || resp.status}`);
+      return;
+    }
+    // 轮询等 web 起来（最多 ~15s）
+    for (let i = 0; i < 15; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const snap = await fetch("/api/dashboard", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
+      if (snap?.agents?.dshWebUp) { refresh(); return; }
+    }
+    refresh();
+  } catch (err) {
+    alert(`启动失败: ${err.message}`);
+  }
+}
+
 async function startWorkflow(id, button) {
   button.disabled = true;
   try {
@@ -937,11 +957,22 @@ function renderAgents(snapshot) {
         run.outputTail ? el("span", { class: "muted run-tail", text: run.outputTail.slice(-160) }) : null)))
     : el("div", { class: "empty", text: "还没有运行记录" });
 
+  // 对话面板：iframe 嵌 dsh web（首启需在其 UI 里 Choose workspace 选仓库根）
+  const chatPanel = el("div", { class: "chat-panel" },
+    el("div", { class: "chat-panel-head" },
+      el("span", { class: "section-title", text: "对话（提需求，agent 按 trellis-dashboard-dev skill 直接改本工具）" }),
+      agents.dshWebUp
+        ? el("span", { class: "badge st-done", text: "dsh web 运行中" })
+        : el("button", { class: "run-btn", text: "启动 dsh web", onclick: () => startDshWeb() })),
+    agents.dshWebUp
+      ? el("iframe", { class: "chat-iframe", src: agents.dshWebUrl || "http://127.0.0.1:3080/", title: "DSH 对话" })
+      : el("div", { class: "muted", styleProp: "padding:18px 0", text: "未启动。点击「启动 dsh web」拉起（127.0.0.1:3080，工作区=本仓库）；首次打开需在其界面 Choose workspace 选择仓库根。" }));
+
   document.getElementById("view").replaceChildren(
     el("div", { class: "cards agent-grid" }, ...cards),
     el("div", { class: "section-title", text: "运行历史" }),
     history,
-    el("div", { class: "muted", styleProp: "margin-top:14px", text: "对话模式（提需求改 dashboard 自身）将在下一步接入。" }));
+    chatPanel);
 }
 
 /* ============================================================ 视图路由与刷新 */

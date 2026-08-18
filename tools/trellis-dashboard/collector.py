@@ -662,11 +662,23 @@ def _collect_spec_files(root: Path) -> dict:
 
 def _collect_agents(root: Path) -> dict:
     import shutil
+    import socket
 
     import agent_runner
 
+    sock = socket.socket()
+    sock.settimeout(0.2)
+    try:
+        sock.connect(("127.0.0.1", 3080))
+        dsh_web_up = True
+    except OSError:
+        dsh_web_up = False
+    finally:
+        sock.close()
     return {
         "dshAvailable": shutil.which(agent_runner.DSH_BIN) is not None,
+        "dshWebUp": dsh_web_up,
+        "dshWebUrl": "http://127.0.0.1:3080/",
         "workflows": agent_runner.list_workflows(),
         "runs": agent_runner.list_runs(root),
     }
