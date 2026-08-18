@@ -357,6 +357,8 @@ main { padding: 20px; max-width: 1240px; margin: 0 auto; }
   background: rgba(10, 14, 20, 0.45);
   z-index: 40;
 }
+/* display:flex 会覆盖 UA 对 [hidden] 的 display:none，必须显式声明 */
+.drawer-mask[hidden], .drawer[hidden] { display: none; }
 .drawer {
   position: fixed;
   top: 0; right: 0; bottom: 0;
