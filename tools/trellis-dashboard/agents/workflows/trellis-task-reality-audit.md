@@ -7,6 +7,10 @@ timeoutMinutes: 60
 
 你在 /Users/code/project/smallkhoj 仓库执行「活跃任务真实性审计」固定工作流。目标：核实 `.trellis/tasks/`（不含 archive/）每个活跃任务的真实状态；Trellis 状态可能过时——标 planning 但实际已实现、标 in_progress 但实际已完成。
 
+## 执行纪律
+
+- **顺序执行，不要派生子代理/并行任务**（headless 模式下并行子代理不稳定）；逐项做完再做下一项。
+
 ## 方法（对每个活跃任务）
 
 1. 读 task.json（title/notes/branch/commit/children）+ prd.md 的 Goal 与 Acceptance Criteria；ls 任务目录看工件（verify-result.md / verification-record.md / quality-gate.md / evidence/）。

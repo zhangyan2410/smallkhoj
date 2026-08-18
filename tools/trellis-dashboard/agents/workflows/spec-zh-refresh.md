@@ -7,6 +7,10 @@ timeoutMinutes: 60
 
 你在 /Users/code/project/smallkhoj 仓库执行「中文镜像刷新」固定工作流。目标：让 `.trellis/spec-zh/` 与 `.trellis/spec/`（英文，唯一事实来源）保持同步。
 
+## 执行纪律
+
+- **顺序执行，不要派生子代理/并行任务**（headless 模式下并行子代理不稳定）；逐项做完再做下一项。
+
 ## 步骤
 
 1. 读 `.trellis/spec-zh/manifest.json`（记每个文件的源 sha256）。计算每个 `.trellis/spec/**/*.md` 当前 sha256：

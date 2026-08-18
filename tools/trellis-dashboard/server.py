@@ -59,11 +59,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
-        if unquote(parsed.path) != "/api/agent-runs":
-            self._send_json({"error": "not found"}, status=404)
-            return
-        if unquote(parsed.path) == "/api/dsh-web":
+        path = unquote(parsed.path)
+        if path == "/api/dsh-web":
             self._handle_dsh_web()
+            return
+        if path != "/api/agent-runs":
+            self._send_json({"error": "not found"}, status=404)
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -98,7 +99,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             log = (log_dir / "dsh-web.log").open("w", encoding="utf-8")
             try:
                 subprocess.Popen(
-                    ["dsh", "web", "--port", "3080"],
+                    [agent_runner.DSH_BIN, "web", "--port", "3080"],
                     cwd=str(self.server.root),
                     stdout=log,
                     stderr=subprocess.STDOUT,

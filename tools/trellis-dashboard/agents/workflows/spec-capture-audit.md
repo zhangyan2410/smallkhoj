@@ -7,6 +7,10 @@ timeoutMinutes: 60
 
 你在 /Users/code/project/smallkhoj 仓库执行「Spec 沉淀审计（增量）」固定工作流。目标：把上次审计之后新归档的任务（和新建的自建 skill）里值得沉淀的经验写进 spec，并更新台账。
 
+## 执行纪律
+
+- **顺序执行，不要派生子代理/并行任务**（headless 模式下并行子代理不稳定）；逐项做完再做下一项。
+
 ## 数据源与判定顺序
 
 1. 读 `.trellis/spec/capture-ledger.json`（schema trellis.spec-capture.v1），记下 `auditedAt` 和已有条目的 `month:id` 集合。

@@ -7,6 +7,10 @@ timeout_minutes: 40
 
 你在 /Users/code/project/smallkhoj 仓库执行「Spec 时效核验」固定工作流。目标：验证 .trellis/spec/ 下每个 Markdown 文件的每个章节内容是否仍符合现行代码，把结论写入 .trellis/spec/spec-audit.json。
 
+## 执行纪律
+
+- **顺序执行，不要派生子代理/并行任务**（headless 模式下并行子代理不稳定）；逐项做完再做下一项。
+
 ## 背景
 
 - 这个仓库的 spec 是给 AI/开发者的可执行契约库；代码演进后 spec 会漂移失效。

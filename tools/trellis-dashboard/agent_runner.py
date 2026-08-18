@@ -25,7 +25,20 @@ WORKFLOWS_DIR = Path(__file__).resolve().parent / "agents" / "workflows"
 RUNS_DIR_NAME = ".trellis/.runtime/agent-runs"
 INDEX_NAME = "agent-runs.jsonl"
 OUTPUT_TAIL_CHARS = 2000
-DSH_BIN = os.environ.get("TRELLIS_DASHBOARD_DSH_BIN", "dsh")
+
+
+def _resolve_dsh_bin() -> str:
+    """dsh 可执行解析：环境覆盖 > ~/.dsh/toolchain wrapper（系统 Node 过旧时必需）> PATH。"""
+    override = os.environ.get("TRELLIS_DASHBOARD_DSH_BIN")
+    if override:
+        return override
+    wrapper = Path.home() / ".dsh" / "toolchain" / "bin" / "dsh"
+    if wrapper.is_file():
+        return str(wrapper)
+    return "dsh"
+
+
+DSH_BIN = _resolve_dsh_bin()
 
 _frontmatter_re = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
@@ -87,6 +100,31 @@ def _index_path(root: Path) -> Path:
     return _runs_root(root) / INDEX_NAME
 
 
+def _reconcile_orphan_run(root: Path, run: dict) -> None:
+    """运行中记录但进程已死（如服务器在运行期间重启）→ 从输出日志收尾。"""
+    pid = run.get("pid")
+    if pid:
+        try:
+            os.kill(int(pid), 0)
+            return  # 还活着
+        except (ProcessLookupError, ValueError):
+            pass
+        except PermissionError:
+            return  # 活着但不属于我们
+    elif run_state.running and run_state.running.get("runId") == run.get("runId"):
+        return  # 本进程在跑（无 pid 的旧记录）
+    log_path = _runs_root(root) / str(run.get("runId")) / "output.log"
+    tail = log_path.read_text(encoding="utf-8", errors="replace")[-OUTPUT_TAIL_CHARS:] if log_path.is_file() else None
+    run["status"] = "failed" if not tail else "done"
+    run["finishedAt"] = _now_iso()
+    run["exitCode"] = None
+    if tail:
+        run["outputTail"] = tail
+    run.setdefault("note", "服务器重启期间完成，状态由日志对账")
+    run["note"] = "服务器重启期间收尾，状态由日志对账"
+    _finish_record(root, run)
+
+
 def list_runs(root: Path, limit: int = 20) -> list[dict]:
     path = _index_path(root)
     if not path.is_file():
@@ -102,6 +140,9 @@ def list_runs(root: Path, limit: int = 20) -> list[dict]:
             continue
         if len(runs) >= limit:
             break
+    for run in runs:
+        if run.get("status") == "running":
+            _reconcile_orphan_run(root, run)
     # 运行中的那条以内存状态为准（重启后以磁盘 running 标记 + 存活探测兜底）
     if run_state.running:
         for run in runs:
@@ -127,6 +168,7 @@ def start_run(root: Path, workflow_id: str) -> dict:
         record = {
             "runId": run_id,
             "workflowId": workflow_id,
+            "pid": None,
             "startedAt": _now_iso(),
             "finishedAt": None,
             "status": "running",
@@ -157,6 +199,7 @@ def start_run(root: Path, workflow_id: str) -> dict:
             _finish_record(root, record)
             raise RuntimeError(record["outputTail"])
 
+        record["pid"] = proc.pid
         run_state.running = record
         started_at = datetime.now(timezone.utc)
 
