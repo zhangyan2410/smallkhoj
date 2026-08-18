@@ -444,6 +444,14 @@ button.risk-chip:hover { border: 1px solid var(--danger); }
   font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 
+.artifact-image {
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 8px;
+  display: block;
+}
+
 /* ---------- 其他 ---------- */
 
 .empty { color: var(--text-muted); padding: 32px 0; text-align: center; }

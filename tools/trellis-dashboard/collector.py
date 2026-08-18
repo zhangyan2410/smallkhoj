@@ -31,6 +31,9 @@ ARCHIVED_RECENT_LIMIT = 200
 JOURNAL_RECENT_LIMIT = 20
 TEXT_FIELD_LIMIT = 400
 
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico"}
+IMAGE_RAW_LIMIT_BYTES = 4 * 1024 * 1024
+
 _CANONICAL_ROOT_FILES = {"prd.md", "design.md", "implement.md", "research.md", "task.json"}
 _CANONICAL_SUBDIRS = {"research"}
 
@@ -124,8 +127,9 @@ def _collect_artifacts(task_dir: Path) -> dict:
         if entry.is_file() and entry.suffix == ".md" and entry.name not in _CANONICAL_ROOT_FILES:
             artifacts["extras"].append(entry.name)
         elif entry.is_dir() and entry.name not in _CANONICAL_SUBDIRS:
+            # 递归收集（evidence/probes 常有多层嵌套），展示上限 10 个文件名
             files = sorted(
-                f"{entry.name}/{p.name}" for p in entry.iterdir() if p.is_file()
+                str(p.relative_to(task_dir)) for p in entry.rglob("*") if p.is_file()
             )
             artifacts["extraDirs"].append({
                 "name": entry.name,
@@ -285,6 +289,8 @@ def _collect_archived_recent(root: Path) -> list[dict]:
                 "branch": raw.get("branch"),
                 "commit": raw.get("commit"),
                 "childCount": len(raw.get("children", []) or []),
+                "needsDecision": (raw.get("meta") or {}).get("needsDecision"),
+                "artifacts": _collect_artifacts(task_dir),
             }))
     items.sort(key=lambda pair: pair[0], reverse=True)
     return [item for _key, item in items[:ARCHIVED_RECENT_LIMIT]]
@@ -330,8 +336,8 @@ def _safe_join(base: Path, ref: str) -> Path | None:
     return resolved
 
 
-def read_artifact_preview(root: Path, task_ref: str, file_ref: str) -> dict | None:
-    """读取任务工件的受限预览；路径非法或文件不存在返回 None。
+def resolve_artifact(root: Path, task_ref: str, file_ref: str) -> Path | None:
+    """把工件引用解析为任务目录内的受控路径；非法或不存在返回 None。
 
     task_ref 形如 "08-16-foo"（活跃）或 "archive/2026-08/07-30-foo"（归档）。
     """
@@ -341,6 +347,14 @@ def read_artifact_preview(root: Path, task_ref: str, file_ref: str) -> dict | No
         return None
     artifact = _safe_join(task_dir, file_ref)
     if artifact is None or not artifact.is_file():
+        return None
+    return artifact
+
+
+def read_artifact_preview(root: Path, task_ref: str, file_ref: str) -> dict | None:
+    """读取任务工件的受限文本预览；路径非法或文件不存在返回 None。"""
+    artifact = resolve_artifact(root, task_ref, file_ref)
+    if artifact is None:
         return None
     size = artifact.stat().st_size
     with artifact.open("rb") as fh:

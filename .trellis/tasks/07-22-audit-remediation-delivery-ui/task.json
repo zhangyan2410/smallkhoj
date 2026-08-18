@@ -23,6 +23,6 @@
   "relatedFiles": [],
   "notes": "",
   "meta": {
-    "needsDecision": "审计裁定 LIKELY_DONE：CI/loading/error/删除对话框与 14 件真机证据已随 PR#1 进 main，但本任务无独立 verify 工件、implement.md 0/43 勾。补记后归档？"
+    "needsDecision": "7 月代码审计整改之一：交付质量门禁和可见 UI（CI 流水线、页面加载/报错提示、删除确认弹窗等）。改动已全部合入 main，并留有 14 份真实浏览器验证记录，只是任务清单没逐条打勾、也没写正式验证总结。请选：① 补一份简短总结后归档；② 直接归档。"
   }
 }

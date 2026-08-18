@@ -15,7 +15,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from collector import collect_snapshot, read_artifact_preview
+from collector import (
+    IMAGE_EXTENSIONS,
+    IMAGE_RAW_LIMIT_BYTES,
+    collect_snapshot,
+    read_artifact_preview,
+    resolve_artifact,
+)
 
 WEB_ROOT = Path(__file__).resolve().parent / "web"
 DEFAULT_PORT = 4322
@@ -63,6 +69,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json(collect_snapshot(self.server.root), head=head)
             elif path == "/api/artifact":
                 self._handle_artifact(parse_qs(parsed.query), head=head)
+            elif path == "/api/artifact-raw":
+                self._handle_artifact_raw(parse_qs(parsed.query), head=head)
             else:
                 self._serve_static(path, head=head)
         except Exception as exc:  # noqa: BLE001 - 服务器顶层兜底，不让线程崩溃
@@ -79,6 +87,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "工件不存在或路径被拒绝"}, status=404, head=head)
             return
         self._send_json(result, head=head)
+
+    def _handle_artifact_raw(self, query: dict, *, head: bool) -> None:
+        """图片原件端点：仅限图片扩展名，超过 4 MiB 拒绝，供 <img> 直接加载。"""
+        task = (query.get("task") or [""])[0].strip()
+        file_ref = (query.get("file") or [""])[0].strip()
+        if not task or not file_ref:
+            self._send_json({"error": "缺少 task / file 参数"}, status=400, head=head)
+            return
+        artifact = resolve_artifact(self.server.root, task, file_ref)
+        if artifact is None:
+            self._send_json({"error": "工件不存在或路径被拒绝"}, status=404, head=head)
+            return
+        if artifact.suffix.lower() not in IMAGE_EXTENSIONS:
+            self._send_json({"error": "该端点仅支持图片文件"}, status=400, head=head)
+            return
+        if artifact.stat().st_size > IMAGE_RAW_LIMIT_BYTES:
+            self._send_json({"error": "图片超过 4 MiB 上限"}, status=413, head=head)
+            return
+        mime = _MIME_OVERRIDES.get(artifact.suffix.lower()) or (
+            mimetypes.guess_type(artifact.name)[0] or "application/octet-stream"
+        )
+        self._send_bytes(artifact.read_bytes(), mime, head=head)
 
     def _serve_static(self, path: str, *, head: bool) -> None:
         rel = "index.html" if path in ("", "/") else path.lstrip("/")

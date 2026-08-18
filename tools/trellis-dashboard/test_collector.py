@@ -132,12 +132,15 @@ class TestArchived(FixtureBase):
                 "id": name, "name": name, "title": name, "status": "completed",
                 "priority": "P2", "assignee": "tester", "completedAt": completed,
                 "createdAt": completed, "children": [],
+                "meta": {"needsDecision": "示例决定"} if name.endswith("new") else {},
             }), encoding="utf-8")
 
         recent = collector._collect_archived_recent(self.root)
         self.assertEqual(len(recent), 2)
         self.assertEqual(recent[0]["dir"], "08-15-new")
         self.assertEqual(recent[0]["ref"], "archive/2026-08/08-15-new")
+        self.assertEqual(recent[0]["needsDecision"], "示例决定")
+        self.assertIn("artifacts", recent[0])
         self.assertEqual(collector._count_archived(self.root), 2)
 
 

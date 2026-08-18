@@ -427,12 +427,15 @@ function renderTaskList() {
   }));
 }
 
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp|ico)$/i;
+
 function artifactEntries(item) {
   // 返回 [{file, label, kind, disabled}]；disabled 条目仅作计数说明，不可点击
   const entries = [];
   const push = (file, label, kind, disabled = false) => entries.push({ file, label, kind, disabled });
-  if (item.kind === "active") {
-    const a = item.task.artifacts || {};
+  const a = item.task.artifacts;
+  if (a) {
+    // 活跃与归档任务都带 artifacts 扫描结果
     if (a.prd) push("prd.md", "PRD", "doc");
     if (a.design) push("design.md", "设计", "doc");
     if (a.implement) push("implement.md", "实施计划", "doc");
@@ -719,6 +722,16 @@ function openGitDrawer(snapshot) {
 
 async function openArtifact(taskRef, file, taskTitle) {
   showDrawer(file, `${taskTitle} · ${taskRef}`);
+  // 图片：直接经原图端点加载（仅图片扩展名，≤4 MiB）
+  if (IMAGE_RE.test(file)) {
+    const src = `/api/artifact-raw?${new URLSearchParams({ task: taskRef, file })}`;
+    const img = el("img", { class: "artifact-image", src, alt: file, loading: "lazy" });
+    img.addEventListener("error", () => {
+      setDrawerBody(el("div", { class: "empty", text: "图片加载失败（可能超过 4 MiB 上限）" }));
+    });
+    setDrawerBody(el("div", { class: "drawer-meta muted", text: "图片原件预览（上限 4 MiB）" }), img);
+    return;
+  }
   try {
     const data = await fetchArtifact(taskRef, file);
     state.artifact = data;

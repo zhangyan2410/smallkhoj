@@ -23,6 +23,6 @@
   "relatedFiles": [],
   "notes": "",
   "meta": {
-    "needsDecision": "审计裁定 PARTIAL：本地修复（2faa691）已入 main 且闭环通过，云端验证 AC6 被 PUBLIC_API_KEY 生产配置债阻塞。归档并另立云端治理任务，还是保留只跟踪 AC6？"
+    "needsDecision": "这个任务修复了「daemon 没有写权限、computer 连不上」的问题：修复代码已在 main，本地完整验证通过。最后一步「云端验证」被配置卡住——生产环境需要正式的 PUBLIC_API_KEY，现在用开发值会被安全校验拒绝。请选：① 归档本任务，另开一个「生产密钥治理 + 云端验证」新任务；② 保留本任务等密钥解决后继续。"
   }
 }
