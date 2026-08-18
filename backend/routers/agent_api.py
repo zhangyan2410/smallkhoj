@@ -2056,7 +2056,35 @@ async def daemon_websocket(
     raw_cursor = websocket.query_params.get("eventLogCursor") or websocket.query_params.get("activityCursor")
     daemon_id = websocket.query_params.get("daemonId")
     event_cursor = await initial_daemon_event_cursor(db, server_id=server.id, raw_cursor=raw_cursor)
-    daemon_control_hub.add(computer.id, websocket, event_cursor)
+
+    # 单活跃租约（2026-08-16 六实例重复投递事故）：无 daemonId 的旧客户端
+    # 不得顶掉持有活跃租约的实例。
+    now = _utcnow_aware()
+    if not daemon_id and _lease_active(computer, now):
+        await websocket.close(code=4001, reason="active lease held by another daemon")
+        return
+
+    # 新实例接管：同一 computer 只保留本连接，旧连接收到 lease.revoked 后
+    # 以 4001 关闭；此后控制命令与事件只投给本连接（唯一活跃实例）。
+    for stale in daemon_control_hub.add_exclusive(computer.id, websocket, event_cursor):
+        try:
+            await stale.send_json({"type": "lease.revoked", "reason": "superseded_by_new_daemon"})
+        except Exception:  # noqa: BLE001 - 旧连接可能已死，通知尽力而为
+            pass
+        try:
+            await stale.close(code=4001, reason="superseded by new daemon")
+        except Exception:  # noqa: BLE001
+            pass
+
+    # WS register 即认领租约（最新实例获胜）：daemon_id 存在时无条件接管
+    # active_daemon_id 与租约；否则 secondary 实例若不发心跳就永不更新归属。
+    computer.last_heartbeat_at = now
+    computer.status = "online"
+    if daemon_id:
+        computer.active_daemon_id = daemon_id
+        computer.daemon_lease_expires_at = now + timedelta(seconds=DAEMON_LEASE_SECONDS)
+    await db.commit()
+
     try:
         for event in await pending_runtime_commands(
             db,
@@ -2081,6 +2109,14 @@ async def daemon_websocket(
                 now = _utcnow_aware()
                 if _apply_daemon_ws_activity(computer, daemon_id, now):
                     await db.commit()
+                elif daemon_id and _daemon_lease_conflicts(computer, daemon_id, now):
+                    # 租约已被更新的实例接管：停止消费并断开，避免双投递。
+                    try:
+                        await websocket.send_json({"type": "lease.revoked", "reason": "lease_taken_over"})
+                    except Exception:  # noqa: BLE001
+                        pass
+                    await websocket.close(code=4001, reason="lease taken over")
+                    break
     except WebSocketDisconnect:
         pass
     finally:

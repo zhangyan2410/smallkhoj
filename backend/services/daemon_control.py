@@ -282,6 +282,23 @@ class DaemonControlHub:
         self._connections[str(computer_id)].add(websocket)
         self._event_cursors[websocket] = event_cursor
 
+    def add_exclusive(
+        self, computer_id: uuid.UUID, websocket: WebSocket, event_cursor: int = 0
+    ) -> list[WebSocket]:
+        """单活跃注册：同一 computer 只保留这一个连接，返回被顶掉的旧连接。
+
+        2026-08-16 事故复盘：多实例同凭证注册时 push/push_events 对每个连接
+        各投一份（一句话六条回复）。旧连接由调用方负责发送 lease.revoked
+        通知并关闭（close code 4001），daemon 侧据此停 runtime 不再消费。
+        """
+        key = str(computer_id)
+        displaced = [ws for ws in self._connections.get(key, set()) if ws is not websocket]
+        self._connections[key] = {websocket}
+        for stale in displaced:
+            self._event_cursors.pop(stale, None)
+        self._event_cursors[websocket] = event_cursor
+        return displaced
+
     def remove(self, computer_id: uuid.UUID, websocket: WebSocket) -> None:
         key = str(computer_id)
         peers = self._connections.get(key)

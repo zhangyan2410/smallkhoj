@@ -15,7 +15,11 @@ export type WebSocketManagerEvent =
   | { type: 'event'; event: unknown }
   | { type: 'control'; command: unknown }
   | { type: 'disconnected'; reason: string }
+  | { type: 'lease-revoked'; reason: string }
   | { type: 'error'; error: string };
+
+/** 服务端单活跃租约接管时使用的关闭码（backend agent_api.daemon_websocket）。 */
+export const LEASE_REVOKED_CLOSE_CODE = 4001;
 
 export interface WebSocketActivityPayload {
   type: 'activity';
@@ -83,6 +87,16 @@ export class WebSocketManager extends EventEmitter {
       this.stopActivityHeartbeat();
       console.log(`[WS] Closed: ${code} ${reason.toString()}`);
       this.emit('event', { type: 'disconnected', reason: `${code}: ${reason.toString()}` });
+      if (code === LEASE_REVOKED_CLOSE_CODE) {
+        // 单活跃租约被新实例接管：不重连（重连会立刻把对方顶掉，形成抢占
+        // 循环），交给 daemon 停 runtimes 并退出。
+        console.error('[WS] Lease revoked by server: not reconnecting.');
+        this.emit('event', {
+          type: 'lease-revoked',
+          reason: reason.toString() || 'closed with 4001',
+        });
+        return;
+      }
       this.scheduleReconnect();
     });
 

@@ -1505,3 +1505,55 @@ async def test_cancel_agent_turn_without_active_workspace_conflicts(monkeypatch)
     with pytest.raises(HTTPException) as exc:
         await public_api.cancel_agent_turn(str(agent.id), _JsonRequest({}), _auth=None, db=db)
     assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_daemon_hub_add_exclusive_displaces_previous_websockets():
+    """单活跃租约：secondary 注册顶掉旧连接，命令/事件只投给唯一活跃连接。"""
+    hub = DaemonControlHub()
+    computer_id = uuid.uuid4()
+    first = _FakeWebSocket()
+    second = _FakeWebSocket()
+    hub.add(computer_id, first, event_cursor=5)
+    hub.add(computer_id, second, event_cursor=7)
+
+    newest = _FakeWebSocket()
+    displaced = hub.add_exclusive(computer_id, newest, event_cursor=9)
+
+    assert set(displaced) == {first, second}
+    # 旧连接不再收到任何投递（此前是每个连接各一份 → 六路重复投递）
+    delivered = await hub.push(computer_id, {"type": "runtime.start"})
+    assert delivered == 1
+    assert newest.sent == [{"type": "runtime.start"}]
+    assert first.sent == []
+    assert second.sent == []
+
+
+@pytest.mark.asyncio
+async def test_daemon_hub_add_exclusive_is_idempotent_for_same_socket():
+    hub = DaemonControlHub()
+    computer_id = uuid.uuid4()
+    only = _FakeWebSocket()
+    hub.add_exclusive(computer_id, only, event_cursor=3)
+
+    displaced = hub.add_exclusive(computer_id, only, event_cursor=4)
+
+    assert displaced == []
+    assert await hub.push(computer_id, {"type": "runtime.stop"}) == 1
+
+
+def test_agent_api_lease_helpers_still_guard_conflict_paths():
+    now = datetime.now(timezone.utc)
+
+    class _Computer:
+        status = "online"
+        active_daemon_id = "daemon-a"
+        daemon_lease_expires_at = now + timedelta(seconds=60)
+        last_heartbeat_at = None
+
+    computer = _Computer()
+    assert agent_api._daemon_lease_conflicts(computer, "daemon-b", now) is True
+    assert agent_api._daemon_lease_conflicts(computer, "daemon-a", now) is False
+    # 租约过期后不再视为冲突（新实例可正常接管）
+    computer.daemon_lease_expires_at = now - timedelta(seconds=1)
+    assert agent_api._daemon_lease_conflicts(computer, "daemon-b", now) is False

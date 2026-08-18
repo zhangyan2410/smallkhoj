@@ -411,6 +411,13 @@ export class DaemonCore extends EventEmitter {
   }
 
   deliverRuntimeMessage(input: unknown, source = 'daemon'): boolean {
+    if (isLeaseRevokedMessage(input)) {
+      // 单活跃租约：服务端宣告本实例被新实例取代 → 停 runtimes 并退出，
+      // 不再消费消息事件（2026-08-16 六实例重复投递事故）。
+      void this.handleLeaseRevoked('lease.revoked message from server');
+      return true;
+    }
+
     const runtimeControlCommand = parseDaemonRuntimeControlCommand(input);
     if (runtimeControlCommand) {
       void this.executeRuntimeControlCommand(runtimeControlCommand);
@@ -837,6 +844,10 @@ export class DaemonCore extends EventEmitter {
       }
       if (event.type === 'disconnected' && this.credential?.agentId) {
         this.startInboxPolling();
+      }
+      if (event.type === 'lease-revoked') {
+        // 服务端以 close 4001 断开（消息可能未送达）：同样按租约被接管处理
+        void this.handleLeaseRevoked(String(event.reason ?? 'server closed with 4001'));
       }
       if (event.type === 'message') {
         const traceId = traceIdOf(event.message);
@@ -1965,6 +1976,16 @@ export class DaemonCore extends EventEmitter {
     });
   }
 
+  async handleLeaseRevoked(reason: string): Promise<void> {
+    if (this.stopping) return;
+    console.error(
+      `[Daemon] Lease revoked (${reason}): another daemon instance took over this computer. ` +
+        'Stopping runtimes and exiting; see docs/orphan-daemon-cleanup.md.',
+    );
+    this.log(`Lease revoked: ${reason}`, 'warn');
+    await this.stop();
+  }
+
   async handleControlCommand(command: DaemonControlCommand): Promise<void> {
     if (!command.agentId) {
       this.log(`Ignoring control command without agentId: ${command.type}`, 'warn');
@@ -2930,6 +2951,12 @@ function summarizeOutputPolicy(policy: Record<string, unknown> | undefined): str
   if (policy.channelMessageRequired === true || policy.channel_message_required === true) parts.push('channel message required');
   if (policy.multipleOutputsAllowed === true || policy.multiple_outputs_allowed === true) parts.push('multiple outputs allowed');
   return parts.length > 0 ? parts.join('; ') : undefined;
+}
+
+export function isLeaseRevokedMessage(input: unknown): boolean {
+  const value = unwrapControlPayload(input);
+  if (!isRecord(value)) return false;
+  return firstString(value.type, value.eventType) === 'lease.revoked';
 }
 
 export function parseDaemonControlCommand(input: unknown): DaemonControlCommand | null {
