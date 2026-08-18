@@ -123,6 +123,14 @@ All production Channel membership mutations call
   clears that Channel context, queued messages, and scoped sessions; all later
   send/read/event delivery for that Channel fails closed while other Channels
   remain unaffected.
+- DM channels' durable name is the internal composite
+  `dm:{min(memberId)}-{max(memberId)}`; `message.*` event `scope.name` for DMs
+  carries that internal name (via `_display_channel`), never the peer's
+  handle. Any client-side "currently viewing" filter over message events must
+  therefore match by `scope.id` (the chat page registers the active
+  conversation id in `frontend/lib/current-chat-view.ts`); route-name matching
+  only works for public channels. Name-matching DMs caused the
+  accumulated-unread badge bug fixed in `c55e02f`.
 
 ### Clean-reset migration contract
 

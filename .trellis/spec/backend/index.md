@@ -21,7 +21,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
 | [Release Pipeline](./release-pipeline.md) | End-to-end verify -> squash merge -> registry-free cloud deploy -> schema-aware rollback overview | Active |
 | [Deployment Environment Contracts](./deployment-environment-contracts.md) | local-dev/local-prod/cloud-prod evidence, Caddy routes, direct image archive deployment | Active |
-| [Daemon Release and Lease Contracts](./daemon-release-and-lease-contracts.md) | Aura release pointers, installer recovery, explicit rollback, and lease-aware Connect/Reconnect | Active |
+| [Daemon Release and Lease Contracts](./daemon-release-and-lease-contracts.md) | Aura release pointers, installer recovery, explicit rollback, lease-aware Connect/Reconnect, and single-active WS lease enforcement (lease.revoked/4001) | Active |
 | [Runtime Slock Integration](./runtime-slock-integration.md) | Managed runtime identity, Slock CLI, local proxy, providers, and ACP compatibility contracts | Active |
 | [Event Delivery Contracts](./event-delivery-contracts.md) | Activity/event filtering, daemon delivery, and runtime token-safety contracts | Active |
 | [Threading Contracts](./threading-contracts.md) | Single-level thread APIs, summary metadata, DM display, and daemon thread events | Active |
