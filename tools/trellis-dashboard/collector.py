@@ -577,22 +577,43 @@ def _collect_spec_capture(root: Path) -> dict:
 # Spec 文件清单 + 时效性审计（.trellis/spec/spec-audit.json）
 # ---------------------------------------------------------------------------
 
-def read_spec_file(root: Path, rel_path: str) -> dict | None:
-    """读取 spec 目录内 Markdown 的受限预览（256KiB 截断，防穿越）。"""
-    spec_root = (root / ".trellis" / "spec").resolve()
-    artifact = _safe_join(spec_root, rel_path)
+def _spec_zh_stale(root: Path, rel_path: str) -> bool:
+    """中文镜像相对源文件是否过期（manifest 记录的源哈希 ≠ 当前源哈希）。"""
+    manifest_path = root / ".trellis" / "spec-zh" / "manifest.json"
+    source = root / ".trellis" / "spec" / rel_path
+    if not manifest_path.is_file() or not source.is_file():
+        return True
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8", errors="replace"))
+        recorded = (manifest.get("files") or {}).get(rel_path)
+    except (json.JSONDecodeError, OSError):
+        return True
+    if not recorded:
+        return True
+    import hashlib
+    return hashlib.sha256(source.read_bytes()).hexdigest() != recorded
+
+
+def read_spec_file(root: Path, rel_path: str, lang: str = "orig") -> dict | None:
+    """读取 spec Markdown 的受限预览（256KiB 截断，防穿越）；lang=zh 读中文镜像。"""
+    base = root / ".trellis" / ("spec-zh" if lang == "zh" else "spec")
+    artifact = _safe_join(base.resolve(), rel_path)
     if artifact is None or not artifact.is_file() or artifact.suffix != ".md":
         return None
     size = artifact.stat().st_size
     with artifact.open("rb") as fh:
         data = fh.read(ARTIFACT_PREVIEW_LIMIT_BYTES + 1)
     truncated = len(data) > ARTIFACT_PREVIEW_LIMIT_BYTES
-    return {
+    result = {
         "path": rel_path,
+        "lang": lang,
         "sizeBytes": size,
         "truncated": truncated,
         "content": data[:ARTIFACT_PREVIEW_LIMIT_BYTES].decode("utf-8", errors="replace"),
     }
+    if lang == "zh":
+        result["stale"] = _spec_zh_stale(root, rel_path)
+    return result
 
 
 def _collect_spec_files(root: Path) -> dict:
@@ -622,12 +643,15 @@ def _collect_spec_files(root: Path) -> dict:
             entry = audit["byPath"].get(rel, {})
             sections = entry.get("sections") or {}
             findings = entry.get("findings") or []
+            zh_path = root / ".trellis" / "spec-zh" / rel
             files.append({
                 "path": rel,
                 "layer": rel.split("/", 1)[0] if "/" in rel else "other",
                 "lines": sum(1 for _ in md.open("rb")),
                 "sections": sections or None,
                 "findings": findings or None,
+                "zhAvailable": zh_path.is_file(),
+                "zhStale": zh_path.is_file() and _spec_zh_stale(root, rel),
             })
     return {"auditedAt": audit["auditedAt"], "counts": audit["counts"], "files": files}
 

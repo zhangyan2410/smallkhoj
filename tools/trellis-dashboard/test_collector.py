@@ -286,3 +286,47 @@ class TestSpecCapture(FixtureBase):
         (self.trellis / "spec").mkdir(parents=True, exist_ok=True)
         (self.trellis / "spec" / "capture-ledger.json").write_text("{bad json", encoding="utf-8")
         self.assertEqual(collector._collect_spec_capture(self.root)["items"], [])
+
+
+class TestSpecZh(FixtureBase):
+    def _setup_spec(self, content: str) -> None:
+        spec = self.trellis / "spec" / "backend"
+        spec.mkdir(parents=True, exist_ok=True)
+        (spec / "demo.md").write_text(content, encoding="utf-8")
+        zh = self.trellis / "spec-zh" / "backend"
+        zh.mkdir(parents=True, exist_ok=True)
+        (zh / "demo.md").write_text("中文镜像", encoding="utf-8")
+
+    def _write_manifest(self, sha: str) -> None:
+        zh_root = self.trellis / "spec-zh"
+        (zh_root / "manifest.json").write_text(json.dumps({
+            "schema": "trellis.spec-zh.v1",
+            "files": {"backend/demo.md": sha},
+        }), encoding="utf-8")
+
+    def test_zh_read_and_staleness(self) -> None:
+        import hashlib
+        self._setup_spec("english source")
+        sha = hashlib.sha256(b"english source").hexdigest()
+        self._write_manifest(sha)
+        result = collector.read_spec_file(self.root, "backend/demo.md", "zh")
+        self.assertEqual(result["lang"], "zh")
+        self.assertEqual(result["content"], "中文镜像")
+        self.assertFalse(result["stale"])
+        files = collector._collect_spec_files(self.root)["files"]
+        demo = next(f for f in files if f["path"] == "backend/demo.md")
+        self.assertTrue(demo["zhAvailable"])
+        self.assertFalse(demo["zhStale"])
+        # 源更新后 → 过期
+        (self.trellis / "spec" / "backend" / "demo.md").write_text("changed", encoding="utf-8")
+        self.assertTrue(collector._spec_zh_stale(self.root, "backend/demo.md"))
+
+    def test_zh_missing_falls_back(self) -> None:
+        spec = self.trellis / "spec" / "backend"
+        spec.mkdir(parents=True, exist_ok=True)
+        (spec / "only-en.md").write_text("x", encoding="utf-8")
+        result = collector.read_spec_file(self.root, "backend/only-en.md", "zh")
+        self.assertIsNone(result)
+        files = collector._collect_spec_files(self.root)["files"]
+        demo = next(f for f in files if f["path"] == "backend/only-en.md")
+        self.assertFalse(demo["zhAvailable"])

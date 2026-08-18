@@ -773,18 +773,32 @@ function fileTone(file) {
   return "current";
 }
 
-async function openSpecFile(relPath) {
+async function openSpecFile(relPath, lang, zhAvailable) {
+  const effectiveLang = lang === "zh" && !zhAvailable ? "orig" : lang;
   showDrawer(relPath, "spec 正文");
   try {
-    const resp = await fetch(`/api/spec-file?${new URLSearchParams({ path: relPath })}`, { cache: "no-store" });
+    const params = new URLSearchParams({ path: relPath });
+    if (effectiveLang === "zh") params.set("lang", "zh");
+    const resp = await fetch(`/api/spec-file?${params}`, { cache: "no-store" });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     const inner = el("div", { class: "md" });
     inner.innerHTML = renderMarkdown(data.content);
-    setDrawerBody(
-      el("div", { class: "drawer-meta muted" },
-        `${fmtBytes(data.sizeBytes)}${data.truncated ? " · 已截断" : ""} · 点击行外区域关闭`),
-      inner);
+    const metaBits = [`${fmtBytes(data.sizeBytes)}${data.truncated ? " · 已截断" : ""}`];
+    if (data.stale) metaBits.push("⚠ 中文版可能落后于原文");
+    const meta = el("div", { class: "drawer-meta muted" }, metaBits.join(" · "));
+    if (zhAvailable) {
+      const zhBtn = el("button", {
+        class: `lang-btn ${effectiveLang === "zh" ? "lang-btn-active" : ""}`,
+        text: "中文", onclick: () => openSpecFile(relPath, "zh", true),
+      });
+      const origBtn = el("button", {
+        class: `lang-btn ${effectiveLang === "orig" ? "lang-btn-active" : ""}`,
+        text: "原文", onclick: () => openSpecFile(relPath, "orig", true),
+      });
+      meta.append(" ", el("span", { class: "lang-toggle" }, zhBtn, origBtn));
+    }
+    setDrawerBody(meta, inner);
   } catch (err) {
     setDrawerBody(el("div", { class: "empty", text: `无法加载: ${err.message}` }));
   }
@@ -825,9 +839,10 @@ function renderSpecFiles(snapshot) {
         el("button", {
           class: "spec-file-name mono",
           text: file.path.replace(/^\w+\//, ""),
-          title: `点击查看 ${file.path} 正文`,
-          onclick: () => openSpecFile(file.path),
+          title: `点击查看 ${file.path} 正文（默认中文）`,
+          onclick: () => openSpecFile(file.path, "zh", file.zhAvailable),
         }),
+        file.zhAvailable ? el("span", { class: "badge st-branch", text: file.zhStale ? "中文·需更新" : "中文" }) : null,
         el("span", { class: "muted", text: `${file.lines} 行` }),
         el("span", { class: `badge ${tone === "current" ? "st-done" : (tone === "stale" ? "st-risk" : "st-progress")}`,
                      text: tone === "current" ? (s ? "全部现行" : "未审计") : (tone === "stale" ? "含失效节" : "含部分失效") }),

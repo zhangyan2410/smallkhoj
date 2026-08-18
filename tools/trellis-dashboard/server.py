@@ -115,10 +115,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def _handle_spec_file(self, query: dict, *, head: bool) -> None:
         rel = (query.get("path") or [""])[0].strip()
+        lang = (query.get("lang") or ["orig"])[0].strip()
         if not rel:
             self._send_json({"error": "缺少 path 参数"}, status=400, head=head)
             return
-        result = read_spec_file(self.server.root, rel)
+        result = read_spec_file(self.server.root, rel, lang if lang in ("orig", "zh") else "orig")
         if result is None:
             self._send_json({"error": "spec 文件不存在或路径被拒绝"}, status=404, head=head)
             return
