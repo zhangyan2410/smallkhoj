@@ -252,3 +252,37 @@ class TestSnapshotEndToEnd(FixtureBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSpecCapture(FixtureBase):
+    def _write_ledger(self, items: list) -> None:
+        spec_dir = self.trellis / "spec"
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "capture-ledger.json").write_text(json.dumps({
+            "schema": "trellis.spec-capture.v1",
+            "auditedAt": "2026-08-18",
+            "items": items,
+        }, ensure_ascii=False), encoding="utf-8")
+
+    def test_reads_ledger_and_enriches_title(self) -> None:
+        task_dir = self.tasks_dir / "archive" / "2026-08" / "08-01-x"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.json").write_text(json.dumps({"title": "示例任务"}), encoding="utf-8")
+        self._write_ledger([
+            {"kind": "task", "month": "2026-08", "id": "08-01-x", "status": "captured", "target": "backend/x.md", "note": "n"},
+            {"kind": "skill", "id": "demo-skill", "status": "skipped"},
+        ])
+        cap = collector._collect_spec_capture(self.root)
+        self.assertEqual(cap["auditedAt"], "2026-08-18")
+        self.assertEqual(cap["counts"], {"captured": 1, "skipped": 1})
+        task_item = next(i for i in cap["items"] if i["kind"] == "task")
+        self.assertEqual(task_item["title"], "示例任务")
+        # 倒序：skill 组在前
+        self.assertEqual(cap["items"][0]["id"], "demo-skill")
+
+    def test_missing_or_bad_ledger_returns_empty(self) -> None:
+        cap = collector._collect_spec_capture(self.root)
+        self.assertEqual(cap["items"], [])
+        (self.trellis / "spec").mkdir(parents=True, exist_ok=True)
+        (self.trellis / "spec" / "capture-ledger.json").write_text("{bad json", encoding="utf-8")
+        self.assertEqual(collector._collect_spec_capture(self.root)["items"], [])

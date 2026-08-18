@@ -765,7 +765,16 @@ function renderView() {
   if (!snapshot) return;
   if (state.tab === "tasks") renderTasks(snapshot);
   else if (state.tab === "sessions") renderSessions(snapshot);
+  else if (state.tab === "speccap") renderSpecCapture(snapshot);
   else renderTimeline(snapshot);
+}
+
+function switchTab(tab) {
+  state.tab = tab;
+  document.querySelectorAll(".tab").forEach((node) => {
+    node.classList.toggle("active", node.dataset.tab === tab);
+  });
+  renderView();
 }
 
 function markRefreshed() {
@@ -796,13 +805,60 @@ function startAutoRefresh() {
   state.timer = setInterval(() => refresh(true), REFRESH_MS);
 }
 
-function switchTab(tab) {
-  state.tab = tab;
-  document.querySelectorAll(".tab").forEach((node) => {
-    node.classList.toggle("active", node.dataset.tab === tab);
-  });
-  renderView();
+/* ============================================================ Spec 沉淀视图 */
+
+const CAPTURE_STATUS = {
+  captured: { label: "已沉淀", cls: "st-done" },
+  covered:  { label: "已有覆盖", cls: "st-planning" },
+  skipped:  { label: "跳过", cls: "st-unknown" },
+};
+
+function renderSpecCapture(snapshot) {
+  const cap = snapshot.specCapture || {};
+  const items = cap.items || [];
+  document.getElementById("tab-extra").replaceChildren(
+    el("span", { class: "muted", text: cap.auditedAt ? `审计于 ${cap.auditedAt}` : "" }));
+  if (!items.length) {
+    document.getElementById("view").replaceChildren(
+      el("div", { class: "empty", text: "没有沉淀台账（.trellis/spec/capture-ledger.json 缺失或为空）" }));
+    return;
+  }
+  const counts = cap.counts || {};
+  const chips = Object.entries(CAPTURE_STATUS).map(([key, info]) =>
+    el("span", { class: `chip ${counts[key] ? "" : "chip-empty"}`, text: `${info.label} ${counts[key] || 0}` }));
+
+  // 按月分组（items 已倒序）
+  const groups = [];
+  let current = null;
+  for (const item of items) {
+    const key = item.kind === "skill" ? "自建 Skill" : (item.month || "未知");
+    if (!current || current.key !== key) {
+      current = { key, rows: [] };
+      groups.push(current);
+    }
+    current.rows.push(item);
+  }
+  const view = el("div", { class: "capture-list" });
+  for (const group of groups) {
+    view.append(el("div", { class: "capture-month", text: group.key }));
+    for (const item of group.rows) {
+      const st = CAPTURE_STATUS[item.status] || { label: item.status, cls: "st-unknown" };
+      view.append(el("div", { class: "capture-row" },
+        el("span", { class: `badge ${st.cls}`, text: st.label }),
+        el("span", {
+          class: "capture-id mono",
+          text: item.title ? `${item.id} · ${item.title}` : item.id,
+          title: item.title || item.id,
+        }),
+        item.target ? el("span", { class: "muted capture-target", text: item.target.replace(/^.*spec\//, "") }) : null,
+        item.note ? el("span", { class: "muted", text: item.note }) : null));
+    }
+  }
+  document.getElementById("view").replaceChildren(
+    el("div", { class: "chip-bar" }, ...chips), view);
 }
+
+/* ============================================================ 视图路由与刷新 */
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();

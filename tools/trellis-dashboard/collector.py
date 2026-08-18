@@ -526,6 +526,54 @@ def _collect_spec(root: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Spec 沉淀台账（.trellis/spec/capture-ledger.json）
+# ---------------------------------------------------------------------------
+
+def _collect_spec_capture(root: Path) -> dict:
+    """读取 spec 沉淀审计台账；文件不存在时返回空结构（tab 隐藏）。"""
+    ledger_path = root / ".trellis" / "spec" / "capture-ledger.json"
+    result: dict = {"auditedAt": None, "items": [], "counts": {}}
+    if not ledger_path.is_file():
+        return result
+    try:
+        data = json.loads(ledger_path.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError):
+        return result
+    if not isinstance(data, dict) or data.get("schema") != "trellis.spec-capture.v1":
+        return result
+    counts: dict[str, int] = {}
+    items = []
+    for entry in data.get("items", []):
+        if not isinstance(entry, dict) or not entry.get("id"):
+            continue
+        item = dict(entry)
+        # 任务条目补标题（从归档 task.json）
+        if item.get("kind") == "task" and item.get("month"):
+            task_json = (
+                root / ".trellis" / "tasks" / "archive" / item["month"] / item["id"] / "task.json"
+            )
+            if task_json.is_file():
+                try:
+                    item["title"] = json.loads(
+                        task_json.read_text(encoding="utf-8", errors="replace")
+                    ).get("title")
+                except (json.JSONDecodeError, OSError):
+                    pass
+        counts[item.get("status", "?")] = counts.get(item.get("status", "?"), 0) + 1
+        items.append(item)
+    # 时间线倒序（skill 无月份，作为"最新"排在最前）
+    def sort_key(entry: dict):
+        if entry.get("kind") == "skill":
+            return ("9999-99", "0" + entry["id"])
+        return (entry.get("month") or "", "1" + entry["id"])
+    items.sort(key=sort_key, reverse=True)
+    result["auditedAt"] = data.get("auditedAt")
+    result["items"] = items
+    result["counts"] = counts
+    return result
+
+
+# ---------------------------------------------------------------------------
 # 快照
 # ---------------------------------------------------------------------------
 
@@ -551,4 +599,5 @@ def collect_snapshot(root: Path) -> dict:
         "sessions": sessions,
         "journal": _collect_journal(root),
         "spec": _collect_spec(root),
+        "specCapture": _collect_spec_capture(root),
     }
