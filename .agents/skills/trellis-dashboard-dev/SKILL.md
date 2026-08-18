@@ -32,7 +32,7 @@ tools/trellis-dashboard/
 
 ## 怎么改（按需求类型）
 
-**加固定工作流**：往 `agents/workflows/` 写 `<id>.md`——frontmatter（id/name/description/timeoutMinutes）+ 正文是**自包含 prompt**（执行者不了解任何会话历史，方法/边界/输出格式全部写进文件）。不要改任何代码。已注册 id：spec-staleness-audit。
+**加固定工作流**：往 `agents/workflows/` 写 `<id>.md`——frontmatter（id/name/description/timeoutMinutes）+ 正文是**自包含 prompt**（执行者不了解任何会话历史，方法/边界/输出格式全部写进文件）。不要改任何代码。已注册 id：spec-staleness-audit、spec-capture-audit、spec-zh-refresh、trellis-task-reality-audit。
 
 **加 tab**：index.html 加 `<button data-tab="x">`；app.js 加 `renderX(snapshot)` 函数并在 `renderView()` 路由；style.css 按需加样式。参考现有 renderAgents/renderSpecFiles 的写法（el() helper、CAPTURE_STATUS 徽章模式）。
 

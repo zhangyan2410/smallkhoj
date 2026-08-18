@@ -68,6 +68,18 @@ tools/trellis-dashboard/
 make trellis-dashboard-test   # node --check 前端 + unittest collector 测试
 ```
 
+## Agent 工作流与对话（DSH）
+
+- 「Agent」tab：固定工作流注册表 `agents/workflows/*.md`（frontmatter + 自包含 prompt），
+  点击运行 = spawn `dsh --profile headless`（cwd=仓库根，单飞锁，运行历史在
+  `.trellis/.runtime/agent-runs/`）。已注册：spec-staleness-audit、spec-capture-audit、
+  spec-zh-refresh、trellis-task-reality-audit。
+- 对话面板：`POST /api/dsh-web` 拉起 `dsh web`（127.0.0.1:3080，cwd=仓库根）并 iframe 嵌入；
+  agent 按 `.agents/skills/trellis-dashboard-dev` 修改本工具（自进化入口）。
+- 模型：GLM（provider 配置 `~/.dsh/settings.yaml`）。**注意：这是本工具唯一的变更型入口**，
+  仅白名单工作流 + 对话拉起；agent 不自动 git commit。
+- 升级路径：原生聊天框可换 Python SDK 桥（session_id 持久会话），见 skill 文档。
+
 ## 范围外（v1 不做）
 
 mermaid 图表、多项目注册表、任何写操作、`.trellis/config.yaml` 展示、spec/guides
