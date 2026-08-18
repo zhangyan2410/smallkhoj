@@ -23,8 +23,8 @@ Environment names:
   - Backend URL: `http://127.0.0.1:8000`
   - Frontend URL: `http://127.0.0.1:3000`
   - Host PostgreSQL: `127.0.0.1:5432` by default, as selected by `dev.sh`'s `DATABASE_URL`
-  - Backend command shape: `rtk .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000`
-  - Frontend command shape: `rtk bun run dev --hostname 0.0.0.0`
+  - Backend command shape: `uv run python main.py` (no hot reload; see `dev.sh` and the Real-Test section)
+  - Frontend command shape: `npm run dev` (hot reload active)
 - `local-prod`: local production-shape gate.
   - Command shape: `docker compose -f docker-compose.prod.yml --env-file <local-prod-env> up -d`
   - Entrypoint: Caddy, same-origin routing, production Docker images, production-like env.

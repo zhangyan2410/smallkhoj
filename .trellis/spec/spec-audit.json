@@ -1,0 +1,382 @@
+{
+ "schema": "trellis.spec-audit.v1",
+ "auditedAt": "2026-08-18",
+ "method": "4 parallel agents verified section claims against current code",
+ "files": [
+  {
+   "path": "frontend/product-ui-style.md",
+   "sections": {
+    "total": 24,
+    "current": 22,
+    "partial": 2
+   },
+   "findings": [
+    {
+     "section": "The purple rule, corrected",
+     "verdict": "partial",
+     "evidence": "agent palette 155-230+coral 不准：--agent-color-5 hue 75 在区间外（globals.css:64）"
+    },
+    {
+     "section": "Object Language",
+     "verdict": "partial",
+     "evidence": "default frame identity-thin 全库 0 命中；AvatarObject 只有 size 变体无 frame prop"
+    }
+   ]
+  },
+  {
+   "path": "frontend/state-management.md",
+   "sections": {
+    "total": 27,
+    "current": 24,
+    "partial": 2,
+    "stale": 1
+   },
+   "findings": [
+    {
+     "section": "Bounded Cursor §2 Signatures",
+     "verdict": "stale",
+     "evidence": "RealtimeProvider 实际由 app/(app)/layout.tsx:38 挂载，ProductShell 已 body-only（已修复 2026-08-18）",
+     "fixed": true
+    },
+    {
+     "section": "Unread §5 Good/Base/Bad",
+     "verdict": "partial",
+     "evidence": "rail ActivityIndicator 示例当前下线（app-rail.tsx:66 注释待恢复）"
+    },
+    {
+     "section": "Unread §6 Tests Required",
+     "verdict": "partial",
+     "evidence": "AppRail 现无未读消费者，跨 tab 断言必失败"
+    }
+   ]
+  },
+  {
+   "path": "frontend/quality-guidelines.md",
+   "sections": {
+    "total": 21,
+    "current": 20,
+    "partial": 1
+   },
+   "findings": [
+    {
+     "section": "ProductShell Owns Workspace Chrome",
+     "verdict": "partial",
+     "evidence": "rail 已上提 (app)/layout 的 AppRail；ProductShell 不挂 rail（已修复 2026-08-18）",
+     "fixed": true
+    }
+   ]
+  },
+  {
+   "path": "frontend/directory-structure.md",
+   "sections": {
+    "total": 6,
+    "current": 5,
+    "partial": 1
+   },
+   "findings": [
+    {
+     "section": "The globals.css Contract",
+     "verdict": "partial",
+     "evidence": "water-material rail 措辞过期：rail 现为纸脊，rail-water-texture.png 0 引用"
+    }
+   ]
+  },
+  {
+   "path": "frontend/component-guidelines.md",
+   "sections": {
+    "total": 18,
+    "current": 18
+   },
+   "findings": []
+  },
+  {
+   "path": "frontend/hook-guidelines.md",
+   "sections": {
+    "total": 9,
+    "current": 9
+   },
+   "findings": []
+  },
+  {
+   "path": "frontend/type-safety.md",
+   "sections": {
+    "total": 5,
+    "current": 5
+   },
+   "findings": []
+  },
+  {
+   "path": "frontend/auth-onboarding-contracts.md",
+   "sections": {
+    "total": 12,
+    "current": 12
+   },
+   "findings": []
+  },
+  {
+   "path": "frontend/member-identity-ui-contracts.md",
+   "sections": {
+    "total": 14,
+    "current": 14
+   },
+   "findings": []
+  },
+  {
+   "path": "backend/runtime-slock-integration.md",
+   "sections": {
+    "total": 13,
+    "current": 8,
+    "partial": 4,
+    "unverifiable": 1
+   },
+   "findings": [
+    {
+     "section": "Daemon-Local Runtime Provider Selection",
+     "verdict": "partial",
+     "evidence": "canonical family 漏 goose；cc-switch app_type 漏 opencode（已修复 2026-08-18）",
+     "fixed": true
+    },
+    {
+     "section": "TaskRun Status Lenses And Timestamps",
+     "verdict": "partial",
+     "evidence": "objective_status 字段代码不存在（status 单列枚举 models/slock.py:589）——本节为设计方向非现状，待重写（已修复 2026-08-18）",
+     "fixed": true
+    },
+    {
+     "section": "Claude Runtime Uses Slock CLI",
+     "verdict": "partial",
+     "evidence": "控制命令 union 漏 cancel_turn、config 漏 runtimeAgent；config.runtime 仍写 only claude_code（已修复 2026-08-18）",
+     "fixed": true
+    },
+    {
+     "section": "Codex Runtime Uses Invocation Driver",
+     "verdict": "partial",
+     "evidence": "CODEX_CLI_NOT_FOUND 错误码无代码命中；实际是 runtimeCommandDetectionError warn（已修复 2026-08-18）",
+     "fixed": true
+    },
+    {
+     "section": "Vendor Runtime Capability Boundary",
+     "verdict": "unverifiable",
+     "evidence": "前瞻方法论，无矛盾证据"
+    }
+   ]
+  },
+  {
+   "path": "backend/event-delivery-contracts.md",
+   "sections": {
+    "total": 6,
+    "current": 6
+   },
+   "findings": []
+  },
+  {
+   "path": "backend/daemon-release-and-lease-contracts.md",
+   "sections": {
+    "total": 3,
+    "current": 3
+   },
+   "findings": []
+  },
+  {
+   "path": "backend/member-identity-channel-contracts.md",
+   "sections": {
+    "total": 7,
+    "current": 7
+   },
+   "findings": []
+  },
+  {
+   "path": "backend/database-guidelines.md",
+   "sections": {
+    "total": 32,
+    "current": 27,
+    "partial": 5
+   },
+   "findings": [
+    {
+     "section": "Alembic Schema Authority and Legacy Adoption",
+     "verdict": "partial",
+     "evidence": "current chain 止于 0004，实际 head 0006（漏 0005_llm_run_lease/0006_stable_member_identity）（已修复 2026-08-18）",
+     "fixed": true
+    },
+    {
+     "section": "Server Account Membership Foundation",
+     "verdict": "partial",
+     "evidence": "acquire_owner_election_lock 不存在；锁已移 account_bootstrap.py:56 pg_advisory_xact_lock（已修复 2026-08-18）",
+     "fixed": true
+    },
+    {
+     "section": "External Integration Gateway Foundation",
+     "verdict": "partial",
+     "evidence": "测试要求仍写 startup DDL，现行测试断言相反（Alembic 唯一 schema writer）"
+    },
+    {
+     "section": "Initial Release Integration Bootstrap CLI",
+     "verdict": "partial",
+     "evidence": "错误矩阵引用已移除的 startup-DDL 约束路径"
+    },
+    {
+     "section": "Computer Binding Columns On Members",
+     "verdict": "partial",
+     "evidence": "残留 Startup ADD COLUMN IF NOT EXISTS 语言"
+    }
+   ]
+  },
+  {
+   "path": "backend/deployment-environment-contracts.md",
+   "sections": {
+    "total": 7,
+    "current": 6,
+    "partial": 1
+   },
+   "findings": [
+    {
+     "section": "Deployment Environment Test Entrypoints",
+     "verdict": "partial",
+     "evidence": "local-dev 命令形状不符：实际 uv run python main.py / npm run dev（dev.sh:165/294）（已修复 2026-08-18）",
+     "fixed": true
+    }
+   ]
+  },
+  {
+   "path": "backend/release-pipeline.md",
+   "sections": {
+    "total": 2,
+    "current": 2
+   },
+   "findings": []
+  },
+  {
+   "path": "backend/quality-guidelines.md",
+   "sections": {
+    "total": 2,
+    "current": 2
+   },
+   "findings": []
+  },
+  {
+   "path": "backend/directory-structure.md",
+   "sections": {
+    "total": 5,
+    "current": 0,
+    "stale": 5
+   },
+   "findings": [
+    {
+     "section": "全文（5 节空模板）",
+     "verdict": "stale",
+     "evidence": "2026-05-28 bootstrap 占位未填；services/ 37 文件、routers/、alembic/ 完全未记录。待定：重填或删除"
+    }
+   ]
+  },
+  {
+   "path": "backend/error-handling.md",
+   "sections": {
+    "total": 5,
+    "current": 0,
+    "stale": 5
+   },
+   "findings": [
+    {
+     "section": "全文（5 节空模板）",
+     "verdict": "stale",
+     "evidence": "空模板；错误矩阵实际散落在各 contracts 文件。待定：重填或删除"
+    }
+   ]
+  },
+  {
+   "path": "backend/logging-guidelines.md",
+   "sections": {
+    "total": 5,
+    "current": 0,
+    "stale": 5
+   },
+   "findings": [
+    {
+     "section": "全文（5 节空模板）",
+     "verdict": "stale",
+     "evidence": "空模板；Latency trace 日志管线零沉淀。待定：重填或删除"
+    }
+   ]
+  },
+  {
+   "path": "backend/memory-contracts.md",
+   "sections": {
+    "total": 8,
+    "current": 8
+   },
+   "findings": []
+  },
+  {
+   "path": "backend/threading-contracts.md",
+   "sections": {
+    "total": 8,
+    "current": 8
+   },
+   "findings": []
+  },
+  {
+   "path": "backend/index.md",
+   "sections": {
+    "total": 3,
+    "current": 3
+   },
+   "findings": []
+  },
+  {
+   "path": "guides/index.md",
+   "sections": {
+    "total": 11,
+    "current": 11
+   },
+   "findings": []
+  },
+  {
+   "path": "guides/code-reuse-thinking-guide.md",
+   "sections": {
+    "total": 12,
+    "current": 12
+   },
+   "findings": []
+  },
+  {
+   "path": "guides/cross-layer-thinking-guide.md",
+   "sections": {
+    "total": 18,
+    "current": 14,
+    "partial": 4
+   },
+   "findings": [
+    {
+     "section": "Cross-Platform Template Consistency 等 4 节",
+     "verdict": "partial",
+     "evidence": "指向本仓库不存在的 src/templates/ 与上游 Trellis 产品布局。待定：标注上游经验或改写"
+    }
+   ]
+  },
+  {
+   "path": "guides/reference-projects.md",
+   "sections": {
+    "total": 6,
+    "current": 6
+   },
+   "findings": []
+  },
+  {
+   "path": "guides/runtime-debugging-sop.md",
+   "sections": {
+    "total": 12,
+    "current": 11,
+    "partial": 1
+   },
+   "findings": [
+    {
+     "section": "Key Files",
+     "verdict": "partial",
+     "evidence": "activity-tab.tsx 路径漏 (app) 路由组前缀（已修复 2026-08-18）",
+     "fixed": true
+    }
+   ]
+  }
+ ]
+}

@@ -79,7 +79,7 @@ LIMIT 5;
 - Fresh/known database: `cd backend && uv run alembic upgrade head`.
 - Read-only legacy fingerprint: `DATABASE_URL=<explicit-url> uv run python -m scripts.legacy_schema_preflight`.
 - Compatible legacy adoption: `uv run alembic stamp 77b8b147f689` followed by `uv run alembic upgrade head`.
-- Current chain: `77b8b147f689 -> 0002_messages_seq -> 0003_messages_seq_auto -> 0004_template_tenancy`.
+- Current chain: `77b8b147f689 -> 0002_messages_seq -> 0003_messages_seq_auto -> 0004_template_tenancy -> 0005_llm_run_lease -> 0006_stable_member_identity`.
 - Runtime guard: `services.schema_readiness.assert_schema_at_head(db)`.
 - Isolated migration test env: `SMALLKHOJ_MIGRATION_TEST_ADMIN_URL` and `SMALLKHOJ_MIGRATION_TEST_DATABASE_URL`.
 
@@ -265,7 +265,7 @@ await publish_committed_events()
 - Public API wrapper: `routers.public_api._resolve_active_server_context(db, request)`.
 - Actor resolver: `routers.public_api._resolve_human_actor(...) -> Member`.
 - Bootstrap owner serialization: every default-Server owner-election entrypoint calls
-  `services.server_membership.acquire_owner_election_lock(db)`, which acquires the
+  `services/account_bootstrap.py` `pg_advisory_xact_lock(hashtextextended(:auth_subject, 0))`, which acquires the
   same PostgreSQL transaction-scoped advisory lock and holds it through commit or
   rollback.
 

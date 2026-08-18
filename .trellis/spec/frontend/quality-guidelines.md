@@ -85,7 +85,7 @@ rebuild shell, status, card, form, and rail pieces locally.
 
 ### Convention: ProductShell Owns Workspace Chrome
 
-**What**: The water icon rail, list column, main content column, right sidebar,
+**What**: The icon rail is owned by `AppRail` in `app/(app)/layout.tsx`; ProductShell/ProductShellBody own the list column, main content column, right sidebar,
 and resize handle belong to `ProductShell` / `ProductShellBody`. Chat, tasks,
 members, and computers should compose that shell instead of rebuilding it.
 

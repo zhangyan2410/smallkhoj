@@ -140,8 +140,8 @@ Future environment support must validate:
   - `GET /internal/agent-api/events?since=latest`
   - `WS /internal/agent-api/ws`
 - Runtime control command envelope:
-  - Raw/control event: `{type:"control", command:{type:"start_runtime"|"stop_runtime"|"restart_runtime", agentId, workspaceId?, config?}}`
-  - JSON-RPC control notification: `{jsonrpc:"2.0", method:"daemon.command.start_runtime"|"daemon.command.stop_runtime"|"daemon.command.restart_runtime", params:{agent_id|agentId, workspace_id|workspaceId?, config?}}`
+  - Raw/control event: `{type:"control", command:{type:"start_runtime"|"stop_runtime"|"restart_runtime"|"cancel_turn", agentId, workspaceId?, config?}}`
+  - JSON-RPC control notification: `{jsonrpc:"2.0", method:"daemon.command.start_runtime"|"daemon.command.stop_runtime"|"daemon.command.restart_runtime"|"daemon.command.cancel_turn", params:{agent_id|agentId, workspace_id|workspaceId?, config?}}`
   - `config.runtime`: currently `claude_code`
   - `config.runtimeCommand?: string`
   - `config.runtimeCommandArgs?: string[]`
@@ -406,7 +406,7 @@ Only list commands whose CLI parse path, daemon forwarding path, backend endpoin
 
 ### 4. Validation & Error Matrix
 
-- CLI not found -> fail the runtime start with `CODEX_CLI_NOT_FOUND`; do not silently fall back to another runtime.
+- CLI not found -> surface the `runtimeCommandDetectionError()` warning and fail the runtime start; do not silently fall back to another runtime.
 - no `thread.started.thread_id` on first successful turn -> keep runtime usable for one-shot work, but mark session continuity degraded.
 - malformed stdout JSON before any structured event -> treat as text telemetry; after structured events, keep it as raw diagnostic only.
 - child exits while messages are queued -> flush the next message exactly once.
@@ -706,8 +706,8 @@ provider result -> Idle persisted last
   - `command` and `commandArgs` are daemon-local launch data only for explicit advanced opt-in; they must not be echoed through backend/public heartbeat payloads.
 - CC Switch provider inventory:
   - default database discovery order: `SLOCK_CC_SWITCH_DB`, `CC_SWITCH_DB`, `$HOME/.cc-switch/cc-switch.db`
-  - query local `providers` rows with `app_type in ('claude', 'codex')`
-  - provider rows are parsed into sanitized public runtimes: `app_type='claude'` -> `claude_code`; `app_type='codex'` -> `codex`
+  - query local `providers` rows with `app_type in ('claude', 'codex', 'opencode')`
+  - provider rows are parsed into sanitized public runtimes: `app_type='claude'` -> `claude_code`; `app_type='codex'` -> `codex`; `app_type='opencode'` -> `opencode`
   - DB paths, `settings_config`, auth payloads, provider tokens, and local command details remain daemon-local and are never sent to backend/public heartbeat payloads.
 - Public/backend payload fields:
   - `Member.config.runtimeProvider?: string`
@@ -723,7 +723,7 @@ provider result -> Idle persisted last
 
 ### 3. Contracts
 
-- Canonical runtime identity is independent from provider and model identity. Public/runtime-family matching uses only `claude_code`, `codex`, `opencode`, or `pi` after explicit alias normalization; `runtimeProvider`, `provider`, `runtimeModel`, and `model` are selection/evidence metadata and must never infer or cross-match the runtime family.
+- Canonical runtime identity is independent from provider and model identity. Public/runtime-family matching uses only `claude_code`, `codex`, `opencode`, `goose`, or `pi` after explicit alias normalization; `runtimeProvider`, `provider`, `runtimeModel`, and `model` are selection/evidence metadata and must never infer or cross-match the runtime family.
 - `runtimeProvider` is a provider/profile name, not an API key, shell command, or serialized credential.
 - The backend may store and return `runtimeProvider`, but it must not store API keys, CC Switch provider config, generated Claude settings files, command args, or auth headers.
 - The daemon owns provider detection and launch resolution. If local CC Switch DB is unavailable, `detectedRuntimes` still includes whichever local runtime commands were detected, and default runtime launch uses those local commands.
@@ -1550,69 +1550,69 @@ emit('stream_event', { runtime: 'goose', ...translateAcpSessionUpdate(update) })
 
 ---
 
-## Scenario: TaskRun Status Lenses And Timestamps
+## Scenario: TaskRun Status, Templates, And Timestamps
 
 ### 1. Scope / Trigger
 
-Use this spec when touching TaskRun status fields, TaskRunTemplate defaults, or
-TaskRun lifecycle timestamps. Evidence: tasks `06-25-taskrun-config-templates`
-(three-lens status contract) and `06-24-channel-taskrun-model` (tz-aware
-timestamp rule).
+Use this spec when touching TaskRun status fields, TaskRunTemplate defaults,
+or TaskRun lifecycle timestamps. Evidence: tasks `06-25-taskrun-config-templates`
+(three-lens design direction) and `06-24-channel-taskrun-model` (tz-aware rule).
 
 ### 2. Signatures
 
 ```text
-TaskRun.status            # participant lens: the user-visible run state
-TaskRun.objective_status  # objective lens: acceptance of the produced artifact
-runtime session state     # runtime lens: the live agent session backing the run
-TaskRunTemplate           # user-editable preset; direct dispatch must use one
+TaskRun.status        # single enum column (models/slock.py):
+                      # queued|dispatched|running|awaiting_input|completed|failed|cancelled
+TaskRunTemplate       # user-editable preset; direct dispatch resolves config from one
 ```
 
 ### 3. Contracts
 
-- Three status lenses (objective / runtime-session / participant) must stay
-  separate columns; folding them into one boolean loses "completed but session
-  still inspectable" and makes recovery undecidable.
-- `completed` means the current artifact contract is satisfied — it does NOT
-  destroy or detach the runtime session; the run stays recoverable and
-  inspectable (evidence replay, trace, cursor audit).
+- Current schema is a SINGLE `status` enum column. The three-lens model from
+  06-25 (objective / runtime-session / participant as separate columns,
+  e.g. an `objective_status`) is a DESIGN DIRECTION, not implemented — do not
+  read or write `objective_status` today; code against the enum above.
+- Whatever the lens model evolves into: `completed` must never destroy or
+  detach the runtime session — the run stays recoverable and inspectable
+  (evidence replay, trace, cursor audit).
 - Direct task dispatch resolves its config from a `TaskRunTemplate`; there is
-  no freeform fallback — missing template is a caller error, not a default.
+  no freeform fallback — a missing template is a caller error, not a default.
 - All TaskRun lifecycle timestamps are timezone-aware. Naive datetimes must
   never be written or compared against aware ones; a naive/aware mix produces
-  false "stale" verdicts (this bug occurred once — keep the tz discipline).
+  false "stale" verdicts.
 
 ### 4. Validation & Error Matrix
 
 - template id missing/unknown on direct dispatch -> 4xx caller error, no TaskRun row
 - naive datetime in a lifecycle field -> reject at write boundary
-- status update that would fold lenses (e.g. set participant=completed from runtime exit alone) -> reject; each lens has its own writer
+- unknown status value -> rejected by the column CheckConstraint
 
 ### 5. Good/Base/Bad Cases
 
-- Good: run completes objective, runtime session idles and stays attached; reopening the run replays evidence.
-- Base: fresh run from a template; three lenses start aligned but diverge freely afterwards.
-- Bad: single `done` flag shared by UI and runtime teardown — recovery and evidence replay become impossible.
+- Good: run completes; runtime session idles and stays attached; reopening the run replays evidence.
+- Base: fresh run from a template; status walks the enum in order.
+- Bad: inferring `completed` from runtime exit alone, or tearing down the session on completion.
 
 ### 6. Tests Required
 
 - Unit: template resolution failures produce 4xx with no row written.
 - Unit: naive-datetime write is rejected at the boundary.
-- Integration: completing the objective lens leaves the runtime session alive and the run inspectable.
+- Integration: completing a run leaves the runtime session alive and the run inspectable.
 
 ### 7. Wrong vs Correct
 
 #### Wrong
 
 ```python
-run.done = runtime_exited          # one flag folds three lenses
+run.objective_status = "completed"   # column does not exist (AttributeError)
+run.done = runtime_exited            # folding lenses into one flag
 run.finished_at = datetime.utcnow()  # naive timestamp
 ```
 
 #### Correct
 
 ```python
-run.objective_status = "completed"  # lens-specific writer
+run.status = "completed"             # the real enum column
 run.finished_at = datetime.now(timezone.utc)  # tz-aware
-# participant/runtime lenses update through their own transitions
+# runtime session stays attached for evidence replay
 ```

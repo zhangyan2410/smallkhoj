@@ -94,7 +94,7 @@ If `cacheReadInputTokens` looks unrealistically high (e.g., 70k+ on a fresh sess
 | Four-state translator | `agent/daemon/aaa-daemon/src/daemon/daemon.ts` — `stream_event` handler + `reportRuntimeActivity` |
 | Activity write API | `backend/routers/agent_api.py` — `POST /internal/agent-api/activity` + `_record_activity` |
 | Activity kinds → events | `backend/routers/agent_api.py` — `ACTIVITY_EVENT_TYPES` |
-| Frontend rendering | `frontend/app/members/activity-tab.tsx` — icon/label/color/bucket maps |
+| Frontend rendering | `frontend/app/(app)/members/activity-tab.tsx` — icon/label/color/bucket maps |
 | Session ground truth | `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` |
 
 ---

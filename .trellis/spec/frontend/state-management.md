@@ -111,7 +111,7 @@ pending affordance.
 - Generic traversal: `fetchAllCursorPages<T>(fetchPage, {maxPages?}) -> Promise<T[]>`.
 - Task traversal: `fetchAllTaskPages<T>(fetchPage, options?) -> Promise<T[]>` using `limit=200`.
 - Transport owner: `RealtimeTransportOwner`.
-- Provider: `RealtimeProvider({serverId})` mounted by `ProductShell`.
+- Provider: `RealtimeProvider({serverId})` mounted by `app/(app)/layout.tsx` (the app shell layout; ProductShell is body-only since the 07-24 fast-path work).
 - Subscriber hook: `useRealtimeSubscription(callback)`.
 - Task invalidation event: `smallkhoj:tasks-invalidated`.
 
