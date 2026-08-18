@@ -22,5 +22,7 @@
   "parent": "07-22-codebase-audit-remediation",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "needsDecision": "审计裁定 LIKELY_DONE：CI/loading/error/删除对话框与 14 件真机证据已随 PR#1 进 main，但本任务无独立 verify 工件、implement.md 0/43 勾。补记后归档？"
+  }
 }

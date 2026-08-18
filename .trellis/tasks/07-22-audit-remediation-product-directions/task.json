@@ -22,5 +22,7 @@
   "parent": "07-22-codebase-audit-remediation",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "needsDecision": "审计裁定 LIKELY_DONE：六个 disposition（2026-07-24）已进 main，缺 006/010 两项 maintainer 显式签核。签核后归档还是直接归档？"
+  }
 }

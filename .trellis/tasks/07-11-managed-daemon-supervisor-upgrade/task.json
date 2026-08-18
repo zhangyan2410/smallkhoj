@@ -22,5 +22,7 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "Target product brand is 灵韵 with Aura as the English/CLI root. Use aura-computer for the managed service. Full repository/package/protocol rename is a separate future task.",
-  "meta": {}
+  "meta": {
+    "needsDecision": "scope 本为 planning-only：1046 行规划文档（bcb67d0/168f283）已交付。直接归档，还是保留作为将来 7 个实现子任务的伞任务？"
+  }
 }

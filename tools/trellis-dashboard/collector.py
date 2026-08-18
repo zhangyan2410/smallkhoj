@@ -238,6 +238,7 @@ def _build_task_item(task_dir: Path, statuses: dict[str, str]) -> dict | None:
         "phase": _phase_hint(info.status),
         "nextStep": _next_step(info.status, readiness),
         "risks": _task_risks(info.status, readiness, artifacts),
+        "needsDecision": (raw.get("meta") or {}).get("needsDecision"),
         "meta": raw.get("meta") or None,
     }
 

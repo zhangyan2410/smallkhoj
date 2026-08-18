@@ -101,7 +101,8 @@ window.DEMO_SNAPSHOT = {
         phase: "execute_finish",
         nextStep: "trellis-implement → trellis-check → trellis-update-spec → 提交 → /trellis:finish-work",
         risks: [],
-        meta: null,
+        needsDecision: "演示：本地已全部完成，只差云端 smoke 证据。归档还是保留？",
+        meta: { needsDecision: "演示：本地已全部完成，只差云端 smoke 证据。归档还是保留？" },
       },
       {
         dir: "08-17-demo-missing-prd",

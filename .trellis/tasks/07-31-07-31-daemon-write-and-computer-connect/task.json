@@ -22,5 +22,7 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "needsDecision": "审计裁定 PARTIAL：本地修复（2faa691）已入 main 且闭环通过，云端验证 AC6 被 PUBLIC_API_KEY 生产配置债阻塞。归档并另立云端治理任务，还是保留只跟踪 AC6？"
+  }
 }

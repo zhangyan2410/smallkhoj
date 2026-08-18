@@ -22,5 +22,7 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "needsDecision": "审计裁定 PARTIAL：43 条验收已过 42，唯一缺 AC42 云端 reset/deploy/smoke 证据，本地实现已全部合入 main。归档（接受现状）还是保留等云端补验？"
+  }
 }

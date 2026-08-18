@@ -110,6 +110,15 @@ class TestActiveTasks(FixtureBase):
         self.assertEqual(item["risks"], [])
         self.assertEqual(item["phase"], "execute_finish")
 
+    def test_needs_decision_from_meta(self) -> None:
+        make_task(self.tasks_dir, "08-18-delta", meta={"needsDecision": "归档还是保留？"})
+        item = collector._collect_active_tasks(self.root)[0]
+        self.assertEqual(item["needsDecision"], "归档还是保留？")
+        make_task(self.tasks_dir, "08-19-epsilon", meta={})
+        item2 = [t for t in collector._collect_active_tasks(self.root)
+                 if t["dir"] == "08-19-epsilon"][0]
+        self.assertIsNone(item2["needsDecision"])
+
 
 class TestArchived(FixtureBase):
     def test_archived_recent_ref_and_sort(self) -> None:

@@ -281,6 +281,10 @@ function renderRiskStrip(snapshot) {
   const strip = document.getElementById("risk-strip");
   if (!strip) return;
   const bits = [];
+  const pending = (snapshot.tasks.active || []).filter((t) => t.needsDecision).length;
+  if (pending > 0) bits.push({
+    text: `待你拍板 ${pending}`, tone: "danger", action: "decision",
+  });
   const priority = snapshot.summary.priority || {};
   if (priority.P0 > 0) bits.push({ text: `P0 任务 ${priority.P0}`, tone: "danger" });
   const missingPrd = (snapshot.tasks.active || [])
@@ -290,8 +294,17 @@ function renderRiskStrip(snapshot) {
   if (stale > 0) bits.push({ text: `失效会话指针 ${stale}`, tone: "warn" });
   const nearLimit = ((snapshot.journal || {}).journalFiles || []).filter((f) => f.nearLimit).length;
   if (nearLimit > 0) bits.push({ text: `journal 接近 2000 行上限 ${nearLimit} 个文件`, tone: "warn" });
-  strip.replaceChildren(...bits.map((b) =>
-    el("span", { class: `risk-chip risk-${b.tone}`, text: `⚠ ${b.text}` })));
+  strip.replaceChildren(...bits.map((b) => {
+    if (b.action) {
+      return el("button", {
+        class: `risk-chip risk-${b.tone}`,
+        text: `⚠ ${b.text}`,
+        title: "点击筛选出这些任务",
+        onclick: () => { state.filter = b.action; switchTab("tasks"); },
+      });
+    }
+    return el("span", { class: `risk-chip risk-${b.tone}`, text: `⚠ ${b.text}` });
+  }));
 }
 
 function statusHint(byStatus) {
@@ -322,7 +335,9 @@ function renderMeta(snapshot) {
 /* ============================================================ 任务视图 */
 
 function taskMatches(task, filter, query) {
-  if (filter === "active-done") {
+  if (filter === "decision") {
+    if (!task.needsDecision) return false;
+  } else if (filter === "active-done") {
     if (!["completed", "done"].includes(task.status)) return false;
   } else if (filter !== "all" && task.status !== filter) return false;
   if (!query) return true;
@@ -335,8 +350,10 @@ function renderTasks(snapshot) {
   const byStatus = snapshot.summary.byStatus || {};
   const doneActive = (byStatus.completed || 0) + (byStatus.done || 0);
 
+  const pending = active.filter((t) => t.needsDecision).length;
   const chips = [
     { key: "all", label: `全部 ${active.length}` },
+    ...(pending ? [{ key: "decision", label: `⚠ 待拍板 ${pending}` }] : []),
     { key: "planning", label: `规划 ${byStatus.planning || 0}` },
     { key: "in_progress", label: `进行中 ${byStatus.in_progress || 0}` },
     { key: "active-done", label: `已完成未归档 ${doneActive}` },
@@ -392,10 +409,11 @@ function renderTaskList() {
     const progress = task.childrenProgress;
     const risks = task.risks || [];
     return el("div", {
-      class: `task-card ${selected ? "task-card-selected" : ""}`,
+      class: `task-card ${selected ? "task-card-selected" : ""}${task.needsDecision ? " task-card-decision" : ""}`,
       onclick: () => { state.selected = { kind, ref }; renderTaskList(); renderDetail(); },
     },
       el("div", { class: "task-card-row1" },
+        task.needsDecision ? el("span", { class: "badge st-decision", text: "待拍板" }) : null,
         el("span", { class: `badge ${st.cls}`, text: st.label }),
         task.priority ? el("span", { class: `prio prio-${task.priority}`, text: task.priority }) : null,
         risks.length ? el("span", { class: "badge st-risk", title: risks.join(", "), text: "⚠ " + risks.length }) : null,
@@ -480,6 +498,13 @@ function renderDetail() {
     el("span", { class: `badge ${st.cls}`, text: st.label }),
     t.priority ? el("span", { class: `prio prio-${t.priority}`, text: t.priority }) : null,
     el("span", { class: "muted", text: t.dir })));
+
+  // 需要用户拍板的醒目提示（task.json meta.needsDecision）
+  if (t.needsDecision) {
+    parts.push(el("div", { class: "decision-callout" },
+      el("div", { class: "decision-label", text: "⚠ 需要你拍板" }),
+      el("div", { class: "decision-text", text: t.needsDecision })));
+  }
 
   // 阶段步进条
   const steps = stepperFor(t.phase);

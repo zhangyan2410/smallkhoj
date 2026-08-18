@@ -113,6 +113,25 @@ main { padding: 20px; max-width: 1240px; margin: 0 auto; }
 }
 .risk-danger { background: rgba(220, 38, 38, 0.12); color: var(--danger); }
 .risk-warn { background: rgba(217, 119, 6, 0.12); color: var(--warn); }
+button.risk-chip { font-weight: 600; }
+button.risk-chip:hover { border: 1px solid var(--danger); }
+
+/* ---------- 待拍板 ---------- */
+
+.st-decision { background: rgba(225, 29, 72, 0.16); color: #e11d48; }
+:root[data-theme="dark"] .st-decision { color: #fb7185; }
+.task-card-decision { border-color: rgba(225, 29, 72, 0.55); }
+.decision-callout {
+  background: rgba(225, 29, 72, 0.08);
+  border: 1px solid rgba(225, 29, 72, 0.45);
+  border-left: 4px solid #e11d48;
+  border-radius: 0 10px 10px 0;
+  padding: 10px 14px;
+  margin: 4px 0 14px;
+}
+.decision-label { font-weight: 700; color: #e11d48; font-size: 13px; margin-bottom: 4px; }
+:root[data-theme="dark"] .decision-label { color: #fb7185; }
+.decision-text { font-size: 13px; line-height: 1.7; }
 
 /* ---------- Tabs ---------- */
 
