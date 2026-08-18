@@ -862,6 +862,88 @@ function renderSpecFiles(snapshot) {
   document.getElementById("view").replaceChildren(el("div", { class: "chip-bar" }, ...chips), view);
 }
 
+/* ============================================================ Agent 视图（工作流 + 运行历史；对话 Loop 2 接入） */
+
+const RUN_STATUS = {
+  running: { label: "运行中", cls: "st-progress" },
+  done:    { label: "完成", cls: "st-done" },
+  failed:  { label: "失败", cls: "st-risk" },
+};
+
+async function startWorkflow(id, button) {
+  button.disabled = true;
+  try {
+    const resp = await fetch("/api/agent-runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      alert(`启动失败: ${body.error || resp.status}`);
+      return;
+    }
+    refresh();
+  } catch (err) {
+    alert(`启动失败: ${err.message}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderAgents(snapshot) {
+  const agents = snapshot.agents || {};
+  const workflows = agents.workflows || [];
+  const runs = agents.runs || [];
+  const running = runs.find((r) => r.status === "running");
+  document.getElementById("tab-extra").replaceChildren(
+    el("span", { class: "muted", text: agents.dshAvailable ? "dsh 就绪" : "dsh 未安装/不在 PATH" }));
+
+  if (!workflows.length) {
+    document.getElementById("view").replaceChildren(
+      el("div", { class: "empty", text: "工作流注册表为空（tools/trellis-dashboard/agents/workflows/）" }));
+    return;
+  }
+  const lastById = new Map();
+  for (const run of [...runs].reverse()) {
+    if (!lastById.has(run.workflowId)) lastById.set(run.workflowId, run);
+  }
+  const cards = workflows.map((wf) => {
+    const last = lastById.get(wf.id);
+    const lastBadge = last ? el("span", {
+      class: `badge ${(RUN_STATUS[last.status] || RUN_STATUS.failed).cls}`,
+      text: `上次: ${(RUN_STATUS[last.status] || { label: last.status }).label}${last.durationSeconds != null ? ` ${last.durationSeconds}s` : ""}`,
+    }) : el("span", { class: "muted", text: "未运行过" });
+    return el("div", { class: "agent-card" },
+      el("div", { class: "agent-card-head" },
+        el("span", { class: "agent-name", text: wf.name }),
+        lastBadge),
+      el("div", { class: "muted", text: wf.description || wf.id }),
+      el("div", { class: "agent-card-foot" },
+        el("span", { class: "muted mono", text: `${wf.id} · prompt ${wf.promptChars} 字` }),
+        el("button", {
+          class: "run-btn",
+          text: running ? "运行（占用中）" : "运行",
+          disabled: running ? true : null,
+          onclick: (e) => startWorkflow(wf.id, e.target),
+        })));
+  });
+
+  const history = runs.length
+    ? el("div", { class: "capture-list" }, ...runs.map((run) => el("div", { class: "spec-finding" },
+        el("span", { class: `badge ${(RUN_STATUS[run.status] || RUN_STATUS.failed).cls}`, text: (RUN_STATUS[run.status] || { label: run.status }).label }),
+        el("span", { class: "mono", text: run.workflowId }),
+        el("span", { class: "muted", text: `${run.startedAt.replace("T", " ").replace("Z", "")}${run.durationSeconds != null ? ` · ${run.durationSeconds}s · exit ${run.exitCode}` : ""}` }),
+        run.outputTail ? el("span", { class: "muted run-tail", text: run.outputTail.slice(-160) }) : null)))
+    : el("div", { class: "empty", text: "还没有运行记录" });
+
+  document.getElementById("view").replaceChildren(
+    el("div", { class: "cards agent-grid" }, ...cards),
+    el("div", { class: "section-title", text: "运行历史" }),
+    history,
+    el("div", { class: "muted", styleProp: "margin-top:14px", text: "对话模式（提需求改 dashboard 自身）将在下一步接入。" }));
+}
+
 /* ============================================================ 视图路由与刷新 */
 
 function renderView() {
@@ -871,6 +953,7 @@ function renderView() {
   else if (state.tab === "sessions") renderSessions(snapshot);
   else if (state.tab === "speccap") renderSpecCapture(snapshot);
   else if (state.tab === "specfiles") renderSpecFiles(snapshot);
+  else if (state.tab === "agent") renderAgents(snapshot);
   else renderTimeline(snapshot);
 }
 

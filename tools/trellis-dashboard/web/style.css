@@ -539,3 +539,22 @@ button.risk-chip:hover { border: 1px solid var(--danger); }
   border-radius: 6px;
 }
 .lang-btn-active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* ---------- Agent ---------- */
+
+.agent-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.agent-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.agent-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.agent-name { font-weight: 700; }
+.agent-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
+.run-btn { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.run-tail { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }

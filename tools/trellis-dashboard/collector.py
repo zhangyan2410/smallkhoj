@@ -657,6 +657,22 @@ def _collect_spec_files(root: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# DSH agent（工作流注册表 + 运行历史）
+# ---------------------------------------------------------------------------
+
+def _collect_agents(root: Path) -> dict:
+    import shutil
+
+    import agent_runner
+
+    return {
+        "dshAvailable": shutil.which(agent_runner.DSH_BIN) is not None,
+        "workflows": agent_runner.list_workflows(),
+        "runs": agent_runner.list_runs(root),
+    }
+
+
+# ---------------------------------------------------------------------------
 # 快照
 # ---------------------------------------------------------------------------
 
@@ -684,4 +700,5 @@ def collect_snapshot(root: Path) -> dict:
         "spec": _collect_spec(root),
         "specCapture": _collect_spec_capture(root),
         "specFiles": _collect_spec_files(root),
+        "agents": _collect_agents(root),
     }

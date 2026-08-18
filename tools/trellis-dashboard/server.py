@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+import agent_runner
 from collector import (
     IMAGE_EXTENSIONS,
     IMAGE_RAW_LIMIT_BYTES,
@@ -55,6 +56,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         # 静默常规访问日志（30 秒轮询会刷屏）；错误仍通过 send_error 输出
         return
+
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        if unquote(parsed.path) != "/api/agent-runs":
+            self._send_json({"error": "not found"}, status=404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            record = agent_runner.start_run(self.server.root, str(body.get("id", "")))
+            self._send_json(record, status=202)
+        except KeyError as exc:
+            self._send_json({"error": str(exc)}, status=404)
+        except RuntimeError as exc:
+            self._send_json({"error": str(exc)}, status=409)
+        except Exception as exc:  # noqa: BLE001
+            self._send_json({"error": f"bad request: {exc}"}, status=400)
 
     def do_HEAD(self) -> None:  # noqa: N802
         self._route(head=True)

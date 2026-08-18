@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -330,3 +331,50 @@ class TestSpecZh(FixtureBase):
         files = collector._collect_spec_files(self.root)["files"]
         demo = next(f for f in files if f["path"] == "backend/only-en.md")
         self.assertFalse(demo["zhAvailable"])
+
+
+class TestAgentRunner(FixtureBase):
+    def test_workflow_registry_and_stub_run(self) -> None:
+        import agent_runner
+
+        # 注册表解析（真实仓库的工作流目录）
+        workflows = agent_runner.list_workflows()
+        self.assertTrue(any(w["id"] == "spec-staleness-audit" for w in workflows))
+        wf = next(w for w in workflows if w["id"] == "spec-staleness-audit")
+        self.assertEqual(wf["name"], "Spec 时效核验")
+        self.assertGreater(wf["promptChars"], 500)
+        prompt = agent_runner.read_workflow_prompt("spec-staleness-audit")
+        self.assertIn("spec-audit.json", prompt)
+        self.assertIsNone(agent_runner.read_workflow_prompt("no-such"))
+
+        # 桩运行：DSH_BIN 换成 /bin/echo
+        agent_runner.DSH_BIN = "/bin/echo"
+        try:
+            record = agent_runner.start_run(self.root, "spec-staleness-audit")
+        finally:
+            agent_runner.DSH_BIN = "dsh"
+        self.assertEqual(record["status"], "running")
+        # 等 reap 线程收尾
+        for _ in range(50):
+            if agent_runner.run_state.running is None:
+                break
+            time.sleep(0.1)
+        runs = agent_runner.list_runs(self.root)
+        self.assertEqual(len(runs), 1)
+        run = runs[0]
+        self.assertEqual(run["status"], "done")
+        self.assertEqual(run["exitCode"], 0)
+        self.assertIsNotNone(run["durationSeconds"])
+        self.assertIn("Spec", run["outputTail"])
+
+    def test_single_flight_lock(self) -> None:
+        import agent_runner
+
+        agent_runner.DSH_BIN = "/bin/sleep"
+        try:
+            agent_runner.run_state.running = {"runId": "x", "workflowId": "y", "status": "running"}
+            with self.assertRaises(RuntimeError):
+                agent_runner.start_run(self.root, "spec-staleness-audit")
+        finally:
+            agent_runner.run_state.running = None
+            agent_runner.DSH_BIN = "dsh"
