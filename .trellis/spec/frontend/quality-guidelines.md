@@ -44,6 +44,24 @@ semantic tokens, explicit shell ownership, and evidence gates.
 - Fixing overflow by broad page-level clipping without confirming the inner
   scroll region still works.
 
+### Common Mistake: Trusting hot-reload after external file replacement
+
+**Symptom**: Browser shows the new component DOM but old styles, or a lazy chunk
+stays on its `loading` placeholder after many reloads.
+
+**Cause**: Turbopack dev can miss invalidation when files are replaced outside
+its watcher granularity (e.g. `git stash pop`), and long-lived tabs accumulate a
+broken HMR runtime that survives `location.reload()`.
+
+**Fix**: Confirm the served artifact, not the source file:
+`curl` the CSS chunk linked by the page and grep for the new selector. If
+missing, make a real content edit (a comment is enough) to force recompile, and
+verify in a **fresh tab**, not a reloaded one.
+
+**Prevention**: For styling verification in this repo, assert against the served
+chunk / computed style before screenshotting; treat "reload the same tab" as
+unreliable evidence.
+
 ---
 
 ## Required Patterns

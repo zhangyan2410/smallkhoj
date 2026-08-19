@@ -216,6 +216,40 @@ face ball" as the default look.
 
 ---
 
+## Chat Message Markdown (`markdown-body`)
+
+Single renderer: `components/markdown-message.tsx` (react-markdown + remark-gfm +
+mention rehype plugin), used only by `chat/[channel]/message-list.tsx`. All chat
+markdown styling lives in the `.markdown-body` block of `globals.css` — never
+hand-roll per-route markdown styles.
+
+Conventions (landed in 08-18-frontend-beauty-agent-reply):
+
+- **Code blocks** render through a custom `pre` component (`CodeBlock`) producing
+  `.sk-codeblock` = ink-bordered slip with a **header strip** (uppercase language
+  label + copy button) over a **soft body**. The body tint is
+  `color-mix(in oklch, var(--accent-mint-soft) 38%, var(--paper))` — never full
+  `accent-mint-soft` (too loud for long code). Header strip uses
+  `paper-deep 55% × paper`. Keep the copy button's i18n keys (`common.copy` /
+  `common.copied`) in both message files.
+- **Blockquotes** are a 4px `--accent-rose` left bar over a
+  `rose-soft 30% × paper` tint — no full ink frame, no hard shadow, no saturated
+  fill. Full-bleed rose backgrounds were tried and read as louder than the code.
+- **Lists** use hanging indent (`list-disc/decimal` + `pl-5`, `li` gets `pl-0.5`);
+  `list-inside` is forbidden (wrapped lines collide with the marker).
+- **Tables**: 1.5px ink outer frame, 1px `--sand-border` inner lines,
+  `paper-deep 55% × paper` header with left-aligned text (matches body cells).
+- **Headings** carry top margin (`mt-4`/`mt-3`, `first:mt-0`) so sections
+  separate from the preceding paragraph inside a bubble.
+- **Inline code** keeps the mint chip semantics but with a 1px ink edge; 1.5px
+  reads clumsy at 0.85em.
+
+Dark/shuimo themes: all of the above consume tokens, so they adapt — verify by
+screenshot when touching this block (dark mint/rose softs are deep variants and
+must stay readable on paper).
+
+---
+
 ## Layout Conventions
 
 ### Three-column "Slack" mode (list-detail pages)
