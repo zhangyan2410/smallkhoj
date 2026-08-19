@@ -378,3 +378,67 @@ class TestAgentRunner(FixtureBase):
         finally:
             agent_runner.run_state.running = None
             agent_runner.DSH_BIN = "dsh"
+
+
+class TestAgentChat(FixtureBase):
+    def test_chat_lifecycle_over_web_api(self) -> None:
+        import agent_chat
+
+        agent_chat.web_up = lambda timeout=0.3: True
+        agent_chat.ensure_dsh_web = lambda root: None
+        seq = {"n": 23}
+        calls = []
+
+        def fake_rpc(method, payload):
+            calls.append(method)
+            if method == "session.list":
+                return {"items": []}
+            if method == "session.create":
+                return {"sessionId": payload["sessionId"], "agentPreset": "standard"}
+            if method == "session.history":
+                seq["n"] += 1
+                if len([c for c in calls if c == "session.prompt"]) == 0:
+                    return {"events": [{"event": {"type": "permission/preset", "seq": 1, "data": {}}}]}
+                return {"events": [
+                    {"event": {"type": "user/message", "seq": seq["n"] - 1, "data": {}}},
+                    {"event": {"type": "assistant/message", "seq": seq["n"], "data": {
+                        "content": [{"type": "text", "text": "好的，改完了。"}]}}},
+                    {"event": {"type": "turn/end", "seq": seq["n"] + 1, "data": {}}},
+                ]}
+            if method == "session.prompt":
+                return {"accepted": True}
+            raise AssertionError(method)
+
+        agent_chat.web_rpc = fake_rpc
+        agent_chat.POLL_INTERVAL_SECONDS = 0.01
+        try:
+            entry = agent_chat.send_message(self.root, "加一个 XX 功能")
+            self.assertEqual(entry["role"], "assistant")
+            self.assertIn("改完了", entry["text"])
+            self.assertIn("session.create", calls)
+            self.assertIn("session.prompt", calls)
+            msgs = agent_chat.read_log(self.root)
+            self.assertEqual(msgs[0]["role"], "user")
+            # 单飞：busy 期间第二条被拒
+            agent_chat.chat_busy = True
+            with self.assertRaises(RuntimeError):
+                agent_chat.send_message(self.root, "第二条")
+            agent_chat.chat_busy = False
+        finally:
+            agent_chat.chat_busy = False
+
+    def test_chat_error_recorded(self) -> None:
+        import agent_chat
+
+        agent_chat.web_up = lambda timeout=0.3: True
+
+        def boom(root):
+            raise RuntimeError("dsh web 启动超时")
+
+        agent_chat.ensure_dsh_web = boom
+        try:
+            entry = agent_chat.send_message(self.root, "hi")
+            self.assertEqual(entry["role"], "error")
+            self.assertIn("超时", entry["text"])
+        finally:
+            agent_chat.chat_busy = False

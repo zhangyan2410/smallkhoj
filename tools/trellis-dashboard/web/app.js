@@ -870,6 +870,37 @@ const RUN_STATUS = {
   failed:  { label: "失败", cls: "st-risk" },
 };
 
+async function sendChatMessage() {
+  const input = document.getElementById("chat-input");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  try {
+    const resp = await fetch("/api/agent-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      alert(`发送失败: ${body.error || resp.status}`);
+      return;
+    }
+    refresh();
+  } catch (err) {
+    alert(`发送失败: ${err.message}`);
+  }
+}
+
+function renderChatMessages(host, messages) {
+  host.replaceChildren(...(messages || []).map((m) => el("div", {
+    class: `chat-msg chat-msg-${m.role}`,
+  },
+    el("span", { class: "chat-role", text: m.role === "user" ? "你" : (m.role === "error" ? "错误" : "agent") }),
+    el("span", { class: "chat-text", text: m.text }))));
+  host.scrollTop = host.scrollHeight;
+}
+
 async function startDshWeb(section) {
   try {
     const resp = await fetch("/api/dsh-web", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
@@ -957,16 +988,32 @@ function renderAgents(snapshot) {
         run.outputTail ? el("span", { class: "muted run-tail", text: run.outputTail.slice(-160) }) : null)))
     : el("div", { class: "empty", text: "还没有运行记录" });
 
-  // 对话面板：iframe 嵌 dsh web（首启需在其 UI 里 Choose workspace 选仓库根）
+  // 原生对话面板（Python SDK 桥）+ DSH web 作为高级入口
+  const chat = agents.chat || {};
+  const msgsHost = el("div", { class: "chat-messages", id: "chat-messages" });
+  renderChatMessages(msgsHost, chat.messages);
+  const inputRow = el("div", { class: "chat-input-row" },
+    el("input", {
+      type: "text", id: "chat-input", class: "chat-input",
+      placeholder: chat.webUp ? "提需求，例如：给 dashboard 加一个 XX 工作流" : "dsh web 未启动（点击右上角按钮启动）",
+      disabled: chat.webUp ? null : "",
+      onkeydown: (e) => { if (e.key === "Enter") sendChatMessage(); },
+    }),
+    el("button", { class: "run-btn", text: chat.busy ? "处理中…" : "发送", onclick: () => sendChatMessage() }));
   const chatPanel = el("div", { class: "chat-panel" },
     el("div", { class: "chat-panel-head" },
-      el("span", { class: "section-title", text: "对话（提需求，agent 按 trellis-dashboard-dev skill 直接改本工具）" }),
-      agents.dshWebUp
-        ? el("span", { class: "badge st-done", text: "dsh web 运行中" })
-        : el("button", { class: "run-btn", text: "启动 dsh web", onclick: () => startDshWeb() })),
-    agents.dshWebUp
-      ? el("iframe", { class: "chat-iframe", src: agents.dshWebUrl || "http://127.0.0.1:3080/", title: "DSH 对话" })
-      : el("div", { class: "muted", styleProp: "padding:18px 0", text: "未启动。点击「启动 dsh web」拉起（127.0.0.1:3080，工作区=本仓库）；首次打开需在其界面 Choose workspace 选择仓库根。" }));
+      el("span", { class: "section-title", text: "对话（原生 · 持久会话）" }),
+      el("span", {},
+        chat.busy ? el("span", { class: "badge st-progress", text: "agent 处理中" }) : null,
+        el("button", {
+          class: "lang-btn", text: "打开 DSH Web（审批/轨迹）",
+          onclick: async () => {
+            await startDshWeb();
+            window.open("http://127.0.0.1:3080/", "_blank");
+          },
+        }))),
+    msgsHost,
+    inputRow);
 
   document.getElementById("view").replaceChildren(
     el("div", { class: "cards agent-grid" }, ...cards),
@@ -1022,6 +1069,8 @@ async function refresh(silent = false) {
 function startAutoRefresh() {
   if (state.timer) clearInterval(state.timer);
   state.timer = setInterval(() => refresh(true), REFRESH_MS);
+  // Agent tab 打开时 5 秒快轮询（对话/运行状态即时反馈）
+  setInterval(() => { if (state.tab === "agent") refresh(true); }, 5000);
 }
 
 /* ============================================================ Spec 沉淀视图 */

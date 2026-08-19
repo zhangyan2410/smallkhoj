@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+import agent_chat
 import agent_runner
 from collector import (
     IMAGE_EXTENSIONS,
@@ -63,6 +65,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/dsh-web":
             self._handle_dsh_web()
             return
+        if path == "/api/agent-chat":
+            self._handle_agent_chat()
+            return
         if path != "/api/agent-runs":
             self._send_json({"error": "not found"}, status=404)
             return
@@ -78,40 +83,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001
             self._send_json({"error": f"bad request: {exc}"}, status=400)
 
+    def _handle_agent_chat(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+        except Exception:
+            self._send_json({"error": "bad json"}, status=400)
+            return
+        text = str(body.get("text", ""))
+        if not text.strip():
+            self._send_json({"error": "消息为空"}, status=400)
+            return
+        try:
+            threading.Thread(
+                target=lambda: agent_chat.send_message(self.server.root, text),
+                daemon=True,
+            ).start()
+            self._send_json({"ok": True}, status=202)
+        except RuntimeError as exc:
+            self._send_json({"error": str(exc)}, status=409)
+
     def _handle_dsh_web(self) -> None:
         """拉起 dsh web（127.0.0.1:3080，cwd=仓库根）；已在跑则直接返回 URL。"""
-        import socket
-        import subprocess
-
         url = "http://127.0.0.1:3080/"
-        sock = socket.socket()
-        sock.settimeout(0.3)
-        try:
-            sock.connect(("127.0.0.1", 3080))
-            up = True
-        except OSError:
-            up = False
-        finally:
-            sock.close()
-        if not up:
-            log_dir = self.server.root / ".trellis" / ".runtime"
-            log_dir.mkdir(parents=True, exist_ok=True)
-            log = (log_dir / "dsh-web.log").open("w", encoding="utf-8")
+        if not agent_chat.web_up():
             try:
-                subprocess.Popen(
-                    [agent_runner.DSH_BIN, "web", "--port", "3080"],
-                    cwd=str(self.server.root),
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,
-                )
-            except FileNotFoundError:
-                log.close()
-                self._send_json({"error": "dsh 不可用（未安装或不在 PATH）"}, status=500)
+                threading.Thread(
+                    target=lambda: agent_chat.ensure_dsh_web(self.server.root),
+                    daemon=True,
+                ).start()
+                self._send_json({"url": url, "started": True}, status=202)
                 return
-            # 给它一点启动时间，前端拿到 202 后轮询快照里的状态
-            self._send_json({"url": url, "started": True}, status=202)
-            return
+            except RuntimeError as exc:
+                self._send_json({"error": str(exc)}, status=500)
+                return
         self._send_json({"url": url, "started": False})
 
     def do_HEAD(self) -> None:  # noqa: N802

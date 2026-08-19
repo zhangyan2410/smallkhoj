@@ -577,3 +577,39 @@ button.risk-chip:hover { border: 1px solid var(--danger); }
 }
 .chat-panel-head .section-title { margin: 0; }
 .chat-iframe { width: 100%; height: 640px; border: none; display: block; background: var(--bg); }
+
+/* ---------- 原生对话 ---------- */
+
+.chat-messages {
+  height: 420px;
+  overflow: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-msg { display: flex; gap: 8px; align-items: flex-start; }
+.chat-role {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--bg-muted);
+  margin-top: 2px;
+}
+.chat-msg-user .chat-role { background: var(--accent-soft); color: var(--accent); }
+.chat-msg-error .chat-role { background: rgba(220,38,38,0.15); color: var(--danger); }
+.chat-msg-assistant .chat-role { background: rgba(22,163,74,0.15); color: var(--ok); }
+.chat-text { white-space: pre-wrap; word-break: break-word; flex: 1; font-size: 13px; }
+.chat-input-row { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.chat-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}

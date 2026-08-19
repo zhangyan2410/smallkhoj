@@ -675,7 +675,14 @@ def _collect_agents(root: Path) -> dict:
         dsh_web_up = False
     finally:
         sock.close()
+    try:
+        import agent_chat
+
+        chat = agent_chat.chat_status(root)
+    except Exception:  # noqa: BLE001
+        chat = {"sdkAvailable": False, "busy": False, "messages": []}
     return {
+        "chat": chat,
         "dshAvailable": shutil.which(agent_runner.DSH_BIN) is not None,
         "dshWebUp": dsh_web_up,
         "dshWebUrl": "http://127.0.0.1:3080/",
