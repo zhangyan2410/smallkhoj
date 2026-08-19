@@ -247,7 +247,7 @@ const tasks = await fetchAllTaskPages((path) => apiGet(path, emptyPage))
 
 ### 5. 好/基线/坏案例
 
-- 好：`tasks` 领域通过在 `activityUnreadKeysForEvent` 里增加 `task:all` 递增、并在栏里放一个 `ActivityIndicator` 落地——零个新 store。
+- 好：`tasks` 领域通过在 `activityUnreadKeysForEvent` 里增加 `task:all` 递增、并在真实消费者上放未读指示器落地——零个新 store。（现状：栏图标徽标——`AppRail` 上的 `ActivityIndicator`——因计数口径问题暂时下线，恢复待办见 `app-rail.tsx` 内注释；状态层与聊天侧栏的按实体未读都在运行，口径修好后再恢复栏集成。）
 - 好：聊天徽标（badge）经 `localStorage` 在重载后存活，并与服务器 `unreadCount` 对账（本地与服务器取最大）。
 - 基线：通知权限被拒；未读徽标仍工作，通知静默关闭。
 - 坏：某特性自建带自己 change 事件的 `localStorage` 未读计数器。
@@ -257,7 +257,7 @@ const tasks = await fetchAllTaskPages((path) => apiGet(path, emptyPage))
 
 - 单元：多键递进去重、追赶时高水位重置、按路径清空投影、自己消息的抑制（suppress）、DM id 当前视图抑制。
 - 单元：通知规划矩阵（可见+聚焦、频道仅提及、自己的事件、节流 offer/flush）。
-- 跨标签页：store 的 change 事件（`smallkhoj:activity-unread`）更新已挂载的消费者（AppRail）而无需重挂载。
+- 跨标签页：store 的 change 事件（`smallkhoj:activity-unread`）更新已挂载的消费者而无需重挂载（当前在运行的消费者：聊天侧栏实体徽标；栏 `AppRail` 集成待其恢复——见第 5 节注）。
 
 ### 7. 错误 vs 正确
 

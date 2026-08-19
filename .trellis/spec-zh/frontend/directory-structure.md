@@ -119,6 +119,6 @@ globals.css 内部结构：
 2. `:root` — 亮色主题 token（background、primary、ink、sand*、success* 等）。
 3. `.dark` — 暗色主题覆盖（同名 token）。
 4. `@layer utilities` — 手工类（`sk-*`、`bg-sand-*`、`bg-success` 等）。
-5. `@layer components` — `.sk-rail*`（水材质侧栏）、调整手柄、基础样式。
+5. `@layer components` — `.sk-rail*`（纸质书脊式侧栏；水材质质感已退役，`public/rail-water-texture.png` 是无引用的遗留资产）、调整手柄、基础样式。
 
 除非确实是全应用通用的工具，否则**不要**在这里添加组件特定样式。组件样式应写在组件里（用 Tailwind 类），确有必要时才用同目录的 CSS module。

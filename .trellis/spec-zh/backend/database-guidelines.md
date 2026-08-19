@@ -362,7 +362,7 @@ correct: scoped canonical Member UUID / pg advisory xact lock -> authorize or as
 
 ### 6. 必备测试
 - 断言全部五张网关表存在于 `Base.metadata`。
-- 断言启动 DDL 为全部五张表与关键索引发出 `CREATE TABLE IF NOT EXISTS`。
+- 断言 Alembic 迁移链把干净数据库升级到全部五张网关表与关键索引（Alembic 是唯一的 schema 写入者，不存在启动 DDL 路径）。
 - 断言 `claim_external_event` 创建一个事件，重复认领返回既有事件。
 - 断言路由缺失/禁用结果暴露失败码与原因。
 - 断言 session 与 mapping 辅助函数可从本地和外部两侧查询。
@@ -833,7 +833,7 @@ FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_
 - 频道或成员属于另一个 server -> `BOOTSTRAP_REFERENCE_SCOPE_MISMATCH`，不写 connector 或 route。
 - 既有的已禁用首发 connector/route -> 重新启用并更新，因为运维人员显式要求 bootstrap。
 - bootstrap 之后运行时 Feishu/Jira 凭据缺失 -> 属于 worker/runtime 配置错误，不是 bootstrap 错误。
-- 旧 `task_assignments` 模式约束的既有数据库 -> 启动时必须 drop/重建 `ck_task_assignments_mode`，`external_feishu` 才能持久化。
+- 旧 `task_assignments` 模式约束的既有数据库 -> 由 Alembic 迁移链 drop/重建 `ck_task_assignments_mode`，`external_feishu` 才能持久化。
 
 ### 5. 正例/基准/反例
 - 正例：bootstrap 创建活动的 Feishu/Jira connector 行，创建匹配 `@SmallKhoj 分析 JIRA-123` 的路由，确保 creator/assignee 是频道成员，并打印 worker 环境变量指引。
@@ -841,7 +841,7 @@ FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_
 - 基准：bootstrap 在没有真实 app secret 时也能成功；secret 只在启动 worker 前写进运行时环境。
 - 反例：用 SQL 控制台手改来创建 connector ID，因为这样 live-run 路径就无法在服务器上复现。
 - 反例：把 `appSecret` 或 `apiToken` 存进 `ExternalConnector.config`。
-- 反例：改 `release_loop.py` 使用新的 assignment 模式，却不更新 ORM 约束、启动 DDL 与回归测试。
+- 反例：改 `release_loop.py` 使用新的 assignment 模式，却不更新 ORM 约束、Alembic 迁移链与回归测试。
 
 ### 6. 必备测试
 - bootstrap 从既有引用创建 Feishu/Jira connector 与一条 Feishu 路由。
@@ -849,7 +849,7 @@ FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_
 - 缺失引用在写入部分 connector/route 之前失败。
 - 序列化的 bootstrap 输出包含必需的 worker 环境变量键与机密占位符。
 - CLI 解析器拒绝机密旗标。
-- ORM 与启动 DDL 测试断言 `external_feishu` 存在于 `ck_task_assignments_mode`。
+- ORM 与 Alembic 迁移测试（见 `test_alembic_migrations_postgres.py`）断言 `external_feishu` 存在于 `ck_task_assignments_mode`。
 
 ### 7. 错误与正确对照
 #### 错误
@@ -1840,15 +1840,15 @@ JIRA_EMAIL / JIRA_API_TOKEN -> services.integration_runtime -> TaskRunWritebackD
 ### 3. 契约
 - 显式列是查询/认证路径的事实源。
 - 序列化器仍为 agent 输出 `computerId`、`workspaceId` 与 `backend`。
-- 启动建表必须用 `ADD COLUMN IF NOT EXISTS`，照顾本地既有数据库。
-- 启动迁移不得创建演示 server、member、computer、channel、message、task、API key 或活动日志。
-- 启动迁移只可以把既有行从兼容配置键回填进显式列。
+- 面向本地既有数据库的加列经 Alembic 迁移链落地（`alembic upgrade head`），绝不走启动 DDL。
+- 迁移不得创建演示 server、member、computer、channel、message、task、API key 或活动日志。
+- 迁移只可以把既有行从兼容配置键回填进显式列。
 
 ### 4. 校验与错误矩阵
-- 旧数据库缺少 `members.computer_id` -> 启动时补上。
-- 旧数据库缺少 `members.backend` -> 启动时补上。
-- 既有行只有 `config.computerId` -> 当 UUID 引用真实 computer 时，启动回填 `members.computer_id`。
-- 既有行只有 `config.backend` -> 启动回填 `members.backend`。
+- 旧数据库缺少 `members.computer_id` -> 由 Alembic 迁移补上。
+- 旧数据库缺少 `members.backend` -> 由 Alembic 迁移补上。
+- 既有行只有 `config.computerId` -> 当 UUID 引用真实 computer 时，由迁移回填 `members.computer_id`。
+- 既有行只有 `config.backend` -> 由迁移回填 `members.backend`。
 
 ### 5. 正例/基准/反例
 - 正例：agent API 认证经 `members.computer_id` 校验机器 token，序列化器返回 `computerId`、`workspaceId` 与 `backend`。

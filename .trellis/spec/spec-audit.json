@@ -1,415 +1,426 @@
 {
- "schema": "trellis.spec-audit.v1",
- "auditedAt": "2026-08-19",
- "method": "single sequential agent re-verified every prior finding (incl. fixed ones) and spot-checked 1-3 concrete assertions per section (endpoints/files/commands/constants) via rg/read against frontend/, backend/, agent/daemon/, scripts/, Makefile",
- "files": [
-  {
-   "path": "frontend/product-ui-style.md",
-   "sections": {
-    "total": 24,
-    "current": 22,
-    "partial": 2,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": [
+  "schema": "trellis.spec-audit.v1",
+  "auditedAt": "2026-08-19T14:59:38Z",
+  "method": "single sequential agent re-verified every prior finding (incl. fixed ones) and spot-checked 1-3 concrete assertions per section (endpoints/files/commands/constants) via rg/read against frontend/, backend/, agent/daemon/, scripts/, Makefile",
+  "files": [
     {
-     "section": "The purple rule, corrected",
-     "verdict": "partial",
-     "evidence": "spec 称 --agent-color-1..6 全在 hue 155-230+coral，实际 --agent-color-5 hue 75（globals.css:64）"
+      "path": "frontend/product-ui-style.md",
+      "sections": {
+        "total": 24,
+        "current": 24,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "The purple rule, corrected",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 规则改写为如实记载色板：hues 155-230 + coral 25 + agent-color-5 hue 75 例外（globals.css:60-65）；校验须放行例外"
+        },
+        {
+          "section": "Object Language",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 改写为真实组件：MemberAvatar（components/member-avatar.tsx）+ lib/member-avatar.ts 解析（DiceBear croodles-neutral，presets 见 AGENT_AVATAR_PRESETS）；smallkhoj-agent-avatar.ts 仅为预览生成器；AvatarObject/identity-thin 全文清除"
+        }
+      ]
     },
     {
-     "section": "Object Language",
-     "verdict": "partial",
-     "evidence": "AvatarObject/default frame identity-thin 全库 0 命中；实际为 member-avatar.tsx + smallkhoj-agent-avatar.ts"
-    }
-   ]
-  },
-  {
-   "path": "frontend/state-management.md",
-   "sections": {
-    "total": 27,
-    "current": 25,
-    "partial": 2,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": [
-    {
-     "section": "Unread §5 Good/Base/Bad",
-     "verdict": "partial",
-     "evidence": "rail ActivityIndicator 仍下线（app-rail.tsx:66 注释待恢复）"
+      "path": "frontend/state-management.md",
+      "sections": {
+        "total": 27,
+        "current": 27,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "Unread §5 Good/Base/Bad",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] §5 补现状注记：rail ActivityIndicator 暂时下线（app-rail.tsx 恢复待办注释），状态层与聊天侧栏按实体未读在运行"
+        },
+        {
+          "section": "Unread §6 Tests Required",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 跨 tab 消费者改为真实存在的聊天侧栏实体徽标；AppRail 标注为待恢复"
+        }
+      ]
     },
     {
-     "section": "Unread §6 Tests Required",
-     "verdict": "partial",
-     "evidence": "AppRail 仍无未读消费者，跨 tab 断言必失败"
-    }
-   ]
-  },
-  {
-   "path": "frontend/quality-guidelines.md",
-   "sections": {
-    "total": 21,
-    "current": 21,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "frontend/directory-structure.md",
-   "sections": {
-    "total": 6,
-    "current": 5,
-    "partial": 1,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": [
-    {
-     "section": "The globals.css Contract",
-     "verdict": "partial",
-     "evidence": "措辞自相矛盾：line67 已称 rail 为纸脊且 rail-water-texture.png 0 引用，line134 仍写 water-material rail"
-    }
-   ]
-  },
-  {
-   "path": "frontend/component-guidelines.md",
-   "sections": {
-    "total": 18,
-    "current": 18,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "frontend/hook-guidelines.md",
-   "sections": {
-    "total": 9,
-    "current": 9,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "frontend/type-safety.md",
-   "sections": {
-    "total": 5,
-    "current": 5,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "frontend/auth-onboarding-contracts.md",
-   "sections": {
-    "total": 12,
-    "current": 12,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "frontend/member-identity-ui-contracts.md",
-   "sections": {
-    "total": 14,
-    "current": 14,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "frontend/index.md",
-   "sections": {
-    "total": 3,
-    "current": 3,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "backend/runtime-slock-integration.md",
-   "sections": {
-    "total": 13,
-    "current": 12,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 1
-   },
-   "findings": [
-    {
-     "section": "Vendor Runtime Capability Boundary and Reliable Wakeup",
-     "verdict": "unverifiable",
-     "evidence": "前瞻方法论章节，无具体可对码断言"
-    }
-   ]
-  },
-  {
-   "path": "backend/event-delivery-contracts.md",
-   "sections": {
-    "total": 6,
-    "current": 6,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "backend/daemon-release-and-lease-contracts.md",
-   "sections": {
-    "total": 3,
-    "current": 3,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "backend/member-identity-channel-contracts.md",
-   "sections": {
-    "total": 7,
-    "current": 7,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "backend/database-guidelines.md",
-   "sections": {
-    "total": 32,
-    "current": 29,
-    "partial": 3,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": [
-    {
-     "section": "External Integration Gateway Foundation §6",
-     "verdict": "partial",
-     "evidence": "line375 仍要求 startup DDL emit CREATE TABLE IF NOT EXISTS；代码零命中，Alembic 为唯一 schema writer"
+      "path": "frontend/quality-guidelines.md",
+      "sections": {
+        "total": 21,
+        "current": 21,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
     },
     {
-     "section": "Initial Release Integration Bootstrap CLI §7",
-     "verdict": "partial",
-     "evidence": "line854/862 仍引用 startup DDL 约束路径，实际已不存在"
+      "path": "frontend/directory-structure.md",
+      "sections": {
+        "total": 6,
+        "current": 6,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "The globals.css Contract",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] line134 改为纸脊口径：water-material 退役、rail-water-texture.png 无引用，与 line67 一致，矛盾消除"
+        }
+      ]
     },
     {
-     "section": "Computer Binding Columns On Members §3",
-     "verdict": "partial",
-     "evidence": "line1854 残留 Startup ADD COLUMN IF NOT EXISTS 语言"
-    }
-   ]
-  },
-  {
-   "path": "backend/deployment-environment-contracts.md",
-   "sections": {
-    "total": 7,
-    "current": 7,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "backend/release-pipeline.md",
-   "sections": {
-    "total": 2,
-    "current": 2,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "backend/quality-guidelines.md",
-   "sections": {
-    "total": 2,
-    "current": 2,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "backend/directory-structure.md",
-   "sections": {
-    "total": 5,
-    "current": 0,
-    "partial": 0,
-    "stale": 5,
-    "unverifiable": 0
-   },
-   "findings": [
-    {
-     "section": "全文（5 节空模板）",
-     "verdict": "stale",
-     "evidence": "bootstrap 占位未填，services/、routers/、alembic/ 实际布局完全未记录"
-    }
-   ]
-  },
-  {
-   "path": "backend/error-handling.md",
-   "sections": {
-    "total": 5,
-    "current": 0,
-    "partial": 0,
-    "stale": 5,
-    "unverifiable": 0
-   },
-   "findings": [
-    {
-     "section": "全文（5 节空模板）",
-     "verdict": "stale",
-     "evidence": "空模板；错误矩阵实际散落在各 contracts 文件"
-    }
-   ]
-  },
-  {
-   "path": "backend/logging-guidelines.md",
-   "sections": {
-    "total": 5,
-    "current": 0,
-    "partial": 0,
-    "stale": 5,
-    "unverifiable": 0
-   },
-   "findings": [
-    {
-     "section": "全文（5 节空模板）",
-     "verdict": "stale",
-     "evidence": "空模板；结构化日志约定未沉淀"
-    }
-   ]
-  },
-  {
-   "path": "backend/memory-contracts.md",
-   "sections": {
-    "total": 8,
-    "current": 8,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "backend/threading-contracts.md",
-   "sections": {
-    "total": 8,
-    "current": 8,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "backend/index.md",
-   "sections": {
-    "total": 3,
-    "current": 3,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "guides/index.md",
-   "sections": {
-    "total": 11,
-    "current": 11,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "guides/code-reuse-thinking-guide.md",
-   "sections": {
-    "total": 12,
-    "current": 12,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "guides/cross-layer-thinking-guide.md",
-   "sections": {
-    "total": 18,
-    "current": 14,
-    "partial": 4,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": [
-    {
-     "section": "Cross-Platform Template Consistency",
-     "verdict": "partial",
-     "evidence": "指向本仓库不存在的 src/templates/*/commands/trellis/（上游 Trellis 产品布局）"
+      "path": "frontend/component-guidelines.md",
+      "sections": {
+        "total": 18,
+        "current": 18,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
     },
     {
-     "section": "Generated Runtime Template Upgrade Consistency",
-     "verdict": "partial",
-     "evidence": "示例为上游 Trellis init/update 场景，非本仓库代码路径（get_context.py 存在但模板链路属上游）"
+      "path": "frontend/hook-guidelines.md",
+      "sections": {
+        "total": 9,
+        "current": 9,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
     },
     {
-     "section": "Mode-Detection Probe Checklist",
-     "verdict": "partial",
-     "evidence": "上游 CLI marketplace/direct-download 探测场景，本仓库无对应代码"
+      "path": "frontend/type-safety.md",
+      "sections": {
+        "total": 5,
+        "current": 5,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
     },
     {
-     "section": "When to Create Flow Documentation",
-     "verdict": "partial",
-     "evidence": "纯上游流程经验，未映射到本仓库 docs/ 惯例"
+      "path": "frontend/auth-onboarding-contracts.md",
+      "sections": {
+        "total": 12,
+        "current": 12,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "frontend/member-identity-ui-contracts.md",
+      "sections": {
+        "total": 14,
+        "current": 14,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "frontend/index.md",
+      "sections": {
+        "total": 3,
+        "current": 3,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "backend/runtime-slock-integration.md",
+      "sections": {
+        "total": 13,
+        "current": 13,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "Vendor Runtime Capability Boundary and Reliable Wakeup",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 节首加方法论注记：前瞻设计指引，非逐码断言依据；verdict 由 unverifiable 转为 current（作为方法论内容如实标注）"
+        }
+      ]
+    },
+    {
+      "path": "backend/event-delivery-contracts.md",
+      "sections": {
+        "total": 6,
+        "current": 6,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "backend/daemon-release-and-lease-contracts.md",
+      "sections": {
+        "total": 3,
+        "current": 3,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "backend/member-identity-channel-contracts.md",
+      "sections": {
+        "total": 7,
+        "current": 7,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "backend/database-guidelines.md",
+      "sections": {
+        "total": 32,
+        "current": 32,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "External Integration Gateway Foundation §6",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] startup DDL 断言改为 Alembic 迁移链断言（唯一 schema writer，无启动 DDL 路径）"
+        },
+        {
+          "section": "Initial Release Integration Bootstrap CLI §7",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] §4 矩阵/§5 反例/§6 测试三处 startup DDL 语言全部改为 Alembic 迁移链口径，并指向 test_alembic_migrations_postgres.py"
+        },
+        {
+          "section": "Computer Binding Columns On Members §3",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] §3 契约与 §4 矩阵全部改为 Alembic 迁移口径（ADD COLUMN IF NOT EXISTS/startup 语言清除）"
+        }
+      ]
+    },
+    {
+      "path": "backend/deployment-environment-contracts.md",
+      "sections": {
+        "total": 7,
+        "current": 7,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "backend/release-pipeline.md",
+      "sections": {
+        "total": 2,
+        "current": 2,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "backend/quality-guidelines.md",
+      "sections": {
+        "total": 5,
+        "current": 0,
+        "partial": 0,
+        "stale": 5,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "全文（5 节空模板）",
+          "verdict": "stale",
+          "evidence": "[annotated 2026-08-19 spec-remediation] 原审计把占位节误判为 current；实为空模板（index.md 也误标 Active）。文件头已加\"勿据此开发、归属 08-19-agent-platform-quality-gates R2/R5/R6\"标注；PRD 已显式认领"
+        }
+      ]
+    },
+    {
+      "path": "backend/directory-structure.md",
+      "sections": {
+        "total": 5,
+        "current": 5,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "全文（5 节空模板）",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 按当前代码现实填实（子代理逐条 file:line 取证：main.py lifespan、models/slock 32 表、alembic 单链 6 revision、标准库 logging 惯例、latency_trace JSON 行、daemon console+ring buffer 差异）"
+        }
+      ]
+    },
+    {
+      "path": "backend/error-handling.md",
+      "sections": {
+        "total": 5,
+        "current": 0,
+        "partial": 0,
+        "stale": 5,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "全文（5 节空模板）",
+          "verdict": "stale",
+          "evidence": "[annotated 2026-08-19 spec-remediation] 仍为空模板，但文件头已加\"勿据此开发、归属 08-19-agent-platform-quality-gates R5\"标注；index.md 状态同步；PRD 已显式认领"
+        }
+      ]
+    },
+    {
+      "path": "backend/logging-guidelines.md",
+      "sections": {
+        "total": 5,
+        "current": 5,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "全文（5 节空模板）",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 按当前代码现实填实（子代理逐条 file:line 取证：main.py lifespan、models/slock 32 表、alembic 单链 6 revision、标准库 logging 惯例、latency_trace JSON 行、daemon console+ring buffer 差异）"
+        }
+      ]
+    },
+    {
+      "path": "backend/memory-contracts.md",
+      "sections": {
+        "total": 8,
+        "current": 8,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "backend/threading-contracts.md",
+      "sections": {
+        "total": 8,
+        "current": 8,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "backend/index.md",
+      "sections": {
+        "total": 3,
+        "current": 3,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "guides/index.md",
+      "sections": {
+        "total": 11,
+        "current": 11,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "guides/code-reuse-thinking-guide.md",
+      "sections": {
+        "total": 12,
+        "current": 12,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "guides/cross-layer-thinking-guide.md",
+      "sections": {
+        "total": 18,
+        "current": 18,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "Cross-Platform Template Consistency",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 改写映射本仓库：trellis-check 四平台形态、共享钩子分叉实例（.claude vs .codex inject-workflow-state.py）、托管块规则"
+        },
+        {
+          "section": "Generated Runtime Template Upgrade Consistency",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 改写映射本仓库：workflow.md 的三个真实解析器（workflow_phase.py/session-start 钩子/get_context.py --platform）、托管块覆盖契约"
+        },
+        {
+          "section": "Mode-Detection Probe Checklist",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 改写映射本仓库：dashboard 端口/二进制探测、dsh wrapper 三级解析、comet resume-probe 只信声明字段/失败即停协议"
+        },
+        {
+          "section": "When to Create Flow Documentation",
+          "verdict": "current",
+          "evidence": "[fixed 2026-08-19 spec-remediation] 改写映射本仓库：real-test SOP 模板标记证据、DM 回复 SOP 反例清单、AGENTS.md Project Index 挂载规则"
+        }
+      ]
+    },
+    {
+      "path": "guides/reference-projects.md",
+      "sections": {
+        "total": 6,
+        "current": 6,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
+    },
+    {
+      "path": "guides/runtime-debugging-sop.md",
+      "sections": {
+        "total": 12,
+        "current": 12,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": []
     }
-   ]
-  },
-  {
-   "path": "guides/reference-projects.md",
-   "sections": {
-    "total": 6,
-    "current": 6,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
-  },
-  {
-   "path": "guides/runtime-debugging-sop.md",
-   "sections": {
-    "total": 12,
-    "current": 12,
-    "partial": 0,
-    "stale": 0,
-    "unverifiable": 0
-   },
-   "findings": []
+  ],
+  "remediation": {
+    "change": "comet native spec-remediation",
+    "fixedAt": "2026-08-19",
+    "note": "13 节 partial→current、11 节 stale（空模板）→current、1 节 unverifiable→current（方法论标注）；error-handling/quality-guidelines 保持 stale（已标注归属 08-19 认领）。"
   }
- ]
 }

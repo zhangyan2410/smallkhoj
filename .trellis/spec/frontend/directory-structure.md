@@ -131,7 +131,7 @@ Structure inside globals.css:
 2. `:root` — light theme tokens (background, primary, ink, sand*, success*, ...).
 3. `.dark` — dark theme overrides (same token names).
 4. `@layer utilities` — handcraft classes (`sk-*`, `bg-sand-*`, `bg-success`, ...).
-5. `@layer components` — `.sk-rail*` (water-material rail), resize handle, base styles.
+5. `@layer components` — `.sk-rail*` (paper binding-spine rail; the water-material texture is retired and `public/rail-water-texture.png` is an unreferenced legacy asset), resize handle, base styles.
 
 **Do not** add component-specific styles here unless they're truly app-wide
 utilities. Component styles belong in the component (via Tailwind classes) or

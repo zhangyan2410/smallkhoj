@@ -1304,6 +1304,8 @@ const candidate = resolve(entrypoint, "..", "..", "slock-cli.js")
 
 ## 场景：厂商 Runtime 能力边界与可靠唤醒（wakeup）
 
+> 方法论注记：本场景是前瞻性设计指引。其中的状态词表与证据字段描述的是目标模型，不是今天已存在的表或列；不要把本节当作逐行对码的断言依据。
+
 ### 1. 作用域 / 触发
 
 - 触发：改动 daemon/runtime 投递、添加厂商 CLI/ACP/app-server 适配器、引入持久排队的工作、定义忙碌/空闲语义，或提议 `wait` / Agent RPC 续接。

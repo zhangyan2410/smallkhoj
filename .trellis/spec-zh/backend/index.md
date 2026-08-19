@@ -14,11 +14,11 @@
 
 | 指南 | 描述 | 状态 |
 |-------|-------------|--------|
-| [目录结构](./directory-structure.md) | 模块组织与文件布局 | 待填充 |
+| [目录结构](./directory-structure.md) | 模块组织与文件布局 | 生效中 |
 | [数据库指南](./database-guidelines.md) | ORM 模式、查询、迁移、只读标记观察 | 生效中 |
-| [错误处理](./error-handling.md) | 错误类型与处理策略 | 待填充 |
-| [质量指南](./quality-guidelines.md) | 代码标准、发布门禁与 runtime profile 的 Integration Gate 契约（contract） | 生效中 |
-| [日志指南](./logging-guidelines.md) | 结构化日志、日志级别 | 待填充 |
+| [错误处理](./error-handling.md) | 错误类型与处理策略 | 待填充——归属 08-19-agent-platform-quality-gates（R5） |
+| [质量指南](./quality-guidelines.md) | 代码标准、发布门禁与 runtime profile 的 Integration Gate 契约（contract） | 待填充——归属 08-19-agent-platform-quality-gates（R2/R5/R6） |
+| [日志指南](./logging-guidelines.md) | 结构化日志、日志级别 | 生效中 |
 | [发布流水线](./release-pipeline.md) | 端到端验证 -> squash 合并 -> 无 registry 云端部署 -> 感知 schema 的回滚总览 | 生效中 |
 | [部署环境契约](./deployment-environment-contracts.md) | local-dev/local-prod/cloud-prod 证据、Caddy 路由、直接镜像归档部署 | 生效中 |
 | [Daemon 发布与租约契约](./daemon-release-and-lease-contracts.md) | Aura 发布指针、安装器恢复、显式回滚、感知租约的 Connect/Reconnect，以及单活跃 WS 租约强制（lease.revoked/4001） | 生效中 |

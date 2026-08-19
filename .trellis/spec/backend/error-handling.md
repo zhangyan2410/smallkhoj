@@ -2,6 +2,12 @@
 
 > How errors are handled in this project.
 
+> **⚠️ 空模板，勿据此开发。** 本文件正文尚未填写，当前错误处理实际散落在各
+> router/service 与 contracts 文件中。填实归属任务：
+> `.trellis/tasks/08-19-agent-platform-quality-gates`（R5：`services/errors.py`
+> typed error 分类学 + 全局 exception_handler 落地后一起填）。在那之前，
+> 不要引用本文件的任何"规范"。
+
 ---
 
 ## Overview

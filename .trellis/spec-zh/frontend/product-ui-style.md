@@ -133,7 +133,7 @@ SmallKhoj 看起来是一张**明亮的工作书桌**，有三种标志性材质
 
 - **禁止**：紫蓝作为*品牌识别*——渐变、玻璃、光晕，或以色相 250-265 的罩色作为页面/表面识别（旧被否决主题）。
 - **允许**：紫色作为上文 B/C 系统中的*功能强调色*（控制表面，色相 299 solid / 269 soft），以及 `.shuimo` 中可读的黛紫。
-- **仍然禁止**：紫色出现在 **agent 身份色板（palette）** 中（`--agent-color-1..6` 保持在色相 155-230 + 珊瑚；头像识别不得与已退役品牌冲突）。
+- **仍然禁止**：紫色出现在 **agent 身份色板（palette）** 中（`--agent-color-1..6` 落在海洋系色相 155-230 加珊瑚 25，外加一个色相 75 的暖沙铜例外——`--agent-color-5`，见 `globals.css` 的 `:root` 块；没有任何一个进入已退役的 250-265 紫色带，头像识别因此不会与退役品牌冲突）。色板校验必须接受色相 75 这个例外：拒绝它就会否掉已上线的色板。
 - 色相 251 的 `--accent-blue` 处于旧禁止带边缘，但是被接受的功能强调色；让它与 `--primary`（215）保持清晰区分，品牌与功能绝不被读作同一颜色。
 
 ### 禁止的颜色
@@ -154,12 +154,12 @@ SmallKhoj 看起来是一张**明亮的工作书桌**，有三种标志性材质
 - 消息动作 = 聚在消息旁的小书桌工具，不被推到行边缘
 - 任务 = 任务票（`TaskMaterialSurface`）；证据 = 附上的证明纸（`EvidenceSurface`）
 - 评审 = 朱砂印章（`ReviewStamp`）；记忆 = 固定便签（`MemoryFixedNote`）
-- 成员身份 = 名牌 + 头像预制件（`AvatarObject`，默认边框 `identity-thin`）
+- 成员身份 = 名牌 + 头像（`components/member-avatar.tsx` 的 `MemberAvatar`，身份解析在 `lib/member-avatar.ts`）
 - 计算机/运行时 = 砚台/工具底座；连接命令 = 证明/说明纸（`AttachmentSheet` + `ObjectField`）
 
 共享原语暴露 `data-slot`（组件契约）与 `data-object`（产品物件类）。浏览器证据通过这些属性进行同类比较。物件语言属于共享原语与 `globals.css` 工具类——绝不是路由局部手搓卡片。
 
-头像规则（来自同一任务）：人类与 agent 共用一个 `AvatarObject` 预制件，以不同边框/内容变体区分；右上角状态圆点绝不被边框装饰遮挡（折角在左上）；朱砂印章是评审物件，不是身份装饰；避免以"方框 + 独立圆脸球"作为默认外观。
+头像规则（现行实现）：人类与 agent 共用一个 `MemberAvatar` 组件。身份来源解析在 `lib/member-avatar.ts`（`avatarSourceForMember`）：人类用 `profile.avatarUrl` / `avatarUrl`；agent 在设置了 `config.avatarImageUrl` 时用它，否则用按 seed 生成的 DiceBear croodles-neutral 数据 URI（`generatedAgentAvatarDataUri`；预设 default / friendly / focused / debugger / energetic，经 `config.avatarPreset` 选择）。`lib/smallkhoj-agent-avatar.ts` 是固定表情的预览生成器，只被 `scripts/avatar-preset-preview.ts` 使用，不在成员路径上。状态圆点位于右上角（`statusDotClass`，agent 加一圈 ring），绝不被边框装饰遮挡（折角在左上）；朱砂印章是评审物件，不是身份装饰。
 
 ---
 

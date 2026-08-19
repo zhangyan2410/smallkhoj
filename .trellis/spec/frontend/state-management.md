@@ -212,7 +212,7 @@ const tasks = await fetchAllTaskPages((path) => apiGet(path, emptyPage))
 
 ### 5. Good/Base/Bad Cases
 
-- Good: a `tasks` domain lands by adding `task:all` increments in `activityUnreadKeysForEvent` and an `ActivityIndicator` in the rail — zero new stores.
+- Good: a `tasks` domain lands by adding `task:all` increments in `activityUnreadKeysForEvent` and an unread indicator on a real consumer — zero new stores. (Current state: the rail icon badge — `ActivityIndicator` on `AppRail` — is temporarily offline pending count-semantics fixes; see the restore note in `app-rail.tsx`. The state layer and the chat sidebar's per-entity unread are live; restore rail integration only after the count semantics are fixed.)
 - Good: chat badge survives reload via `localStorage` and reconciles with server `unreadCount` (max of local and server).
 - Base: notification permission denied; unread badges still work, notifications silently off.
 - Bad: a feature builds its own `localStorage` unread counter with its own change event.
@@ -222,7 +222,7 @@ const tasks = await fetchAllTaskPages((path) => apiGet(path, emptyPage))
 
 - Unit: multi-key increment dedup, high-water reset on catch-up, clear-on-path projection, own-message suppression, DM-id current-view suppression.
 - Unit: notification planning matrix (visible+focused, mention-only for channels, own events, throttle offer/flush).
-- Cross-tab: store change event (`smallkhoj:activity-unread`) updates mounted consumers (AppRail) without remount.
+- Cross-tab: store change event (`smallkhoj:activity-unread`) updates mounted consumers without remount (today's live consumer: chat-sidebar entity badges; rail `AppRail` integration is pending its restore — see §5 note).
 
 ### 7. Wrong vs Correct
 

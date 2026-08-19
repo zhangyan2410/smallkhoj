@@ -14,11 +14,11 @@ This directory contains guidelines for backend development. Fill in each file wi
 
 | Guide | Description | Status |
 |-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
+| [Directory Structure](./directory-structure.md) | Module organization and file layout | Active |
 | [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations, read-only marker observation | Active |
-| [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, release gates, and runtime-profile Integration Gate contracts | Active |
-| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
+| [Error Handling](./error-handling.md) | Error types, handling strategies | To fill — owned by 08-19-agent-platform-quality-gates (R5) |
+| [Quality Guidelines](./quality-guidelines.md) | Code standards, release gates, and runtime-profile Integration Gate contracts | To fill — owned by 08-19-agent-platform-quality-gates (R2/R5/R6) |
+| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | Active |
 | [Release Pipeline](./release-pipeline.md) | End-to-end verify -> squash merge -> registry-free cloud deploy -> schema-aware rollback overview | Active |
 | [Deployment Environment Contracts](./deployment-environment-contracts.md) | local-dev/local-prod/cloud-prod evidence, Caddy routes, direct image archive deployment | Active |
 | [Daemon Release and Lease Contracts](./daemon-release-and-lease-contracts.md) | Aura release pointers, installer recovery, explicit rollback, lease-aware Connect/Reconnect, and single-active WS lease enforcement (lease.revoked/4001) | Active |

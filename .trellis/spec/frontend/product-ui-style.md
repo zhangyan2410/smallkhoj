@@ -170,8 +170,12 @@ gradient brand theme** and is no longer accurate as a blanket ban. Current rule:
 - **Allowed**: purple as a *functional accent* in the B/C system above (control
   surfaces, hue 299 solid / 269 soft), and the readable dai-purple in `.shuimo`.
 - **Still forbidden**: purple in the **agent identity palette**
-  (`--agent-color-1..6` stay in hue 155-230 + coral; avatar identity must not
-  collide with the retired brand).
+  (`--agent-color-1..6` live in the sea-family hues 155-230 plus coral 25 and
+  one warm sand-bronze exception at hue 75 — `--agent-color-5`, see
+  `globals.css` `:root` block; none enters the retired 250-265 purple band,
+  so avatar identity never collides with the retired brand). Palette
+  validation must accept the hue-75 exception: rejecting it would fail the
+  shipped palette.
 - `--accent-blue` at hue 251 sits at the edge of the old forbidden band but is an
   accepted functional accent; keep it clearly separated from `--primary` (215) so
   brand and function never read as the same color.
@@ -199,7 +203,9 @@ Core mappings:
 - message actions = small desk tools clustered with the message, not pushed to the row edge
 - task = task ticket (`TaskMaterialSurface`); evidence = attached proof sheet (`EvidenceSurface`)
 - review = cinnabar stamp (`ReviewStamp`); memory = fixed note (`MemoryFixedNote`)
-- member identity = name tag + avatar prefab (`AvatarObject`, default frame `identity-thin`)
+- member identity = name tag + avatar (`MemberAvatar` in
+  `components/member-avatar.tsx`, fed by identity resolution in
+  `lib/member-avatar.ts`)
 - computer/runtime = inkstone/tool base; connect command = proof/instruction sheet
   (`AttachmentSheet` + `ObjectField`)
 
@@ -208,11 +214,18 @@ Shared primitives expose `data-slot` (component contract) and `data-object`
 attributes. Object language belongs in shared primitives and `globals.css`
 utilities — never route-local hand-rolled cards.
 
-Avatar rules (from the same task): one `AvatarObject` prefab for humans and
-agents with different frame/content variants; the top-right status dot must
-never be covered by frame decoration (folds go left-top); cinnabar stamps are
-review objects, not identity decoration; avoid "square frame + separate round
-face ball" as the default look.
+Avatar rules (current implementation): one `MemberAvatar` component serves
+humans and agents. Identity source resolution lives in
+`lib/member-avatar.ts` (`avatarSourceForMember`): humans use
+`profile.avatarUrl` / `avatarUrl`; agents use `config.avatarImageUrl` when
+set, otherwise a seeded DiceBear croodles-neutral data URI
+(`generatedAgentAvatarDataUri`; presets default / friendly / focused /
+debugger / energetic, selected via `config.avatarPreset`).
+`lib/smallkhoj-agent-avatar.ts` is a fixed-expression preview generator used
+by `scripts/avatar-preset-preview.ts`, not the member path. The status dot
+sits top-right (`statusDotClass`, ring for agents) and must never be covered
+by frame decoration (folds go left-top); cinnabar stamps are review objects,
+not identity decoration.
 
 ---
 

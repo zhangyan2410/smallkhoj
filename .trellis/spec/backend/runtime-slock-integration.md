@@ -1304,6 +1304,11 @@ the entrypoint is not realpath-able.
 
 ## Scenario: Vendor Runtime Capability Boundary and Reliable Wakeup
 
+> Methodology note: this scenario is forward-looking design guidance. Its
+> state vocabulary and evidence fields describe a target model, not tables or
+> columns that exist today; do not treat this section as a per-line
+> code-assertion base.
+
 ### 1. Scope / Trigger
 
 - Trigger: changing daemon/runtime delivery, adding a vendor CLI/ACP/app-server adapter, introducing durable queued work, claiming busy/idle semantics, or proposing `wait` / Agent RPC continuation.

@@ -372,7 +372,7 @@ correct: scoped canonical Member UUID / pg advisory xact lock -> authorize or as
 
 ### 6. Tests Required
 - Assert all five gateway tables exist in `Base.metadata`.
-- Assert startup DDL emits `CREATE TABLE IF NOT EXISTS` for all five tables and critical indexes.
+- Assert the Alembic migration chain upgrades a clean database to all five gateway tables and critical indexes (Alembic is the only schema writer; there is no startup DDL path).
 - Assert `claim_external_event` creates one event and duplicate claims return the existing event.
 - Assert route miss/disabled outcomes expose failure codes and reasons.
 - Assert session and mapping helpers are queryable from local and external sides.
@@ -843,7 +843,7 @@ FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_
 - Channel or member from another server -> `BOOTSTRAP_REFERENCE_SCOPE_MISMATCH`, no connector or route writes.
 - Existing disabled initial-release connector/route -> reactivate and update it because the operator explicitly requested bootstrap.
 - Missing runtime Feishu/Jira credentials after bootstrap -> worker/runtime config errors, not bootstrap errors.
-- Existing DB with old `task_assignments` mode constraint -> startup must drop/re-add `ck_task_assignments_mode` so `external_feishu` can persist.
+- Existing DB with old `task_assignments` mode constraint -> the Alembic migration chain drops/re-adds `ck_task_assignments_mode` so `external_feishu` can persist.
 
 ### 5. Good/Base/Bad Cases
 - Good: bootstrap creates active Feishu/Jira connector rows, creates a route matching `@SmallKhoj 分析 JIRA-123`, ensures creator/assignee are channel members, and prints worker env guidance.
@@ -851,7 +851,7 @@ FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_
 - Base: bootstrap succeeds without real app secrets; those are set only in runtime env before launching the worker.
 - Bad: using SQL console edits to create connector IDs because the live-run path then cannot be reproduced on the server.
 - Bad: storing `appSecret` or `apiToken` in `ExternalConnector.config`.
-- Bad: changing `release_loop.py` to use a new assignment mode without updating ORM constraints, startup DDL, and regression tests.
+- Bad: changing `release_loop.py` to use a new assignment mode without updating ORM constraints, the Alembic migration chain, and regression tests.
 
 ### 6. Tests Required
 - Bootstrap creates Feishu/Jira connectors and one Feishu route from existing references.
@@ -859,7 +859,7 @@ FeishuChannel.on("message") -> sdk_message_to_raw_event -> handle_feishu_worker_
 - Missing references fail before partial connector/route writes.
 - Serialized bootstrap output includes required worker env keys and secret placeholders.
 - CLI parser rejects secret flags.
-- ORM and startup DDL tests assert `external_feishu` is present in `ck_task_assignments_mode`.
+- ORM and Alembic migration tests (see `test_alembic_migrations_postgres.py`) assert `external_feishu` is present in `ck_task_assignments_mode`.
 
 ### 7. Wrong vs Correct
 #### Wrong
@@ -1851,15 +1851,15 @@ JIRA_EMAIL / JIRA_API_TOKEN -> services.integration_runtime -> TaskRunWritebackD
 ### 3. Contracts
 - Explicit columns are the source of truth for query/auth paths.
 - Serializers still emit `computerId`, `workspaceId`, and `backend` for agents.
-- Startup table creation must use `ADD COLUMN IF NOT EXISTS` for local existing DBs.
-- Startup migration must not create demo servers, members, computers, channels, messages, tasks, API keys, or activity logs.
-- Startup migration may only backfill existing rows from compatibility config keys into explicit columns.
+- Column additions for local existing DBs land through the Alembic migration chain (`alembic upgrade head`), never through startup DDL.
+- Migrations must not create demo servers, members, computers, channels, messages, tasks, API keys, or activity logs.
+- Migrations may only backfill existing rows from compatibility config keys into explicit columns.
 
 ### 4. Validation & Error Matrix
-- Missing `members.computer_id` on an old DB -> startup adds it.
-- Missing `members.backend` on an old DB -> startup adds it.
-- Existing row only has `config.computerId` -> startup backfills `members.computer_id` when the UUID references a real computer.
-- Existing row only has `config.backend` -> startup backfills `members.backend`.
+- Missing `members.computer_id` on an old DB -> the Alembic migration adds it.
+- Missing `members.backend` on an old DB -> the Alembic migration adds it.
+- Existing row only has `config.computerId` -> the migration backfills `members.computer_id` when the UUID references a real computer.
+- Existing row only has `config.backend` -> the migration backfills `members.backend`.
 
 ### 5. Good/Base/Bad Cases
 - Good: agent API auth validates a machine token through `members.computer_id` and serializers return `computerId`, `workspaceId`, and `backend`.
