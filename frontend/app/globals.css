@@ -1874,24 +1874,87 @@
   .markdown-body {
     @apply mt-1 min-w-0 leading-relaxed break-words [overflow-wrap:anywhere];
   }
-  /* Inline code / pre in chat: keep code blocks horizontally scrollable
-     but stop them from pushing the whole row wider than the viewport.
-     代码用薄荷青调（区别正文），手作风墨边直角。 */
+  /* Inline code：薄荷 chip 语义保留，边框降到 1px 避免小字上显笨。 */
   .markdown-body :not(pre) > code {
     word-break: break-word;
     overflow-wrap: anywhere;
-    background-color: var(--accent-mint-soft);
+    background-color: color-mix(in oklch, var(--accent-mint-soft) 55%, var(--paper));
     color: var(--accent-mint-soft-fg);
-    border: 1.5px solid var(--ink);
+    border: 1px solid var(--ink);
     padding: 0.05em 0.35em;
     font-size: 0.85em;
   }
-  .markdown-body pre {
+  /* 代码块（.sk-codeblock 来自 markdown-message.tsx 的自定义 pre 渲染）：
+     头部条（语言标签 + 复制按钮）+ 柔和薄荷体；墨边直角硬阴影保持手作语言。
+     pre 本体不再直接着色，颜色由 .sk-codeblock-body 承担。 */
+  .markdown-body .sk-codeblock {
+    margin: 0.6rem 0;
     max-width: 100%;
-    background-color: var(--accent-mint-soft);
     border: 2px solid var(--ink);
-    padding: 0.6rem 0.75rem;
+    background-color: var(--paper);
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .markdown-body .sk-codeblock-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.2rem 0.4rem 0.2rem 0.7rem;
+    border-bottom: 2px solid var(--ink);
+    background-color: color-mix(in oklch, var(--paper-deep) 55%, var(--paper));
+  }
+  .markdown-body .sk-codeblock-lang {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sand-muted);
+    user-select: none;
+  }
+  .markdown-body .sk-codeblock-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border: 1.5px solid var(--ink);
+    background-color: var(--paper);
+    color: var(--paper-ink);
+    padding: 0.08rem 0.45rem;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  }
+  .markdown-body .sk-codeblock-copy:hover {
+    background-color: color-mix(in oklch, var(--accent-mint-soft) 60%, var(--paper));
+    transform: translate(-1px, -1px);
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+  .markdown-body .sk-codeblock-copy:active {
+    transform: translate(0, 0);
+    box-shadow: none;
+  }
+  .markdown-body .sk-codeblock-body {
+    background-color: color-mix(in oklch, var(--accent-mint-soft) 38%, var(--paper));
+  }
+  .markdown-body .sk-codeblock-body pre {
+    max-width: 100%;
+    margin: 0;
+    border: 0;
+    background-color: transparent;
+    padding: 0.7rem 0.9rem;
     overflow-x: auto;
+    font-size: 0.85em;
+    line-height: 1.7;
+  }
+  /* 兜底：未经自定义渲染的 pre（理论上不会经过 markdown-body）仍保持可读。 */
+  .markdown-body > pre {
+    max-width: 100%;
+    background-color: color-mix(in oklch, var(--accent-mint-soft) 38%, var(--paper));
+    border: 2px solid var(--ink);
+    padding: 0.7rem 0.9rem;
+    overflow-x: auto;
+    font-size: 0.85em;
+    line-height: 1.7;
   }
   .markdown-body pre code {
     background-color: transparent;
@@ -1910,14 +1973,17 @@
   .markdown-body a:hover {
     opacity: 0.8;
   }
-  /* 引用块用玫瑰调（强调/备注语义）*/
+  /* 引用块：左侧玫瑰粗竖条 + 浅 tint 底，替代满铺粉底——保留强调语义但不吵。 */
   .markdown-body blockquote {
-    border: 2px solid var(--ink);
-    background-color: var(--accent-rose-soft);
-    padding: 0.35rem 0.75rem;
+    border: 0;
+    border-left: 4px solid var(--accent-rose);
+    background-color: color-mix(in oklch, var(--accent-rose-soft) 30%, var(--paper));
+    padding: 0.4rem 0.85rem;
     margin: 0.5rem 0;
-    color: var(--accent-rose-soft-fg);
-    box-shadow: 1px 1px 0 var(--ink);
+    color: var(--paper-ink);
+  }
+  .markdown-body blockquote > p {
+    @apply mb-1 last:mb-0;
   }
   /* @提及 / #频道标签：手作风彩色小 chip，区别于普通正文 */
   .markdown-body .mention {
@@ -1937,44 +2003,57 @@
   .markdown-body p {
     @apply mb-2 last:mb-0;
   }
+  /* 标题带段前距拉开层级节奏；消息开头的首个标题不额外顶出。 */
   .markdown-body h1 {
-    @apply mb-2 text-xl font-bold;
+    @apply mb-2 mt-4 text-xl font-bold first:mt-0;
   }
   .markdown-body h2 {
-    @apply mb-2 text-lg font-semibold;
+    @apply mb-2 mt-4 text-lg font-semibold first:mt-0;
   }
   .markdown-body h3 {
-    @apply mb-1 text-base font-semibold;
+    @apply mb-1 mt-3 text-base font-semibold first:mt-0;
   }
   .markdown-body h4,
   .markdown-body h5,
   .markdown-body h6 {
-    @apply mb-1 text-sm font-semibold;
+    @apply mb-1 mt-2 text-sm font-semibold first:mt-0;
   }
+  /* 列表悬挂缩进：换行文本与首行文字对齐，嵌套列表保持节奏。 */
   .markdown-body ul {
-    @apply mb-2 list-inside list-disc;
+    @apply mb-2 list-disc pl-5;
   }
   .markdown-body ol {
-    @apply mb-2 list-inside list-decimal;
+    @apply mb-2 list-decimal pl-5;
   }
   .markdown-body li {
-    @apply mb-0.5;
+    @apply mb-0.5 pl-0.5;
   }
-  /* NOTE: a / code / pre / blockquote 的手作风样式在上方第一套规则里
-     （薄荷 code 墨边、accent-blue 链接、玫瑰 blockquote）。
-     这里删除了覆盖它们的旧 SaaS 规则（text-primary underline / rounded bg-muted / 等）。 */
+  .markdown-body li > ul,
+  .markdown-body li > ol {
+    @apply mt-1 mb-1;
+  }
+  .markdown-body li::marker {
+    color: var(--sand-muted);
+  }
   .markdown-body hr {
-    @apply my-3 border-border;
+    @apply my-3;
+    border-color: var(--sand-border);
   }
+  /* 表格：外框墨边、内线细砂边、表头浅砂纸底左对齐——与正文对齐方式一致。 */
   .markdown-body table {
     @apply mb-2 w-full border-collapse text-sm;
+    border: 1.5px solid var(--ink);
   }
   .markdown-body th,
   .markdown-body td {
-    @apply border border-border px-2 py-1;
+    border: 1px solid var(--sand-border);
+    padding: 0.4rem 0.75rem;
+    text-align: left;
   }
   .markdown-body th {
-    @apply bg-muted font-medium;
+    background-color: color-mix(in oklch, var(--paper-deep) 55%, var(--paper));
+    font-weight: 600;
+    border-bottom: 1.5px solid var(--ink);
   }
   .markdown-body strong {
     @apply font-semibold;
@@ -2095,3 +2174,4 @@
     overflow-wrap: anywhere;
   }
 }
+

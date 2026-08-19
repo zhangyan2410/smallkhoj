@@ -1,5 +1,7 @@
-import { memo } from "react"
+import { isValidElement, memo, useRef, useState, type ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
+import { Check, Copy } from "lucide-react"
+import { useTranslations } from "next-intl"
 import remarkGfm from "remark-gfm"
 import type { Plugin } from "unified"
 import type { Element, ElementContent, Parents, Root, RootContent, Text } from "hast"
@@ -52,13 +54,87 @@ function isBlockedElement(node: Parents): node is Element {
   return node.type === "element" && ["a", "code", "pre"].includes(node.tagName)
 }
 
+/** react-markdown 把 fenced code 渲染成 pre > code，语言在 code 的 className（language-xxx）。 */
+function extractCodeLanguage(children: ReactNode): string | null {
+  if (!isValidElement(children)) return null
+  const className = (children.props as { className?: string }).className ?? ""
+  const match = /language-([\w-]+)/.exec(className)
+  return match?.[1] ?? null
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    // 剪贴板 API 被拒（权限/非安全上下文）时退回 execCommand。
+    try {
+      const textarea = document.createElement("textarea")
+      textarea.value = text
+      textarea.style.position = "fixed"
+      textarea.style.opacity = "0"
+      document.body.appendChild(textarea)
+      textarea.select()
+      const ok = document.execCommand("copy")
+      textarea.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
+/**
+ * 代码块：墨边纸条 + 头部条（语言标签 + 复制按钮）。
+ * 薄荷底只作柔和 tint（globals.css .sk-codeblock），区别于正文但不喧宾夺主。
+ */
+const CodeBlock = memo(function CodeBlock({ children }: { children?: ReactNode }) {
+  const t = useTranslations("common")
+  const [copied, setCopied] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const language = extractCodeLanguage(children)
+
+  async function onCopy() {
+    const text = bodyRef.current?.textContent ?? ""
+    if (!text) return
+    if (await copyText(text)) {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    }
+  }
+
+  return (
+    <div className="sk-codeblock">
+      <div className="sk-codeblock-header">
+        <span className="sk-codeblock-lang">{language ?? "code"}</span>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="sk-codeblock-copy"
+          aria-label={t("copy")}
+        >
+          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+          {copied ? t("copied") : t("copy")}
+        </button>
+      </div>
+      <div ref={bodyRef} className="sk-codeblock-body">
+        <pre>{children}</pre>
+      </div>
+    </div>
+  )
+})
+
 // memo：消息列表里每条消息都挂一个 MarkdownMessage。父级（消息行/MessageList）
 // 因无关 state 重渲时，content 没变的消息直接跳过重渲，不为未变化的消息
 // 重新跑 react-markdown 解析。
 export const MarkdownMessage = memo(function MarkdownMessage({ content, compact = false }: { content: string; compact?: boolean }) {
   return (
     <div className={`markdown-body min-w-0 break-words [overflow-wrap:anywhere] ${compact ? "text-sm" : ""}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeMentions]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeMentions]}
+        components={{ pre: CodeBlock }}
+      >
         {content}
       </ReactMarkdown>
     </div>
