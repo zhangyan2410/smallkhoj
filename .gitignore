@@ -99,3 +99,7 @@ BACKLOG.md
 /.comet/*
 !/.comet/config.yaml
 # <<< Comet managed project state <<<
+
+# ZCode 本地产物（会话计划/平台命令不入库；rules 与 skills 中 comet 相关已跟踪保留）
+.zcode/commands/
+.zcode/plans/

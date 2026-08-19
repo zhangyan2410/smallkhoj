@@ -3,7 +3,7 @@
   "name": "single-active-daemon-lease",
   "title": "单活跃 daemon 租约强制（防多实例重复投递）",
   "description": "",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
