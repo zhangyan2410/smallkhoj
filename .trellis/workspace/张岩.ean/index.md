@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 27
-- **Last Active**: 2026-08-16
+- **Total Sessions**: 28
+- **Last Active**: 2026-08-19
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~925 | Active |
+| `journal-1.md` | ~960 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 28 | 2026-08-19 | 前端美观优化：agent 回复可读性 | `d950e84`, `92fd318`, `28a65a3` | `main` |
 | 27 | 2026-08-16 | codex 多次回复事故：六实例重复投递定位与清理 | `daed91c` | `main` |
 | 26 | 2026-08-15 | 启动提示卡住修复：workspace.updated 刷新 DM 列表 | `daed91c` | `main` |
 | 25 | 2026-08-15 | DeepSeek+codex 排障：沙箱提权修复 + provider 溯源 | `8e03132` | `main` |

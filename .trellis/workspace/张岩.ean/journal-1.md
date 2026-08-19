@@ -923,3 +923,38 @@ twd 主栈 + 隔离 computer daemon 真机链路验收。修：computer daemon W
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: 前端美观优化：agent 回复可读性
+
+**Date**: 2026-08-19
+**Task**: 前端美观优化：agent 回复可读性
+**Branch**: `main`
+
+### Summary
+
+聊天消息 markdown 可读性优化：代码块加头部条（语言标签+复制按钮）+柔和薄荷底；引用块改左竖条浅底；列表悬挂缩进；表格墨边外框+表头砂底左对齐；标题段前距。kimi-webbridge 实测三主题+复制链路（spy 验证），tsc 通过。spec 沉淀 markdown 渲染约定与 Turbopack 外部替换不重编译的排查陷阱。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d950e84` | (see git log) |
+| `92fd318` | (see git log) |
+| `28a65a3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
