@@ -34,7 +34,9 @@ tools/trellis-dashboard/
 
 **加固定工作流**：往 `agents/workflows/` 写 `<id>.md`——frontmatter（id/name/description/timeoutMinutes）+ 正文是**自包含 prompt**（执行者不了解任何会话历史，方法/边界/输出格式全部写进文件）。不要改任何代码。已注册 id：spec-staleness-audit、spec-capture-audit、spec-zh-refresh、trellis-task-reality-audit。
 
-**加 tab**：index.html 加 `<button data-tab="x">`；app.js 加 `renderX(snapshot)` 函数并在 `renderView()` 路由；style.css 按需加样式。参考现有 renderAgents/renderSpecFiles 的写法（el() helper、CAPTURE_STATUS 徽章模式）。
+**加 tab**：index.html 加 `<button data-tab="x">`；app.js 加 `renderX(snapshot)` 函数并在 `renderView()` 路由；style.css 按需加样式。参考现有 renderAgents/renderSpecFiles 的写法（el() helper、CAPTURE_STATUS 徽章模式）。已注册 tab：任务/会话/时间线/Spec 沉淀/Spec 文件/Agent/Comet。
+
+**Comet tab**（Trellis+Comet 双工作流统一管理，2026-08-19 加）：数据源 `collector._collect_comet`（`comet status --json` + `.comet/config.yaml` 正则解析 + `docs/comet/archive/*/comet-state.yaml` 摘要）；启动走 `POST /api/comet-web`（spawn `comet dashboard --port 4321 --no-open`）；CSP 唯一 frame-src 例外是 `http://127.0.0.1:4321`。契约细节见 `.trellis/spec/guides/trellis-dashboard-bootstrap.md`。
 
 **加数据源**：collector.py 加函数（读 `.trellis/` 下文件，容错 try/except 返回空结构）+ collect_snapshot 挂字段 + 前端渲染；test_collector.py 补夹具测试。
 
@@ -42,8 +44,8 @@ tools/trellis-dashboard/
 
 ## 硬性惯例
 
-- **只读原则**：除 `POST /api/agent-runs`（白名单工作流 + 409 单飞）外所有端点只读；不要加任意写端点。
-- 安全模型：只绑 127.0.0.1；静态/工件路径 resolve 后前缀校验防穿越；工件预览 256KiB 截断；markdown 渲染先整体转义再套格式（renderMarkdown）；CSP `default-src 'self'`。
+- **只读原则**：POST 白名单恰为 `/api/agent-runs`（白名单工作流 + 409 单飞）、`/api/agent-chat`、`/api/dsh-web`、`/api/comet-web`；不要加任意写端点。
+- 安全模型：只绑 127.0.0.1；静态/工件路径 resolve 后前缀校验防穿越；工件预览 256KiB 截断；markdown 渲染先整体转义再套格式（renderMarkdown）；CSP `default-src 'self'; frame-src http://127.0.0.1:4321`（唯一 iframe 例外，给内嵌 Comet Dashboard）。
 - 代码风格：Python 现代类型标注；前端 el() helper 构造 DOM（不拼 HTML 字符串，除了转义过的 markdown）。
 - 提交信息格式 `feat(dashboard): ...` / `fix(dashboard): ...`；**不要自动 git commit**——改完报告，让用户审后提交（或用户明确说提交时再提交）。
 - 验证：改后跑 `make trellis-dashboard-test`；涉及 UI 的改动用 `./twd goto http://127.0.0.1:4322/` + `./twd eval`/`./twd screenshot` 真机验证（不要为非 UI 改动跑浏览器）。

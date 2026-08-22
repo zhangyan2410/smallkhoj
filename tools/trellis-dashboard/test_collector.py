@@ -442,3 +442,74 @@ class TestAgentChat(FixtureBase):
             self.assertIn("超时", entry["text"])
         finally:
             agent_chat.chat_busy = False
+
+
+class TestComet(FixtureBase):
+    def test_parse_config(self) -> None:
+        cfg = collector.parse_comet_config(
+            "# 注释\nschema: comet.project.v1\ndefault_workflow: native\n"
+            "workflows:\n  - native\n  # - classic（注释掉）\n"
+            "native:\n  language: zh-CN\n"
+        )
+        self.assertEqual(cfg["defaultWorkflow"], "native")
+        self.assertEqual(cfg["workflows"], ["native"])
+
+    def test_parse_state_summary(self) -> None:
+        summary = collector.parse_comet_state_summary(
+            'schema: comet.native.v4\nname: spec-remediation\nphase: archive\n'
+            'status: done\nverification_result: "pass"\ncreated_at: 2026-08-19T14:44:57.510Z\n'
+            'history:\n  - name: 不应匹配的嵌套 name: x\n'
+        )
+        self.assertEqual(summary["name"], "spec-remediation")
+        self.assertEqual(summary["verificationResult"], '"pass"')
+        self.assertEqual(summary["createdAt"], "2026-08-19T14:44:57.510Z")
+
+    def test_collect_comet_fixture(self) -> None:
+        (self.root / ".comet").mkdir()
+        (self.root / ".comet" / "config.yaml").write_text(
+            "default_workflow: native\nworkflows:\n  - native\n", encoding="utf-8")
+        archived = self.root / "docs" / "comet" / "archive" / "2026-08-19-demo-change"
+        archived.mkdir(parents=True)
+        (archived / "comet-state.yaml").write_text(
+            "name: demo-change\nphase: archive\nstatus: done\nverification_result: pass\n"
+            "created_at: 2026-08-19T10:00:00.000Z\n", encoding="utf-8")
+        result = collector._collect_comet(self.root)
+        self.assertEqual(result["config"]["defaultWorkflow"], "native")
+        # dashboardUp 取决于本机 4321 是否真有 comet dashboard 在跑，只断言键存在
+        self.assertIsInstance(result["dashboardUp"], bool)
+        self.assertEqual(len(result["archivedChanges"]), 1)
+        self.assertEqual(result["archivedChanges"][0]["name"], "demo-change")
+        self.assertEqual(result["archivedChanges"][0]["verificationResult"], "pass")
+        # installed 视环境而定，activeChanges 在无 comet CLI 时为空列表不抛错
+        self.assertIn(result["installed"], (True, False))
+        self.assertIsInstance(result["activeChanges"], list)
+
+
+class TestNonTrellisDegradation(unittest.TestCase):
+    """无 .trellis/scripts/common 的项目（跨项目迁移）也必须能出快照。"""
+
+    def test_snapshot_on_repo_without_trellis(self) -> None:
+        import shutil
+        import subprocess
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tool_dst = Path(tmp) / "tools" / "trellis-dashboard"
+            tool_dst.mkdir(parents=True)
+            for f in ("collector.py", "agent_runner.py", "agent_chat.py"):
+                shutil.copy(Path(__file__).parent / f, tool_dst / f)
+            code = (
+                "import sys, json; sys.path.insert(0, %r); "
+                "import collector; "
+                "snap = collector.collect_snapshot(%r); "
+                "print(json.dumps({'schema': snap['schema'], 'active': snap['tasks']['active'], "
+                "'comet_installed_key': 'comet' in snap, 'developer': snap['developer']}))"
+                % (str(tool_dst), tmp)
+            )
+            proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=30)
+            self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+            payload = json.loads(proc.stdout.strip().splitlines()[-1])
+            self.assertEqual(payload["schema"], "trellis.dashboard.v1")
+            self.assertEqual(payload["active"], [])
+            self.assertTrue(payload["comet_installed_key"])
+            self.assertEqual(payload["developer"], "unknown")

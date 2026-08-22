@@ -19,11 +19,70 @@ _TRELLIS_SCRIPTS = REPO_ROOT / ".trellis" / "scripts"
 if _TRELLIS_SCRIPTS.is_dir() and str(_TRELLIS_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_TRELLIS_SCRIPTS))
 
-from common.git import run_git  # noqa: E402
-from common.packages_context import get_context_packages_json  # noqa: E402
-from common.paths import get_developer, get_tasks_dir  # noqa: E402
-from common.task_queue import get_task_stats  # noqa: E402
-from common.tasks import get_all_statuses, iter_active_tasks, load_task  # noqa: E402
+try:
+    from common.git import run_git  # noqa: E402
+    from common.paths import get_developer, get_tasks_dir  # noqa: E402
+    from common.task_queue import get_task_stats  # noqa: E402
+    from common.tasks import get_all_statuses, load_task  # noqa: E402
+
+    def get_context_packages_json(root):  # type: ignore[misc]
+        from common.packages_context import get_context_packages_json as _impl
+
+        return _impl(root)
+except ImportError:  # 非 Trellis 项目（无 .trellis/scripts/common）降级：极简本地实现
+    import subprocess
+    from types import SimpleNamespace
+
+    def run_git(args, cwd):  # type: ignore[misc]
+        proc = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, timeout=10)
+        return proc.returncode, proc.stdout, proc.stderr
+
+    def get_tasks_dir(root):  # type: ignore[misc]
+        return Path(root) / ".trellis" / "tasks"
+
+    def get_developer(root):  # type: ignore[misc]
+        dev_file = Path(root) / ".trellis" / ".developer"
+        if dev_file.is_file():
+            for line in dev_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("name="):
+                    return line.split("=", 1)[1].strip() or "unknown"
+        return "unknown"
+
+    def _fallback_task_info(task_dir: Path) -> object | None:
+        task_json = task_dir / "task.json"
+        if not task_json.is_file():
+            return None
+        try:
+            data = json.loads(task_json.read_text(encoding="utf-8", errors="replace"))
+        except json.JSONDecodeError:
+            return None
+        return SimpleNamespace(
+            dir_name=task_dir.name, directory=task_dir,
+            title=data.get("title") or data.get("name") or task_dir.name,
+            status=data.get("status", "unknown"), assignee=data.get("assignee", ""),
+            priority=data.get("priority", "P2"), children=tuple(data.get("children", [])),
+            parent=data.get("parent"), package=data.get("package"), raw=data,
+        )
+
+    def load_task(task_dir):  # type: ignore[misc]
+        return _fallback_task_info(Path(task_dir))
+
+    def get_all_statuses(tasks_dir):  # type: ignore[misc]
+        statuses: dict[str, str] = {}
+        base = Path(tasks_dir)
+        if not base.is_dir():
+            return statuses
+        for d in base.iterdir():
+            if d.is_dir() and d.name != "archive":
+                info = _fallback_task_info(d)
+                statuses[d.name] = getattr(info, "status", "unknown") if info else "unknown"
+        return statuses
+
+    def get_task_stats(root):  # type: ignore[misc]
+        return {}
+
+    def get_context_packages_json(root):  # type: ignore[misc]
+        return None
 
 SNAPSHOT_SCHEMA = "trellis.dashboard.v1"
 ARTIFACT_PREVIEW_LIMIT_BYTES = 256 * 1024
@@ -249,6 +308,8 @@ def _build_task_item(task_dir: Path, statuses: dict[str, str]) -> dict | None:
 
 def _collect_active_tasks(root: Path) -> list[dict]:
     tasks_dir = get_tasks_dir(root)
+    if not tasks_dir.is_dir():
+        return []
     statuses = get_all_statuses(tasks_dir)
     items = []
     for entry in sorted(tasks_dir.iterdir(), reverse=True):
@@ -692,6 +753,136 @@ def _collect_agents(root: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Comet 工作流（Trellis+Comet 双工作流统一管理）
+# ---------------------------------------------------------------------------
+
+COMET_DASHBOARD_PORT = 4321
+COMET_DASHBOARD_URL = f"http://127.0.0.1:{COMET_DASHBOARD_PORT}/"
+
+
+def parse_comet_config(text: str) -> dict:
+    """从 .comet/config.yaml 提取展示所需字段（纯函数，便于测试）。
+
+    只认 default_workflow 与 workflows 列表两个顶层键，注释行忽略。
+    """
+    default = None
+    workflows: list[str] = []
+    in_workflows = False
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        if line.startswith("workflows:"):
+            in_workflows = True
+            continue
+        if in_workflows:
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                workflows.append(stripped[2:].strip())
+                continue
+            in_workflows = False
+        if line.startswith("default_workflow:"):
+            default = line.split(":", 1)[1].strip() or None
+    return {"defaultWorkflow": default, "workflows": workflows}
+
+
+def parse_comet_state_summary(text: str) -> dict:
+    """从归档 change 的 comet-state.yaml 提取展示字段（容错正则，无 yaml 依赖）。"""
+    import re
+
+    def first(pattern: str) -> str | None:
+        m = re.search(pattern, text, re.MULTILINE)
+        return m.group(1).strip() if m else None
+
+    verification = first(r"^verification_result:\s*(\S+)")
+    return {
+        "name": first(r"^name:\s*(.+)$"),
+        "phase": first(r"^phase:\s*(\S+)"),
+        "status": first(r"^status:\s*(\S+)"),
+        "verificationResult": verification,
+        "createdAt": first(r"^created_at:\s*(\S+)"),
+    }
+
+
+def _collect_comet(root: Path) -> dict:
+    """Comet 只读状态汇总：安装/仪表盘在线/配置/活跃 change/归档 change。"""
+    import shutil
+    import socket
+    import subprocess
+
+    result: dict = {
+        "installed": shutil.which("comet") is not None,
+        "dashboardUp": False,
+        "dashboardUrl": COMET_DASHBOARD_URL,
+        "config": {"defaultWorkflow": None, "workflows": []},
+        "activeChanges": [],
+        "archivedChanges": [],
+        "error": None,
+    }
+    sock = socket.socket()
+    sock.settimeout(0.2)
+    try:
+        sock.connect(("127.0.0.1", COMET_DASHBOARD_PORT))
+        result["dashboardUp"] = True
+    except OSError:
+        pass
+    finally:
+        sock.close()
+
+    config_path = root / ".comet" / "config.yaml"
+    if config_path.is_file():
+        try:
+            result["config"] = parse_comet_config(config_path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            pass
+
+    if result["installed"]:
+        try:
+            proc = subprocess.run(
+                ["comet", "status", "--json"],
+                cwd=str(root), capture_output=True, text=True, timeout=4,
+            )
+            if proc.returncode == 0:
+                payload = json.loads(proc.stdout)
+                # comet.status.v2：changes[] 为全部活跃 change（native/classic/unmanaged）
+                changes = payload.get("changes")
+                if isinstance(changes, list):
+                    result["activeChanges"] = [
+                        {k: c.get(k) for k in ("name", "workflow", "phase", "status", "stage") if c.get(k) is not None}
+                        for c in changes if isinstance(c, dict)
+                    ]
+                else:
+                    for workflow, group in (payload.get("workflows") or {}).items():
+                        for c in (group or {}).get("changes") or []:
+                            if isinstance(c, dict):
+                                entry = dict(c)
+                                entry.setdefault("workflow", workflow)
+                                result["activeChanges"].append(entry)
+        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+            result["error"] = f"comet status 失败: {exc}"
+
+    artifact_root = root / "docs" / "comet" / "archive"
+    if artifact_root.is_dir():
+        archived = []
+        for change_dir in sorted(artifact_root.iterdir(), reverse=True):
+            if not change_dir.is_dir():
+                continue
+            state_file = change_dir / "comet-state.yaml"
+            summary = {"name": change_dir.name}
+            if state_file.is_file():
+                try:
+                    summary = parse_comet_state_summary(
+                        state_file.read_text(encoding="utf-8", errors="replace")
+                    ) or summary
+                except OSError:
+                    pass
+            summary["dir"] = change_dir.name
+            archived.append(summary)
+        result["archivedChanges"] = archived[:20]
+    return result
+
+
+# ---------------------------------------------------------------------------
 # 快照
 # ---------------------------------------------------------------------------
 
@@ -720,4 +911,5 @@ def collect_snapshot(root: Path) -> dict:
         "specCapture": _collect_spec_capture(root),
         "specFiles": _collect_spec_files(root),
         "agents": _collect_agents(root),
+        "comet": _collect_comet(root),
     }

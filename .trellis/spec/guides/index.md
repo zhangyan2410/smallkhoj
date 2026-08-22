@@ -25,6 +25,7 @@ These guides help you **ask the right questions before coding**.
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
 | [Reference Projects Guide](./reference-projects.md) | Check local/reference repos before inventing MCP, skill, channel, or platform surfaces | MCP/skill visibility, agent platform, channel/runtime, self-hosting work |
 | [Runtime Debugging SOP](./runtime-debugging-sop.md) | Diagnose runtime/daemon/provider stuck states | Agent/runtime delivery issues |
+| [Trellis Dashboard Bootstrap](./trellis-dashboard-bootstrap.md) | Stand the dashboard up in a fresh project; manage Trellis + Comet from one place | Starting a new project with this tooling; touching the Comet tab integration |
 
 ---
 

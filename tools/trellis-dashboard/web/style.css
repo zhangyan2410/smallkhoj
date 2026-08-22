@@ -613,3 +613,26 @@ button.risk-chip:hover { border: 1px solid var(--danger); }
   font-family: inherit;
   font-size: 13px;
 }
+
+/* ============================================================ Comet tab */
+
+.comet-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.comet-frame {
+  width: 100%;
+  height: 72vh;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+.comet-frame-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 240px;
+}

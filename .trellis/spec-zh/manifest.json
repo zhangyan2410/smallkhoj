@@ -1,6 +1,6 @@
 {
   "schema": "trellis.spec-zh.v1",
-  "generatedAt": "2026-08-19T14:58:22Z",
+  "generatedAt": "2026-08-21T09:02:22Z",
   "note": "hash = sha256 of EN source; zh stale when hash differs. Refreshed by comet change spec-remediation (2026-08-19).",
   "files": {
     "backend/daemon-release-and-lease-contracts.md": "e547a846381b7d64c77bd114c197c9ec5e462c59142d63c70daac16498ba84e8",
@@ -31,6 +31,7 @@
     "guides/runtime-debugging-sop.md": "a8747a0726460aa29bb7a835f0e1446ea132db4ddec05c23597f951bf2f6fe08",
     "backend/error-handling.md": "dc6868db847c137b9ec0d0b4ed6583742222e1bf3e11a7070b85bc35f16d1fce",
     "backend/directory-structure.md": "bb7dc015ad2f02fe7b7754d10f5fb24fbe2a8b7f5685b070a059d2b50337b70c",
-    "backend/logging-guidelines.md": "c7b14a19da39fe0386144787a075a31a4b081d3b64f945c7cadcf066e071650d"
+    "backend/logging-guidelines.md": "c7b14a19da39fe0386144787a075a31a4b081d3b64f945c7cadcf066e071650d",
+    "guides/trellis-dashboard-bootstrap.md": "06547f9f0bc149c878c6250573f65ebc5241143a019cb6d5c5fc3f0b9f738fcb"
   }
 }

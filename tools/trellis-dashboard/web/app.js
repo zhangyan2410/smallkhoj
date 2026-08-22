@@ -1022,6 +1022,88 @@ function renderAgents(snapshot) {
     chatPanel);
 }
 
+/* ============================================================ Comet（双工作流统一管理） */
+
+async function startCometWeb() {
+  try {
+    const resp = await fetch("/api/comet-web", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      alert(`启动失败: ${body.error || resp.status}`);
+      return false;
+    }
+    // 轮询等 comet dashboard 起来（最多 ~15s）
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const snap = await fetchSnapshot().catch(() => null);
+      if (snap?.comet?.dashboardUp) {
+        state.snapshot = snap;
+        renderView();
+        return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    alert(`启动失败: ${err.message}`);
+    return false;
+  }
+}
+
+function renderComet(snapshot) {
+  const comet = snapshot.comet || {};
+  const cfg = comet.config || {};
+  const active = comet.activeChanges || [];
+  const archived = comet.archivedChanges || [];
+  document.getElementById("tab-extra").replaceChildren(
+    el("span", { class: "muted", text: comet.installed
+      ? `comet 就绪 · 默认工作流 ${cfg.defaultWorkflow || "?"}（${(cfg.workflows || []).join("/") || "未配置"}）`
+      : "comet 未安装/不在 PATH" }));
+
+  const statusRow = el("div", { class: "comet-status" },
+    comet.dashboardUp
+      ? el("span", { class: "badge st-done", text: "Comet Dashboard 在线" })
+      : el("span", { class: "badge st-unknown", text: "Comet Dashboard 未启动" }),
+    el("button", {
+      class: "run-btn",
+      text: comet.dashboardUp ? "刷新内嵌视图" : "启动 Comet Dashboard",
+      onclick: async (e) => {
+        e.target.disabled = true;
+        e.target.textContent = "启动中…";
+        const up = await startCometWeb();
+        if (!up) { e.target.disabled = null; e.target.textContent = "启动 Comet Dashboard"; }
+      },
+    }),
+    comet.dashboardUp ? el("a", { class: "lang-btn", href: comet.dashboardUrl, target: "_blank", text: "新窗口打开" }) : null,
+    comet.error ? el("span", { class: "muted", text: comet.error }) : null);
+
+  const activeCards = active.length
+    ? el("div", { class: "capture-list" }, ...active.map((c) => el("div", { class: "spec-finding" },
+        el("span", { class: "badge st-progress", text: c.phase || c.status || "active" }),
+        el("span", { class: "mono", text: c.name }),
+        el("span", { class: "muted", text: [c.workflow, c.stage].filter(Boolean).join(" · ") || "—" }))))
+    : el("div", { class: "empty", text: "没有活跃 Comet change" });
+
+  const archivedList = archived.length
+    ? el("div", { class: "capture-list" }, ...archived.map((c) => el("div", { class: "spec-finding" },
+        el("span", { class: `badge ${c.verificationResult === "pass" ? "st-done" : "st-unknown"}`, text: c.verificationResult || "archived" }),
+        el("span", { class: "mono", text: c.name || c.dir }),
+        el("span", { class: "muted", text: (c.createdAt || c.dir || "").replace("T", " ").slice(0, 16) }))))
+    : el("div", { class: "empty", text: "还没有归档 change" });
+
+  const frame = comet.dashboardUp
+    ? el("iframe", { class: "comet-frame", src: comet.dashboardUrl, title: "Comet Dashboard", loading: "lazy" })
+    : el("div", { class: "empty comet-frame-placeholder", text: "Comet Dashboard 未运行——点上方按钮启动后内嵌展示（127.0.0.1:4321）" });
+
+  document.getElementById("view").replaceChildren(
+    statusRow,
+    el("div", { class: "section-title", text: "活跃 change" }),
+    activeCards,
+    el("div", { class: "section-title", text: "最近归档" }),
+    archivedList,
+    el("div", { class: "section-title", text: "Comet Dashboard" }),
+    frame);
+}
+
 /* ============================================================ 视图路由与刷新 */
 
 function renderView() {
@@ -1032,6 +1114,7 @@ function renderView() {
   else if (state.tab === "speccap") renderSpecCapture(snapshot);
   else if (state.tab === "specfiles") renderSpecFiles(snapshot);
   else if (state.tab === "agent") renderAgents(snapshot);
+  else if (state.tab === "comet") renderComet(snapshot);
   else renderTimeline(snapshot);
 }
 

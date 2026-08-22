@@ -25,6 +25,7 @@
 | [跨层思考指南](./cross-layer-thinking-guide.md) | 想清楚跨层数据流 | 功能横跨多层时 |
 | [参考项目指南](./reference-projects.md) | 在自创 MCP、skill、channel 或平台界面之前先查阅本地/参考仓库 | MCP/skill 可见性、agent 平台、channel/runtime、自托管工作 |
 | [Runtime 调试 SOP（操作规程）](./runtime-debugging-sop.md) | 诊断 runtime/daemon/提供商卡住的状态 | agent/runtime 投递问题 |
+| [Trellis Dashboard 快速启用](./trellis-dashboard-bootstrap.md) | 在新项目里立起 dashboard；一处管理 Trellis + Comet 双工作流 | 新项目启用这套工具链；改动 Comet tab 集成时 |
 
 ---
 

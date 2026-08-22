@@ -1,6 +1,6 @@
 {
   "schema": "trellis.spec-audit.v1",
-  "auditedAt": "2026-08-19T14:59:38Z",
+  "auditedAt": "2026-08-21T09:02:22Z",
   "method": "single sequential agent re-verified every prior finding (incl. fixed ones) and spot-checked 1-3 concrete assertions per section (endpoints/files/commands/constants) via rg/read against frontend/, backend/, agent/daemon/, scripts/, Makefile",
   "files": [
     {
@@ -416,6 +416,43 @@
         "unverifiable": 0
       },
       "findings": []
+    },
+    {
+      "path": "guides/trellis-dashboard-bootstrap.md",
+      "sections": {
+        "total": 5,
+        "current": 5,
+        "partial": 0,
+        "stale": 0,
+        "unverifiable": 0
+      },
+      "findings": [
+        {
+          "section": "第1节",
+          "verdict": "current",
+          "evidence": "[added 2026-08-19 comet+dashboard integration] 随 Comet tab 集成新增；每条断言对应 tools/trellis-dashboard 实码（server.py POST/CSP、collector.py _collect_comet、web/app.js renderComet）"
+        },
+        {
+          "section": "第2节",
+          "verdict": "current",
+          "evidence": "[added 2026-08-19 comet+dashboard integration] 随 Comet tab 集成新增；每条断言对应 tools/trellis-dashboard 实码（server.py POST/CSP、collector.py _collect_comet、web/app.js renderComet）"
+        },
+        {
+          "section": "第3节",
+          "verdict": "current",
+          "evidence": "[added 2026-08-19 comet+dashboard integration] 随 Comet tab 集成新增；每条断言对应 tools/trellis-dashboard 实码（server.py POST/CSP、collector.py _collect_comet、web/app.js renderComet）"
+        },
+        {
+          "section": "第4节",
+          "verdict": "current",
+          "evidence": "[added 2026-08-19 comet+dashboard integration] 随 Comet tab 集成新增；每条断言对应 tools/trellis-dashboard 实码（server.py POST/CSP、collector.py _collect_comet、web/app.js renderComet）"
+        },
+        {
+          "section": "第5节",
+          "verdict": "current",
+          "evidence": "[added 2026-08-19 comet+dashboard integration] 随 Comet tab 集成新增；每条断言对应 tools/trellis-dashboard 实码（server.py POST/CSP、collector.py _collect_comet、web/app.js renderComet）"
+        }
+      ]
     }
   ],
   "remediation": {

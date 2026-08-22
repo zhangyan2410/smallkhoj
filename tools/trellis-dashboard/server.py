@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import shutil
+import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,6 +21,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 import agent_chat
 import agent_runner
 from collector import (
+    COMET_DASHBOARD_PORT,
+    COMET_DASHBOARD_URL,
     IMAGE_EXTENSIONS,
     IMAGE_RAW_LIMIT_BYTES,
     collect_snapshot,
@@ -30,6 +34,35 @@ from collector import (
 WEB_ROOT = Path(__file__).resolve().parent / "web"
 DEFAULT_PORT = 4322
 PORT_RETRY_LIMIT = 20
+# CSP：页面自身只同源；唯一例外是内嵌本机 Comet Dashboard（127.0.0.1:4321）的 iframe
+CSP_POLICY = f"default-src 'self'; frame-src {COMET_DASHBOARD_URL.rstrip('/')}"
+
+
+def _comet_web_up() -> bool:
+    import socket
+
+    sock = socket.socket()
+    sock.settimeout(0.2)
+    try:
+        sock.connect(("127.0.0.1", COMET_DASHBOARD_PORT))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def ensure_comet_web(root: Path) -> None:
+    """拉起 comet dashboard（127.0.0.1:4321，--no-open；由本页 iframe 内嵌）。"""
+    if _comet_web_up() or shutil.which("comet") is None:
+        return
+    subprocess.Popen(
+        ["comet", "dashboard", "--port", str(COMET_DASHBOARD_PORT), "--no-open"],
+        cwd=str(root),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 _MIME_OVERRIDES = {
     ".html": "text/html; charset=utf-8",
@@ -64,6 +97,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         path = unquote(parsed.path)
         if path == "/api/dsh-web":
             self._handle_dsh_web()
+            return
+        if path == "/api/comet-web":
+            self._handle_comet_web()
             return
         if path == "/api/agent-chat":
             self._handle_agent_chat()
@@ -102,6 +138,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True}, status=202)
         except RuntimeError as exc:
             self._send_json({"error": str(exc)}, status=409)
+
+    def _handle_comet_web(self) -> None:
+        """拉起 comet dashboard（127.0.0.1:4321）；已在跑则直接返回 URL。"""
+        if _comet_web_up():
+            self._send_json({"url": COMET_DASHBOARD_URL, "started": False})
+            return
+        if shutil.which("comet") is None:
+            self._send_json({"error": "comet 未安装/不在 PATH"}, status=500)
+            return
+        threading.Thread(
+            target=lambda: ensure_comet_web(self.server.root),
+            daemon=True,
+        ).start()
+        self._send_json({"url": COMET_DASHBOARD_URL, "started": True}, status=202)
 
     def _handle_dsh_web(self) -> None:
         """拉起 dsh web（127.0.0.1:3080，cwd=仓库根）；已在跑则直接返回 URL。"""
@@ -215,7 +265,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'")
+        self.send_header("Content-Security-Policy", CSP_POLICY)
         self.end_headers()
         if not head:
             self.wfile.write(data)
