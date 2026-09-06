@@ -29,6 +29,9 @@ DEFAULT_PROXY_URL = "http://host.docker.internal:7897"
 SOURCE_REVISION_LABEL = "org.opencontainers.image.revision"
 FORMAL_CAPACITY_PROFILE_ID = "formal-300-500-30-v1"
 DAEMON_RELEASE_ARTIFACT_DIR = Path("release-artifacts/smallkhoj-daemon")
+DAEMON_UNIX_BUILD_PLATFORM = "darwin-arm64"
+DAEMON_WINDOWS_BUILD_PLATFORM = "win32-x64"
+WINDOWS_RUNTIME_DIR = Path("aura-build-runtime")
 GIT_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 TASK_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,100}$")
 IMAGE_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
@@ -286,63 +289,92 @@ def validate_daemon_release_artifacts(
         entries = list(artifact_dir.iterdir())
     except OSError as exc:
         raise ValueError("daemon release artifact directory is missing") from exc
-    manifests = [
+    manifest_paths = sorted(
         path
         for path in entries
         if path.is_file() and path.name.endswith(".manifest.json")
-    ]
-    if len(manifests) != 1:
-        raise ValueError("daemon release artifacts require exactly one manifest")
-    try:
-        manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError("daemon release artifact manifest is invalid") from exc
-    if not isinstance(manifest, dict):
-        raise ValueError("daemon release artifact manifest is invalid")
-    manifest_revision = normalize_git_sha(
-        manifest.get("sourceRevision"),
-        field="daemon artifact source revision",
     )
-    if manifest_revision != revision:
-        raise ValueError("daemon artifact source revision does not match current HEAD")
+    if not manifest_paths:
+        raise ValueError("daemon release artifacts require at least one manifest")
 
-    files = manifest.get("files")
-    if not isinstance(files, dict) or not files:
-        raise ValueError("daemon release artifact checksums are missing")
+    versions: set[str] = set()
+    platforms: dict[str, Path] = {}
+    shared_checksums: dict[str, str] = {}
     expected_names: set[str] = set()
-    for filename, expected_checksum in files.items():
-        if (
-            not isinstance(filename, str)
-            or not filename
-            or Path(filename).name != filename
-            or filename.startswith(".")
-        ):
-            raise ValueError("daemon release artifact filename is invalid")
-        checksum = (
-            expected_checksum.strip().lower()
-            if isinstance(expected_checksum, str)
+    npm_package_seen = False
+    for manifest_path in manifest_paths:
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("daemon release artifact manifest is invalid") from exc
+        if not isinstance(manifest, dict):
+            raise ValueError("daemon release artifact manifest is invalid")
+        manifest_revision = normalize_git_sha(
+            manifest.get("sourceRevision"),
+            field="daemon artifact source revision",
+        )
+        if manifest_revision != revision:
+            raise ValueError("daemon artifact source revision does not match current HEAD")
+        version = manifest.get("version")
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError("daemon release artifact manifest is invalid")
+        versions.add(version.strip())
+        platform = manifest.get("platform")
+        if not isinstance(platform, str) or not platform.strip():
+            raise ValueError("daemon release artifact manifest is invalid")
+        platform = platform.strip()
+        if platforms.setdefault(platform, manifest_path) is not manifest_path:
+            raise ValueError(
+                f"daemon release artifacts have duplicate manifests for platform: {platform}"
+            )
+
+        files = manifest.get("files")
+        if not isinstance(files, dict) or not files:
+            raise ValueError("daemon release artifact checksums are missing")
+        for filename, expected_checksum in files.items():
+            if (
+                not isinstance(filename, str)
+                or not filename
+                or Path(filename).name != filename
+                or filename.startswith(".")
+            ):
+                raise ValueError("daemon release artifact filename is invalid")
+            checksum = (
+                expected_checksum.strip().lower()
+                if isinstance(expected_checksum, str)
+                else ""
+            )
+            if re.fullmatch(r"[0-9a-f]{64}", checksum) is None:
+                raise ValueError("daemon release artifact checksum is invalid")
+            recorded = shared_checksums.setdefault(filename, checksum)
+            if recorded != checksum:
+                raise ValueError(
+                    "daemon release artifact manifests disagree on checksum for: "
+                    + filename
+                )
+            artifact = artifact_dir / filename
+            if not artifact.is_file() or artifact.is_symlink():
+                raise ValueError("daemon release artifact file is missing")
+            if sha256_file(artifact) != checksum:
+                raise ValueError("daemon release artifact checksum mismatch")
+            expected_names.add(filename)
+
+        npm_package_value = manifest.get("npmPackage")
+        npm_package = (
+            Path(npm_package_value).name
+            if isinstance(npm_package_value, str)
             else ""
         )
-        if re.fullmatch(r"[0-9a-f]{64}", checksum) is None:
-            raise ValueError("daemon release artifact checksum is invalid")
-        artifact = artifact_dir / filename
-        if not artifact.is_file() or artifact.is_symlink():
-            raise ValueError("daemon release artifact file is missing")
-        if sha256_file(artifact) != checksum:
-            raise ValueError("daemon release artifact checksum mismatch")
-        expected_names.add(filename)
+        if npm_package.endswith(".tgz") and npm_package in files:
+            npm_package_seen = True
 
-    npm_package_value = manifest.get("npmPackage")
-    npm_package = (
-        Path(npm_package_value).name
-        if isinstance(npm_package_value, str)
-        else ""
-    )
-    if not npm_package.endswith(".tgz") or npm_package not in expected_names:
+    if len(versions) != 1:
+        raise ValueError("daemon release artifacts must share exactly one version")
+    if not npm_package_seen:
         raise ValueError("daemon npm release artifact is missing")
 
     actual_names = {path.name for path in entries}
-    if actual_names != expected_names | {manifests[0].name}:
+    if actual_names != expected_names | {path.name for path in manifest_paths}:
         raise ValueError("daemon release artifact directory contains unverified files")
 
 
@@ -574,16 +606,41 @@ def build_steps(options: TransferOptions) -> list[PlanStep]:
     revision_args = source_revision_args(options)
     steps: list[PlanStep] = []
     if not options.skip_daemon_build:
-        steps.append(PlanStep("build-daemon-release-artifacts", [
+        # The daemon release must cover every platform the product advertises
+        # install commands for.  The Unix artifact is built from this host's
+        # native toolchain; the Windows artifact cross-packs with the private
+        # Windows runtime staged under ``aura-build-runtime`` (the builder
+        # itself fails closed when that runtime is absent, before any Docker
+        # or SSH side effect) and reuses the platform-neutral npm tarball the
+        # first build produced.
+        steps.append(PlanStep("build-daemon-release-artifacts-darwin-arm64", [
                 sys.executable,
                 "scripts/build_daemon_distribution.py",
                 "--root",
                 ".",
                 "--output-dir",
                 str(DAEMON_RELEASE_ARTIFACT_DIR),
+                "--platform",
+                DAEMON_UNIX_BUILD_PLATFORM,
                 "--source-revision",
                 options.source_revision.strip().lower(),
                 "--clean-output-dir",
+                "--json",
+            ]))
+        steps.append(PlanStep("build-daemon-release-artifacts-win32-x64", [
+                sys.executable,
+                "scripts/build_daemon_distribution.py",
+                "--root",
+                ".",
+                "--output-dir",
+                str(DAEMON_RELEASE_ARTIFACT_DIR),
+                "--platform",
+                DAEMON_WINDOWS_BUILD_PLATFORM,
+                "--windows-runtime-dir",
+                str(WINDOWS_RUNTIME_DIR),
+                "--reuse-npm-package",
+                "--source-revision",
+                options.source_revision.strip().lower(),
                 "--json",
             ]))
     steps.extend([
@@ -759,7 +816,7 @@ def execute_transfer(
         if return_code != 0:
             return return_code
 
-        if step.label == "build-daemon-release-artifacts":
+        if step.label.startswith("build-daemon-release-artifacts"):
             candidate = validate_release_candidate(root, options.source_revision)
             validate_daemon_release_artifacts(
                 root / DAEMON_RELEASE_ARTIFACT_DIR,

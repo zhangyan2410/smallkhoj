@@ -459,6 +459,40 @@ def create_npm_package(daemon_dir: Path, output_dir: Path) -> Path:
     return package_path
 
 
+def resolve_npm_package(
+    daemon_dir: Path,
+    output_dir: Path,
+    *,
+    version: str,
+    reuse: bool,
+) -> Path:
+    """Return the platform-neutral npm package for this release.
+
+    A multi-platform release runs the builder once per target platform, and
+    every ``npm pack`` regenerates the tarball from freshly rebuilt ``dist``
+    files.  A second run would silently invalidate the checksum the first
+    platform's manifest already recorded for the same file name.  ``reuse``
+    makes later platforms reuse the existing package, which is
+    platform-independent by construction; it falls back to packing when no
+    matching tarball exists yet.
+    """
+
+    if reuse:
+        candidates = sorted(
+            path
+            for path in output_dir.glob("*.tgz")
+            if path.is_file() and path.name.endswith(f"-{version}.tgz")
+        )
+        if len(candidates) > 1:
+            raise ValueError(
+                "ambiguous npm release artifacts for version "
+                f"{version}: " + ", ".join(path.name for path in candidates)
+            )
+        if candidates:
+            return candidates[0]
+    return create_npm_package(daemon_dir, output_dir)
+
+
 def write_install_script(
     output_dir: Path,
     *,
@@ -1051,6 +1085,7 @@ def build_distribution(
     node_runtime: Path | None = None,
     codex_acp_binary: Path | None = None,
     minimum_daemon_version: str | None = None,
+    reuse_npm_package: bool = False,
 ) -> DaemonDistribution:
     root = root.resolve()
     daemon_dir = root / DAEMON_RELATIVE_DIR
@@ -1088,7 +1123,12 @@ def build_distribution(
         run_command(["npm", "ci", "--silent"], cwd=daemon_dir, timeout=180)
         run_command(["npm", "run", "build"], cwd=daemon_dir, timeout=120)
 
-    npm_package = create_npm_package(daemon_dir, output_dir)
+    npm_package = resolve_npm_package(
+        daemon_dir,
+        output_dir,
+        version=version,
+        reuse=reuse_npm_package,
+    )
 
     with tempfile.TemporaryDirectory(prefix="smallkhoj-daemon-dist-") as tmp:
         staging_dir = Path(tmp) / "staging"
@@ -1251,6 +1291,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--minimum-daemon-version",
         help="Compatibility floor embedded in the release manifest (defaults to MINIMUM_DAEMON_VERSION or this release version).",
     )
+    parser.add_argument(
+        "--reuse-npm-package",
+        action="store_true",
+        help=(
+            "Reuse an existing platform-neutral npm tarball for this version instead of "
+            "repacking it, so multi-platform builds keep one checksum per shared file."
+        ),
+    )
     return parser
 
 
@@ -1270,6 +1318,7 @@ def main(argv: list[str] | None = None) -> int:
             node_runtime=args.node_runtime,
             codex_acp_binary=args.codex_acp_binary,
             minimum_daemon_version=args.minimum_daemon_version,
+            reuse_npm_package=args.reuse_npm_package,
         )
     except Exception as exc:
         print(str(exc), file=sys.stderr)

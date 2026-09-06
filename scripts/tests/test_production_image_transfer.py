@@ -103,6 +103,8 @@ def write_daemon_artifacts(root: Path, revision: str) -> None:
         json.dumps(
             {
                 "sourceRevision": revision,
+                "version": "0.2.6",
+                "platform": "linux-x64",
                 "npmPackage": package.name,
                 "files": {package.name: transfer.sha256_file(package)},
             }
@@ -158,7 +160,8 @@ class ProductionImageTransferTests(unittest.TestCase):
         labels = [step.label for step in plan.steps]
 
         self.assertEqual(labels, [
-            "build-daemon-release-artifacts",
+            "build-daemon-release-artifacts-darwin-arm64",
+            "build-daemon-release-artifacts-win32-x64",
             "build-backend-image",
             "build-frontend-image",
             "build-caddy-image",
@@ -167,7 +170,7 @@ class ProductionImageTransferTests(unittest.TestCase):
             "upload-image-archive",
             "load-image-archive",
         ])
-        self.assertEqual(plan.steps[1].argv, [
+        self.assertEqual(plan.steps[2].argv, [
             "docker",
             "build",
             "--label",
@@ -183,11 +186,24 @@ class ProductionImageTransferTests(unittest.TestCase):
         self.assertIn("--clean-output-dir", daemon_step.argv)
         self.assertIn("--source-revision", daemon_step.argv)
         self.assertIn(SOURCE_REVISION, daemon_step.argv)
-        self.assertIn("smallkhoj-backend:local-release", plan.steps[4].argv)
-        self.assertIn("smallkhoj-frontend:local-release", plan.steps[4].argv)
-        self.assertIn("smallkhoj-caddy:local-release", plan.steps[4].argv)
-        self.assertEqual(plan.steps[6].argv[:3], ["scp", "/tmp/smallkhoj-images.tar", "ubuntu@203.0.113.10:/opt/smallkhoj/"])
-        self.assertIn("docker load -i /opt/smallkhoj/smallkhoj-images.tar", plan.steps[7].argv[-1])
+        windows_step = plan.steps[1]
+        self.assertIn("scripts/build_daemon_distribution.py", windows_step.argv)
+        windows_args = windows_step.argv
+        self.assertEqual(
+            windows_args[windows_args.index("--platform") + 1],
+            "win32-x64",
+        )
+        self.assertEqual(
+            windows_args[windows_args.index("--windows-runtime-dir") + 1],
+            "aura-build-runtime",
+        )
+        self.assertIn("--reuse-npm-package", windows_args)
+        self.assertNotIn("--clean-output-dir", windows_args)
+        self.assertIn("smallkhoj-backend:local-release", plan.steps[5].argv)
+        self.assertIn("smallkhoj-frontend:local-release", plan.steps[5].argv)
+        self.assertIn("smallkhoj-caddy:local-release", plan.steps[5].argv)
+        self.assertEqual(plan.steps[7].argv[:3], ["scp", "/tmp/smallkhoj-images.tar", "ubuntu@203.0.113.10:/opt/smallkhoj/"])
+        self.assertIn("docker load -i /opt/smallkhoj/smallkhoj-images.tar", plan.steps[8].argv[-1])
 
     def test_skip_build_keeps_archive_upload_and_load_steps(self) -> None:
         options = transfer.TransferOptions(
@@ -219,7 +235,9 @@ class ProductionImageTransferTests(unittest.TestCase):
 
         labels = [step.label for step in transfer.build_plan(options).steps]
 
-        self.assertNotIn("build-daemon-release-artifacts", labels)
+        self.assertFalse(
+            any(label.startswith("build-daemon-release-artifacts") for label in labels)
+        )
         self.assertIn("build-backend-image", labels)
         self.assertIn("build-frontend-image", labels)
         self.assertIn("build-caddy-image", labels)
@@ -720,40 +738,114 @@ class ProductionImageTransferTests(unittest.TestCase):
                 transfer.validate_saved_image_archive(archive, identities)
 
     def test_daemon_release_artifacts_require_same_revision_and_checksums(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            artifact_dir = Path(tmp)
-            package = artifact_dir / "daemon.tgz"
-            package.write_bytes(b"candidate daemon package")
-            checksum = transfer.sha256_file(package)
-            manifest = artifact_dir / "daemon.manifest.json"
-            manifest.write_text(
-                json.dumps(
-                    {
-                        "sourceRevision": SOURCE_REVISION,
-                        "npmPackage": str(package),
-                        "files": {package.name: checksum},
-                    }
-                ),
+        def write_platform_release(
+            artifact_dir: Path,
+            platform: str,
+            *,
+            revision: str = SOURCE_REVISION,
+            version: str = "0.2.7",
+            npm_payload: bytes = b"candidate daemon package",
+            include_npm: bool = True,
+        ) -> None:
+            package = artifact_dir / f"smallkhoj-smallkhoj-daemon-{version}.tgz"
+            package.write_bytes(npm_payload)
+            artifact = artifact_dir / f"smallkhoj-daemon-v{version}-{platform}.tar.gz"
+            artifact.write_bytes(f"artifact {platform}".encode())
+            files = {
+                package.name: transfer.sha256_file(package),
+                artifact.name: transfer.sha256_file(artifact),
+            }
+            manifest_payload = {
+                "sourceRevision": revision,
+                "version": version,
+                "platform": platform,
+                "files": files,
+            }
+            if include_npm:
+                manifest_payload["npmPackage"] = str(package)
+            (artifact_dir / f"smallkhoj-daemon-v{version}-{platform}.manifest.json").write_text(
+                json.dumps(manifest_payload),
                 encoding="utf-8",
             )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp)
+            write_platform_release(artifact_dir, "darwin-arm64")
+            write_platform_release(artifact_dir, "win32-x64")
 
             transfer.validate_daemon_release_artifacts(
                 artifact_dir,
                 SOURCE_REVISION,
             )
 
-            package.write_bytes(b"tampered")
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp)
+            write_platform_release(artifact_dir, "darwin-arm64")
+            write_platform_release(artifact_dir, "win32-x64")
+            (artifact_dir / "smallkhoj-daemon-v0.2.7-win32-x64.tar.gz").write_bytes(b"tampered")
+
             with self.assertRaisesRegex(ValueError, "checksum"):
                 transfer.validate_daemon_release_artifacts(
                     artifact_dir,
                     SOURCE_REVISION,
                 )
 
-            package.write_bytes(b"candidate daemon package")
-            payload = json.loads(manifest.read_text(encoding="utf-8"))
-            payload["sourceRevision"] = "f" * 40
-            manifest.write_text(json.dumps(payload), encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp)
+            write_platform_release(artifact_dir, "darwin-arm64")
+            write_platform_release(artifact_dir, "win32-x64", revision="f" * 40)
+
             with self.assertRaisesRegex(ValueError, "source revision"):
+                transfer.validate_daemon_release_artifacts(
+                    artifact_dir,
+                    SOURCE_REVISION,
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp)
+            write_platform_release(artifact_dir, "darwin-arm64")
+            manifest = artifact_dir / "smallkhoj-daemon-v0.2.7-darwin-arm64.manifest.json"
+            duplicate = artifact_dir / "smallkhoj-daemon-v0.2.7-darwin-arm64-copy.manifest.json"
+            duplicate.write_text(manifest.read_text(encoding="utf-8"), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "duplicate manifests for platform"):
+                transfer.validate_daemon_release_artifacts(
+                    artifact_dir,
+                    SOURCE_REVISION,
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp)
+            # The win32 manifest records "package two" while the darwin write
+            # (processed first, matching the on-disk payload) records
+            # "package one": the two manifests disagree on the shared tgz.
+            write_platform_release(artifact_dir, "win32-x64", npm_payload=b"package two")
+            write_platform_release(artifact_dir, "darwin-arm64", npm_payload=b"package one")
+
+            with self.assertRaisesRegex(ValueError, "disagree on checksum"):
+                transfer.validate_daemon_release_artifacts(
+                    artifact_dir,
+                    SOURCE_REVISION,
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp)
+            write_platform_release(artifact_dir, "darwin-arm64")
+            write_platform_release(artifact_dir, "win32-x64")
+            (artifact_dir / "stale-artifact.tar.gz").write_bytes(b"stale")
+
+            with self.assertRaisesRegex(ValueError, "unverified files"):
+                transfer.validate_daemon_release_artifacts(
+                    artifact_dir,
+                    SOURCE_REVISION,
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp)
+            write_platform_release(artifact_dir, "darwin-arm64", include_npm=False)
+            write_platform_release(artifact_dir, "win32-x64", include_npm=False)
+
+            with self.assertRaisesRegex(ValueError, "npm release artifact"):
                 transfer.validate_daemon_release_artifacts(
                     artifact_dir,
                     SOURCE_REVISION,

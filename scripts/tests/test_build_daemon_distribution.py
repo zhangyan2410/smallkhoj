@@ -61,6 +61,61 @@ class BuildDaemonDistributionTests(unittest.TestCase):
             ["npm", "install", "--omit=dev", "--silent"],
         )
 
+    def test_resolve_npm_package_reuses_matching_tarball_for_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            stale = output / "smallkhoj-smallkhoj-daemon-0.2.6.tgz"
+            stale.write_bytes(b"older release")
+            current = output / "smallkhoj-smallkhoj-daemon-0.2.7.tgz"
+            current.write_bytes(b"current release")
+
+            resolved = builder.resolve_npm_package(
+                Path("/nonexistent-daemon"),
+                output,
+                version="0.2.7",
+                reuse=True,
+            )
+
+            self.assertEqual(resolved, current)
+
+    def test_resolve_npm_package_rejects_ambiguous_tarballs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            for name in (
+                "smallkhoj-smallkhoj-daemon-0.2.7.tgz",
+                "mirror-smallkhoj-daemon-0.2.7.tgz",
+            ):
+                (output / name).write_bytes(b"package")
+
+            with self.assertRaisesRegex(ValueError, "ambiguous npm release artifacts"):
+                builder.resolve_npm_package(
+                    Path("/nonexistent-daemon"),
+                    output,
+                    version="0.2.7",
+                    reuse=True,
+                )
+
+    def test_resolve_npm_package_packs_when_no_tarball_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            packed = output / "smallkhoj-smallkhoj-daemon-0.2.7.tgz"
+            daemon_dir = Path("/daemon")
+
+            with mock.patch.object(
+                builder,
+                "create_npm_package",
+                return_value=packed,
+            ) as packer:
+                resolved = builder.resolve_npm_package(
+                    daemon_dir,
+                    output,
+                    version="0.2.7",
+                    reuse=True,
+                )
+
+            self.assertEqual(resolved, packed)
+            packer.assert_called_once_with(daemon_dir, output)
+
     def test_build_distribution_creates_versioned_platform_artifact(self) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
