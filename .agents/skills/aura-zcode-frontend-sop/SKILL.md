@@ -232,8 +232,27 @@ python3 scripts/production_image_transfer.py \
 
 **常见报错**：
 - `ConnectionClosed downloading tarball` → bun install 偶发断线，直接重跑
+- `failed to connect to the docker API ... colima ... daemon is running` → colima 没起。用代理环境启动（VM 内 host 网关是 192.168.5.2）：`colima start --env HTTP_PROXY=http://192.168.5.2:7897 --env HTTPS_PROXY=http://192.168.5.2:7897 --env NO_PROXY=localhost,127.0.0.1`
+- 基础镜像元数据超时（`auth.docker.io ... i/o timeout`）→ buildkit 解析元数据不走 `--use-vpn-proxy` 的 build-args，但 `docker pull` 走 daemon 代理。先手动预拉全部基础镜像再重跑：`docker pull --platform linux/amd64 python:3.12-slim oven/bun:1.3.14 caddy:2`
+- Turbopack 构建期 `Error while requesting resource ... fonts.gstatic.com` → next/font 下载 Google 字体偶发被墙，直接重跑一次（0.2.7 发布时第二次即过）
 - `daemon artifact source revision does not match` → 已修复，`--skip-daemon-build` 才校验已有 artifact
+- `daemon release artifacts are missing required platforms` → 产物目录缺平台 manifest，是防"单平台发布"的 fail-closed 闸口。走全量 daemon 构建（需要 `aura-build-runtime/` 里有 node.exe + aura.exe），或用 `--skip-daemon-build` 复用已含双平台的预构建产物
 - `Trellis task metadata not found` → 用 `--authorized` 而非 `--task-scoped`
+
+**daemon 版本变更时的额外步骤**（daemon `package.json` 版本号变了才需要）：
+
+```bash
+# 1. 提交版本 bump 后，本地构建双平台产物（darwin 用 --clean-output-dir，win32 复用 npm 包）
+HEAD_SHA=$(git rev-parse HEAD)
+python3 scripts/build_daemon_distribution.py --root . --output-dir release-artifacts/smallkhoj-daemon \
+  --platform darwin-arm64 --source-revision $HEAD_SHA --minimum-daemon-version 0.2.6 --clean-output-dir --json
+python3 scripts/build_daemon_distribution.py --root . --output-dir release-artifacts/smallkhoj-daemon \
+  --platform win32-x64 --windows-runtime-dir aura-build-runtime --reuse-npm-package \
+  --source-revision $HEAD_SHA --minimum-daemon-version 0.2.6 --json
+
+# 2. 传输时加 --skip-daemon-build 复用上面构建好的产物
+# 3. Phase 5 之前，云端 .env.prod 同步 DAEMON_RELEASE_VERSION=<新版本>（MINIMUM_DAEMON_VERSION 是兼容下限，一般不动）
+```
 
 ### Phase 5: app-only deploy
 
