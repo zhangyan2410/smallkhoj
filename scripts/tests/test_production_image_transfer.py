@@ -98,19 +98,25 @@ def write_daemon_artifacts(root: Path, revision: str) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     package = artifact_dir / "smallkhoj-smallkhoj-daemon-0.2.6.tgz"
     package.write_bytes(b"candidate daemon package")
-    manifest = artifact_dir / "smallkhoj-daemon-v0.2.6-linux-x64.tar.gz.manifest.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "sourceRevision": revision,
-                "version": "0.2.6",
-                "platform": "linux-x64",
-                "npmPackage": package.name,
-                "files": {package.name: transfer.sha256_file(package)},
-            }
-        ),
-        encoding="utf-8",
-    )
+    for platform in ("darwin-arm64", "win32-x64"):
+        suffix = "zip" if platform.startswith("win32-") else "tar.gz"
+        artifact = artifact_dir / f"smallkhoj-daemon-v0.2.6-{platform}.{suffix}"
+        artifact.write_bytes(f"artifact {platform}".encode())
+        (artifact_dir / f"smallkhoj-daemon-v0.2.6-{platform}.{suffix}.manifest.json").write_text(
+            json.dumps(
+                {
+                    "sourceRevision": revision,
+                    "version": "0.2.6",
+                    "platform": platform,
+                    "npmPackage": package.name,
+                    "files": {
+                        package.name: transfer.sha256_file(package),
+                        artifact.name: transfer.sha256_file(artifact),
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
 
 
 def image_inspect_payload(tag: str, revision: str = SOURCE_REVISION) -> dict[str, object]:
@@ -849,6 +855,48 @@ class ProductionImageTransferTests(unittest.TestCase):
                 transfer.validate_daemon_release_artifacts(
                     artifact_dir,
                     SOURCE_REVISION,
+                )
+
+    def test_daemon_release_artifacts_fail_closed_on_missing_platform(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp)
+            package = artifact_dir / "smallkhoj-smallkhoj-daemon-0.2.7.tgz"
+            package.write_bytes(b"candidate daemon package")
+            artifact = artifact_dir / "smallkhoj-daemon-v0.2.7-darwin-arm64.tar.gz"
+            artifact.write_bytes(b"artifact darwin-arm64")
+            manifest = artifact_dir / "smallkhoj-daemon-v0.2.7-darwin-arm64.tar.gz.manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "sourceRevision": SOURCE_REVISION,
+                        "version": "0.2.7",
+                        "platform": "darwin-arm64",
+                        "npmPackage": package.name,
+                        "files": {
+                            package.name: transfer.sha256_file(package),
+                            artifact.name: transfer.sha256_file(artifact),
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            # A darwin-only directory is internally consistent and still
+            # validates without a required platform set (for example between
+            # the two daemon build steps), but every release gate must reject
+            # it as an incomplete multi-platform release.
+            transfer.validate_daemon_release_artifacts(
+                artifact_dir,
+                SOURCE_REVISION,
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                r"missing required platforms: win32-x64",
+            ):
+                transfer.validate_daemon_release_artifacts(
+                    artifact_dir,
+                    SOURCE_REVISION,
+                    required_platforms=transfer.DAEMON_REQUIRED_PLATFORMS,
                 )
 
     def test_dirty_real_transfer_fails_before_any_plan_command(self) -> None:

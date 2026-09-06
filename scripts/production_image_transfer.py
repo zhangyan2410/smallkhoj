@@ -32,6 +32,14 @@ DAEMON_RELEASE_ARTIFACT_DIR = Path("release-artifacts/smallkhoj-daemon")
 DAEMON_UNIX_BUILD_PLATFORM = "darwin-arm64"
 DAEMON_WINDOWS_BUILD_PLATFORM = "win32-x64"
 WINDOWS_RUNTIME_DIR = Path("aura-build-runtime")
+# Every release must publish manifests for all of these platforms before it
+# may be archived or uploaded.  This is the fail-closed guarantee that a
+# platform's install command can never silently disappear from a deployment
+# again (the 0.2.6 release shipped darwin-only and rendered the Windows tab
+# unavailable in production).
+DAEMON_REQUIRED_PLATFORMS = frozenset(
+    {DAEMON_UNIX_BUILD_PLATFORM, DAEMON_WINDOWS_BUILD_PLATFORM}
+)
 GIT_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 TASK_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,100}$")
 IMAGE_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
@@ -283,6 +291,8 @@ def sha256_file(path: Path) -> str:
 def validate_daemon_release_artifacts(
     artifact_dir: Path,
     expected_revision: str,
+    *,
+    required_platforms: frozenset[str] | None = None,
 ) -> None:
     revision = normalize_git_sha(expected_revision, field="source revision")
     try:
@@ -372,6 +382,13 @@ def validate_daemon_release_artifacts(
         raise ValueError("daemon release artifacts must share exactly one version")
     if not npm_package_seen:
         raise ValueError("daemon npm release artifact is missing")
+    if required_platforms:
+        missing_platforms = sorted(required_platforms - set(platforms))
+        if missing_platforms:
+            raise ValueError(
+                "daemon release artifacts are missing required platforms: "
+                + ", ".join(missing_platforms)
+            )
 
     actual_names = {path.name for path in entries}
     if actual_names != expected_names | {path.name for path in manifest_paths}:
@@ -783,10 +800,14 @@ def execute_transfer(
     # The carrier image serves these exact artifacts. When skipping the daemon
     # build, validate externally prepared Windows input before any Docker/SSH
     # side effects. When building, the post-build revalidation covers it.
+    # Either way the full platform set is required up front: a prebuilt
+    # artifact directory that is missing a platform must fail before any
+    # side effect, not after half a release has been uploaded.
     if options.skip_daemon_build:
         validate_daemon_release_artifacts(
             root / DAEMON_RELEASE_ARTIFACT_DIR,
             candidate.head,
+            required_platforms=DAEMON_REQUIRED_PLATFORMS,
         )
     plan = build_plan(options)
     identities: dict[str, ImageIdentity] | None = None
@@ -806,9 +827,13 @@ def execute_transfer(
             candidate = validate_release_candidate(root, options.source_revision)
             if capacity_report:
                 capacity = validate_capacity_report(capacity_report.resolve(), candidate.tree)
+            # The archive is the point of no return for the uploaded release,
+            # so every advertised platform must be present in the artifacts
+            # that the carrier image just baked in.
             validate_daemon_release_artifacts(
                 root / DAEMON_RELEASE_ARTIFACT_DIR,
                 candidate.head,
+                required_platforms=DAEMON_REQUIRED_PLATFORMS,
             )
             identities = inspect_candidate_images(options, candidate.head)
 
