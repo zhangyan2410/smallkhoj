@@ -1651,7 +1651,10 @@ def _serialize_file(file_entry: FileEntry) -> dict:
 def _safe_attachment_path(entry: FileEntry) -> Path:
     path = Path(entry.storage_path).resolve()
     upload_root = UPLOAD_ROOT.resolve()
-    if path != upload_root and not str(path).startswith(str(upload_root) + "/"):
+    # relative_to 跨平台；字符串 startswith("/"+...) 在 Windows 反斜杠路径下永远不匹配。
+    try:
+        path.relative_to(upload_root)
+    except ValueError:
         raise HTTPException(403, "Invalid file path")
     if not path.exists():
         raise HTTPException(404, "Attachment file missing")
