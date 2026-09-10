@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import mimetypes
 import re
 import secrets
 import uuid
@@ -148,6 +149,7 @@ from services.thread_summary import (
     thread_reply_count,
 )
 from services.upload_storage import (
+    assert_upload_capacity,
     close_upload,
     rollback_and_cleanup_upload,
     stage_upload,
@@ -1029,6 +1031,7 @@ ACTIVITY_EVENT_TYPES = {
     "integration_connected": "integration.connected",
     "thread_followed": "thread.followed",
     "thread_unfollowed": "thread.unfollowed",
+    "file_created": "file.uploaded",
 }
 
 
@@ -1557,7 +1560,11 @@ def _serialize_file(file_entry: FileEntry) -> dict:
         "mimeType": file_entry.mime_type,
         "size": file_entry.size,
         "url": f"/api/attachments/{file_entry.id}/download",
-        "previewUrl": f"/api/attachments/{file_entry.id}" if file_entry.mime_type.startswith("image/") else None,
+        "previewUrl": (
+            f"/api/attachments/{file_entry.id}"
+            if file_entry.mime_type.startswith(("image/", "video/", "audio/"))
+            else None
+        ),
         "metadata": file_entry.metadata_json or {},
         "createdAt": file_entry.created_at.isoformat() if file_entry.created_at else None,
     }
@@ -3860,6 +3867,10 @@ async def upload_attachment(
             empty_detail="Empty file",
         )
 
+        declared_mime = (mimeType or file.content_type or "").strip()
+        if not declared_mime or declared_mime == "application/octet-stream":
+            declared_mime = mimetypes.guess_type(safe_name)[0] or declared_mime or "application/octet-stream"
+
         entry = FileEntry(
             id=file_id,
             server_id=server.id,
@@ -3867,12 +3878,18 @@ async def upload_attachment(
             uploaded_by=member.id,
             file_name=safe_name,
             original_name=safe_name,
-            mime_type=mimeType or file.content_type or "application/octet-stream",
+            mime_type=declared_mime,
             size=staged.size,
             storage_path=str(storage_path),
             metadata_json={},
         )
         try:
+            await assert_upload_capacity(
+                db,
+                server_id=server.id,
+                storage_root=UPLOAD_ROOT,
+                incoming_size=staged.size,
+            )
             db.add(entry)
             await db.flush()
             await _record_activity(
@@ -3883,7 +3900,9 @@ async def upload_attachment(
                 f"@{member.handle} uploaded {safe_name}",
                 {
                     "attachmentId": str(entry.id),
+                    "fileId": str(entry.id),
                     "fileName": safe_name,
+                    "mimeType": declared_mime,
                     "size": staged.size,
                 },
                 channel_id=channel_id,
@@ -3894,6 +3913,7 @@ async def upload_attachment(
             await rollback_and_cleanup_upload(db, staged)
             raise
 
+        await _push_committed_events(db, server_id=server.id)
         await db.refresh(entry)
         serialized = _serialize_file(entry)
         return {"uploaded": True, "attachment": serialized, "file": serialized}
@@ -4259,6 +4279,12 @@ async def update_profile_avatar(
             metadata_json={"kind": "avatar", "memberId": str(member.id)},
         )
         try:
+            await assert_upload_capacity(
+                db,
+                server_id=server.id,
+                storage_root=UPLOAD_ROOT,
+                incoming_size=staged.size,
+            )
             db.add(entry)
             await db.flush()
 

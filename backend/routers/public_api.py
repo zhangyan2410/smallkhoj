@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
+import mimetypes
 import re
 import secrets
 import shlex
@@ -160,6 +161,7 @@ from services.thread_summary import (
     serialize_thread_summary,
 )
 from services.upload_storage import (
+    assert_upload_capacity,
     close_upload,
     rollback_and_cleanup_upload,
     stage_upload,
@@ -225,6 +227,7 @@ EVENT_TYPE_ALIASES = {
     "task.updated": "task_updated",
     "task.deleted": "task_deleted",
     "file.deleted": "file_deleted",
+    "file.uploaded": "file_uploaded",
     "task.memory_requested": "task_memory_requested",
     "member.updated": "member_updated",
     "member.created": "member_created",
@@ -623,8 +626,22 @@ async def verify_public_stream_api_key(
     request: Request,
     db: AsyncSession = Depends(get_db, scope="function"),
 ) -> None:
-    """Authenticate an SSE request without retaining its DB dependency."""
+    """Authenticate an SSE request without retaining the DB dependency."""
     await verify_public_api_key(request, db)
+
+
+async def verify_public_api_key_or_account_session(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Attachment media access: X-Public-Key for API clients, or a signed-in
+    account session (cookie / X-Account-Token) so browser <img>/<video> tags
+    and plain download links can fetch attachments without custom headers."""
+    if request.headers.get("X-Public-Key"):
+        await verify_public_api_key(request, db)
+        return
+    if not await _current_account(db, request):
+        raise HTTPException(401, "Missing API key: set X-Public-Key header or sign in")
 
 
 async def _get_server(db: AsyncSession) -> Server:
@@ -1621,7 +1638,11 @@ def _serialize_file(file_entry: FileEntry) -> dict:
         "mimeType": file_entry.mime_type,
         "size": file_entry.size,
         "url": f"/api/v1/attachments/{file_entry.id}/download",
-        "previewUrl": f"/api/v1/attachments/{file_entry.id}" if file_entry.mime_type.startswith("image/") else None,
+        "previewUrl": (
+            f"/api/v1/attachments/{file_entry.id}"
+            if file_entry.mime_type.startswith(("image/", "video/", "audio/"))
+            else None
+        ),
         "metadata": file_entry.metadata_json or {},
         "createdAt": file_entry.created_at.isoformat() if file_entry.created_at else None,
     }
@@ -4290,7 +4311,9 @@ async def upload_file(
         if not member:
             raise HTTPException(401, "Login required")
 
-        mime_type = file.content_type or "application/octet-stream"
+        mime_type = (file.content_type or "").strip()
+        if not mime_type or mime_type == "application/octet-stream":
+            mime_type = mimetypes.guess_type(file.filename or "")[0] or mime_type or "application/octet-stream"
         if mime_type in DANGEROUS_MIME_TYPES:
             raise HTTPException(400, f"File type '{mime_type}' is not allowed")
 
@@ -4318,6 +4341,12 @@ async def upload_file(
             metadata_json={},
         )
         try:
+            await assert_upload_capacity(
+                db,
+                server_id=server.id,
+                storage_root=UPLOAD_ROOT,
+                incoming_size=staged.size,
+            )
             db.add(entry)
             await db.flush()
             staged.promote()
@@ -4534,7 +4563,7 @@ async def _get_public_attachment(db: AsyncSession, server: Server, attachment_id
 async def preview_attachment(
     attachment_id: str,
     request: Request,
-    _auth: None = Depends(verify_public_api_key),
+    _auth: None = Depends(verify_public_api_key_or_account_session),
     db: AsyncSession = Depends(get_db),
 ):
     context = await _resolve_active_server_context(db, request)
@@ -4550,7 +4579,7 @@ async def preview_attachment(
 async def download_public_attachment(
     attachment_id: str,
     request: Request,
-    _auth: None = Depends(verify_public_api_key),
+    _auth: None = Depends(verify_public_api_key_or_account_session),
     db: AsyncSession = Depends(get_db),
 ):
     context = await _resolve_active_server_context(db, request)

@@ -128,9 +128,12 @@ export function classifyArtifactViewer(entry: MemoryEntry): MemoryArtifactViewer
   const kind = (entry.entryKind || "").toLowerCase()
   const artifactKind = metadataString(entry, "artifactKind") || metadataString(entry, "kind") || kind
   const path = entry.path.toLowerCase()
+  // 老 daemon 上传的视频 MIME 可能是 application/octet-stream，按扩展名兜底识别。
+  const genericMime = mime === "" || mime === "application/octet-stream"
+  const videoPath = /\.(mp4|m4v|mov|webm|mkv)$/.test(path)
 
   if (mime.startsWith("image/")) return "image"
-  if (mime.startsWith("video/")) return "video"
+  if (mime.startsWith("video/") || (genericMime && videoPath)) return "video"
   if (artifactKind === "screenshot") return "image"
   if (artifactKind === "video") return "video"
   if (artifactKind === "api_proof" || artifactKind === "api-proof") return "api_proof"

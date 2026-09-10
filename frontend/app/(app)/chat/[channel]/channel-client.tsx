@@ -7,6 +7,7 @@ import {
   Activity,
   Database,
   Droplets,
+  Eye,
   Files,
   ImageIcon,
   ListChecks,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react"
 
 import { DestructiveActionDialog } from "@/components/destructive-action-dialog"
+import { ChannelFilePreviewDialog, channelFilePreviewKind } from "@/components/channel-file-preview"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/form"
@@ -353,6 +355,7 @@ export function ChannelClient({
   const [memoryLoading, setMemoryLoading] = useState(false)
   const [memoryProposalLoading, setMemoryProposalLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [previewFile, setPreviewFile] = useState<ChannelFileItem | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [threadWidthOverride, setThreadWidthOverride] = useState<number | null>(null)
   const dragDepthRef = useRef(0)
@@ -1457,6 +1460,7 @@ export function ChannelClient({
                     {files.map((file) => {
                       const uploader = allMembers.find((m) => m.id === file.uploadedBy) ?? members.find((m) => m.id === file.uploadedBy)
                       const isImage = file.mimeType.startsWith("image/")
+                      const previewKind = channelFilePreviewKind(file.mimeType, file.originalName)
                       return (
                         <li key={file.id} className="group/file">
                           <AttachmentSheet kind={isImage ? "image" : "file"} className="flex items-center gap-3 px-3 py-2.5">
@@ -1495,6 +1499,17 @@ export function ChannelClient({
                                   className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
                                 >
                                   <MessageCircle className="size-3.5" />
+                                </button>
+                              )}
+                              {previewKind && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewFile(file)}
+                                  title={tChat("preview")}
+                                  aria-label={tChat("preview")}
+                                  className="inline-flex size-7 items-center justify-center rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                  <Eye className="size-3.5" />
                                 </button>
                               )}
                               {file.previewUrl && (
@@ -1539,6 +1554,15 @@ export function ChannelClient({
                       )
                     })}
                   </ul>
+                  <ChannelFilePreviewDialog
+                    file={previewFile}
+                    open={previewFile !== null}
+                    onOpenChange={(next) => {
+                      if (!next) setPreviewFile(null)
+                    }}
+                    sessionToken={sessionToken}
+                    activeServerId={activeServerId}
+                  />
                 </div>
               </div>
             ) : (

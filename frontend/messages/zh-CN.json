@@ -125,6 +125,8 @@
     "unknown": "未知",
     "openMessage": "打开消息",
     "preview": "预览",
+    "filePreviewLoadFailed": "无法加载预览，请尝试下载。",
+    "filePreviewTooLarge": "文件过大，无法内联预览，请下载查看。",
     "download": "下载",
     "deleteFile": "删除文件",
     "deleteFileConsequence": "此操作会永久删除文件记录并使文件无法访问；存储清理可能进入隔离区，需管理员后续处理。",

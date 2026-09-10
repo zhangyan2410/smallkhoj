@@ -310,8 +310,22 @@ DAEMON_DOWNLOAD_BASE_URL=https://smallkhoj.example.com/downloads/smallkhoj-daemo
 UPLOAD_MAX_BYTES=52428800
 UPLOAD_READ_CHUNK_BYTES=65536
 UPLOAD_CLEANUP_TIMEOUT_SECONDS=5
+UPLOAD_SERVER_QUOTA_BYTES=2147483648
+UPLOAD_MIN_FREE_DISK_BYTES=1073741824
 SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX=55MB
 ```
+
+Upload storage governance: `UPLOAD_MAX_BYTES` caps a single file, while
+`UPLOAD_SERVER_QUOTA_BYTES` bounds the total bytes stored per server (sum of
+all uploaded files — attachments and avatars) and
+`UPLOAD_MIN_FREE_DISK_BYTES` rejects uploads that would leave the storage
+volume below a free-space reserve; both fail closed with HTTP 507. Attachments
+persist in the `backend_uploads` named volume, so they survive container
+recreation and the disk reserve sees the real volume. To accept larger video
+deliverables (MP4 etc.), raise `UPLOAD_MAX_BYTES` together with
+`SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX` (the Caddy ingress cap must exceed the
+per-file cap plus multipart overhead), and size the quota against the host
+disk.
 
 When using `production_image_transfer.py`, replace the image values with the local-release tags loaded on the server:
 

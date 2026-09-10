@@ -5,14 +5,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
+from models import FileEntry
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +25,60 @@ def _size_label(max_bytes: int) -> str:
     if max_bytes >= mib and max_bytes % mib == 0:
         return f"{max_bytes // mib} MB"
     return f"{max_bytes} byte"
+
+
+def evaluate_upload_capacity(
+    *,
+    usage_bytes: int,
+    quota_bytes: int,
+    incoming_bytes: int,
+    free_bytes: int,
+    min_free_bytes: int,
+) -> None:
+    """Reject an upload that would breach the per-server storage quota or leave
+    the storage volume below the reserved free-space headroom.
+
+    Pure check-then-act: concurrent uploads may race slightly past the quota;
+    the goal is bounding growth to protect the host disk, not exact accounting.
+    A non-positive ``quota_bytes``/``min_free_bytes`` disables that check.
+    """
+
+    if quota_bytes > 0 and usage_bytes + incoming_bytes > quota_bytes:
+        raise HTTPException(
+            507,
+            f"Server upload storage is full: {usage_bytes + incoming_bytes} bytes "
+            f"needed exceeds the {quota_bytes} byte quota "
+            f"({usage_bytes} bytes already stored). Delete old files to free space.",
+        )
+    if min_free_bytes > 0 and free_bytes - incoming_bytes < min_free_bytes:
+        raise HTTPException(
+            507,
+            f"Not enough disk space: storage volume would drop below the "
+            f"{min_free_bytes} byte reserve ({free_bytes} bytes free).",
+        )
+
+
+async def assert_upload_capacity(
+    db: AsyncSession,
+    *,
+    server_id: uuid.UUID,
+    storage_root: Path,
+    incoming_size: int,
+) -> None:
+    """Enforce upload_server_quota_bytes and upload_min_free_disk_bytes."""
+
+    usage_result = await db.execute(
+        select(func.coalesce(func.sum(FileEntry.size), 0)).where(FileEntry.server_id == server_id)
+    )
+    usage_bytes = int(usage_result.scalar_one())
+    free_bytes = shutil.disk_usage(storage_root).free
+    evaluate_upload_capacity(
+        usage_bytes=usage_bytes,
+        quota_bytes=settings.upload_server_quota_bytes,
+        incoming_bytes=incoming_size,
+        free_bytes=free_bytes,
+        min_free_bytes=settings.upload_min_free_disk_bytes,
+    )
 
 
 @dataclass

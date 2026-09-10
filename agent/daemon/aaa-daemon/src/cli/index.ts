@@ -1690,6 +1690,36 @@ async function runLegacyCli(argv: string[], io: CliIo): Promise<number> {
   }
 }
 
+/** Infer attachment MIME from magic bytes then filename extension. Shared by all multipart upload handlers. */
+function inferUploadMime(fn: string, buf: Buffer, explicit?: string): string {
+  if (explicit) return explicit;
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
+  if (buf.length >= 3 && buf.subarray(0, 3).equals(Buffer.from([255, 216, 255]))) return 'image/jpeg';
+  // ISO-BMFF 容器（MP4/MOV）：偏移 4..8 为 "ftyp"，其后 4 字节是 major brand。
+  if (buf.length >= 12 && buf.subarray(4, 8).toString('latin1') === 'ftyp') {
+    const brand = buf.subarray(8, 12).toString('latin1');
+    return brand.startsWith('qt') ? 'video/quicktime' : 'video/mp4';
+  }
+  const lower = fn.toLowerCase();
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  if (lower.endsWith('.json')) return 'application/json';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  if (lower.endsWith('.mp4') || lower.endsWith('.m4v')) return 'video/mp4';
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.mkv')) return 'video/x-matroska';
+  if (lower.endsWith('.mp3')) return 'audio/mpeg';
+  if (lower.endsWith('.wav')) return 'audio/wav';
+  if (lower.endsWith('.m4a')) return 'audio/mp4';
+  if (lower.endsWith('.ogg')) return 'audio/ogg';
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+  return 'application/octet-stream';
+}
+
 /** Handle multipart file uploads (kept from original logic). */
 async function handleMultipartUpload(
   config: ProxyConfig,
@@ -1728,20 +1758,7 @@ async function handleMultipartUpload(
   const filename = basename(upload.filePath);
   const form = new FormData();
 
-  const inferMime = (fn: string, buf: Buffer, explicit?: string): string => {
-    if (explicit) return explicit;
-    if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
-    if (buf.length >= 3 && buf.subarray(0, 3).equals(Buffer.from([255, 216, 255]))) return 'image/jpeg';
-    const lower = fn.toLowerCase();
-    if (lower.endsWith('.gif')) return 'image/gif';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.pdf')) return 'application/pdf';
-    if (lower.endsWith('.md')) return 'text/markdown';
-    if (lower.endsWith('.txt')) return 'text/plain';
-    if (lower.endsWith('.json')) return 'application/json';
-    if (lower.endsWith('.csv')) return 'text/csv';
-    return 'application/octet-stream';
-  };
+  const inferMime = (fn: string, buf: Buffer, explicit?: string): string => inferUploadMime(fn, buf, explicit);
 
   form.append(upload.fieldName, new Blob([buffer], { type: inferMime(filename, buffer, upload.mimeType) }), filename);
 
@@ -1819,20 +1836,7 @@ async function handleMultipartUploadFormatted(
   const buffer = readFileSync(upload.filePath);
   const filename = basename(upload.filePath);
   const form = new FormData();
-  const inferMime = (fn: string, buf: Buffer, explicit?: string): string => {
-    if (explicit) return explicit;
-    if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
-    if (buf.length >= 3 && buf.subarray(0, 3).equals(Buffer.from([255, 216, 255]))) return 'image/jpeg';
-    const lower = fn.toLowerCase();
-    if (lower.endsWith('.gif')) return 'image/gif';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.pdf')) return 'application/pdf';
-    if (lower.endsWith('.md')) return 'text/markdown';
-    if (lower.endsWith('.txt')) return 'text/plain';
-    if (lower.endsWith('.json')) return 'application/json';
-    if (lower.endsWith('.csv')) return 'text/csv';
-    return 'application/octet-stream';
-  };
+  const inferMime = (fn: string, buf: Buffer, explicit?: string): string => inferUploadMime(fn, buf, explicit);
   form.append(upload.fieldName, new Blob([buffer], { type: inferMime(filename, buffer, upload.mimeType) }), filename);
   if (upload.mimeType) form.append('mimeType', upload.mimeType);
 

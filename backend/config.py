@@ -162,9 +162,15 @@ class Settings(BaseSettings):
     # Multipart parts are spooled by Starlette before route code runs. These
     # values govern the application read/staging boundary and cleanup timeout;
     # reverse-proxy request-body limits are configured separately in Caddy.
-    upload_max_bytes: int = 50 * 1024 * 1024
+    # 200MB 以覆盖 agent 交付的视频类成果（MP4 录屏等），可用 UPLOAD_MAX_BYTES 覆盖。
+    upload_max_bytes: int = 200 * 1024 * 1024
     upload_read_chunk_bytes: int = 64 * 1024
     upload_cleanup_timeout_seconds: float = 5.0
+    # 上传存储治理：单 server 附件总量配额 + 存储卷最低剩余空间，防止 agent
+    # 交付文件写满宿主磁盘（尤其云端小盘机器）。配额按 FileEntry.size 累计；
+    # 并发上传可能轻微超额，目标是兜底保护而非精确记账。<=0 关闭对应检查。
+    upload_server_quota_bytes: int = 2 * 1024 * 1024 * 1024
+    upload_min_free_disk_bytes: int = 1 * 1024 * 1024 * 1024
 
     @model_validator(mode="after")
     def validate_public_api_key(self):

@@ -67,6 +67,9 @@ class FakeResult:
     def scalar_one_or_none(self):
         return self.value
 
+    def scalar_one(self):
+        return self.value
+
 
 class TrackingSession:
     def __init__(self, *, execute_values=(), commit_error: Exception | None = None):
@@ -78,6 +81,9 @@ class TrackingSession:
         self.rolled_back = False
 
     async def execute(self, _statement):
+        # 容量守卫的 SUM 用量查询直接回 0，不占用调用方排队的执行结果。
+        if "sum(" in str(_statement).lower():
+            return FakeResult(0)
         return FakeResult(self.execute_values.pop(0))
 
     def add(self, value) -> None:
@@ -121,6 +127,49 @@ def _server():
 
 def _assert_no_upload_residue(root: Path) -> None:
     assert not [path for path in root.rglob("*") if path.is_file()]
+
+
+def test_capacity_check_rejects_quota_and_disk_breaches():
+    from services.upload_storage import evaluate_upload_capacity
+
+    # 余量充足且配额内：通过。
+    evaluate_upload_capacity(
+        usage_bytes=0,
+        quota_bytes=100,
+        incoming_bytes=100,
+        free_bytes=1_000_000,
+        min_free_bytes=1_000,
+    )
+    # 配额用尽：507 拒收。
+    with pytest.raises(HTTPException) as quota_error:
+        evaluate_upload_capacity(
+            usage_bytes=100,
+            quota_bytes=100,
+            incoming_bytes=1,
+            free_bytes=1_000_000,
+            min_free_bytes=1_000,
+        )
+    assert quota_error.value.status_code == 507
+    assert "quota" in str(quota_error.value.detail)
+    # 写入后低于磁盘保留线：507 拒收。
+    with pytest.raises(HTTPException) as disk_error:
+        evaluate_upload_capacity(
+            usage_bytes=0,
+            quota_bytes=0,
+            incoming_bytes=500,
+            free_bytes=1_000,
+            min_free_bytes=1_000,
+        )
+    assert disk_error.value.status_code == 507
+    assert "disk space" in str(disk_error.value.detail)
+    # 配额/保留线 <=0 表示关闭对应检查：极端数值也放行。
+    evaluate_upload_capacity(
+        usage_bytes=10**12,
+        quota_bytes=0,
+        incoming_bytes=10**12,
+        free_bytes=0,
+        min_free_bytes=0,
+    )
 
 
 @pytest.mark.asyncio

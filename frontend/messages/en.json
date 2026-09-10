@@ -125,6 +125,8 @@
     "unknown": "Unknown",
     "openMessage": "Open message",
     "preview": "Preview",
+    "filePreviewLoadFailed": "Could not load preview. Try downloading instead.",
+    "filePreviewTooLarge": "File is too large to preview inline. Download to view it.",
     "download": "Download",
     "deleteFile": "Delete file",
     "deleteFileConsequence": "This permanently removes the file record and makes the file inaccessible. Storage cleanup may be quarantined for administrator follow-up.",

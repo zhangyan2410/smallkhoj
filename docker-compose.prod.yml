@@ -53,6 +53,14 @@ services:
       UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-52428800}
       UPLOAD_READ_CHUNK_BYTES: ${UPLOAD_READ_CHUNK_BYTES:-65536}
       UPLOAD_CLEANUP_TIMEOUT_SECONDS: ${UPLOAD_CLEANUP_TIMEOUT_SECONDS:-5}
+      # 存储治理：单 server 附件总量配额 + 存储卷最低剩余空间（云端小盘防写满）。
+      # 若要放开 MP4 交付，同时调 UPLOAD_MAX_BYTES 与 Caddy 的
+      # SMALLKHOJ_UPLOAD_REQUEST_BODY_MAX（需大于单文件上限）。
+      UPLOAD_SERVER_QUOTA_BYTES: ${UPLOAD_SERVER_QUOTA_BYTES:-2147483648}
+      UPLOAD_MIN_FREE_DISK_BYTES: ${UPLOAD_MIN_FREE_DISK_BYTES:-1073741824}
+    volumes:
+      # 附件落命名卷：容器重建不丢文件，且磁盘守卫统计的是真实卷剩余空间。
+      - backend_uploads:/app/backend/.data/uploads
     depends_on:
       - db
 
@@ -127,5 +135,6 @@ services:
 
 volumes:
   pgdata:
+  backend_uploads:
   caddy_data:
   caddy_config:
