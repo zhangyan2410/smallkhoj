@@ -16,6 +16,49 @@ import {
   updatePermissionsAction,
 } from "@/app/(app)/members/actions"
 
+/**
+ * 已知权限键的人话文案（i18n 键）。其余键回退为原始键名展示。
+ * manageAgents/installSkills/proposeAgents 为本期新增（agent-spawn-with-skills）。
+ */
+const KNOWN_PERMISSION_META: Record<string, { labelKey: string; descKey: string }> = {
+  manageAgents: { labelKey: "permManageAgentsLabel", descKey: "permManageAgentsDesc" },
+  installSkills: { labelKey: "permInstallSkillsLabel", descKey: "permInstallSkillsDesc" },
+  proposeAgents: { labelKey: "permProposeAgentsLabel", descKey: "permProposeAgentsDesc" },
+}
+
+function PermissionEntryCard({
+  permissionKey,
+  enabled,
+  onLabel,
+  offLabel,
+}: {
+  permissionKey: string
+  enabled: boolean
+  onLabel: string
+  offLabel: string
+}) {
+  const t = useTranslations("members")
+  const meta = KNOWN_PERMISSION_META[permissionKey]
+  if (!meta) {
+    return (
+      <ObjectField
+        label={permissionKey}
+        mono={false}
+        value={<RuntimeChip tone={enabled ? "success" : "neutral"}>{enabled ? onLabel : offLabel}</RuntimeChip>}
+      />
+    )
+  }
+  return (
+    <div className="sk-object-surface min-w-0 overflow-x-hidden px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">{t(meta.labelKey)}</span>
+        <RuntimeChip tone={enabled ? "success" : "neutral"}>{enabled ? onLabel : offLabel}</RuntimeChip>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">{t(meta.descKey)}</p>
+    </div>
+  )
+}
+
 export function PermissionsTab({ member }: { member: Member }) {
   const t = useTranslations("members")
   const permissions = member.permissions ?? member.config?.permissions ?? {}
@@ -42,11 +85,12 @@ export function PermissionsTab({ member }: { member: Member }) {
           {Object.keys(permissions).length > 0 ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {Object.entries(permissions).map(([key, enabled]) => (
-                <ObjectField
+                <PermissionEntryCard
                   key={key}
-                  label={key}
-                  mono={false}
-                  value={<RuntimeChip tone={enabled ? "success" : "neutral"}>{enabled ? t("enabled") : t("disabled")}</RuntimeChip>}
+                  permissionKey={key}
+                  enabled={enabled}
+                  onLabel={t("enabled")}
+                  offLabel={t("disabled")}
                 />
               ))}
             </div>
@@ -129,7 +173,9 @@ function AddPermissionForm({
                 <input type="hidden" name="key" value={key} />
                 <input type="hidden" name="currentValue" value={String(enabled)} />
                 <input type="hidden" name="existing" value={JSON.stringify(permissions)} />
-                <span className="min-w-0 truncate text-sm font-mono">{key}</span>
+                <span className="min-w-0 truncate text-sm">
+                  {KNOWN_PERMISSION_META[key] ? t(KNOWN_PERMISSION_META[key].labelKey) : <span className="font-mono">{key}</span>}
+                </span>
                 <div className="flex items-center gap-2">
                   <Button type="submit" size="sm" variant={enabled ? "default" : "outline"}>
                     {enabled ? t("enabled") : t("disabled")}

@@ -31,6 +31,14 @@ export type RuntimeInfo = string | {
   source?: string
 }
 
+/** Server-installed skill (GET /api/v1/skills). Also the shape of member.skills entries. */
+export type AgentSkill = {
+  id: string
+  name: string
+  version: string
+  description: string
+}
+
 export type MemberProfile = {
   displayName?: string | null
   description?: string | null
@@ -51,7 +59,10 @@ export type Member = {
   status: string
   description?: string | null
   avatarUrl?: string | null
-  skills?: string[]
+  /** Agent role/persona injected into the runtime as system prompt (nullable). */
+  systemPrompt?: string | null
+  /** Skills assembled onto this agent (installed skill records). */
+  skills?: AgentSkill[]
   config?: Record<string, unknown> & {
     permissions?: Record<string, boolean>
     actions?: Record<string, boolean>

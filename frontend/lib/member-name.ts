@@ -1,5 +1,6 @@
 export const MAX_MEMBER_NAME_CODEPOINTS = 32
 export const MAX_AGENT_DESCRIPTION_CODEPOINTS = 200
+export const MAX_AGENT_SYSTEM_PROMPT_CODEPOINTS = 8000
 
 export type MemberNameReasonCode =
   | "NAME_REQUIRED"

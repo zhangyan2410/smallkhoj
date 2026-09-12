@@ -1,93 +1,115 @@
-# 前端交接包 · 第一期：agent 职责与技能显性化
+# 前端交接包 · 第一期（v2 形态规格版）
 
-> 面向：接手 frontend/ 实现的 agent（无前期对话上下文，本文自包含）。
-> 范围：仅 `frontend/` 目录。后端/daemon 由主会话并行实现，**API 契约以下文为准（已冻结）**，后端未就绪前可按契约 mock。
-> 来源：Comet Native change `agent-spawn-with-skills`，需求背景见同目录 `brief.md`。
+> 面向：接手 `frontend/` 实现的 agent（自包含，无前期对话上下文）。
+> **v2 变更**：v1 只冻结了功能与 API 契约，没写 UI 形态，导致首轮实现偏向「设置表单堆」。v2 冻结**形态规格**：信息架构、线框、组件结构、形态验收。API 契约与 v1 完全一致（实现过的请求/类型代码可保留），需要重构的是 UI 层组织方式。
+> 范围：仅 `frontend/`。需求背景：同目录 `brief.md`；对标产品：万有无界（work.wanuai.cn）。
 
-## 任务概述
+## 一、产品形态三原则（对标万有实测，违背即返工）
 
-SmallKhoj 当前创建 agent 只有「名称/描述/computer/runtime/provider」，agent 是空壳。本期为 agent 增加「职责」（system prompt）与「技能装配」（skills），并在 UI 显性展示；同时扩展权限配置（三个新能力开关）。产品形态对标万有无界（work.wanuai.cn）实测：编辑表单极简（名称+职责两字段），能力全部外置为带触发描述的技能卡。
+1. **展示/编辑分离**：成员详情默认全部只读展示；「编辑」是显式动作（区块右上角按钮，点击后该区块进入编辑态或弹出弹窗，带保存/取消）。**禁止把多个 `<form>` 平铺堆叠在详情页里**（v1 实现的主要问题）。
+2. **技能是独立能力面板**：入口带计数（标题形如「技能 · 3」）；面板内每技能一张**完整卡片**——名称、版本徽标、触发描述**全文可见**。**禁止把触发描述藏进 title/tooltip**；chip（仅名字+版本）只允许出现在「已选摘要」场景。
+3. **创建极简、装配后置**：创建表单只新增「职责」一个必看字段 + 技能可选选择；技能的完整管理（查看/增删）发生在详情面板，不在创建流程里做重交互。
 
-## 改动点
+## 二、逐屏设计规格
 
-### 1. 创建/编辑 agent 表单（`frontend/components/create-agent-form.tsx`）
+### 屏 A：创建 agent 表单（`create-agent-form.tsx`）
 
-新增两个字段：
+在现有「描述」字段之后新增：
 
-- **职责（systemPrompt）**：多行 textarea，placeholder 示例「1、负责…… 2、遇到 X 时……」（参考万有小万的职责：「1、日常事务自己接…… 2、复杂任务把对的事交给对的 Agent 或工具 3、过程中记住你的偏好和上下文」）。可留空。最长 8000 字符。
-- **技能（skillIds）**：多选 chips。数据源 `GET /api/v1/skills`（见契约）。每项显示技能名；选中后 chip 高亮。空列表时显示占位文案（「服务器还没有已安装的技能」+ 禁用态），不阻塞表单提交。
+```
+职责（systemPrompt）                          0/8000
+┌──────────────────────────────────────────┐
+│ （多行 textarea，rows=4）                  │
+│ placeholder: 这个 agent 负责什么、遇到什么   │
+│ 情况做什么。例：1、负责调研任务拆解 2、…     │
+└──────────────────────────────────────────┘
+提示行：将注入 runtime 作为 system prompt 生效
 
-编辑路径（`frontend/app/(app)/members/actions.ts` 的 PATCH）同步支持这两个字段。
-
-### 2. 成员详情 · 职责与技能展示
-
-成员详情页（member-tabs，参照现有 `workspace-tab.tsx` 的只读展示风格）新增：
-
-- **职责区块**：只读文本，空则显示占位（「未设置职责」）。
-- **技能区块**：卡片列表，每张卡片显示：技能名、版本号（v1.0.x 样式）、触发描述（description，通常一两句「何时使用」）。形态对照万有技能卡（名称+版本+Use-when 描述，无其他装饰）。
-
-### 3. 权限开关扩展（`frontend/app/(app)/members/actions.ts` + 成员详情权限区）
-
-现有 permissions/actions map 编辑 UI 增加三个布尔开关：
-
-- `manageAgents` — 管理其他 agent（创建/编辑/启停/归档，助手 agent 的核心特权）
-- `installSkills` — 装配/卸载技能
-- `proposeAgents` — 提议创建新 agent（普通 agent 的低权限路径，默认开）
-
-开关文案要写清楚含义（面向管理员的一句人话说明，不要只放键名）。
-
-## API 契约（冻结）
-
-### `GET /api/v1/skills`（新增，server 已安装技能列表）
-
-```json
-{ "skills": [ { "id": "uuid", "name": "web-search", "version": "1.0.2",
-  "description": "Search the public web. Use when …",
-  "source": "builtin|user|agent|market", "trustLevel": "trusted|reviewed|untrusted" } ] }
+技能（可选）—— 已选 2
+[网页搜索 v1.0.2 ×] [定时任务 v1.0.0 ×]   [+ 选择技能]
+（点击 [+ 选择技能] 展开下方选择器；再次点击收起）
+┌─ 选择技能 ──────────────────────────────┐
+│ ☑ 网页搜索 v1.0.2                        │
+│   Search the public web. Use when the     │
+│   answer requires up-to-date info…        │
+│ ☐ 定时任务 v1.0.0                         │
+│   创建与管理定时提醒。Use when…             │
+└──────────────────────────────────────────┘
+（选择器里是「复选框+完整描述」的行卡片，不是纯 chips；
+ 空列表显示「服务器还没有已安装的技能」，不阻塞提交）
 ```
 
-### `POST /api/v1/members/agents`（扩展）
+已选摘要用 chips（可点 × 移除），**选择器本体必须显示描述**——用户在装配时就要知道每个技能是干什么的。
 
-请求体新增可选字段：`"systemPrompt": string (≤8000)`, `"skillIds": string[]`（须为已安装技能 id，未知 id 返回 400）。
+### 屏 B：成员详情 · agent（核心屏，`member-tabs/profile-tab.tsx` 重构）
 
-### `PATCH /api/v1/members/{id}`（扩展）
-
-新增可选字段：`"systemPrompt": string | null`（null=清除），`"skillIds": string[]`（**全量替换**装配，空数组=清空）。
-
-### 成员读取（`GET /api/v1/members`、`GET /api/v1/members/{id}` 及现有返回 member 的响应）
-
-member 对象新增：
-
-```json
-{ "systemPrompt": "……" | null,
-  "skills": [ { "id": "uuid", "name": "web-search", "version": "1.0.2", "description": "…" } ] }
+```
+┌─ MemberProfileCard（现有组件，不动）────────────┐
+└────────────────────────────────────────────────┘
+┌─ 职责 ───────────────────────────── [编辑] ──┐
+│ 1、负责日常调研任务的拆解与执行                  │
+│ 2、复杂任务拆解给其他 agent，产出沉淀到频道       │
+│ （未设置时：EmptyState「未设置职责」）           │
+└────────────────────────────────────────────────┘
+┌─ 技能 · 3 ────────────────────── [编辑装配] ──┐
+│ ┌─────────────────────────────────────────┐   │
+│ │ 网页搜索                     v1.0.2 [⋯] │   │
+│ │ Search the public web. Use when the      │   │
+│ │ answer requires up-to-date information…  │   │
+│ ├─────────────────────────────────────────┤   │
+│ │ 定时任务                     v1.0.0      │   │
+│ │ 创建与管理定时提醒。Use when the user…    │   │
+│ ├─────────────────────────────────────────┤   │
+│ │ 资产上传                     v1.0.11     │   │
+│ │ 任务产物上传到频道资产空间并返回文件列表…   │   │
+│ └─────────────────────────────────────────┘   │
+│ （0 个技能时：EmptyState「未装配技能」）          │
+└────────────────────────────────────────────────┘
+（「描述」沿用现有编辑区块，但同样改为 展示/编辑分离）
 ```
 
-### 权限 map
+- 卡片结构：左侧主体 = 技能名（粗）+ 版本徽标（`v1.0.2`，弱化色）+ 触发描述全文（muted 色，`line-clamp` 上限 3 行）；右上 `[⋯]` 操作位（本期可为空占位，第三期装更新/卸载）。
+- **编辑交互**：点「编辑」→ 区块切换为编辑态（职责=textarea；技能=屏 A 同款「已选 chips + 展开选择器」），底部「保存 / 取消」。保存成功回到只读态。无管理权限时不显示编辑按钮。
+- 使用现有组件：区块表面 `sk-object-surface`、空态 `EmptyState`、计数标题参照 workspace-tab 的展示风格。
 
-`permissions` 对象新增键 `manageAgents` / `installSkills` / `proposeAgents`（bool）。后端在 agent 创建时持久化完整 policy map（见 `backend/services/agent_permissions.py`），前端按全键读写。
+### 屏 C：技能卡组件（新增，供屏 A 选择器与屏 B 面板复用）
 
-## 类型层
+一个 `SkillCard`：`{ name, version, description, selected?, onToggle?, actions? }`。两种用法：选择器行卡片（带 checkbox 语义）与详情面板卡片（只读 + 操作位）。**一个组件、两种密度**，避免两处形态漂移。
 
-`frontend/lib/control-plane.ts` 的 member 类型补 `systemPrompt`、`skills` 字段；新增 Skill 类型。所有新 UI 文案进 i18n（`frontend/messages/zh-CN.json` 与 en，两份都要）。
+### 屏 D：权限 tab（`permissions-tab.tsx`）
 
-## 验收清单
+现有 permissions 编辑结构里加三个开关，形态沿用现有开关行（label + 一句人话说明 + switch）：
 
-1. 创建表单能填职责、能选技能；提交后详情页正确显示两者。
-2. 编辑能改职责与技能；技能为全量替换语义。
-3. `GET /api/v1/skills` 空时不报错、表单可正常提交（技能为空选）。
-4. 三个权限开关可配置并正确持久化/回显。
-5. 新文案 zh-CN/en 完整，无硬编码中文。
-6. `bun run lint` 与 typecheck 通过。
-7. 不做真机浏览器验收——集成验证由主会话负责（后端就绪后统一跑）。
+- `manageAgents` — 管理其他 agent：创建、编辑、启停、归档（助手 agent 的核心特权）
+- `installSkills` — 装配与卸载技能
+- `proposeAgents` — 提议创建新 agent（普通 agent 默认开）
 
-## 边界（不要做）
+## 三、现状处置（首轮实现的保留/重构）
 
-- 不改 `backend/`、`agent/daemon/`、消息流卡片（提议卡片/诞生事件是第二期）。
-- 不做技能商城 UI、技能编辑器（第三期）。
-- 不改 runtime/computer 选择逻辑。
+**保留**：`lib/control-plane.ts` 类型、`lib/member-name.ts` 长度常量、`skill-chips-select.tsx` 的 `useInstalledSkills` hook 与「已选 chips」展示、i18n 文案键、`create-agent-form.tsx` 的提交逻辑/校验、`members/actions.ts` 的 server actions、`design-preview/`（改完后同步更新再删）。
 
-## 规约入口
+**重构**：
+1. `profile-tab.tsx`：删除「职责/技能/描述」三个平铺 form 的结构，改为上述屏 B 的 展示/编辑分离 + 技能面板。
+2. `skill-chips-select.tsx`：补「展开选择器」形态（复选框 + 描述全文的行卡片），chips 仅作已选摘要。
+3. 新增 `SkillCard` 组件，两处复用。
+4. `create-agent-form.tsx`：技能区改为「已选 chips + 展开选择器」。
 
-- 动手前读 `.trellis/spec/` 中 frontend 相关层规约。
-- 组件风格对齐现有 `create-agent-form.tsx` / `workspace-tab.tsx`（shadcn/ui 惯例、现有表单校验模式）。
+## 四、API 契约（不变，与 v1 一致）
+
+`GET /api/v1/skills` → `{ skills: [{id,name,version,description,source,trustLevel}] }`；`POST /api/v1/members/agents` + `systemPrompt`(≤8000)/`skillIds`；`PATCH /api/v1/members/{id}` 同字段（skillIds 全量替换）；member 读取含 `systemPrompt`/`skills[]`；permissions map 新增 `manageAgents`/`installSkills`/`proposeAgents`(bool)。后端未就绪可按契约 mock（`design-preview/page.tsx` 已有 mock 写法可参照）。
+
+## 五、验收清单（形态验收，逐条对照本文件线框）
+
+1. 成员详情（agent）：职责与技能均为**只读展示 + 显式编辑按钮**；页面加载后没有任何裸露的保存按钮/表单。
+2. 技能面板标题带计数（「技能 · N」）；每张卡片的触发描述**肉眼可见**（非 tooltip）。
+3. 屏 A 与屏 B 的技能选择器是同一组件（复选框 + 描述行卡片）；已选摘要为 chips。
+4. 屏 B 空态：职责/技能分别有 EmptyState 文案。
+5. 无管理权限（`canManageMembers` 为 false）时不渲染编辑按钮，只读展示照常。
+6. 创建表单：职责可留空提交；技能空列表不阻塞；超长职责有错误提示。
+7. 三个权限开关沿用现有开关行形态，带人话说明，i18n 双语完整。
+8. `bun run lint` + typecheck 通过；不新增运行时依赖。
+9. 集成验证（真机）由主会话负责，不要求前端 agent 执行。
+
+## 六、边界（不要做）
+
+不改 `backend/`、`agent/daemon/`；不做提议卡片/诞生事件（第二期）；不做技能商城/编辑器（第三期）；不引入新 UI 库，组件沿用现有 shadcn/ui + `sk-*`/Inkframe 设计系统。

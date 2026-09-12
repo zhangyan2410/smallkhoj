@@ -75,6 +75,54 @@ export async function updateAgentDescriptionAction(formData: FormData) {
   redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
 }
 
+export async function updateAgentSystemPromptAction(formData: FormData) {
+  const memberId = String(formData.get("memberId") || "")
+  const systemPrompt = String(formData.get("systemPrompt") || "").trim()
+  if (!memberId) return
+
+  const response = await fetch(`${API_BASE}/api/v1/members/${memberId}`, {
+    method: "PATCH",
+    headers: await serverApiHeaders(true),
+    body: JSON.stringify({ systemPrompt: systemPrompt || null }),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile&error=${encodeURIComponent(detail)}`)
+  }
+  revalidatePath("/members")
+  redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
+}
+
+/**
+ * 技能装配为全量替换语义：form 提交当前选中的完整 skillIds 数组，
+ * 空数组 = 清空装配（见 frontend-handoff-phase1.md 冻结契约）。
+ */
+export async function updateMemberSkillsAction(formData: FormData) {
+  const memberId = String(formData.get("memberId") || "")
+  if (!memberId) return
+  let skillIds: string[] = []
+  try {
+    const parsed = JSON.parse(String(formData.get("skillIds") || "[]"))
+    if (Array.isArray(parsed)) skillIds = parsed.filter((id) => typeof id === "string")
+  } catch {
+    skillIds = []
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/members/${memberId}`, {
+    method: "PATCH",
+    headers: await serverApiHeaders(true),
+    body: JSON.stringify({ skillIds }),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    const detail = typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`
+    redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile&error=${encodeURIComponent(detail)}`)
+  }
+  revalidatePath("/members")
+  redirect(`/members?member=${encodeURIComponent(memberId)}&tab=profile`)
+}
+
 export async function updatePermissionsAction(formData: FormData) {
   const memberId = String(formData.get("memberId") || "")
   if (!memberId) return

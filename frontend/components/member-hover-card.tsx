@@ -152,8 +152,8 @@ export function MemberHoverCard({
           {member.skills && member.skills.length > 0 && (
             <div className="flex flex-wrap gap-1 border-t border-[var(--ink)]/30 px-3 py-2">
               {member.skills.slice(0, 6).map((skill) => (
-                <span key={skill} className="border border-[var(--ink)] px-1.5 py-0.5 text-[0.65rem] text-sand-muted">
-                  {skill}
+                <span key={skill.id} className="border border-[var(--ink)] px-1.5 py-0.5 text-[0.65rem] text-sand-muted">
+                  {skill.name}
                 </span>
               ))}
               {member.skills.length > 6 && (

@@ -14,7 +14,8 @@ import {
   type Computer,
   type Member,
 } from "@/lib/control-plane"
-import { codePointLength, MAX_AGENT_DESCRIPTION_CODEPOINTS } from "@/lib/member-name"
+import { codePointLength, MAX_AGENT_DESCRIPTION_CODEPOINTS, MAX_AGENT_SYSTEM_PROMPT_CODEPOINTS } from "@/lib/member-name"
+import { SkillChipsSelect } from "@/components/skill-chips-select"
 import {
   detectedProviderOptions,
   unavailableProviderOptions,
@@ -59,6 +60,8 @@ export function CreateAgentForm({
   const [computerId, setComputerId] = useState("")
   const [runtime, setRuntime] = useState("claude_code")
   const [description, setDescription] = useState("")
+  const [systemPrompt, setSystemPrompt] = useState("")
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const runtimeOptions = computerId
     ? runtimeOptionsFromDetected(computers, { computerId })
     : runtimeOptionsFromDetected(computers)
@@ -88,6 +91,7 @@ export function CreateAgentForm({
     const runtime = String(formData.get("runtime") ?? "") || "claude_code"
     const runtimeProvider = String(formData.get("runtimeProvider") ?? "")
     const provider = String(formData.get("provider") ?? "")
+    const systemPrompt = String(formData.get("systemPrompt") ?? "").trim()
     if (!name || !computerId) {
       setError(t("missingNameOrComputer"))
       return
@@ -96,17 +100,32 @@ export function CreateAgentForm({
       setError(t("agentDescriptionTooLong"))
       return
     }
+    if (codePointLength(systemPrompt) > MAX_AGENT_SYSTEM_PROMPT_CODEPOINTS) {
+      setError(t("agentSystemPromptTooLong"))
+      return
+    }
     setSubmitting(true)
     try {
       const data = await apiPost<{ member?: CreatedMember; detail?: string }>(
         "/api/v1/members/agents",
-        { name, description: description || null, computerId, runtime, runtimeProvider, provider }
+        {
+          name,
+          description: description || null,
+          computerId,
+          runtime,
+          runtimeProvider,
+          provider,
+          systemPrompt: systemPrompt || null,
+          skillIds: selectedSkillIds,
+        }
       )
       if (!data.member) {
         throw new Error(data.detail || t("createAgentFailed"))
       }
       form.reset()
       setDescription("")
+      setSystemPrompt("")
+      setSelectedSkillIds([])
       await onSuccess?.(data.member)
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e)
@@ -114,6 +133,12 @@ export function CreateAgentForm({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function toggleSkill(skillId: string) {
+    setSelectedSkillIds((current) =>
+      current.includes(skillId) ? current.filter((id) => id !== skillId) : [...current, skillId],
+    )
   }
 
   function runtimeOptionLabel(opt: RuntimeOption): string {
@@ -179,6 +204,36 @@ export function CreateAgentForm({
             onChange={(event) => setDescription(event.target.value)}
           />
           <p className="text-xs text-muted-foreground">{t("agentDescriptionHint")}</p>
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="agent-system-prompt" className="text-xs font-medium text-muted-foreground">
+              {t("agentSystemPromptLabel")}
+            </label>
+            <span
+              className={`text-xs ${codePointLength(systemPrompt) > MAX_AGENT_SYSTEM_PROMPT_CODEPOINTS ? "text-destructive" : "text-muted-foreground"}`}
+              aria-live="polite"
+            >
+              {codePointLength(systemPrompt)}/{MAX_AGENT_SYSTEM_PROMPT_CODEPOINTS}
+            </span>
+          </div>
+          <Textarea
+            id="agent-system-prompt"
+            name="systemPrompt"
+            rows={4}
+            value={systemPrompt}
+            aria-invalid={codePointLength(systemPrompt) > MAX_AGENT_SYSTEM_PROMPT_CODEPOINTS}
+            placeholder={t("agentSystemPromptPlaceholder")}
+            onChange={(event) => setSystemPrompt(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">{t("agentSystemPromptHint")}</p>
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <label className="text-xs font-medium text-muted-foreground">
+            {t("agentSkillsLabel")}
+          </label>
+          <SkillChipsSelect selectedIds={selectedSkillIds} onToggle={toggleSkill} />
+          <p className="text-xs text-muted-foreground">{t("agentSkillsHint")}</p>
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="agent-runtime" className="text-xs font-medium text-muted-foreground">

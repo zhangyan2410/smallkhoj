@@ -121,7 +121,7 @@ export function MemberProfileCard({
           </div>
           <div className="flex flex-wrap gap-1.5">
             {member.skills.map((skill) => (
-              <RuntimeChip key={skill}>{skill}</RuntimeChip>
+              <RuntimeChip key={skill.id}>{skill.name}</RuntimeChip>
             ))}
           </div>
         </div>
